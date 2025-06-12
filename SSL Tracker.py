@@ -82,7 +82,10 @@ class SeasonTrackerGUI:
         # {
         #   "A": set[str], "B": set[str],
         #   "round1_winner": str | None, "round2_winner": str | None, # "A", "B", or None
-        #   "lead_A": str | None, "lead_B": str | None # Unit name or None
+        #   "lead_A": str | None, "lead_B": str | None, # Unit name or None
+        #   "playoffs": bool,
+        #   "lead_A_r1": str | None, "lead_B_r1": str | None,
+        #   "lead_A_r2": str | None, "lead_B_r2": str | None
         # }
         self.current_week: dict | None = None
         self.team_names = {"A": tk.StringVar(value="Team A"), "B": tk.StringVar(value="Team B")}
@@ -103,6 +106,14 @@ class SeasonTrackerGUI:
         self.round2_winner_var = tk.StringVar()
         self.lead_A_var = tk.StringVar()
         self.lead_B_var = tk.StringVar()
+        
+        # For playoffs
+        self.playoffs_var = tk.BooleanVar()
+        self.lead_A_r1_var = tk.StringVar()
+        self.lead_B_r1_var = tk.StringVar()
+        self.lead_A_r2_var = tk.StringVar()
+        self.lead_B_r2_var = tk.StringVar()
+
 
         # Auto-load previous data (if available)
         if self.DEFAULT_PATH.exists():
@@ -211,6 +222,36 @@ class SeasonTrackerGUI:
         self.lead_B_menu = tk.OptionMenu(lead_frame_B, self.lead_B_var, "", command=lambda v: self.set_lead_unit("B", v)) # Options populated dynamically
         self.lead_B_menu.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
+        # --- Playoffs Checkbox ---
+        playoffs_frame = tk.Frame(right)
+        playoffs_frame.grid(row=4, column=1, pady=(10,0))
+        tk.Checkbutton(playoffs_frame, text="Playoffs Week", variable=self.playoffs_var, command=self.toggle_playoffs_mode).pack()
+
+        # --- Playoffs Lead Selection UI (initially hidden) ---
+        self.playoffs_lead_frame = tk.Frame(right)
+        self.playoffs_lead_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(5,0))
+        self.playoffs_lead_frame.grid_remove() # Hide it initially
+
+        # R1 Leads
+        tk.Label(self.playoffs_lead_frame, text="R1 Lead A:").grid(row=0, column=0, sticky="w")
+        self.lead_A_r1_menu = tk.OptionMenu(self.playoffs_lead_frame, self.lead_A_r1_var, "", command=lambda v: self.set_lead_unit("A_r1", v))
+        self.lead_A_r1_menu.grid(row=0, column=1, sticky="ew")
+        tk.Label(self.playoffs_lead_frame, text="R1 Lead B:").grid(row=0, column=2, sticky="w", padx=(10,0))
+        self.lead_B_r1_menu = tk.OptionMenu(self.playoffs_lead_frame, self.lead_B_r1_var, "", command=lambda v: self.set_lead_unit("B_r1", v))
+        self.lead_B_r1_menu.grid(row=0, column=3, sticky="ew")
+        
+        # R2 Leads
+        tk.Label(self.playoffs_lead_frame, text="R2 Lead A:").grid(row=1, column=0, sticky="w")
+        self.lead_A_r2_menu = tk.OptionMenu(self.playoffs_lead_frame, self.lead_A_r2_var, "", command=lambda v: self.set_lead_unit("A_r2", v))
+        self.lead_A_r2_menu.grid(row=1, column=1, sticky="ew")
+        tk.Label(self.playoffs_lead_frame, text="R2 Lead B:").grid(row=1, column=2, sticky="w", padx=(10,0))
+        self.lead_B_r2_menu = tk.OptionMenu(self.playoffs_lead_frame, self.lead_B_r2_var, "", command=lambda v: self.set_lead_unit("B_r2", v))
+        self.lead_B_r2_menu.grid(row=1, column=3, sticky="ew")
+
+        self.playoffs_lead_frame.grid_columnconfigure(1, weight=1)
+        self.playoffs_lead_frame.grid_columnconfigure(3, weight=1)
+
+
         # Populate widgets with any loaded data
         self.refresh_week_list()
         if self.season:
@@ -230,7 +271,10 @@ class SeasonTrackerGUI:
             "round1_winner": None,
             "round2_winner": None,
             "lead_A": None,
-            "lead_B": None
+            "lead_B": None,
+            "playoffs": False,
+            "lead_A_r1": None, "lead_B_r1": None,
+            "lead_A_r2": None, "lead_B_r2": None
         }
         self.season.append(new_week_data)
         self.refresh_week_list()
@@ -261,12 +305,24 @@ class SeasonTrackerGUI:
             self.round2_winner_var.set(self.current_week.get("round2_winner") or "None")
             self.lead_A_var.set(self.current_week.get("lead_A") or "")
             self.lead_B_var.set(self.current_week.get("lead_B") or "")
+            self.playoffs_var.set(self.current_week.get("playoffs", False))
+            self.lead_A_r1_var.set(self.current_week.get("lead_A_r1") or "")
+            self.lead_B_r1_var.set(self.current_week.get("lead_B_r1") or "")
+            self.lead_A_r2_var.set(self.current_week.get("lead_A_r2") or "")
+            self.lead_B_r2_var.set(self.current_week.get("lead_B_r2") or "")
         else:
             self.current_week = None
             self.round1_winner_var.set("None")
             self.round2_winner_var.set("None")
             self.lead_A_var.set("")
             self.lead_B_var.set("")
+            self.playoffs_var.set(False)
+            self.lead_A_r1_var.set("")
+            self.lead_B_r1_var.set("")
+            self.lead_A_r2_var.set("")
+            self.lead_B_r2_var.set("")
+
+        self.toggle_playoffs_mode(update_data=False) # Update UI based on loaded data
         self.refresh_team_lists() # This will also call update_lead_menus
         self.refresh_units_list() # Refresh units list to show available units for selected week
 
@@ -366,26 +422,46 @@ class SeasonTrackerGUI:
 
     def update_lead_menus(self):
         """Updates the lead unit OptionMenus based on current_week team rosters."""
+        # Regular season leads
         for team_id, lead_var, lead_menu in [("A", self.lead_A_var, self.lead_A_menu),
                                              ("B", self.lead_B_var, self.lead_B_menu)]:
-            menu = lead_menu["menu"]
-            menu.delete(0, tk.END)
-            
-            current_lead = None
-            options = [""] # Start with a blank option
-            if self.current_week and self.current_week.get(team_id):
-                options.extend(sorted(list(self.current_week[team_id])))
-                current_lead = self.current_week.get(f"lead_{team_id}")
+            self._update_single_lead_menu(team_id, lead_var, lead_menu, f"lead_{team_id}")
 
-            for option in options:
-                menu.add_command(label=option, command=tk._setit(lead_var, option, lambda v=option, t=team_id: self.set_lead_unit(t, v)))
-            
-            if current_lead and current_lead in options:
-                lead_var.set(current_lead)
-            elif options: # Set to blank if current lead not valid or no lead
-                lead_var.set(options[0])
-            else: # No units on team
-                lead_var.set("")
+        # Playoffs leads
+        for team_id, lead_var, lead_menu in [("A", self.lead_A_r1_var, self.lead_A_r1_menu),
+                                             ("B", self.lead_B_r1_var, self.lead_B_r1_menu)]:
+            self._update_single_lead_menu(team_id, lead_var, lead_menu, f"lead_{team_id}_r1")
+        
+        for team_id, lead_var, lead_menu in [("A", self.lead_A_r2_var, self.lead_A_r2_menu),
+                                             ("B", self.lead_B_r2_var, self.lead_B_r2_menu)]:
+            self._update_single_lead_menu(team_id, lead_var, lead_menu, f"lead_{team_id}_r2")
+
+
+    def _update_single_lead_menu(self, team_id: str, lead_var: tk.StringVar, lead_menu: tk.OptionMenu, lead_key: str):
+        """Helper to update one lead menu."""
+        menu = lead_menu["menu"]
+        menu.delete(0, tk.END)
+        
+        current_lead = None
+        options = [""] # Start with a blank option
+        if self.current_week and self.current_week.get(team_id):
+            options.extend(sorted(list(self.current_week[team_id])))
+            current_lead = self.current_week.get(lead_key)
+
+        # Determine the correct callback based on the lead_key
+        callback_team_id = team_id
+        if "_r1" in lead_key: callback_team_id += "_r1"
+        elif "_r2" in lead_key: callback_team_id += "_r2"
+
+        for option in options:
+            menu.add_command(label=option, command=tk._setit(lead_var, option, lambda v=option, t=callback_team_id: self.set_lead_unit(t, v)))
+        
+        if current_lead and current_lead in options:
+            lead_var.set(current_lead)
+        elif options: # Set to blank if current lead not valid or no lead
+            lead_var.set(options[0])
+        else: # No units on team
+            lead_var.set("")
 
 
     # ------------------------------------------------------------------
@@ -399,25 +475,47 @@ class SeasonTrackerGUI:
             self.current_week["round2_winner"] = actual_winner
         # print(f"Set Round {round_num} winner to {actual_winner} for week {self.week_list.curselection()}")
 
-    def set_lead_unit(self, team_id: str, unit_name: str):
+    def set_lead_unit(self, team_id_key: str, unit_name: str):
         if not self.current_week: return
         actual_unit = unit_name if unit_name else None # Store None if blank
+
+        # Determine the actual team ('A' or 'B') from the key ('A_r1', 'B_r2', etc.)
+        base_team_id = team_id_key[0]
         
         # Ensure the selected unit is actually on the team for the current week
-        if actual_unit and self.current_week and actual_unit not in self.current_week.get(team_id, set()):
+        if actual_unit and self.current_week and actual_unit not in self.current_week.get(base_team_id, set()):
             # This case should ideally not happen if OptionMenu is populated correctly
-            # but as a safeguard, reset it or show an error.
-            # For now, let's just not set it if it's invalid.
-            # print(f"Warning: Unit {actual_unit} not in team {team_id} for current week. Lead not set.")
-            if team_id == "A": self.lead_A_var.set(self.current_week.get("lead_A") or "") # Revert to old value
-            else: self.lead_B_var.set(self.current_week.get("lead_B") or "")
+            # but as a safeguard, reset it.
+            # We find the correct variable to reset based on the team_id_key
+            var_to_reset = {
+                "A": self.lead_A_var, "B": self.lead_B_var,
+                "A_r1": self.lead_A_r1_var, "B_r1": self.lead_B_r1_var,
+                "A_r2": self.lead_A_r2_var, "B_r2": self.lead_B_r2_var
+            }.get(team_id_key)
+            if var_to_reset:
+                var_to_reset.set(self.current_week.get(f"lead_{team_id_key}") or "")
             return
 
-        if team_id == "A":
-            self.current_week["lead_A"] = actual_unit
-        elif team_id == "B":
-            self.current_week["lead_B"] = actual_unit
-        # print(f"Set lead for team {team_id} to {actual_unit} for week {self.week_list.curselection()}")
+        # Map the team_id_key to the correct dictionary key in self.current_week
+        lead_storage_key = f"lead_{team_id_key}"
+        self.current_week[lead_storage_key] = actual_unit
+        # print(f"Set lead for key {lead_storage_key} to {actual_unit} for week {self.week_list.curselection()}")
+
+    def toggle_playoffs_mode(self, update_data=True):
+        """Shows/hides lead selection frames based on playoffs checkbox."""
+        if self.current_week and update_data:
+            self.current_week["playoffs"] = self.playoffs_var.get()
+
+        if self.playoffs_var.get():
+            # Hide regular lead frames, show playoff lead frames
+            for child in [self.lead_A_menu, self.lead_B_menu]:
+                child.master.grid_remove()
+            self.playoffs_lead_frame.grid()
+        else:
+            # Show regular lead frames, hide playoff lead frames
+            for child in [self.lead_A_menu, self.lead_B_menu]:
+                child.master.grid()
+            self.playoffs_lead_frame.grid_remove()
 
     # ------------------------------------------------------------------
     # Stats
@@ -510,6 +608,10 @@ class SeasonTrackerGUI:
             weeks_to_process = self.season[:max_week_index + 1]
 
         for week_data in weeks_to_process:
+            # Skip points calculation for playoff weeks
+            if week_data.get("playoffs", False):
+                continue
+
             team_A_units = week_data.get("A", set())
             team_B_units = week_data.get("B", set())
             lead_A = week_data.get("lead_A")
@@ -864,17 +966,21 @@ class SeasonTrackerGUI:
             if found_cell_tag:
                 if found_cell_tag != current_hover_tag:
                     current_hover_tag = found_cell_tag
-                    unit1, unit2 = cell_info_map[found_cell_tag]
-                    tooltip_text = format_tooltip_text_for_cell(unit1, unit2)
-                    if not tooltip_text:
+                    if found_cell_tag in cell_info_map:
+                        unit1, unit2 = cell_info_map[found_cell_tag]
+                        tooltip_text = format_tooltip_text_for_cell(unit1, unit2)
+                        if not tooltip_text:
+                            tooltip_label.place_forget()
+                            return
+                        tooltip_label.config(text=tooltip_text)
+                        bbox = canvas.bbox(found_cell_tag)
+                        if bbox:
+                            canvas.create_rectangle(bbox, outline="blue", width=2, tags="highlight_rect")
+                    else:
                         tooltip_label.place_forget()
-                        return
-                    tooltip_label.config(text=tooltip_text)
-                    bbox = canvas.bbox(found_cell_tag)
-                    if bbox:
-                        canvas.create_rectangle(bbox, outline="blue", width=2, tags="highlight_rect")
 
-                tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
+                if found_cell_tag in cell_info_map:
+                    tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
                 tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
                 canvas_width = canvas.winfo_width()
                 canvas_height = canvas.winfo_height()
@@ -1084,6 +1190,11 @@ class SeasonTrackerGUI:
                     "round2_winner": wk.get("round2_winner"),
                     "lead_A": wk.get("lead_A"),
                     "lead_B": wk.get("lead_B"),
+                    "playoffs": wk.get("playoffs", False),
+                    "lead_A_r1": wk.get("lead_A_r1"),
+                    "lead_B_r1": wk.get("lead_B_r1"),
+                    "lead_A_r2": wk.get("lead_A_r2"),
+                    "lead_B_r2": wk.get("lead_B_r2"),
                 } for wk in self.season
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
@@ -1104,7 +1215,12 @@ class SeasonTrackerGUI:
                     "round1_winner": wk_data.get("round1_winner"),
                     "round2_winner": wk_data.get("round2_winner"),
                     "lead_A": wk_data.get("lead_A"),
-                    "lead_B": wk_data.get("lead_B")
+                    "lead_B": wk_data.get("lead_B"),
+                    "playoffs": wk_data.get("playoffs", False),
+                    "lead_A_r1": wk_data.get("lead_A_r1"),
+                    "lead_B_r1": wk_data.get("lead_B_r1"),
+                    "lead_A_r2": wk_data.get("lead_A_r2"),
+                    "lead_B_r2": wk_data.get("lead_B_r2")
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:
