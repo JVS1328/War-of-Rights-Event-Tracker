@@ -87,6 +87,16 @@ class SeasonTrackerGUI:
         self.current_week: dict | None = None
         self.team_names = {"A": tk.StringVar(value="Team A"), "B": tk.StringVar(value="Team B")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
+        
+        # Point system settings - dictionary of StringVars
+        self.point_system_values = {
+            "win_lead": tk.StringVar(value="4"),
+            "win_assist": tk.StringVar(value="2"),
+            "loss_lead": tk.StringVar(value="0"),
+            "loss_assist": tk.StringVar(value="1"),
+            "bonus_2_0_lead": tk.StringVar(value="0"),
+            "bonus_2_0_assist": tk.StringVar(value="1"),
+        }
 
         # For round winner and lead selection
         self.round1_winner_var = tk.StringVar()
@@ -171,6 +181,7 @@ class SeasonTrackerGUI:
         tk.Button(tctl, text="Points Table", command=self.show_points_table).pack(fill=tk.X, pady=(2,0)) # New Button
         tk.Button(tctl, text="Team Heatmap", command=self.show_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Opponent Heatmap", command=self.show_opponent_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
+        tk.Button(tctl, text="Point System", command=self.open_point_system_dialog).pack(fill=tk.X, pady=(2, 0)) # New Button
 
         # --- Round Winner and Lead Selection UI ---
         round_frame = tk.Frame(right, pady=10)
@@ -453,12 +464,29 @@ class SeasonTrackerGUI:
 
     def calculate_points(self, max_week_index: int | None = None) -> defaultdict[str, int]:
         """
-        Calculates points for units.
+        Calculates points for units based on the user-configured point system.
         If max_week_index is provided, calculates points up to and including that week index.
         Otherwise, calculates for the entire season.
         """
         points = defaultdict(int)
-        
+
+        def get_point_value(key: str, default_val: int = 0) -> int:
+            try:
+                # Ensure the key exists in the dictionary before trying to get() from StringVar
+                if key in self.point_system_values:
+                    val_str = self.point_system_values[key].get()
+                    return int(val_str) if val_str and val_str.strip() else default_val
+                return default_val # Key not found, return default
+            except ValueError: # Handles non-integer strings
+                return default_val # Fallback if not an int
+
+        pts_win_lead = get_point_value("win_lead", 4)
+        pts_win_assist = get_point_value("win_assist", 2)
+        pts_loss_lead = get_point_value("loss_lead", 0)
+        pts_loss_assist = get_point_value("loss_assist", 1)
+        pts_bonus_2_0_lead = get_point_value("bonus_2_0_lead", 0)
+        pts_bonus_2_0_assist = get_point_value("bonus_2_0_assist", 1)
+
         weeks_to_process = self.season
         if max_week_index is not None and 0 <= max_week_index < len(self.season):
             weeks_to_process = self.season[:max_week_index + 1]
@@ -474,52 +502,63 @@ class SeasonTrackerGUI:
             # --- Round 1 ---
             if r1_winner == "A":
                 if lead_A and lead_A in team_A_units:
-                    points[lead_A] += 4
+                    points[lead_A] += pts_win_lead
                 for unit in team_A_units:
                     if unit != lead_A:
-                        points[unit] += 2
-                for unit in team_B_units: # Losing team assists
-                    if unit != lead_B: # Lead units get 0 for loss
-                        points[unit] += 1
+                        points[unit] += pts_win_assist
+                for unit in team_B_units: # Losing team B
+                    if unit == lead_B and lead_B in team_B_units:
+                        points[unit] += pts_loss_lead
+                    elif unit != lead_B:
+                        points[unit] += pts_loss_assist
             elif r1_winner == "B":
                 if lead_B and lead_B in team_B_units:
-                    points[lead_B] += 4
+                    points[lead_B] += pts_win_lead
                 for unit in team_B_units:
                     if unit != lead_B:
-                        points[unit] += 2
-                for unit in team_A_units: # Losing team assists
-                    if unit != lead_A: # Lead units get 0 for loss
-                        points[unit] += 1
+                        points[unit] += pts_win_assist
+                for unit in team_A_units: # Losing team A
+                    if unit == lead_A and lead_A in team_A_units:
+                        points[unit] += pts_loss_lead
+                    elif unit != lead_A:
+                        points[unit] += pts_loss_assist
             
             # --- Round 2 ---
             if r2_winner == "A":
                 if lead_A and lead_A in team_A_units:
-                    points[lead_A] += 4
+                    points[lead_A] += pts_win_lead
                 for unit in team_A_units:
                     if unit != lead_A:
-                        points[unit] += 2
-                for unit in team_B_units: # Losing team assists
-                     if unit != lead_B: # Lead units get 0 for loss
-                        points[unit] += 1
+                        points[unit] += pts_win_assist
+                for unit in team_B_units: # Losing team B
+                     if unit == lead_B and lead_B in team_B_units:
+                        points[unit] += pts_loss_lead
+                     elif unit != lead_B:
+                        points[unit] += pts_loss_assist
             elif r2_winner == "B":
                 if lead_B and lead_B in team_B_units:
-                    points[lead_B] += 4
+                    points[lead_B] += pts_win_lead
                 for unit in team_B_units:
                     if unit != lead_B:
-                        points[unit] += 2
-                for unit in team_A_units: # Losing team assists
-                    if unit != lead_A: # Lead units get 0 for loss
-                        points[unit] += 1
+                        points[unit] += pts_win_assist
+                for unit in team_A_units: # Losing team A
+                    if unit == lead_A and lead_A in team_A_units:
+                        points[unit] += pts_loss_lead
+                    elif unit != lead_A:
+                        points[unit] += pts_loss_assist
 
             # --- Bonus for 2-0 week ---
             if r1_winner and r1_winner == r2_winner: # If a team won both rounds
                 winning_team_units = team_A_units if r1_winner == "A" else team_B_units
                 winning_team_lead = lead_A if r1_winner == "A" else lead_B
+                
                 for unit in winning_team_units:
-                    if unit != winning_team_lead: # Only non-lead units
-                        points[unit] += 1
+                    # Ensure winning_team_lead is actually part of the winning_team_units before comparing
+                    if unit == winning_team_lead and winning_team_lead in winning_team_units:
+                        points[unit] += pts_bonus_2_0_lead
+                    elif unit != winning_team_lead:
+                        points[unit] += pts_bonus_2_0_assist
         
-        # self.unit_points = points # This was for a global season total, might not be needed if always calculating on demand
         return points
 
     def show_points_table(self):
@@ -1034,6 +1073,7 @@ class SeasonTrackerGUI:
                 } for wk in self.season
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
+            "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -1047,16 +1087,35 @@ class SeasonTrackerGUI:
                 self.season.append({
                     "A": set(wk_data.get("A", [])),
                     "B": set(wk_data.get("B", [])),
-                    "round1_winner": wk_data.get("round1_winner"), # Defaults to None if missing
-                    "round2_winner": wk_data.get("round2_winner"), # Defaults to None if missing
-                    "lead_A": wk_data.get("lead_A"),             # Defaults to None if missing
-                    "lead_B": wk_data.get("lead_B")              # Defaults to None if missing
+                    "round1_winner": wk_data.get("round1_winner"),
+                    "round2_winner": wk_data.get("round2_winner"),
+                    "lead_A": wk_data.get("lead_A"),
+                    "lead_B": wk_data.get("lead_B")
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:
                     self.team_names[k].set(v)
+            
+            loaded_point_system = data.get("point_system_values", {})
+            default_points = { # Define defaults here for clarity
+                "win_lead": "4", "win_assist": "2",
+                "loss_lead": "0", "loss_assist": "1",
+                "bonus_2_0_lead": "0", "bonus_2_0_assist": "1",
+            }
+            for key, var in self.point_system_values.items():
+                var.set(loaded_point_system.get(key, default_points.get(key, "0"))) # Fallback to default_points, then "0"
+
         except Exception as e:
             messagebox.showerror("Load error", str(e))
+            # On error, reset to hardcoded defaults
+            self.point_system_values["win_lead"].set("4")
+            self.point_system_values["win_assist"].set("2")
+            self.point_system_values["loss_lead"].set("0")
+            self.point_system_values["loss_assist"].set("1")
+            self.point_system_values["bonus_2_0_lead"].set("0")
+            self.point_system_values["bonus_2_0_assist"].set("1")
+
+
     def new_season(self):
             if not messagebox.askyesno("New Season",
                                        "Are you sure you want to start a new season?\n"
@@ -1068,6 +1127,15 @@ class SeasonTrackerGUI:
             self.current_week = None
             self.team_names["A"].set("Team A") # Reset to defaults
             self.team_names["B"].set("Team B")
+            
+            # Reset point system to defaults
+            self.point_system_values["win_lead"].set("4")
+            self.point_system_values["win_assist"].set("2")
+            self.point_system_values["loss_lead"].set("0")
+            self.point_system_values["loss_assist"].set("1")
+            self.point_system_values["bonus_2_0_lead"].set("0")
+            self.point_system_values["bonus_2_0_assist"].set("1")
+            
             self.unit_points.clear()
 
             self.refresh_week_list()    # Updates week listbox (will be empty)
@@ -1120,6 +1188,81 @@ class SeasonTrackerGUI:
         except Exception:
             pass
         self.master.destroy()
+
+    def open_point_system_dialog(self):
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Configure Point System")
+        dialog.transient(self.master)
+        dialog.grab_set()
+        # dialog.geometry("350x280") # Adjusted size
+        dialog.resizable(False, False)
+
+        main_frame = tk.Frame(dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Temporary StringVars for the dialog to avoid direct modification until "OK"
+        dialog_vars = {key: tk.StringVar(value=var.get()) for key, var in self.point_system_values.items()}
+
+        fields = [
+            ("win_lead", "Winning Lead Points:"),
+            ("win_assist", "Winning Assist Points:"),
+            ("loss_lead", "Losing Lead Points:"),
+            ("loss_assist", "Losing Assist Points:"),
+            ("bonus_2_0_lead", "2-0 Bonus Lead Points:"),
+            ("bonus_2_0_assist", "2-0 Bonus Assist Points:"),
+        ]
+
+        for i, (key, label_text) in enumerate(fields):
+            tk.Label(main_frame, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=2)
+            entry = tk.Entry(main_frame, textvariable=dialog_vars[key], width=5)
+            entry.grid(row=i, column=1, sticky=tk.E, pady=2, padx=5)
+
+        buttons_frame = tk.Frame(main_frame)
+        buttons_frame.grid(row=len(fields), column=0, columnspan=2, pady=(15,5))
+
+        def on_ok():
+            temp_values = {}
+            try:
+                for key, s_var in dialog_vars.items():
+                    val_str = s_var.get()
+                    if not val_str.strip(): # Allow empty string, treat as 0
+                        temp_values[key] = 0
+                        continue
+                    temp_values[key] = int(val_str)
+            except ValueError:
+                messagebox.showerror("Invalid Input", "All point values must be integers (or empty for 0).", parent=dialog)
+                return
+
+            # If all valid, update the main StringVars
+            for key, value in temp_values.items():
+                self.point_system_values[key].set(str(value)) # Store as string
+            
+            # print("Updated point system values:", {k: v.get() for k,v in self.point_system_values.items()}) # For debugging
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        ok_button = tk.Button(buttons_frame, text="OK", command=on_ok, width=10)
+        ok_button.pack(side=tk.LEFT, padx=10)
+        
+        cancel_button = tk.Button(buttons_frame, text="Cancel", command=on_cancel, width=10)
+        cancel_button.pack(side=tk.RIGHT, padx=10)
+
+        dialog.update_idletasks()
+        master_x = self.master.winfo_rootx() # Use winfo_rootx for screen coordinates
+        master_y = self.master.winfo_rooty()
+        master_width = self.master.winfo_width()
+        master_height = self.master.winfo_height()
+        
+        dialog_width = dialog.winfo_reqwidth() # Use reqwidth for initial size
+        dialog_height = dialog.winfo_reqheight()
+
+        x_offset = (master_width - dialog_width) // 2
+        y_offset = (master_height - dialog_height) // 2
+        
+        dialog.geometry(f"{dialog_width}x{dialog_height}+{master_x + x_offset}+{master_y + y_offset}")
+        dialog.focus_set() # Ensure dialog gets focus
 
 
 if __name__ == "__main__":
