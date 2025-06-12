@@ -569,8 +569,18 @@ class SeasonTrackerGUI:
             messagebox.showinfo("Points Table", "No units defined.")
             return
 
+        # Check if a week is selected, default to latest week if none selected
+        sel = self.week_list.curselection()
+        if sel:
+            selected_week_idx = sel[0]
+        else:
+            # Default to the latest week if no week is selected
+            selected_week_idx = len(self.season) - 1
+        
+        week_number = selected_week_idx + 1
+
         win = tk.Toplevel(self.master)
-        win.title("Current Week Points")
+        win.title(f"Week {week_number} Points")
         win.geometry("500x400") # Adjusted size
         win.minsize(500, 400) # Lock minimum size
 
@@ -595,7 +605,7 @@ class SeasonTrackerGUI:
 
 
         # --- Data Preparation ---
-        current_week_idx = len(self.season) - 1
+        current_week_idx = selected_week_idx
         if current_week_idx < 0:
              tk.Label(win, text="No season data to display.").pack(padx=20, pady=20)
              return # Nothing to show
