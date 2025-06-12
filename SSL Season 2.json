@@ -16,6 +16,11 @@
     "TB",
     "TKO"
   ],
+  "non_token_units": [
+    "7th KS",
+    "SR",
+    "TKO"
+  ],
   "season": [
     {
       "A": [
@@ -44,10 +49,10 @@
       "lead_B_r1": null,
       "lead_A_r2": null,
       "lead_B_r2": null,
-      "r1_casualties_A": 1172,
-      "r1_casualties_B": 983,
-      "r2_casualties_A": 745,
-      "r2_casualties_B": 863
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -77,10 +82,10 @@
       "lead_B_r1": null,
       "lead_A_r2": null,
       "lead_B_r2": null,
-      "r1_casualties_A": 942,
-      "r1_casualties_B": 1002,
-      "r2_casualties_A": 877,
-      "r2_casualties_B": 910
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [

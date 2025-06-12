@@ -1,7 +1,7 @@
 import json
 import tkinter as tk
 from tkinter import ttk # Added for Treeview
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, font as tkFont
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -77,6 +77,7 @@ class SeasonTrackerGUI:
 
         # -------------------- DATA --------------------
         self.units: set[str] = set()
+        self.non_token_units: set[str] = set()
         self.season: list[dict] = []  # Expanded structure below
         # Each week dict:
         # {
@@ -162,6 +163,7 @@ class SeasonTrackerGUI:
         self.units_list.pack(fill=tk.BOTH, expand=True)
         self.units_list.bind("<Double-Button-1>", lambda _: self.move_unit_from_units("A"))
         self.units_list.bind("<Button-3>", lambda _: self.move_unit_from_units("B"))
+        self.units_list.bind("<Button-2>", self.toggle_non_token_status) # Middle-click
 
         unit_ctl = tk.Frame(mid, pady=4)
         unit_ctl.pack(fill=tk.X)
@@ -392,17 +394,18 @@ class SeasonTrackerGUI:
 
     def refresh_units_list(self):
         self.units_list.delete(0, tk.END)
-        
+
         # Get units that are currently assigned to teams in the selected week
         assigned_units = set()
         if self.current_week:
             assigned_units.update(self.current_week.get("A", set()))
             assigned_units.update(self.current_week.get("B", set()))
-        
+
         # Only show units that are not assigned to any team in the current week
         available_units = self.units - assigned_units
         for u in sorted(available_units):
-            self.units_list.insert(tk.END, u)
+            display_text = f"*{u}" if u in self.non_token_units else u
+            self.units_list.insert(tk.END, display_text)
 
     # ------------------------------------------------------------------
     # Roster editing
@@ -413,7 +416,7 @@ class SeasonTrackerGUI:
         sel = self.units_list.curselection()
         if not sel:
             return
-        unit = self.units_list.get(sel[0])
+        unit = self.units_list.get(sel[0]).lstrip("*")
         self._place_unit(team, unit)
 
     def move_between_teams(self, from_team: str, to_team: str):
@@ -440,6 +443,30 @@ class SeasonTrackerGUI:
         self.refresh_team_lists()
         self.refresh_units_list()  # Refresh units list to re-add unassigned unit
 
+    def toggle_non_token_status(self, event):
+        """Toggles the non-token status of the selected unit on middle-click."""
+        # Find the item under the cursor
+        sel_idx = self.units_list.nearest(event.y)
+        if sel_idx == -1:
+            return
+
+        # It's better to get the value from the listbox directly
+        unit_name = self.units_list.get(sel_idx).lstrip("*")
+
+        if unit_name in self.non_token_units:
+            self.non_token_units.discard(unit_name)
+        else:
+            self.non_token_units.add(unit_name)
+
+        # Refresh to show visual change, but preserve selection
+        current_selection = self.units_list.curselection()
+        self.refresh_units_list()
+        if current_selection:
+            # If the clicked item was selected, re-select it
+            if sel_idx == current_selection[0]:
+                 self.units_list.selection_set(sel_idx)
+                 self.units_list.activate(sel_idx)
+
     def _place_unit(self, team: str, unit: str):
         other = "B" if team == "A" else "A"
         self.current_week[team].add(unit)
@@ -453,9 +480,11 @@ class SeasonTrackerGUI:
         if not self.current_week:
             return
         for u in sorted(self.current_week["A"]):
-            self.list_a.insert(tk.END, u)
+            display_text = f"*{u}" if u in self.non_token_units else u
+            self.list_a.insert(tk.END, display_text)
         for u in sorted(self.current_week["B"]):
-            self.list_b.insert(tk.END, u)
+            display_text = f"*{u}" if u in self.non_token_units else u
+            self.list_b.insert(tk.END, display_text)
         self.update_lead_menus()
 
     def update_lead_menus(self):
@@ -808,6 +837,8 @@ class SeasonTrackerGUI:
         # --- Populate Treeview ---
         # Units are already sorted by current week's rank via sorted_current_week_units
         for unit_name, pts in sorted_current_week_units:
+            if unit_name in self.non_token_units:
+                continue
             rank = current_ranks.get(unit_name, "-")
             
             delta_display = "-"
@@ -1408,7 +1439,8 @@ class SeasonTrackerGUI:
     # Persistence helpers
     def save_to_file(self, path: Path):
         data = {
-            "units": sorted(self.units),
+            "units": sorted(list(self.units)),
+            "non_token_units": sorted(list(self.non_token_units)),
             "season": [
                 {
                     "A": sorted(list(wk.get("A", set()))),
@@ -1437,6 +1469,7 @@ class SeasonTrackerGUI:
         try:
             data = json.loads(path.read_text())
             self.units = set(data.get("units", []))
+            self.non_token_units = set(data.get("non_token_units", []))
             loaded_season = data.get("season", [])
             self.season = []
             for wk_data in loaded_season:
