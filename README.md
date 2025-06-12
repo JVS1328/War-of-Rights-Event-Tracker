@@ -13,16 +13,23 @@ The `SSL Tracker.py` application allows users to:
     *   Assign units to "Team A" or "Team B" for each week.
     *   Record winners for up to two rounds per week.
     *   Designate "Lead Units" for each team per week.
+    *   **Track Casualties:** Input casualties for each team per round.
+*   **Advanced Game Modes:**
+    *   **Playoffs Mode:** Designate weeks as "playoffs," allowing for separate lead units per round and disabling point calculations for those weeks.
+    *   **Non-Token Units:** Mark units as "non-token" to exclude them from the official points table (e.g., for guest units).
 *   **Calculate Points & Stats:**
-   *   Automatically calculate points for units based on round wins, lead unit performance, and 2-0 bonuses, using a **configurable point system**.
-   *   **Customizable Point Values:** Users can define specific point values for winning lead, winning assist, losing lead, losing assist, 2-0 bonus for lead, and 2-0 bonus for assist via a settings dialog.
-   *   Display a dynamic "Points Table" showing current unit rankings and rank changes from the previous week.
-   *   View detailed season statistics, including:
+    *   Automatically calculate points for units based on round wins, lead unit performance, and 2-0 bonuses, using a **configurable point system**.
+    *   **Customizable Point Values:** Users can define specific point values for winning lead, winning assist, losing lead, losing assist, 2-0 bonus for lead, and 2-0 bonus for assist via a settings dialog.
+    *   Display a dynamic "Points Table" showing current unit rankings rank changes from the previous week, total Leading wins and losses up to that week, and total assisting wins and losses up to that week.
+    *   View detailed season statistics, including:
         *   Teammate counts (how often units played together).
         *   Opponent counts (how often units played against each other).
         *   Overall unit points.
-    *   Generate visual "Teammate Heatmaps" and "Opponent Heatmaps" with tooltips showing detailed interaction history (which weeks units were teammates or opponents).
-*   **User-Friendly GUI:** Provides a graphical interface built with Tkinter for easy data entry, viewing, and **configuration of settings like the point system**.
+    *   Generate visual "Teammate Heatmaps" and "Opponent Heatmaps" with tooltips showing detailed interaction history.
+    *   **Casualty Report:** View a comprehensive, sortable table of casualties inflicted, casualties lost, K/D ratio, and per-game averages for lead units.
+*   **Data Export:**
+    *   Export detailed season data, including round-by-round results and total losses, to a CSV file for external analysis.
+*   **User-Friendly GUI:** Provides a graphical interface built with Tkinter for easy data entry, viewing, and configuration of settings.
 
 ## Getting Started
 
