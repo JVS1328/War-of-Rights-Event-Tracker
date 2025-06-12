@@ -1208,15 +1208,15 @@ class SeasonTrackerGUI:
 
                 if found_cell_tag in cell_info_map:
                     tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
-                tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
-                canvas_width = canvas.winfo_width()
-                canvas_height = canvas.winfo_height()
-                if tip_x + tooltip_label.winfo_reqwidth() > canvas_width: tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
-                if tip_y + tooltip_label.winfo_reqheight() > canvas_height: tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
-                if tip_x < 0: tip_x = 0
-                if tip_y < 0: tip_y = 0
-                tooltip_label.lift()
-                tooltip_label.place(x=tip_x, y=tip_y)
+                    tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
+                    canvas_width = canvas.winfo_width()
+                    canvas_height = canvas.winfo_height()
+                    if tip_x + tooltip_label.winfo_reqwidth() > canvas_width: tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
+                    if tip_y + tooltip_label.winfo_reqheight() > canvas_height: tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
+                    if tip_x < 0: tip_x = 0
+                    if tip_y < 0: tip_y = 0
+                    tooltip_label.lift()
+                    tooltip_label.place(x=tip_x, y=tip_y)
             else:
                 on_canvas_leave(event)
 
