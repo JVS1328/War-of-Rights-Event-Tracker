@@ -43,7 +43,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 1172,
+      "r1_casualties_B": 983,
+      "r2_casualties_A": 745,
+      "r2_casualties_B": 863
     },
     {
       "A": [
@@ -72,7 +76,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 942,
+      "r1_casualties_B": 1002,
+      "r2_casualties_A": 877,
+      "r2_casualties_B": 910
     },
     {
       "A": [
@@ -100,7 +108,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -128,7 +140,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -156,7 +172,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -184,7 +204,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -212,7 +236,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -239,7 +267,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -267,7 +299,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -295,7 +331,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -323,7 +363,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -351,7 +395,11 @@
       "lead_A_r1": null,
       "lead_B_r1": null,
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -379,7 +427,11 @@
       "lead_A_r1": "TB",
       "lead_B_r1": "7th TX",
       "lead_A_r2": "AVC",
-      "lead_B_r2": "II Corps"
+      "lead_B_r2": "II Corps",
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -407,7 +459,11 @@
       "lead_A_r1": "59th NY",
       "lead_B_r1": "FSB",
       "lead_A_r2": "CQB",
-      "lead_B_r2": "CB"
+      "lead_B_r2": "CB",
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -435,7 +491,11 @@
       "lead_A_r1": "FSB",
       "lead_B_r1": "7th TX",
       "lead_A_r2": "II Corps",
-      "lead_B_r2": "CB"
+      "lead_B_r2": "CB",
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     },
     {
       "A": [
@@ -463,7 +523,11 @@
       "lead_A_r1": "7th TX",
       "lead_B_r1": "CB",
       "lead_A_r2": null,
-      "lead_B_r2": null
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     }
   ],
   "team_names": {
