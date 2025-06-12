@@ -144,6 +144,7 @@ class SeasonTrackerGUI:
         self.units_list = tk.Listbox(mid, width=20, height=25, selectmode=tk.SINGLE, exportselection=False)
         self.units_list.pack(fill=tk.BOTH, expand=True)
         self.units_list.bind("<Double-Button-1>", lambda _: self.move_unit_from_units("A"))
+        self.units_list.bind("<Button-3>", lambda _: self.move_unit_from_units("B"))
 
         unit_ctl = tk.Frame(mid, pady=4)
         unit_ctl.pack(fill=tk.X)
@@ -267,6 +268,7 @@ class SeasonTrackerGUI:
             self.lead_A_var.set("")
             self.lead_B_var.set("")
         self.refresh_team_lists() # This will also call update_lead_menus
+        self.refresh_units_list() # Refresh units list to show available units for selected week
 
     # ------------------------------------------------------------------
     # Units management
@@ -296,7 +298,16 @@ class SeasonTrackerGUI:
 
     def refresh_units_list(self):
         self.units_list.delete(0, tk.END)
-        for u in sorted(self.units):
+        
+        # Get units that are currently assigned to teams in the selected week
+        assigned_units = set()
+        if self.current_week:
+            assigned_units.update(self.current_week.get("A", set()))
+            assigned_units.update(self.current_week.get("B", set()))
+        
+        # Only show units that are not assigned to any team in the current week
+        available_units = self.units - assigned_units
+        for u in sorted(available_units):
             self.units_list.insert(tk.END, u)
 
     # ------------------------------------------------------------------
@@ -333,12 +344,14 @@ class SeasonTrackerGUI:
             unit = self.list_b.get(sel_b[0])
             self.current_week["B"].discard(unit)
         self.refresh_team_lists()
+        self.refresh_units_list()  # Refresh units list to re-add unassigned unit
 
     def _place_unit(self, team: str, unit: str):
         other = "B" if team == "A" else "A"
         self.current_week[team].add(unit)
         self.current_week[other].discard(unit)
         self.refresh_team_lists()
+        self.refresh_units_list()  # Refresh units list to remove assigned unit
 
     def refresh_team_lists(self):
         self.list_a.delete(0, tk.END)
