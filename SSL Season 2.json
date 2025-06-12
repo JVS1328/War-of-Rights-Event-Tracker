@@ -1,0 +1,308 @@
+{
+  "units": [
+    "10th US",
+    "12th VA",
+    "59th NY",
+    "7th KS",
+    "7th TX",
+    "AVC",
+    "CB",
+    "CQB",
+    "FSB",
+    "II Corps",
+    "JD",
+    "MSG",
+    "SR",
+    "TB"
+  ],
+  "season": [
+    {
+      "A": [
+        "10th US",
+        "7th TX",
+        "AVC",
+        "CB",
+        "CQB",
+        "FSB",
+        "MSG"
+      ],
+      "B": [
+        "12th VA",
+        "59th NY",
+        "7th KS",
+        "II Corps",
+        "JD",
+        "TB"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "CQB",
+      "lead_B": "II Corps"
+    },
+    {
+      "A": [
+        "59th NY",
+        "7th KS",
+        "7th TX",
+        "CB",
+        "FSB",
+        "MSG",
+        "SR",
+        "TB"
+      ],
+      "B": [
+        "10th US",
+        "12th VA",
+        "AVC",
+        "CQB",
+        "II Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "FSB",
+      "lead_B": "12th VA"
+    },
+    {
+      "A": [
+        "10th US",
+        "12th VA",
+        "7th TX",
+        "AVC",
+        "CQB",
+        "JD",
+        "TB"
+      ],
+      "B": [
+        "59th NY",
+        "7th KS",
+        "CB",
+        "FSB",
+        "II Corps",
+        "MSG"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": "10th US",
+      "lead_B": "59th NY"
+    },
+    {
+      "A": [
+        "10th US",
+        "59th NY",
+        "7th TX",
+        "II Corps",
+        "JD",
+        "TB"
+      ],
+      "B": [
+        "12th VA",
+        "AVC",
+        "CB",
+        "CQB",
+        "FSB",
+        "MSG",
+        "SR"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "TB",
+      "lead_B": "CB"
+    },
+    {
+      "A": [
+        "CB",
+        "CQB",
+        "II Corps",
+        "JD",
+        "SR",
+        "TB"
+      ],
+      "B": [
+        "10th US",
+        "12th VA",
+        "59th NY",
+        "7th TX",
+        "AVC",
+        "FSB",
+        "MSG"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "CQB",
+      "lead_B": "MSG"
+    },
+    {
+      "A": [
+        "12th VA",
+        "59th NY",
+        "AVC",
+        "CQB",
+        "FSB",
+        "II Corps",
+        "TB"
+      ],
+      "B": [
+        "10th US",
+        "7th TX",
+        "CB",
+        "JD",
+        "MSG",
+        "SR"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "FSB",
+      "lead_B": "7th TX"
+    },
+    {
+      "A": [
+        "10th US",
+        "59th NY",
+        "7th TX",
+        "AVC",
+        "CB",
+        "FSB",
+        "SR"
+      ],
+      "B": [
+        "12th VA",
+        "CQB",
+        "II Corps",
+        "JD",
+        "MSG",
+        "TB"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "59th NY",
+      "lead_B": "JD"
+    },
+    {
+      "A": [
+        "10th US",
+        "12th VA",
+        "59th NY",
+        "CB",
+        "MSG",
+        "TB"
+      ],
+      "B": [
+        "7th TX",
+        "AVC",
+        "CQB",
+        "FSB",
+        "II Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "TB",
+      "lead_B": "AVC"
+    },
+    {
+      "A": [
+        "12th VA",
+        "59th NY",
+        "AVC",
+        "CQB",
+        "FSB",
+        "II Corps"
+      ],
+      "B": [
+        "10th US",
+        "7th TX",
+        "CB",
+        "JD",
+        "MSG",
+        "SR",
+        "TB"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "II Corps",
+      "lead_B": "MSG"
+    },
+    {
+      "A": [
+        "12th VA",
+        "59th NY",
+        "CQB",
+        "II Corps",
+        "JD",
+        "SR"
+      ],
+      "B": [
+        "10th US",
+        "7th TX",
+        "AVC",
+        "CB",
+        "FSB",
+        "MSG",
+        "TB"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": "12th VA",
+      "lead_B": "7th TX"
+    },
+    {
+      "A": [
+        "59th NY",
+        "7th TX",
+        "AVC",
+        "CQB",
+        "II Corps",
+        "JD"
+      ],
+      "B": [
+        "10th US",
+        "12th VA",
+        "CB",
+        "FSB",
+        "MSG",
+        "SR",
+        "TB"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": "JD",
+      "lead_B": "10th US"
+    },
+    {
+      "A": [
+        "12th VA",
+        "59th NY",
+        "AVC",
+        "CQB",
+        "II Corps",
+        "JD",
+        "SR"
+      ],
+      "B": [
+        "10th US",
+        "7th TX",
+        "CB",
+        "FSB",
+        "MSG",
+        "TB"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": "AVC",
+      "lead_B": "CB"
+    }
+  ],
+  "team_names": {
+    "A": "Team A",
+    "B": "Team B"
+  },
+  "point_system_values": {
+    "win_lead": "3",
+    "win_assist": "2",
+    "loss_lead": "0",
+    "loss_assist": "0",
+    "bonus_2_0_lead": "0",
+    "bonus_2_0_assist": "0"
+  }
+}
