@@ -71,9 +71,9 @@ class SeasonTrackerGUI:
     def __init__(self, master: tk.Tk):
         self.master = master
         master.title("Season Tracker")
-        master.geometry("900x550") # Increased height
+        master.geometry("900x600") # Increased height
         master.resizable(True, True)
-        master.minsize(900, 550) # Lock minimum size
+        master.minsize(900, 600) # Lock minimum size
 
         # -------------------- DATA --------------------
         self.units: set[str] = set()
@@ -106,6 +106,12 @@ class SeasonTrackerGUI:
         self.round2_winner_var = tk.StringVar()
         self.lead_A_var = tk.StringVar()
         self.lead_B_var = tk.StringVar()
+
+        # For casualties
+        self.r1_casualties_A_var = tk.StringVar(value="0")
+        self.r1_casualties_B_var = tk.StringVar(value="0")
+        self.r2_casualties_A_var = tk.StringVar(value="0")
+        self.r2_casualties_B_var = tk.StringVar(value="0")
         
         # For playoffs
         self.playoffs_var = tk.BooleanVar()
@@ -191,6 +197,7 @@ class SeasonTrackerGUI:
         tk.Button(tctl, text="Remove", command=self.remove_from_team).pack(fill=tk.X, pady=(10, 0))
         tk.Button(tctl, text="Show Stats", command=self.show_stats).pack(fill=tk.X, pady=(30, 0))
         tk.Button(tctl, text="Points Table", command=self.show_points_table).pack(fill=tk.X, pady=(2,0)) # New Button
+        tk.Button(tctl, text="Casualties", command=self.show_casualties_table).pack(fill=tk.X, pady=(2,0))
         tk.Button(tctl, text="Team Heatmap", command=self.show_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Opponent Heatmap", command=self.show_opponent_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Point System", command=self.open_point_system_dialog).pack(fill=tk.X, pady=(2, 0)) # New Button
@@ -210,6 +217,27 @@ class SeasonTrackerGUI:
         self.r2_winner_menu = tk.OptionMenu(round_frame2, self.round2_winner_var, "None", "A", "B", command=lambda v: self.set_round_winner(2, v))
         self.r2_winner_menu.pack(side=tk.LEFT, expand=True, fill=tk.X)
 
+        # --- Casualties Frame ---
+        casualties_frame = tk.Frame(right, pady=5)
+        casualties_frame.grid(row=4, column=1, sticky="ew", pady=(10,0))
+        
+        tk.Label(casualties_frame, text="R1 Casualties - A:").grid(row=0, column=0, sticky="w")
+        tk.Entry(casualties_frame, textvariable=self.r1_casualties_A_var, width=5).grid(row=0, column=1)
+        tk.Label(casualties_frame, text="R1 Casualties - B:").grid(row=1, column=0, sticky="w")
+        tk.Entry(casualties_frame, textvariable=self.r1_casualties_B_var, width=5).grid(row=1, column=1)
+        
+        tk.Label(casualties_frame, text="R2 Casualties - A:").grid(row=2, column=0, sticky="w")
+        tk.Entry(casualties_frame, textvariable=self.r2_casualties_A_var, width=5).grid(row=2, column=1)
+        tk.Label(casualties_frame, text="R2 Casualties - B:").grid(row=3, column=0, sticky="w")
+        tk.Entry(casualties_frame, textvariable=self.r2_casualties_B_var, width=5).grid(row=3, column=1)
+
+        # Bind casualty updates
+        self.r1_casualties_A_var.trace_add("write", lambda *_: self.set_casualties('r1_casualties_A', self.r1_casualties_A_var.get()))
+        self.r1_casualties_B_var.trace_add("write", lambda *_: self.set_casualties('r1_casualties_B', self.r1_casualties_B_var.get()))
+        self.r2_casualties_A_var.trace_add("write", lambda *_: self.set_casualties('r2_casualties_A', self.r2_casualties_A_var.get()))
+        self.r2_casualties_B_var.trace_add("write", lambda *_: self.set_casualties('r2_casualties_B', self.r2_casualties_B_var.get()))
+
+
         lead_frame_A = tk.Frame(right, pady=5)
         lead_frame_A.grid(row=5, column=0, sticky="ew", pady=(5,0)) # Below List A
         tk.Label(lead_frame_A, text="Lead Unit A:").pack(side=tk.LEFT)
@@ -224,7 +252,7 @@ class SeasonTrackerGUI:
 
         # --- Playoffs Checkbox ---
         playoffs_frame = tk.Frame(right)
-        playoffs_frame.grid(row=4, column=1, pady=(10,0))
+        playoffs_frame.grid(row=6, column=1, pady=(10,0)) # Adjusted row
         tk.Checkbutton(playoffs_frame, text="Playoffs Week", variable=self.playoffs_var, command=self.toggle_playoffs_mode).pack()
 
         # --- Playoffs Lead Selection UI (initially hidden) ---
@@ -274,7 +302,9 @@ class SeasonTrackerGUI:
             "lead_B": None,
             "playoffs": False,
             "lead_A_r1": None, "lead_B_r1": None,
-            "lead_A_r2": None, "lead_B_r2": None
+            "lead_A_r2": None, "lead_B_r2": None,
+            "r1_casualties_A": 0, "r1_casualties_B": 0,
+            "r2_casualties_A": 0, "r2_casualties_B": 0
         }
         self.season.append(new_week_data)
         self.refresh_week_list()
@@ -305,6 +335,10 @@ class SeasonTrackerGUI:
             self.round2_winner_var.set(self.current_week.get("round2_winner") or "None")
             self.lead_A_var.set(self.current_week.get("lead_A") or "")
             self.lead_B_var.set(self.current_week.get("lead_B") or "")
+            self.r1_casualties_A_var.set(self.current_week.get("r1_casualties_A", 0))
+            self.r1_casualties_B_var.set(self.current_week.get("r1_casualties_B", 0))
+            self.r2_casualties_A_var.set(self.current_week.get("r2_casualties_A", 0))
+            self.r2_casualties_B_var.set(self.current_week.get("r2_casualties_B", 0))
             self.playoffs_var.set(self.current_week.get("playoffs", False))
             self.lead_A_r1_var.set(self.current_week.get("lead_A_r1") or "")
             self.lead_B_r1_var.set(self.current_week.get("lead_B_r1") or "")
@@ -316,6 +350,10 @@ class SeasonTrackerGUI:
             self.round2_winner_var.set("None")
             self.lead_A_var.set("")
             self.lead_B_var.set("")
+            self.r1_casualties_A_var.set("0")
+            self.r1_casualties_B_var.set("0")
+            self.r2_casualties_A_var.set("0")
+            self.r2_casualties_B_var.set("0")
             self.playoffs_var.set(False)
             self.lead_A_r1_var.set("")
             self.lead_B_r1_var.set("")
@@ -519,6 +557,17 @@ class SeasonTrackerGUI:
 
     # ------------------------------------------------------------------
     # Stats
+    def set_casualties(self, key: str, value: str):
+        if not self.current_week: return
+        try:
+            # Try to convert to int, default to 0 if empty or invalid
+            self.current_week[key] = int(value) if value else 0
+        except ValueError:
+            # If text is not a valid integer, you might want to reset it
+            # or show an error. For now, we'll just ignore non-integer input
+            # and keep the old value.
+            pass # Or reset the variable: self.r1_casualties_A_var.set(self.current_week.get(key, 0))
+
     def compute_stats(self, max_week_index: int | None = None):
         teammate = defaultdict(Counter)
         opponent = defaultdict(Counter)
@@ -786,6 +835,184 @@ class SeasonTrackerGUI:
         # tree.configure(xscrollcommand=hsb.set)
 
         tree.pack(fill=tk.BOTH, expand=True)
+
+    def calculate_casualties(self, max_week_index: int | None = None) -> tuple[defaultdict[str, int], defaultdict[str, int]]:
+        """Calculates casualties inflicted and lost for each lead unit."""
+        inflicted = defaultdict(int)
+        lost = defaultdict(int)
+
+        weeks_to_process = self.season
+        if max_week_index is not None:
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        for week in weeks_to_process:
+            if week.get("playoffs", False):
+                # Handle playoffs logic
+                for r_num in [1, 2]:
+                    lead_a = week.get(f"lead_A_r{r_num}")
+                    lead_b = week.get(f"lead_B_r{r_num}")
+                    cas_a = week.get(f"r{r_num}_casualties_A", 0)
+                    cas_b = week.get(f"r{r_num}_casualties_B", 0)
+                    if lead_a:
+                        lost[lead_a] += cas_a
+                        inflicted[lead_a] += cas_b
+                    if lead_b:
+                        lost[lead_b] += cas_b
+                        inflicted[lead_b] += cas_a
+            else:
+                # Handle regular season logic
+                lead_a = week.get("lead_A")
+                lead_b = week.get("lead_B")
+                r1_cas_a = week.get("r1_casualties_A", 0)
+                r1_cas_b = week.get("r1_casualties_B", 0)
+                r2_cas_a = week.get("r2_casualties_A", 0)
+                r2_cas_b = week.get("r2_casualties_B", 0)
+
+                if lead_a:
+                    lost[lead_a] += r1_cas_a + r2_cas_a
+                    inflicted[lead_a] += r1_cas_b + r2_cas_b
+                if lead_b:
+                    lost[lead_b] += r1_cas_b + r2_cas_b
+                    inflicted[lead_b] += r1_cas_a + r2_cas_a
+        
+        return inflicted, lost
+
+    def show_casualties_table(self):
+        """Displays a table of casualties inflicted and lost by each lead unit, up to a selected week."""
+        if not self.season:
+            messagebox.showinfo("Casualty Report", "No season data available.")
+            return
+        if not self.units:
+            messagebox.showinfo("Casualty Report", "No units defined.")
+            return
+
+        win = tk.Toplevel(self.master)
+        win.title("Casualty Report")
+        win.geometry("850x450")
+        win.resizable(True, True)
+        win.minsize(850, 300)
+
+        # --- UI Elements ---
+        top_frame = tk.Frame(win, padx=10, pady=10)
+        top_frame.pack(fill=tk.X)
+
+        week_selector_var = tk.StringVar()
+        week_options = [f"Week {i+1}" for i in range(len(self.season))]
+        
+        # Default to the currently selected week in the main window, or the last week
+        sel = self.week_list.curselection()
+        default_week_index = sel[0] if sel else len(self.season) - 1
+        if default_week_index < len(week_options):
+            week_selector_var.set(week_options[default_week_index])
+
+        tk.Label(top_frame, text="Show Stats Up To:").pack(side=tk.LEFT, padx=(0, 5))
+        week_selector = ttk.Combobox(top_frame, textvariable=week_selector_var, values=week_options, state="readonly", width=15)
+        week_selector.pack(side=tk.LEFT)
+
+        tree_frame = ttk.Frame(win)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        cols = ["unit", "inflicted", "lost", "kd", "inflicted_per_game", "lost_per_game"]
+        col_names = {
+            "unit": "Unit", "inflicted": "Inflicted", "lost": "Lost", "kd": "K/D",
+            "inflicted_per_game": "Inflicted/Game", "lost_per_game": "Lost/Game"
+        }
+        tree = ttk.Treeview(tree_frame, columns=cols, show="headings")
+
+        for col_id in cols:
+            tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: sort_column(c, False))
+            tree.column(col_id, width=85, anchor=tk.CENTER)
+        tree.column("unit", width=140, anchor=tk.W)
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        # --- Data and Redraw Logic ---
+        def redraw_table(selected_week_str: str):
+            for item in tree.get_children():
+                tree.delete(item)
+
+            try:
+                max_week_idx = int(selected_week_str.split(" ")[1]) - 1
+            except (ValueError, IndexError):
+                return # Should not happen with combobox
+
+            win.title(f"Casualty Report (Up to Week {max_week_idx + 1})")
+
+            inflicted, lost = self.calculate_casualties(max_week_index=max_week_idx)
+            
+            # Count games played as lead for each unit up to the selected week
+            games_as_lead = defaultdict(int)
+            for week_idx, week in enumerate(self.season):
+                if week_idx > max_week_idx: break
+                if week.get("playoffs", False):
+                    for r_num in [1, 2]:
+                        lead_a = week.get(f"lead_A_r{r_num}")
+                        lead_b = week.get(f"lead_B_r{r_num}")
+                        if lead_a: games_as_lead[lead_a] += 1
+                        if lead_b: games_as_lead[lead_b] += 1
+                else:
+                    lead_a = week.get("lead_A")
+                    lead_b = week.get("lead_B")
+                    if lead_a: games_as_lead[lead_a] += 1
+                    if lead_b: games_as_lead[lead_b] += 1
+
+            table_data = []
+            all_lead_units = set(inflicted.keys()) | set(lost.keys())
+            for unit in sorted(list(all_lead_units)):
+                inflicted_count = inflicted.get(unit, 0)
+                lost_count = lost.get(unit, 0)
+                games = games_as_lead.get(unit, 0)
+                
+                kd_ratio_val = inflicted_count / lost_count if lost_count > 0 else float('inf')
+                kd_ratio_str = f"{kd_ratio_val:.2f}" if lost_count > 0 else "∞"
+                
+                inflicted_pg = f"{inflicted_count / games:.2f}" if games > 0 else "0.00"
+                lost_pg = f"{lost_count / games:.2f}" if games > 0 else "0.00"
+
+                table_data.append((unit, inflicted_count, lost_count, kd_ratio_str, inflicted_pg, lost_pg, kd_ratio_val))
+
+            # Default sort by K/D
+            table_data.sort(key=lambda x: x[6], reverse=True)
+
+            for row_data in table_data:
+                tree.insert("", tk.END, values=row_data[:-1]) # Exclude the raw K/D value used for sorting
+
+        # --- Sorting Logic ---
+        def sort_column(col, reverse):
+            # Map column ID to data index and type
+            sort_map = {
+                "unit": (0, str), "inflicted": (1, int), "lost": (2, int),
+                "kd": (6, float), # Use the hidden raw value for sorting
+                "inflicted_per_game": (4, float), "lost_per_game": (5, float)
+            }
+            if col not in sort_map: return
+
+            idx, sort_type = sort_map[col]
+            
+            # Grab data from tree, converting to appropriate type
+            data = []
+            for child in tree.get_children():
+                val = tree.item(child, 'values')[idx]
+                # Special handling for K/D string
+                if col == 'kd':
+                    if val == '∞': val = float('inf')
+                    else: val = float(val)
+                data.append((sort_type(val), child))
+
+            data.sort(key=lambda t: t[0], reverse=reverse)
+
+            for index, (val, child) in enumerate(data):
+                tree.move(child, '', index)
+            
+            # Toggle sort direction for next click
+            tree.heading(col, command=lambda: sort_column(col, not reverse))
+
+        # --- Initial Setup and Bindings ---
+        week_selector.bind("<<ComboboxSelected>>", lambda event: redraw_table(week_selector_var.get()))
+        redraw_table(week_selector_var.get()) # Initial draw
 
 
     def show_stats(self):
@@ -1195,6 +1422,10 @@ class SeasonTrackerGUI:
                     "lead_B_r1": wk.get("lead_B_r1"),
                     "lead_A_r2": wk.get("lead_A_r2"),
                     "lead_B_r2": wk.get("lead_B_r2"),
+                    "r1_casualties_A": wk.get("r1_casualties_A", 0),
+                    "r1_casualties_B": wk.get("r1_casualties_B", 0),
+                    "r2_casualties_A": wk.get("r2_casualties_A", 0),
+                    "r2_casualties_B": wk.get("r2_casualties_B", 0),
                 } for wk in self.season
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
@@ -1220,7 +1451,11 @@ class SeasonTrackerGUI:
                     "lead_A_r1": wk_data.get("lead_A_r1"),
                     "lead_B_r1": wk_data.get("lead_B_r1"),
                     "lead_A_r2": wk_data.get("lead_A_r2"),
-                    "lead_B_r2": wk_data.get("lead_B_r2")
+                    "lead_B_r2": wk_data.get("lead_B_r2"),
+                    "r1_casualties_A": wk_data.get("r1_casualties_A", 0),
+                    "r1_casualties_B": wk_data.get("r1_casualties_B", 0),
+                    "r2_casualties_A": wk_data.get("r2_casualties_A", 0),
+                    "r2_casualties_B": wk_data.get("r2_casualties_B", 0)
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:
