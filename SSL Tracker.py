@@ -71,9 +71,9 @@ class SeasonTrackerGUI:
     def __init__(self, master: tk.Tk):
         self.master = master
         master.title("Season Tracker")
-        master.geometry("900x600") # Increased height
+        master.geometry("900x615") # Increased height
         master.resizable(True, True)
-        master.minsize(900, 600) # Lock minimum size
+        master.minsize(900, 615) # Lock minimum size
 
         # -------------------- DATA --------------------
         self.units: set[str] = set()
