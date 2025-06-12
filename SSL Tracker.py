@@ -4,6 +4,7 @@ from tkinter import ttk # Added for Treeview
 from tkinter import messagebox, filedialog, font as tkFont
 from collections import Counter, defaultdict
 from pathlib import Path
+import csv
 
 
 # Helper class for Tooltips
@@ -197,7 +198,7 @@ class SeasonTrackerGUI:
         tk.Button(tctl, text="← Move", command=lambda: self.move_between_teams("B", "A")).pack(fill=tk.X)
         tk.Button(tctl, text="Move →", command=lambda: self.move_between_teams("A", "B")).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Remove", command=self.remove_from_team).pack(fill=tk.X, pady=(10, 0))
-        tk.Button(tctl, text="Show Stats", command=self.show_stats).pack(fill=tk.X, pady=(30, 0))
+        tk.Button(tctl, text="Export Data", command=self.export_data).pack(fill=tk.X, pady=(30, 0))
         tk.Button(tctl, text="Points Table", command=self.show_points_table).pack(fill=tk.X, pady=(2,0)) # New Button
         tk.Button(tctl, text="Casualties", command=self.show_casualties_table).pack(fill=tk.X, pady=(2,0))
         tk.Button(tctl, text="Team Heatmap", command=self.show_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
@@ -1041,44 +1042,69 @@ class SeasonTrackerGUI:
             print(f"Error sorting column {col}: {e}")
 
 
-    def show_stats(self):
-        teammate, opponent = self.compute_stats()
-        current_points = self.calculate_points() # Calculate total points for the season
+    def export_data(self):
+        """Exports season data to a CSV file."""
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Save Data Export"
+        )
+        if not path:
+            return
 
-        win = tk.Toplevel(self.master)
-        win.title("Season Stats")
-        text = tk.Text(win, wrap=tk.NONE, width=80, height=35)
-        text.pack(fill=tk.BOTH, expand=True)
-        def dump(title, data):
-            text.insert(tk.END, f"{title}\n")
-            for unit in sorted(data):
-                text.insert(tk.END, f"{unit}:\n")
-                for other, n in data[unit].most_common():
-                    text.insert(tk.END, f"   {other}: {n}\n")
-                text.insert(tk.END, "\n")
-        dump("=== TEAMMATE COUNTS ===", teammate)
-        dump("=== OPPONENT COUNTS ===", opponent)
+        records = []
+        header = ['Week', 'Unit', 'Team', 'Round', 'Loss']
         
-        text.insert(tk.END, "=== UNIT POINTS ===\n")
-        if not self.units:
-            text.insert(tk.END, "No units defined.\n")
-        else:
-            # Get points for all defined units, defaulting to 0
-            all_unit_scores = {unit: current_points.get(unit, 0) for unit in self.units}
+        for week_idx, week_data in enumerate(self.season):
+            week_num = week_idx + 1
             
-            if not all_unit_scores and not current_points: # Handles case where self.units might be empty if logic changes
-                 text.insert(tk.END, "No points calculated yet or no units defined.\n")
-            # Sort points by value (descending), then by unit name (ascending)
-            elif all_unit_scores:
-                sorted_display_points = sorted(all_unit_scores.items(), key=lambda item: (-item[1], item[0]))
-                for unit, pts in sorted_display_points:
-                    text.insert(tk.END, f"{unit}: {pts}\n")
-            else: # Should not be reached if self.units is populated
-                text.insert(tk.END, "No points to display.\n")
+            # --- Round 1 ---
+            winner_r1 = week_data.get("round1_winner")
+            if winner_r1 and winner_r1 != "None":
+                loser_r1 = 'B' if winner_r1 == 'A' else 'A'
+                
+                for unit in week_data.get(winner_r1, set()):
+                    records.append([week_num, unit, self.team_names[winner_r1].get(), 1, 0])
+                
+                for unit in week_data.get(loser_r1, set()):
+                    records.append([week_num, unit, self.team_names[loser_r1].get(), 1, 1])
 
-        text.insert(tk.END, "\n")
-        
-        text.config(state=tk.DISABLED)
+            # --- Round 2 ---
+            winner_r2 = week_data.get("round2_winner")
+            if winner_r2 and winner_r2 != "None":
+                loser_r2 = 'B' if winner_r2 == 'A' else 'A'
+
+                for unit in week_data.get(winner_r2, set()):
+                    records.append([week_num, unit, self.team_names[winner_r2].get(), 2, 0])
+
+                for unit in week_data.get(loser_r2, set()):
+                    records.append([week_num, unit, self.team_names[loser_r2].get(), 2, 1])
+
+        # Now, calculate the total losses per unit from the records
+        losses_per_unit = Counter()
+        for record in records:
+            if record[4] == 1: # if loss is 1
+                losses_per_unit[record[1]] += 1
+
+        # Write to CSV
+        try:
+            with open(path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                
+                writer.writerow(['Losses by Unit (Binary)'])
+                writer.writerow(header)
+                writer.writerows(records)
+                
+                writer.writerow([])
+                
+                writer.writerow(['Total Losses per Unit'])
+                writer.writerow(['Unit', 'Total Losses'])
+                for unit, total_losses in sorted(losses_per_unit.items()):
+                    writer.writerow([unit, total_losses])
+                    
+            messagebox.showinfo("Export Successful", f"Data exported to {path}")
+        except IOError as e:
+            messagebox.showerror("Export Error", f"Could not save file: {e}")
 
     def show_heatmap_stats(self):
         if not self.units:

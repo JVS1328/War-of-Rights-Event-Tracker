@@ -1,0 +1,422 @@
+Losses by Unit (Binary)
+Week,Unit,Team,Round,Loss
+1,MSG,Team A,1,0
+1,CQB,Team A,1,0
+1,10th US,Team A,1,0
+1,7th TX,Team A,1,0
+1,AVC,Team A,1,0
+1,CB,Team A,1,0
+1,FSB,Team A,1,0
+1,TB,Team B,1,1
+1,7th KS,Team B,1,1
+1,12th VA,Team B,1,1
+1,59th NY,Team B,1,1
+1,II Corps,Team B,1,1
+1,JD,Team B,1,1
+1,TB,Team B,2,0
+1,7th KS,Team B,2,0
+1,12th VA,Team B,2,0
+1,59th NY,Team B,2,0
+1,II Corps,Team B,2,0
+1,JD,Team B,2,0
+1,MSG,Team A,2,1
+1,CQB,Team A,2,1
+1,10th US,Team A,2,1
+1,7th TX,Team A,2,1
+1,AVC,Team A,2,1
+1,CB,Team A,2,1
+1,FSB,Team A,2,1
+2,MSG,Team A,1,0
+2,TB,Team A,1,0
+2,7th KS,Team A,1,0
+2,SR,Team A,1,0
+2,7th TX,Team A,1,0
+2,CB,Team A,1,0
+2,59th NY,Team A,1,0
+2,FSB,Team A,1,0
+2,CQB,Team B,1,1
+2,12th VA,Team B,1,1
+2,10th US,Team B,1,1
+2,AVC,Team B,1,1
+2,II Corps,Team B,1,1
+2,JD,Team B,1,1
+2,CQB,Team B,2,0
+2,12th VA,Team B,2,0
+2,10th US,Team B,2,0
+2,AVC,Team B,2,0
+2,II Corps,Team B,2,0
+2,JD,Team B,2,0
+2,MSG,Team A,2,1
+2,TB,Team A,2,1
+2,7th KS,Team A,2,1
+2,SR,Team A,2,1
+2,7th TX,Team A,2,1
+2,CB,Team A,2,1
+2,59th NY,Team A,2,1
+2,FSB,Team A,2,1
+3,MSG,Team B,1,0
+3,7th KS,Team B,1,0
+3,CB,Team B,1,0
+3,II Corps,Team B,1,0
+3,59th NY,Team B,1,0
+3,FSB,Team B,1,0
+3,CQB,Team A,1,1
+3,12th VA,Team A,1,1
+3,TB,Team A,1,1
+3,10th US,Team A,1,1
+3,7th TX,Team A,1,1
+3,AVC,Team A,1,1
+3,JD,Team A,1,1
+3,MSG,Team B,2,0
+3,7th KS,Team B,2,0
+3,CB,Team B,2,0
+3,II Corps,Team B,2,0
+3,59th NY,Team B,2,0
+3,FSB,Team B,2,0
+3,CQB,Team A,2,1
+3,12th VA,Team A,2,1
+3,TB,Team A,2,1
+3,10th US,Team A,2,1
+3,7th TX,Team A,2,1
+3,AVC,Team A,2,1
+3,JD,Team A,2,1
+4,TB,Team A,1,0
+4,10th US,Team A,1,0
+4,7th TX,Team A,1,0
+4,59th NY,Team A,1,0
+4,II Corps,Team A,1,0
+4,JD,Team A,1,0
+4,MSG,Team B,1,1
+4,CQB,Team B,1,1
+4,12th VA,Team B,1,1
+4,SR,Team B,1,1
+4,AVC,Team B,1,1
+4,CB,Team B,1,1
+4,FSB,Team B,1,1
+4,MSG,Team B,2,0
+4,CQB,Team B,2,0
+4,12th VA,Team B,2,0
+4,SR,Team B,2,0
+4,AVC,Team B,2,0
+4,CB,Team B,2,0
+4,FSB,Team B,2,0
+4,TB,Team A,2,1
+4,10th US,Team A,2,1
+4,7th TX,Team A,2,1
+4,59th NY,Team A,2,1
+4,II Corps,Team A,2,1
+4,JD,Team A,2,1
+5,CQB,Team A,1,0
+5,TB,Team A,1,0
+5,SR,Team A,1,0
+5,CB,Team A,1,0
+5,II Corps,Team A,1,0
+5,JD,Team A,1,0
+5,MSG,Team B,1,1
+5,12th VA,Team B,1,1
+5,10th US,Team B,1,1
+5,7th TX,Team B,1,1
+5,AVC,Team B,1,1
+5,59th NY,Team B,1,1
+5,FSB,Team B,1,1
+5,CQB,Team A,2,0
+5,TB,Team A,2,0
+5,SR,Team A,2,0
+5,CB,Team A,2,0
+5,II Corps,Team A,2,0
+5,JD,Team A,2,0
+5,MSG,Team B,2,1
+5,12th VA,Team B,2,1
+5,10th US,Team B,2,1
+5,7th TX,Team B,2,1
+5,AVC,Team B,2,1
+5,59th NY,Team B,2,1
+5,FSB,Team B,2,1
+6,CQB,Team A,1,0
+6,12th VA,Team A,1,0
+6,TB,Team A,1,0
+6,AVC,Team A,1,0
+6,59th NY,Team A,1,0
+6,II Corps,Team A,1,0
+6,FSB,Team A,1,0
+6,MSG,Team B,1,1
+6,SR,Team B,1,1
+6,10th US,Team B,1,1
+6,7th TX,Team B,1,1
+6,CB,Team B,1,1
+6,JD,Team B,1,1
+6,CQB,Team A,2,0
+6,12th VA,Team A,2,0
+6,TB,Team A,2,0
+6,AVC,Team A,2,0
+6,59th NY,Team A,2,0
+6,II Corps,Team A,2,0
+6,FSB,Team A,2,0
+6,MSG,Team B,2,1
+6,SR,Team B,2,1
+6,10th US,Team B,2,1
+6,7th TX,Team B,2,1
+6,CB,Team B,2,1
+6,JD,Team B,2,1
+7,SR,Team A,1,0
+7,10th US,Team A,1,0
+7,7th TX,Team A,1,0
+7,AVC,Team A,1,0
+7,CB,Team A,1,0
+7,59th NY,Team A,1,0
+7,FSB,Team A,1,0
+7,MSG,Team B,1,1
+7,CQB,Team B,1,1
+7,12th VA,Team B,1,1
+7,TB,Team B,1,1
+7,II Corps,Team B,1,1
+7,JD,Team B,1,1
+7,MSG,Team B,2,0
+7,CQB,Team B,2,0
+7,12th VA,Team B,2,0
+7,TB,Team B,2,0
+7,II Corps,Team B,2,0
+7,JD,Team B,2,0
+7,SR,Team A,2,1
+7,10th US,Team A,2,1
+7,7th TX,Team A,2,1
+7,AVC,Team A,2,1
+7,CB,Team A,2,1
+7,59th NY,Team A,2,1
+7,FSB,Team A,2,1
+8,MSG,Team A,1,0
+8,TB,Team A,1,0
+8,12th VA,Team A,1,0
+8,10th US,Team A,1,0
+8,CB,Team A,1,0
+8,59th NY,Team A,1,0
+8,CQB,Team B,1,1
+8,7th TX,Team B,1,1
+8,AVC,Team B,1,1
+8,II Corps,Team B,1,1
+8,JD,Team B,1,1
+8,FSB,Team B,1,1
+8,CQB,Team B,2,0
+8,7th TX,Team B,2,0
+8,AVC,Team B,2,0
+8,II Corps,Team B,2,0
+8,JD,Team B,2,0
+8,FSB,Team B,2,0
+8,MSG,Team A,2,1
+8,TB,Team A,2,1
+8,12th VA,Team A,2,1
+8,10th US,Team A,2,1
+8,CB,Team A,2,1
+8,59th NY,Team A,2,1
+9,CQB,Team A,1,0
+9,12th VA,Team A,1,0
+9,AVC,Team A,1,0
+9,59th NY,Team A,1,0
+9,II Corps,Team A,1,0
+9,FSB,Team A,1,0
+9,MSG,Team B,1,1
+9,TB,Team B,1,1
+9,SR,Team B,1,1
+9,10th US,Team B,1,1
+9,7th TX,Team B,1,1
+9,CB,Team B,1,1
+9,JD,Team B,1,1
+9,CQB,Team A,2,0
+9,12th VA,Team A,2,0
+9,AVC,Team A,2,0
+9,59th NY,Team A,2,0
+9,II Corps,Team A,2,0
+9,FSB,Team A,2,0
+9,MSG,Team B,2,1
+9,TB,Team B,2,1
+9,SR,Team B,2,1
+9,10th US,Team B,2,1
+9,7th TX,Team B,2,1
+9,CB,Team B,2,1
+9,JD,Team B,2,1
+10,MSG,Team B,1,0
+10,TB,Team B,1,0
+10,10th US,Team B,1,0
+10,7th TX,Team B,1,0
+10,AVC,Team B,1,0
+10,CB,Team B,1,0
+10,FSB,Team B,1,0
+10,CQB,Team A,1,1
+10,12th VA,Team A,1,1
+10,SR,Team A,1,1
+10,59th NY,Team A,1,1
+10,II Corps,Team A,1,1
+10,JD,Team A,1,1
+10,MSG,Team B,2,0
+10,TB,Team B,2,0
+10,10th US,Team B,2,0
+10,7th TX,Team B,2,0
+10,AVC,Team B,2,0
+10,CB,Team B,2,0
+10,FSB,Team B,2,0
+10,CQB,Team A,2,1
+10,12th VA,Team A,2,1
+10,SR,Team A,2,1
+10,59th NY,Team A,2,1
+10,II Corps,Team A,2,1
+10,JD,Team A,2,1
+11,CQB,Team A,1,0
+11,7th TX,Team A,1,0
+11,AVC,Team A,1,0
+11,59th NY,Team A,1,0
+11,II Corps,Team A,1,0
+11,JD,Team A,1,0
+11,MSG,Team B,1,1
+11,TB,Team B,1,1
+11,12th VA,Team B,1,1
+11,SR,Team B,1,1
+11,10th US,Team B,1,1
+11,CB,Team B,1,1
+11,FSB,Team B,1,1
+11,MSG,Team B,2,0
+11,TB,Team B,2,0
+11,12th VA,Team B,2,0
+11,SR,Team B,2,0
+11,10th US,Team B,2,0
+11,CB,Team B,2,0
+11,FSB,Team B,2,0
+11,CQB,Team A,2,1
+11,7th TX,Team A,2,1
+11,AVC,Team A,2,1
+11,59th NY,Team A,2,1
+11,II Corps,Team A,2,1
+11,JD,Team A,2,1
+12,MSG,Team B,1,0
+12,TB,Team B,1,0
+12,10th US,Team B,1,0
+12,7th TX,Team B,1,0
+12,CB,Team B,1,0
+12,FSB,Team B,1,0
+12,CQB,Team A,1,1
+12,12th VA,Team A,1,1
+12,SR,Team A,1,1
+12,AVC,Team A,1,1
+12,59th NY,Team A,1,1
+12,II Corps,Team A,1,1
+12,JD,Team A,1,1
+12,MSG,Team B,2,0
+12,TB,Team B,2,0
+12,10th US,Team B,2,0
+12,7th TX,Team B,2,0
+12,CB,Team B,2,0
+12,FSB,Team B,2,0
+12,CQB,Team A,2,1
+12,12th VA,Team A,2,1
+12,SR,Team A,2,1
+12,AVC,Team A,2,1
+12,59th NY,Team A,2,1
+12,II Corps,Team A,2,1
+12,JD,Team A,2,1
+13,MSG,Team B,1,0
+13,SR,Team B,1,0
+13,10th US,Team B,1,0
+13,7th TX,Team B,1,0
+13,II Corps,Team B,1,0
+13,JD,Team B,1,0
+13,FSB,Team B,1,0
+13,CQB,Team A,1,1
+13,12th VA,Team A,1,1
+13,TB,Team A,1,1
+13,AVC,Team A,1,1
+13,CB,Team A,1,1
+13,59th NY,Team A,1,1
+13,MSG,Team B,2,0
+13,SR,Team B,2,0
+13,10th US,Team B,2,0
+13,7th TX,Team B,2,0
+13,II Corps,Team B,2,0
+13,JD,Team B,2,0
+13,FSB,Team B,2,0
+13,CQB,Team A,2,1
+13,12th VA,Team A,2,1
+13,TB,Team A,2,1
+13,AVC,Team A,2,1
+13,CB,Team A,2,1
+13,59th NY,Team A,2,1
+14,12th VA,Team B,1,0
+14,10th US,Team B,1,0
+14,AVC,Team B,1,0
+14,CB,Team B,1,0
+14,TKO,Team B,1,0
+14,FSB,Team B,1,0
+14,MSG,Team A,1,1
+14,CQB,Team A,1,1
+14,SR,Team A,1,1
+14,7th TX,Team A,1,1
+14,59th NY,Team A,1,1
+14,II Corps,Team A,1,1
+14,JD,Team A,1,1
+14,12th VA,Team B,2,0
+14,10th US,Team B,2,0
+14,AVC,Team B,2,0
+14,CB,Team B,2,0
+14,TKO,Team B,2,0
+14,FSB,Team B,2,0
+14,MSG,Team A,2,1
+14,CQB,Team A,2,1
+14,SR,Team A,2,1
+14,7th TX,Team A,2,1
+14,59th NY,Team A,2,1
+14,II Corps,Team A,2,1
+14,JD,Team A,2,1
+15,CQB,Team B,1,0
+15,10th US,Team B,1,0
+15,7th TX,Team B,1,0
+15,CB,Team B,1,0
+15,59th NY,Team B,1,0
+15,TKO,Team B,1,0
+15,MSG,Team A,1,1
+15,12th VA,Team A,1,1
+15,SR,Team A,1,1
+15,AVC,Team A,1,1
+15,II Corps,Team A,1,1
+15,JD,Team A,1,1
+15,FSB,Team A,1,1
+15,CQB,Team B,2,0
+15,10th US,Team B,2,0
+15,7th TX,Team B,2,0
+15,CB,Team B,2,0
+15,59th NY,Team B,2,0
+15,TKO,Team B,2,0
+15,MSG,Team A,2,1
+15,12th VA,Team A,2,1
+15,SR,Team A,2,1
+15,AVC,Team A,2,1
+15,II Corps,Team A,2,1
+15,JD,Team A,2,1
+15,FSB,Team A,2,1
+16,MSG,Team A,1,0
+16,CQB,Team A,1,0
+16,10th US,Team A,1,0
+16,7th TX,Team A,1,0
+16,II Corps,Team A,1,0
+16,TKO,Team A,1,0
+16,FSB,Team A,1,0
+16,12th VA,Team B,1,1
+16,SR,Team B,1,1
+16,AVC,Team B,1,1
+16,CB,Team B,1,1
+16,59th NY,Team B,1,1
+16,JD,Team B,1,1
+
+Total Losses per Unit
+Unit,Total Losses
+10th US,14
+12th VA,19
+59th NY,17
+7th KS,2
+7th TX,16
+AVC,17
+CB,13
+CQB,16
+FSB,10
+II Corps,14
+JD,21
+MSG,16
+SR,17
+TB,12
