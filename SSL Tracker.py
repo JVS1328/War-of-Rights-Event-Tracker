@@ -421,10 +421,15 @@ class SeasonTrackerGUI:
 
     # ------------------------------------------------------------------
     # Stats
-    def compute_stats(self):
+    def compute_stats(self, max_week_index: int | None = None):
         teammate = defaultdict(Counter)
         opponent = defaultdict(Counter)
-        for wk in self.season:
+        
+        weeks_to_process = self.season
+        if max_week_index is not None and 0 <= max_week_index < len(self.season):
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        for wk in weeks_to_process:
             a, b = wk["A"], wk["B"]
             for u in a:
                 teammate[u].update(v for v in a if v != u)
@@ -721,321 +726,138 @@ class SeasonTrackerGUI:
         text.config(state=tk.DISABLED)
 
     def show_heatmap_stats(self):
-        teammate_stats, _ = self.compute_stats() # For counts and colors
-        detailed_interactions = self.get_detailed_interactions() # For tooltip content
-
-        if not self.units: # Check self.units directly as it's the basis for the heatmap
+        if not self.units:
             messagebox.showinfo("Heatmap", "No units defined to generate heatmap.")
             return
         if not self.season:
-             messagebox.showinfo("Heatmap", "No season data available to generate heatmap.")
-             return
+            messagebox.showinfo("Heatmap", "No season data available to generate heatmap.")
+            return
 
-
-        all_units_in_heatmap = sorted(list(self.units))
-
-
-        # Find max count for color scaling (from teammate_stats)
-        max_teammate_count = 0
-        for unit_data in teammate_stats.values():
-            for count_val in unit_data.values(): # Corrected variable name
-                if count_val > max_teammate_count:
-                    max_teammate_count = count_val
-        
         win = tk.Toplevel(self.master)
         win.title("Teammate & Opponent Heatmap (Hover for Details)")
 
-        # Main frame to hold title and canvas
+        # --- Main layout ---
         main_frame = tk.Frame(win)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        title_label = tk.Label(main_frame, text="Teammate Heat Index", font=("Arial", 12, "bold"), pady=5)
-        title_label.pack(side=tk.TOP)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        cell_size = 60
-        padding = 75  # Increased padding slightly more for labels
-        label_font = ("Arial", 9)
-        tooltip_font = ("Arial", 8, "bold")
+        top_frame = tk.Frame(main_frame)
+        top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
 
-        num_units = len(all_units_in_heatmap)
-        # Adjust canvas height calculation if title takes up space and window isn't resizing enough
-        # For now, assume Toplevel window will accommodate.
-        canvas_width = num_units * cell_size + padding * 2
-        canvas_height = num_units * cell_size + padding * 2
+        title_label = tk.Label(top_frame, text="Teammate Heat Index", font=("Arial", 12, "bold"))
+        title_label.pack(side=tk.LEFT, expand=True)
 
-        canvas = tk.Canvas(main_frame, width=canvas_width, height=canvas_height, bg="white") # Canvas is child of main_frame
-        canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        win.update_idletasks() # Ensure dimensions are calculated
-        win.minsize(win.winfo_width(), win.winfo_height()) # Lock minimum size
+        # --- Week Selector ---
+        week_selector_var = tk.StringVar()
+        week_options = ["All Weeks"] + [f"Week {i+1}" for i in range(len(self.season))]
+        week_selector = ttk.Combobox(top_frame, textvariable=week_selector_var, values=week_options, state="readonly")
+        week_selector.pack(side=tk.RIGHT)
+        week_selector.set("All Weeks")
 
-        # Tooltip Label (created on canvas so it's part of the same window)
+        # --- Canvas for heatmap ---
+        canvas_frame = tk.Frame(main_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(canvas_frame, bg="white")
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # --- Tooltip setup ---
         tooltip_label = tk.Label(canvas, text="", background="#FFFFE0", relief=tk.SOLID, borderwidth=1,
-                                 font=tooltip_font, justify=tk.LEFT, wraplength=250) # Added wraplength
+                                 font=("Arial", 8, "bold"), justify=tk.LEFT, wraplength=250)
         
-        cell_info_map = {} # To map cell tags to (unit_row, unit_col)
-
-        # Draw axis labels
-        for i, unit_name in enumerate(all_units_in_heatmap):
-            # Column labels (top) - Anchor South to place text just above the line
-            x_label_pos = padding + i * cell_size + cell_size / 2
-            canvas.create_text(x_label_pos, padding - 5, text=unit_name, anchor=tk.S, font=label_font)
-            # Row labels (left) - Anchor East to place text just left of the line
-            y_label_pos = padding + i * cell_size + cell_size / 2
-            canvas.create_text(padding - 5, y_label_pos, text=unit_name, anchor=tk.E, font=label_font)
-
-
-        # Draw heatmap cells
-        for r_idx, unit_row in enumerate(all_units_in_heatmap):
-            for c_idx, unit_col in enumerate(all_units_in_heatmap):
-                x1 = padding + c_idx * cell_size
-                y1 = padding + r_idx * cell_size
-                x2 = x1 + cell_size
-                y2 = y1 + cell_size
-                
-                cell_tag = f"cell_{r_idx}_{c_idx}"
-                cell_info_map[cell_tag] = (unit_row, unit_col)
-
-                if unit_row == unit_col:
-                    # Draw an X for self-interaction cells
-                    canvas.create_rectangle(x1, y1, x2, y2, fill="lightgrey", outline="grey", tags=(cell_tag,))
-                    canvas.create_line(x1 + 5, y1 + 5, x2 - 5, y2 - 5, fill="black", width=1, tags=(cell_tag, "x_line"))
-                    canvas.create_line(x1 + 5, y2 - 5, x2 - 5, y1 + 5, fill="black", width=1, tags=(cell_tag, "x_line"))
-                else:
-                    current_teammate_count = 0
-                    if unit_row in teammate_stats and unit_col in teammate_stats[unit_row]:
-                        current_teammate_count = teammate_stats[unit_row][unit_col]
-                    
-                    intensity = 0.0
-                    if max_teammate_count > 0: # Avoid division by zero if no teammates at all
-                        intensity = current_teammate_count / max_teammate_count
-                    
-                    r_val = 255
-                    g_val = int(255 * (1 - intensity))
-                    b_val = int(224 * (1 - intensity))
-                    color = f"#{r_val:02x}{g_val:02x}{b_val:02x}"
-                    
-                    canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="grey", tags=(cell_tag,))
-                    
-                    if current_teammate_count > 0:
-                        text_color = "black" if intensity < 0.6 else "white"
-                        canvas.create_text(x1 + cell_size / 2, y1 + cell_size / 2,
-                                          text=str(current_teammate_count), fill=text_color, font=label_font,
-                                          tags=(f"text_{cell_tag}", "cell_content"))
-
-        # --- Tooltip Logic ---
-        current_hover_tag = None # To track the currently hovered cell tag
-
-        def format_tooltip_text_for_cell(u1, u2):
-            if u1 == u2: # No self-interaction tooltip needed for this context
-                return "" # Or "Self" or similar if desired
-            
-            interaction_data = detailed_interactions.get(u1, {}).get(u2, {})
-            teammate_w = interaction_data.get("teammate_weeks", [])
-            opponent_w = interaction_data.get("opponent_weeks", [])
-
-            if not teammate_w and not opponent_w:
-                return f"{u1} & {u2}:\nNo interactions"
-
-            text = f"{u1} & {u2}:\n"
-            if teammate_w:
-                text += f"  Teammates in Wk(s): {', '.join(map(str, teammate_w))}\n"
-            if opponent_w:
-                text += f"  Opponents in Wk(s): {', '.join(map(str, opponent_w))}\n"
-            return text.strip()
-
-        def on_canvas_motion(event):
-            nonlocal current_hover_tag
-            canvas.delete("highlight_rect") # Remove previous highlight
-            
-            # find_closest returns a tuple, we need the first element (item ID)
-            items_under_cursor = canvas.find_closest(event.x, event.y)
-            item_id = items_under_cursor[0] if items_under_cursor else None
-
-            found_cell_tag = None
-            if item_id:
-                tags = canvas.gettags(item_id)
-                for tag in tags:
-                    if tag.startswith("cell_") and tag not in ["cell_content"]: # Ensure it's the rectangle tag
-                        found_cell_tag = tag
-                        break
-            
-            if found_cell_tag:
-                if found_cell_tag != current_hover_tag: # Mouse moved to a new cell or entered a cell
-                    current_hover_tag = found_cell_tag
-                    unit1, unit2 = cell_info_map[found_cell_tag]
-                    
-                    tooltip_text = format_tooltip_text_for_cell(unit1, unit2)
-                    if not tooltip_text: # No text means no tooltip (e.g. self-interaction)
-                        tooltip_label.place_forget()
-                        return
-
-                    tooltip_label.config(text=tooltip_text)
-                    
-                    # Highlight the cell
-                    bbox = canvas.bbox(found_cell_tag)
-                    if bbox:
-                        canvas.create_rectangle(bbox, outline="blue", width=2, tags="highlight_rect")
-
-                # Update tooltip position continuously
-                # Position tooltip relative to canvas, slightly offset from mouse
-                # Ensure it stays within canvas bounds (basic check)
-                tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
-                tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
-                
-                # Basic boundary check (can be improved)
-                if tip_x + tooltip_label.winfo_reqwidth() > canvas_width:
-                    tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
-                if tip_y + tooltip_label.winfo_reqheight() > canvas_height:
-                    tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
-                if tip_x < 0 : tip_x = 0
-                if tip_y < 0 : tip_y = 0
-
-                tooltip_label.lift() # Bring to front
-                tooltip_label.place(x=tip_x, y=tip_y)
-
-            else: # Not over a valid cell rectangle
-                on_canvas_leave(event) # Hide tooltip
-
-        def on_canvas_leave(event):
-            nonlocal current_hover_tag
-            tooltip_label.place_forget()
-            canvas.delete("highlight_rect")
-            current_hover_tag = None
-
-        canvas.bind("<Motion>", on_canvas_motion)
-        canvas.bind("<Leave>", on_canvas_leave)
-
-    def show_opponent_heatmap_stats(self):
-        _, opponent_stats = self.compute_stats() # For counts and colors
-        detailed_interactions = self.get_detailed_interactions() # For tooltip content
-
-        if not self.units: # Check self.units directly as it's the basis for the heatmap
-            messagebox.showinfo("Heatmap", "No units defined to generate heatmap.")
-            return
-        if not self.season:
-             messagebox.showinfo("Heatmap", "No season data available to generate heatmap.")
-             return
-
-
         all_units_in_heatmap = sorted(list(self.units))
-
-
-        # Find max count for color scaling (from opponent_stats)
-        max_opponent_count = 0
-        for unit_data in opponent_stats.values():
-            for count_val in unit_data.values():
-                if count_val > max_opponent_count:
-                    max_opponent_count = count_val
-        
-        win = tk.Toplevel(self.master)
-        win.title("Opponent & Teammate Heatmap (Hover for Details)")
-
-        # Main frame to hold title and canvas
-        main_frame = tk.Frame(win)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        title_label = tk.Label(main_frame, text="Opponent Heat Index", font=("Arial", 12, "bold"), pady=5)
-        title_label.pack(side=tk.TOP)
-        
-        cell_size = 60
-        padding = 75  # Increased padding slightly more for labels
-        label_font = ("Arial", 9)
-        tooltip_font = ("Arial", 8, "bold")
-
-        num_units = len(all_units_in_heatmap)
-        canvas_width = num_units * cell_size + padding * 2
-        canvas_height = num_units * cell_size + padding * 2
-
-        canvas = tk.Canvas(main_frame, width=canvas_width, height=canvas_height, bg="white")
-        canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        win.update_idletasks() # Ensure dimensions are calculated
-        win.minsize(win.winfo_width(), win.winfo_height()) # Lock minimum size
-
-        tooltip_label = tk.Label(canvas, text="", background="#FFFFE0", relief=tk.SOLID, borderwidth=1,
-                                 font=tooltip_font, justify=tk.LEFT, wraplength=250)
-        
-        cell_info_map = {} # To map cell tags to (unit_row, unit_col)
-
-        # Draw axis labels
-        for i, unit_name in enumerate(all_units_in_heatmap):
-            x_label_pos = padding + i * cell_size + cell_size / 2
-            canvas.create_text(x_label_pos, padding - 5, text=unit_name, anchor=tk.S, font=label_font)
-            y_label_pos = padding + i * cell_size + cell_size / 2
-            canvas.create_text(padding - 5, y_label_pos, text=unit_name, anchor=tk.E, font=label_font)
-
-
-        # Draw heatmap cells
-        for r_idx, unit_row in enumerate(all_units_in_heatmap):
-            for c_idx, unit_col in enumerate(all_units_in_heatmap):
-                x1 = padding + c_idx * cell_size
-                y1 = padding + r_idx * cell_size
-                x2 = x1 + cell_size
-                y2 = y1 + cell_size
-                
-                cell_tag = f"cell_opp_{r_idx}_{c_idx}" # Ensure unique tags if both heatmaps can be open
-                cell_info_map[cell_tag] = (unit_row, unit_col)
-
-                if unit_row == unit_col:
-                    # Draw an X for self-interaction cells
-                    canvas.create_rectangle(x1, y1, x2, y2, fill="lightgrey", outline="grey", tags=(cell_tag,))
-                    canvas.create_line(x1 + 5, y1 + 5, x2 - 5, y2 - 5, fill="black", width=1, tags=(cell_tag, "x_line"))
-                    canvas.create_line(x1 + 5, y2 - 5, x2 - 5, y1 + 5, fill="black", width=1, tags=(cell_tag, "x_line"))
-                else:
-                    current_opponent_count = 0
-                    if unit_row in opponent_stats and unit_col in opponent_stats[unit_row]:
-                        current_opponent_count = opponent_stats[unit_row][unit_col]
-                    
-                    intensity = 0.0
-                    if max_opponent_count > 0:
-                        intensity = current_opponent_count / max_opponent_count
-                    
-                    # Red-based color scheme (same as teammate heatmap)
-                    r_val = 255
-                    g_val = int(255 * (1 - intensity))
-                    b_val = int(224 * (1 - intensity))
-                    color = f"#{r_val:02x}{g_val:02x}{b_val:02x}"
-                    
-                    canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="grey", tags=(cell_tag,))
-                    
-                    if current_opponent_count > 0:
-                        text_color = "black" if intensity < 0.6 else "white"
-                        canvas.create_text(x1 + cell_size / 2, y1 + cell_size / 2,
-                                          text=str(current_opponent_count), fill=text_color, font=label_font,
-                                          tags=(f"text_{cell_tag}", "cell_content_opp"))
-
-        # --- Tooltip Logic (reused, ensure it works with new cell_tags if needed) ---
+        detailed_interactions = self.get_detailed_interactions() # For tooltip content, calculated once
+        cell_info_map = {}
         current_hover_tag = None
 
-        def format_tooltip_text_for_cell(u1, u2): # This function is identical and can be reused
-            if u1 == u2:
-                return ""
+        def redraw_heatmap(selected_week_str: str):
+            nonlocal cell_info_map
+            canvas.delete("all") # Clear previous drawing
+            cell_info_map.clear()
+
+            max_week_idx = None
+            if selected_week_str != "All Weeks":
+                try:
+                    # Extract number and convert to 0-based index
+                    max_week_idx = int(selected_week_str.split(" ")[1]) - 1
+                except (ValueError, IndexError):
+                    max_week_idx = None # Fallback
+
+            teammate_stats, _ = self.compute_stats(max_week_index=max_week_idx)
+
+            # Find max count for color scaling
+            max_teammate_count = 0
+            for unit_data in teammate_stats.values():
+                for count_val in unit_data.values():
+                    if count_val > max_teammate_count:
+                        max_teammate_count = count_val
             
+            cell_size = 60
+            padding = 75
+            label_font = ("Arial", 9)
+            num_units = len(all_units_in_heatmap)
+            canvas_width = num_units * cell_size + padding * 2
+            canvas_height = num_units * cell_size + padding * 2
+            canvas.config(width=canvas_width, height=canvas_height)
+
+            # Draw axis labels
+            for i, unit_name in enumerate(all_units_in_heatmap):
+                x_label_pos = padding + i * cell_size + cell_size / 2
+                canvas.create_text(x_label_pos, padding - 5, text=unit_name, anchor=tk.S, font=label_font)
+                y_label_pos = padding + i * cell_size + cell_size / 2
+                canvas.create_text(padding - 5, y_label_pos, text=unit_name, anchor=tk.E, font=label_font)
+
+            # Draw heatmap cells
+            for r_idx, unit_row in enumerate(all_units_in_heatmap):
+                for c_idx, unit_col in enumerate(all_units_in_heatmap):
+                    x1, y1 = padding + c_idx * cell_size, padding + r_idx * cell_size
+                    x2, y2 = x1 + cell_size, y1 + cell_size
+                    
+                    cell_tag = f"cell_{r_idx}_{c_idx}"
+                    cell_info_map[cell_tag] = (unit_row, unit_col)
+
+                    if unit_row == unit_col:
+                        canvas.create_rectangle(x1, y1, x2, y2, fill="lightgrey", outline="grey", tags=(cell_tag,))
+                        canvas.create_line(x1 + 5, y1 + 5, x2 - 5, y2 - 5, fill="black", width=1, tags=(cell_tag,))
+                        canvas.create_line(x1 + 5, y2 - 5, x2 - 5, y1 + 5, fill="black", width=1, tags=(cell_tag,))
+                    else:
+                        count = teammate_stats.get(unit_row, {}).get(unit_col, 0)
+                        intensity = count / max_teammate_count if max_teammate_count > 0 else 0.0
+                        
+                        r, g, b = 255, int(255 * (1 - intensity)), int(224 * (1 - intensity))
+                        color = f"#{r:02x}{g:02x}{b:02x}"
+                        
+                        canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="grey", tags=(cell_tag,))
+                        
+                        if count > 0:
+                            text_color = "black" if intensity < 0.6 else "white"
+                            canvas.create_text(x1 + cell_size / 2, y1 + cell_size / 2,
+                                              text=str(count), fill=text_color, font=label_font,
+                                              tags=(f"text_{cell_tag}", "cell_content"))
+            
+            win.update_idletasks()
+            win.minsize(win.winfo_width(), win.winfo_height())
+
+
+        def format_tooltip_text_for_cell(u1, u2):
+            if u1 == u2: return ""
             interaction_data = detailed_interactions.get(u1, {}).get(u2, {})
             teammate_w = interaction_data.get("teammate_weeks", [])
             opponent_w = interaction_data.get("opponent_weeks", [])
-
-            if not teammate_w and not opponent_w:
-                return f"{u1} & {u2}:\nNo interactions"
-
+            if not teammate_w and not opponent_w: return f"{u1} & {u2}:\nNo interactions"
             text = f"{u1} & {u2}:\n"
-            if teammate_w:
-                text += f"  Teammates in Wk(s): {', '.join(map(str, teammate_w))}\n"
-            if opponent_w:
-                text += f"  Opponents in Wk(s): {', '.join(map(str, opponent_w))}\n"
+            if teammate_w: text += f"  Teammates in Wk(s): {', '.join(map(str, teammate_w))}\n"
+            if opponent_w: text += f"  Opponents in Wk(s): {', '.join(map(str, opponent_w))}\n"
             return text.strip()
 
         def on_canvas_motion(event):
             nonlocal current_hover_tag
-            canvas.delete("highlight_rect_opp")
+            canvas.delete("highlight_rect")
+            items = canvas.find_closest(event.x, event.y)
+            item_id = items[0] if items else None
             
-            items_under_cursor = canvas.find_closest(event.x, event.y)
-            item_id = items_under_cursor[0] if items_under_cursor else None
-
             found_cell_tag = None
             if item_id:
-                tags = canvas.gettags(item_id)
-                for tag in tags:
-                    if tag.startswith("cell_opp_") and tag not in ["cell_content_opp"]:
+                for tag in canvas.gettags(item_id):
+                    if tag.startswith("cell_"):
                         found_cell_tag = tag
                         break
             
@@ -1043,31 +865,197 @@ class SeasonTrackerGUI:
                 if found_cell_tag != current_hover_tag:
                     current_hover_tag = found_cell_tag
                     unit1, unit2 = cell_info_map[found_cell_tag]
-                    
                     tooltip_text = format_tooltip_text_for_cell(unit1, unit2)
                     if not tooltip_text:
                         tooltip_label.place_forget()
                         return
-
                     tooltip_label.config(text=tooltip_text)
-                    
                     bbox = canvas.bbox(found_cell_tag)
                     if bbox:
-                        canvas.create_rectangle(bbox, outline="green", width=2, tags="highlight_rect_opp") # Different highlight color
+                        canvas.create_rectangle(bbox, outline="blue", width=2, tags="highlight_rect")
 
                 tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
                 tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
-                
-                if tip_x + tooltip_label.winfo_reqwidth() > canvas_width:
-                    tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
-                if tip_y + tooltip_label.winfo_reqheight() > canvas_height:
-                    tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
-                if tip_x < 0 : tip_x = 0
-                if tip_y < 0 : tip_y = 0
-
+                canvas_width = canvas.winfo_width()
+                canvas_height = canvas.winfo_height()
+                if tip_x + tooltip_label.winfo_reqwidth() > canvas_width: tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
+                if tip_y + tooltip_label.winfo_reqheight() > canvas_height: tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
+                if tip_x < 0: tip_x = 0
+                if tip_y < 0: tip_y = 0
                 tooltip_label.lift()
                 tooltip_label.place(x=tip_x, y=tip_y)
+            else:
+                on_canvas_leave(event)
 
+        def on_canvas_leave(event):
+            nonlocal current_hover_tag
+            tooltip_label.place_forget()
+            canvas.delete("highlight_rect")
+            current_hover_tag = None
+
+        # --- Bindings ---
+        canvas.bind("<Motion>", on_canvas_motion)
+        canvas.bind("<Leave>", on_canvas_leave)
+        week_selector.bind("<<ComboboxSelected>>", lambda event: (redraw_heatmap(week_selector_var.get()), win.focus_set()))
+
+
+        # Initial draw
+        redraw_heatmap("All Weeks")
+
+    def show_opponent_heatmap_stats(self):
+        if not self.units:
+            messagebox.showinfo("Heatmap", "No units defined to generate heatmap.")
+            return
+        if not self.season:
+            messagebox.showinfo("Heatmap", "No season data available to generate heatmap.")
+            return
+
+        win = tk.Toplevel(self.master)
+        win.title("Opponent & Teammate Heatmap (Hover for Details)")
+
+        # --- Main layout ---
+        main_frame = tk.Frame(win)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        top_frame = tk.Frame(main_frame)
+        top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
+
+        title_label = tk.Label(top_frame, text="Opponent Heat Index", font=("Arial", 12, "bold"))
+        title_label.pack(side=tk.LEFT, expand=True)
+
+        # --- Week Selector ---
+        week_selector_var = tk.StringVar()
+        week_options = ["All Weeks"] + [f"Week {i+1}" for i in range(len(self.season))]
+        week_selector = ttk.Combobox(top_frame, textvariable=week_selector_var, values=week_options, state="readonly")
+        week_selector.pack(side=tk.RIGHT)
+        week_selector.set("All Weeks")
+
+        # --- Canvas for heatmap ---
+        canvas_frame = tk.Frame(main_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(canvas_frame, bg="white")
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # --- Tooltip setup ---
+        tooltip_label = tk.Label(canvas, text="", background="#FFFFE0", relief=tk.SOLID, borderwidth=1,
+                                 font=("Arial", 8, "bold"), justify=tk.LEFT, wraplength=250)
+        
+        all_units_in_heatmap = sorted(list(self.units))
+        detailed_interactions = self.get_detailed_interactions()
+        cell_info_map = {}
+        current_hover_tag = None
+
+        def redraw_heatmap(selected_week_str: str):
+            nonlocal cell_info_map
+            canvas.delete("all")
+            cell_info_map.clear()
+
+            max_week_idx = None
+            if selected_week_str != "All Weeks":
+                try:
+                    max_week_idx = int(selected_week_str.split(" ")[1]) - 1
+                except (ValueError, IndexError):
+                    max_week_idx = None
+
+            _, opponent_stats = self.compute_stats(max_week_index=max_week_idx)
+
+            max_opponent_count = 0
+            for unit_data in opponent_stats.values():
+                for count_val in unit_data.values():
+                    if count_val > max_opponent_count:
+                        max_opponent_count = count_val
+            
+            cell_size = 60
+            padding = 75
+            label_font = ("Arial", 9)
+            num_units = len(all_units_in_heatmap)
+            canvas_width = num_units * cell_size + padding * 2
+            canvas_height = num_units * cell_size + padding * 2
+            canvas.config(width=canvas_width, height=canvas_height)
+
+            for i, unit_name in enumerate(all_units_in_heatmap):
+                x_label_pos = padding + i * cell_size + cell_size / 2
+                canvas.create_text(x_label_pos, padding - 5, text=unit_name, anchor=tk.S, font=label_font)
+                y_label_pos = padding + i * cell_size + cell_size / 2
+                canvas.create_text(padding - 5, y_label_pos, text=unit_name, anchor=tk.E, font=label_font)
+
+            for r_idx, unit_row in enumerate(all_units_in_heatmap):
+                for c_idx, unit_col in enumerate(all_units_in_heatmap):
+                    x1, y1 = padding + c_idx * cell_size, padding + r_idx * cell_size
+                    x2, y2 = x1 + cell_size, y1 + cell_size
+                    
+                    cell_tag = f"cell_opp_{r_idx}_{c_idx}"
+                    cell_info_map[cell_tag] = (unit_row, unit_col)
+
+                    if unit_row == unit_col:
+                        canvas.create_rectangle(x1, y1, x2, y2, fill="lightgrey", outline="grey", tags=(cell_tag,))
+                        canvas.create_line(x1 + 5, y1 + 5, x2 - 5, y2 - 5, fill="black", width=1, tags=(cell_tag,))
+                        canvas.create_line(x1 + 5, y2 - 5, x2 - 5, y1 + 5, fill="black", width=1, tags=(cell_tag,))
+                    else:
+                        count = opponent_stats.get(unit_row, {}).get(unit_col, 0)
+                        intensity = count / max_opponent_count if max_opponent_count > 0 else 0.0
+                        
+                        r, g, b = 255, int(255 * (1 - intensity)), int(224 * (1 - intensity))
+                        color = f"#{r:02x}{g:02x}{b:02x}"
+                        
+                        canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="grey", tags=(cell_tag,))
+                        
+                        if count > 0:
+                            text_color = "black" if intensity < 0.6 else "white"
+                            canvas.create_text(x1 + cell_size / 2, y1 + cell_size / 2,
+                                              text=str(count), fill=text_color, font=label_font,
+                                              tags=(f"text_{cell_tag}", "cell_content_opp"))
+            
+            win.update_idletasks()
+            win.minsize(win.winfo_width(), win.winfo_height())
+
+        def format_tooltip_text_for_cell(u1, u2):
+            if u1 == u2: return ""
+            interaction_data = detailed_interactions.get(u1, {}).get(u2, {})
+            teammate_w = interaction_data.get("teammate_weeks", [])
+            opponent_w = interaction_data.get("opponent_weeks", [])
+            if not teammate_w and not opponent_w: return f"{u1} & {u2}:\nNo interactions"
+            text = f"{u1} & {u2}:\n"
+            if teammate_w: text += f"  Teammates in Wk(s): {', '.join(map(str, teammate_w))}\n"
+            if opponent_w: text += f"  Opponents in Wk(s): {', '.join(map(str, opponent_w))}\n"
+            return text.strip()
+
+        def on_canvas_motion(event):
+            nonlocal current_hover_tag
+            canvas.delete("highlight_rect_opp")
+            items = canvas.find_closest(event.x, event.y)
+            item_id = items[0] if items else None
+            
+            found_cell_tag = None
+            if item_id:
+                for tag in canvas.gettags(item_id):
+                    if tag.startswith("cell_opp_"):
+                        found_cell_tag = tag
+                        break
+            
+            if found_cell_tag:
+                if found_cell_tag != current_hover_tag:
+                    current_hover_tag = found_cell_tag
+                    unit1, unit2 = cell_info_map[found_cell_tag]
+                    tooltip_text = format_tooltip_text_for_cell(unit1, unit2)
+                    if not tooltip_text:
+                        tooltip_label.place_forget()
+                        return
+                    tooltip_label.config(text=tooltip_text)
+                    bbox = canvas.bbox(found_cell_tag)
+                    if bbox:
+                        canvas.create_rectangle(bbox, outline="green", width=2, tags="highlight_rect_opp")
+
+                tip_x = canvas.winfo_pointerx() - win.winfo_rootx() + 15
+                tip_y = canvas.winfo_pointery() - win.winfo_rooty() + 10
+                canvas_width = canvas.winfo_width()
+                canvas_height = canvas.winfo_height()
+                if tip_x + tooltip_label.winfo_reqwidth() > canvas_width: tip_x = canvas_width - tooltip_label.winfo_reqwidth() - 5
+                if tip_y + tooltip_label.winfo_reqheight() > canvas_height: tip_y = canvas_height - tooltip_label.winfo_reqheight() - 5
+                if tip_x < 0: tip_x = 0
+                if tip_y < 0: tip_y = 0
+                tooltip_label.lift()
+                tooltip_label.place(x=tip_x, y=tip_y)
             else:
                 on_canvas_leave(event)
 
@@ -1079,6 +1067,9 @@ class SeasonTrackerGUI:
 
         canvas.bind("<Motion>", on_canvas_motion)
         canvas.bind("<Leave>", on_canvas_leave)
+        week_selector.bind("<<ComboboxSelected>>", lambda event: (redraw_heatmap(week_selector_var.get()), win.focus_set()))
+
+        redraw_heatmap("All Weeks")
 
     # ------------------------------------------------------------------
     # Persistence helpers
