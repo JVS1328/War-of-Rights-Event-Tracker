@@ -656,23 +656,23 @@ class SeasonTrackerGUI:
         
         return interactions
 
-    def calculate_points(self, max_week_index: int | None = None) -> defaultdict[str, int]:
+    def calculate_points(self, max_week_index: int | None = None) -> defaultdict[str, dict]:
         """
-        Calculates points for units based on the user-configured point system.
+        Calculates points and win/loss stats for units based on the user-configured point system.
         If max_week_index is provided, calculates points up to and including that week index.
         Otherwise, calculates for the entire season.
+        Returns a dict where keys are unit names and values are dicts with stats.
         """
-        points = defaultdict(int)
+        stats = defaultdict(lambda: {"points": 0, "lw": 0, "ll": 0, "aw": 0, "al": 0})
 
         def get_point_value(key: str, default_val: int = 0) -> int:
             try:
-                # Ensure the key exists in the dictionary before trying to get() from StringVar
                 if key in self.point_system_values:
                     val_str = self.point_system_values[key].get()
                     return int(val_str) if val_str and val_str.strip() else default_val
-                return default_val # Key not found, return default
-            except ValueError: # Handles non-integer strings
-                return default_val # Fallback if not an int
+                return default_val
+            except ValueError:
+                return default_val
 
         pts_win_lead = get_point_value("win_lead", 4)
         pts_win_assist = get_point_value("win_assist", 2)
@@ -686,78 +686,60 @@ class SeasonTrackerGUI:
             weeks_to_process = self.season[:max_week_index + 1]
 
         for week_data in weeks_to_process:
-            # Skip points calculation for playoff weeks
-            if week_data.get("playoffs", False):
-                continue
-
+            is_playoffs = week_data.get("playoffs", False)
             team_A_units = week_data.get("A", set())
             team_B_units = week_data.get("B", set())
-            lead_A = week_data.get("lead_A")
-            lead_B = week_data.get("lead_B")
             r1_winner = week_data.get("round1_winner")
             r2_winner = week_data.get("round2_winner")
 
-            # --- Round 1 ---
-            if r1_winner == "A":
-                if lead_A and lead_A in team_A_units:
-                    points[lead_A] += pts_win_lead
-                for unit in team_A_units:
-                    if unit != lead_A:
-                        points[unit] += pts_win_assist
-                for unit in team_B_units: # Losing team B
-                    if unit == lead_B and lead_B in team_B_units:
-                        points[unit] += pts_loss_lead
-                    elif unit != lead_B:
-                        points[unit] += pts_loss_assist
-            elif r1_winner == "B":
-                if lead_B and lead_B in team_B_units:
-                    points[lead_B] += pts_win_lead
-                for unit in team_B_units:
-                    if unit != lead_B:
-                        points[unit] += pts_win_assist
-                for unit in team_A_units: # Losing team A
-                    if unit == lead_A and lead_A in team_A_units:
-                        points[unit] += pts_loss_lead
-                    elif unit != lead_A:
-                        points[unit] += pts_loss_assist
-            
-            # --- Round 2 ---
-            if r2_winner == "A":
-                if lead_A and lead_A in team_A_units:
-                    points[lead_A] += pts_win_lead
-                for unit in team_A_units:
-                    if unit != lead_A:
-                        points[unit] += pts_win_assist
-                for unit in team_B_units: # Losing team B
-                     if unit == lead_B and lead_B in team_B_units:
-                        points[unit] += pts_loss_lead
-                     elif unit != lead_B:
-                        points[unit] += pts_loss_assist
-            elif r2_winner == "B":
-                if lead_B and lead_B in team_B_units:
-                    points[lead_B] += pts_win_lead
-                for unit in team_B_units:
-                    if unit != lead_B:
-                        points[unit] += pts_win_assist
-                for unit in team_A_units: # Losing team A
-                    if unit == lead_A and lead_A in team_A_units:
-                        points[unit] += pts_loss_lead
-                    elif unit != lead_A:
-                        points[unit] += pts_loss_assist
+            # Determine leads for each round
+            leads = {
+                1: {"A": week_data.get("lead_A_r1") if is_playoffs else week_data.get("lead_A"),
+                    "B": week_data.get("lead_B_r1") if is_playoffs else week_data.get("lead_B")},
+                2: {"A": week_data.get("lead_A_r2") if is_playoffs else week_data.get("lead_A"),
+                    "B": week_data.get("lead_B_r2") if is_playoffs else week_data.get("lead_B")}
+            }
 
-            # --- Bonus for 2-0 week ---
-            if r1_winner and r1_winner == r2_winner: # If a team won both rounds
+            for round_num, winner in [(1, r1_winner), (2, r2_winner)]:
+                if not winner:
+                    continue
+
+                lead_A = leads[round_num]["A"]
+                lead_B = leads[round_num]["B"]
+                
+                winning_team_units, losing_team_units = (team_A_units, team_B_units) if winner == "A" else (team_B_units, team_A_units)
+                winning_lead, losing_lead = (lead_A, lead_B) if winner == "A" else (lead_B, lead_A)
+
+                # Handle winning team
+                if winning_lead and winning_lead in winning_team_units:
+                    if not is_playoffs: stats[winning_lead]["points"] += pts_win_lead
+                    stats[winning_lead]["lw"] += 1
+                for unit in winning_team_units:
+                    if unit != winning_lead:
+                        if not is_playoffs: stats[unit]["points"] += pts_win_assist
+                        stats[unit]["aw"] += 1
+                
+                # Handle losing team
+                if losing_lead and losing_lead in losing_team_units:
+                    if not is_playoffs: stats[losing_lead]["points"] += pts_loss_lead
+                    stats[losing_lead]["ll"] += 1
+                for unit in losing_team_units:
+                    if unit != losing_lead:
+                        if not is_playoffs: stats[unit]["points"] += pts_loss_assist
+                        stats[unit]["al"] += 1
+
+            # --- Bonus for 2-0 week (only for non-playoff weeks) ---
+            if not is_playoffs and r1_winner and r1_winner == r2_winner:
                 winning_team_units = team_A_units if r1_winner == "A" else team_B_units
-                winning_team_lead = lead_A if r1_winner == "A" else lead_B
+                winning_team_lead = leads[1]["A"] if r1_winner == "A" else leads[1]["B"] # Use R1 lead for consistency
                 
                 for unit in winning_team_units:
-                    # Ensure winning_team_lead is actually part of the winning_team_units before comparing
                     if unit == winning_team_lead and winning_team_lead in winning_team_units:
-                        points[unit] += pts_bonus_2_0_lead
+                        stats[unit]["points"] += pts_bonus_2_0_lead
                     elif unit != winning_team_lead:
-                        points[unit] += pts_bonus_2_0_assist
+                        stats[unit]["points"] += pts_bonus_2_0_assist
         
-        return points
+        return stats
 
     def show_points_table(self):
         if not self.season:
@@ -767,27 +749,19 @@ class SeasonTrackerGUI:
             messagebox.showinfo("Points Table", "No units defined.")
             return
 
-        # Check if a week is selected, default to latest week if none selected
         sel = self.week_list.curselection()
-        if sel:
-            selected_week_idx = sel[0]
-        else:
-            # Default to the latest week if no week is selected
-            selected_week_idx = len(self.season) - 1
-        
+        selected_week_idx = sel[0] if sel else len(self.season) - 1
         week_number = selected_week_idx + 1
 
         win = tk.Toplevel(self.master)
         win.title(f"Week {week_number} Points")
-        win.geometry("500x400") # Adjusted size
-        win.minsize(500, 400) # Lock minimum size
+        win.geometry("800x500")
+        win.minsize(600, 400)
 
-        cols = ["unit", "pts", "rank", "delta"]
+        cols = ["unit", "pts", "rank", "delta", "lw", "ll", "aw", "al"]
         col_names = {
-            "unit": "Unit",
-            "pts": "Points",
-            "rank": "Rank",
-            "delta": "Rank Δ"
+            "unit": "Unit", "pts": "Points", "rank": "Rank", "delta": "Rank Δ",
+            "lw": "L-Wins", "ll": "L-Loss", "aw": "A-Wins", "al": "A-Loss"
         }
 
         tree_frame = ttk.Frame(win)
@@ -796,74 +770,69 @@ class SeasonTrackerGUI:
         tree = ttk.Treeview(tree_frame, columns=cols, show="headings")
         
         for col_id in cols:
-            tree.heading(col_id, text=col_names[col_id])
-            tree.column(col_id, width=100, anchor=tk.CENTER) # Default width
+            tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
+            tree.column(col_id, width=80, anchor=tk.CENTER)
         tree.column("unit", width=150, anchor=tk.W)
-        tree.column("delta", width=80)
+        tree.column("delta", width=60)
+        tree.column("pts", width=60)
+        tree.column("rank", width=60)
 
 
         # --- Data Preparation ---
         current_week_idx = selected_week_idx
         if current_week_idx < 0:
-             tk.Label(win, text="No season data to display.").pack(padx=20, pady=20)
-             return # Nothing to show
+            tk.Label(win, text="No season data to display.").pack(padx=20, pady=20)
+            return
 
-        # Calculate points for the current week
-        current_week_points_data = self.calculate_points(max_week_index=current_week_idx)
-        current_week_scores = {
-            unit: current_week_points_data.get(unit, 0) for unit in self.units
-        }
+        current_stats_data = self.calculate_points(max_week_index=current_week_idx)
+        
+        # Ensure all units have an entry
+        for unit in self.units:
+            if unit not in current_stats_data:
+                current_stats_data[unit] # This will trigger the defaultdict factory
+
         sorted_current_week_units = sorted(
-            current_week_scores.items(),
-            key=lambda item: (-item[1], item[0]) # Sort by points (desc), then name (asc)
+            current_stats_data.items(),
+            key=lambda item: (-item[1]["points"], item[0])
         )
         
         current_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_current_week_units, 1)}
 
-        # Calculate points for the previous week (if it exists)
         previous_week_ranks = {}
         if current_week_idx > 0:
-            prev_week_idx = current_week_idx - 1
-            prev_week_points_data = self.calculate_points(max_week_index=prev_week_idx)
-            prev_week_scores = {
-                unit: prev_week_points_data.get(unit, 0) for unit in self.units
-            }
+            prev_stats_data = self.calculate_points(max_week_index=current_week_idx - 1)
             sorted_prev_week_units = sorted(
-                prev_week_scores.items(),
-                key=lambda item: (-item[1], item[0])
+                prev_stats_data.items(),
+                key=lambda item: (-item[1]["points"], item[0])
             )
             previous_week_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_prev_week_units, 1)}
 
         # --- Populate Treeview ---
-        # Units are already sorted by current week's rank via sorted_current_week_units
-        for unit_name, pts in sorted_current_week_units:
+        for unit_name, stats in sorted_current_week_units:
             if unit_name in self.non_token_units:
                 continue
+            
             rank = current_ranks.get(unit_name, "-")
+            pts = stats["points"]
+            lw = stats["lw"]
+            ll = stats["ll"]
+            aw = stats["aw"]
+            al = stats["al"]
             
             delta_display = "-"
             prev_rank = previous_week_ranks.get(unit_name)
             if prev_rank is not None and rank != "-":
-                change = prev_rank - rank # Positive for improvement
-                if change > 0:
-                    delta_display = f"↑{change}"
-                elif change < 0:
-                    delta_display = f"↓{abs(change)}"
-                else:
-                    delta_display = "↔0"
+                change = prev_rank - rank
+                if change > 0: delta_display = f"↑{change}"
+                elif change < 0: delta_display = f"↓{abs(change)}"
+                else: delta_display = "↔0"
             
-            row_values = (unit_name, pts, rank, delta_display)
-            tree.insert("", tk.END, values=row_values)
+            tree.insert("", tk.END, values=(unit_name, pts, rank, delta_display, lw, ll, aw, al))
 
         # Scrollbars
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         tree.configure(yscrollcommand=vsb.set)
-
-        # No horizontal scrollbar needed for fewer columns, typically.
-        # hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-        # hsb.pack(side=tk.BOTTOM, fill=tk.X)
-        # tree.configure(xscrollcommand=hsb.set)
 
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -1044,6 +1013,32 @@ class SeasonTrackerGUI:
         # --- Initial Setup and Bindings ---
         week_selector.bind("<<ComboboxSelected>>", lambda event: redraw_table(week_selector_var.get()))
         redraw_table(week_selector_var.get()) # Initial draw
+    def sort_column(self, tree, col, reverse):
+        """Generic treeview column sorting function."""
+        try:
+            # Get data from tree, converting to numeric type if possible
+            data = []
+            for child in tree.get_children(''):
+                val = tree.item(child, 'values')[tree['columns'].index(col)]
+                try:
+                    # Attempt to convert to float for robust numeric sorting
+                    num_val = float(val)
+                    data.append((num_val, child))
+                except (ValueError, TypeError):
+                    # Keep as string if conversion fails
+                    data.append((val, child))
+
+            # Sort data
+            data.sort(key=lambda t: t[0], reverse=reverse)
+
+            # Rearrange items in tree
+            for index, (val, child) in enumerate(data):
+                tree.move(child, '', index)
+
+            # Toggle sort direction for next click
+            tree.heading(col, command=lambda: self.sort_column(tree, col, not reverse))
+        except Exception as e:
+            print(f"Error sorting column {col}: {e}")
 
 
     def show_stats(self):
