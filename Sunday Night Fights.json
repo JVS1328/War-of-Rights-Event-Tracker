@@ -19,6 +19,7 @@
   ],
   "season": [
     {
+      "name": "Week 1",
       "A": [
         "10th US",
         "CQB",
@@ -47,6 +48,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 2",
       "A": [
         "10th US",
         "15th AL",
@@ -74,6 +76,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 3",
       "A": [
         "15th AL",
         "CQB",
@@ -101,6 +104,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 4",
       "A": [
         "10th US",
         "IVB",
@@ -125,6 +129,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 5",
       "A": [
         "10th US",
         "II Corps",
@@ -152,6 +157,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 6",
       "A": [
         "15th AL",
         "II Corps",
@@ -178,6 +184,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 7",
       "A": [
         "I Corps",
         "II Corps",
@@ -204,6 +211,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 8",
       "A": [
         "15th AL",
         "IVB",
@@ -230,6 +238,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 9",
       "A": [
         "15th AL",
         "IVB",
@@ -255,6 +264,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "Week 10",
       "A": [
         "II Corps",
         "IVB",
@@ -281,6 +291,7 @@
       "r2_casualties_B": 0
     },
     {
+      "name": "06/08/25",
       "A": [
         "I Corps",
         "IVB",

@@ -149,9 +149,10 @@ class SeasonTrackerGUI:
         left.pack(side=tk.LEFT, fill=tk.Y)
 
         tk.Label(left, text="Weeks").pack()
-        self.week_list = tk.Listbox(left, width=12, height=25, exportselection=False)
+        self.week_list = tk.Listbox(left, width=15, height=25, exportselection=False)
         self.week_list.pack(fill=tk.Y, expand=True)
         self.week_list.bind("<<ListboxSelect>>", self.on_week_select)
+        self.week_list.bind("<Double-Button-1>", self.start_rename_week)
 
         btns = tk.Frame(left, pady=4)
         btns.pack(fill=tk.X)
@@ -302,6 +303,7 @@ class SeasonTrackerGUI:
     # Week management
     def add_week(self):
         new_week_data = {
+            "name": f"Week {len(self.season) + 1}",
             "A": set(),
             "B": set(),
             "round1_winner": None,
@@ -332,8 +334,50 @@ class SeasonTrackerGUI:
 
     def refresh_week_list(self):
         self.week_list.delete(0, tk.END)
-        for i in range(len(self.season)):
-            self.week_list.insert(tk.END, f"Week {i + 1}")
+        for i, week in enumerate(self.season):
+            # For backward compatibility with old save files
+            week_name = week.get("name", f"Week {i + 1}")
+            self.week_list.insert(tk.END, week_name)
+
+    def start_rename_week(self, event):
+        """Handles the double-click event on the week listbox to start renaming."""
+        sel_idx_tuple = self.week_list.curselection()
+        if not sel_idx_tuple:
+            return
+        sel_idx = sel_idx_tuple[0]
+
+        # Get the bounding box of the item
+        bbox = self.week_list.bbox(sel_idx)
+        if not bbox:  # Item not visible
+            return
+        x, y, width, height = bbox
+
+        # Create an Entry widget over the item
+        entry = tk.Entry(self.week_list, bd=0, highlightthickness=1, font=self.week_list.cget("font"))
+        entry.place(x=x, y=y, width=width, height=height)
+
+        # Set initial text and select it
+        original_name = self.week_list.get(sel_idx)
+        entry.insert(0, original_name)
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+
+        def on_commit(e=None):
+            new_name = entry.get().strip()
+            entry.destroy()  # Clean up the entry widget
+            if new_name and new_name != original_name:
+                # Update data source
+                self.season[sel_idx]['name'] = new_name
+                # Refresh listbox and preserve selection
+                self.refresh_week_list()
+                self.week_list.selection_set(sel_idx)
+
+        def on_cancel(e=None):
+            entry.destroy()
+
+        entry.bind("<Return>", on_commit)
+        entry.bind("<FocusOut>", on_commit)
+        entry.bind("<Escape>", on_cancel)
 
     def on_week_select(self, _=None):
         sel = self.week_list.curselection()
@@ -1471,6 +1515,7 @@ class SeasonTrackerGUI:
             "non_token_units": sorted(list(self.non_token_units)),
             "season": [
                 {
+                    "name": wk.get("name", f"Week {i+1}"),
                     "A": sorted(list(wk.get("A", set()))),
                     "B": sorted(list(wk.get("B", set()))),
                     "round1_winner": wk.get("round1_winner"),
@@ -1486,7 +1531,7 @@ class SeasonTrackerGUI:
                     "r1_casualties_B": wk.get("r1_casualties_B", 0),
                     "r2_casualties_A": wk.get("r2_casualties_A", 0),
                     "r2_casualties_B": wk.get("r2_casualties_B", 0),
-                } for wk in self.season
+                } for i, wk in enumerate(self.season)
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
             "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
@@ -1501,8 +1546,9 @@ class SeasonTrackerGUI:
             self.non_token_units = set(data.get("non_token_units", []))
             loaded_season = data.get("season", [])
             self.season = []
-            for wk_data in loaded_season:
+            for i, wk_data in enumerate(loaded_season):
                 self.season.append({
+                    "name": wk_data.get("name", f"Week {i + 1}"),
                     "A": set(wk_data.get("A", [])),
                     "B": set(wk_data.get("B", [])),
                     "round1_winner": wk_data.get("round1_winner"),

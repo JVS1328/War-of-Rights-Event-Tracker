@@ -24,6 +24,7 @@
   ],
   "season": [
     {
+      "name": "W1 - 06/11/25",
       "A": [
         "10th US",
         "12th VA",
@@ -56,6 +57,24 @@
       "r1_casualties_B": 991,
       "r2_casualties_A": 1381,
       "r2_casualties_B": 1275
+    },
+    {
+      "name": "W2 - 06/18/25",
+      "A": [],
+      "B": [],
+      "round1_winner": null,
+      "round2_winner": null,
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     }
   ],
   "team_names": {
