@@ -1,10 +1,10 @@
 # War of Rights - Event Tracker
 
-This project provides a Python-based GUI application, `SSL Tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League.
+This project provides a Python-based GUI application, `tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League.
 
 ## Description
 
-The `SSL Tracker.py` application allows users to:
+The `tracker.py` application allows users to:
 
 *   **Manage Seasons:** Create new seasons, load existing ones, and save progress. Data is stored in JSON format (defaulting to `season_data.json`).
 *   **Track Weekly Matches:**
@@ -52,9 +52,9 @@ The `SSL Tracker.py` application allows users to:
     ```
 2.  Run the script:
     ```bash
-    python "SSL Tracker.py"
+    python "tracker.py"
     ```
-    (If your Python executable is named `python3`, use `python3 "SSL Tracker.py"`)
+    (If your Python executable is named `python3`, use `python3 "tracker.py"`)
 
 The application window will open, and it will automatically attempt to load `season_data.json` if it exists in the same directory.
 
@@ -104,6 +104,6 @@ After finding the best possible solution, the algorithm checks if it satisfies t
 ## File Structure
 
 *   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
-*   `SSL Tracker.py`: The main Python application script.
+*   `tracker.py`: The main Python application script.
 *   `season_data.json` (optional, created by the script): Stores the season tracking data.
 *   `README.md`: This file.
