@@ -1,4 +1,4 @@
-# Smoke & Steel League - Season Tracker
+# War of Rights - Event Tracker
 
 This project provides a Python-based GUI application, `SSL Tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League.
 
