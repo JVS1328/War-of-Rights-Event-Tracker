@@ -1,0 +1,404 @@
+{
+  "units": [
+    "10th TN",
+    "10th US",
+    "15th AL",
+    "CQB",
+    "I Corps",
+    "II Corps",
+    "III Corps",
+    "IVB",
+    "JD",
+    "PA",
+    "Sussy Brigade"
+  ],
+  "non_token_units": [
+    "7th KS",
+    "SR",
+    "TKO"
+  ],
+  "season": [
+    {
+      "A": [
+        "10th US",
+        "CQB",
+        "I Corps",
+        "IVB",
+        "PA"
+      ],
+      "B": [
+        "15th AL",
+        "II Corps",
+        "JD",
+        "Sussy Brigade"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "10th US",
+        "15th AL",
+        "IVB",
+        "JD",
+        "PA"
+      ],
+      "B": [
+        "I Corps",
+        "II Corps",
+        "Sussy Brigade"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "15th AL",
+        "CQB",
+        "IVB",
+        "PA",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "I Corps",
+        "II Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "10th US",
+        "IVB",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "15th AL",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "10th US",
+        "II Corps",
+        "PA",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "CQB",
+        "I Corps",
+        "IVB",
+        "JD"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "15th AL",
+        "II Corps",
+        "IVB",
+        "PA"
+      ],
+      "B": [
+        "I Corps",
+        "JD",
+        "Sussy Brigade"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "I Corps",
+        "II Corps",
+        "IVB",
+        "PA"
+      ],
+      "B": [
+        "15th AL",
+        "JD",
+        "Sussy Brigade"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "15th AL",
+        "IVB",
+        "PA",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "I Corps",
+        "II Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "15th AL",
+        "IVB",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "I Corps",
+        "II Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "II Corps",
+        "IVB",
+        "PA",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "15th AL",
+        "I Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    },
+    {
+      "A": [
+        "I Corps",
+        "IVB",
+        "PA",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "10th TN",
+        "II Corps",
+        "III Corps"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
+    }
+  ],
+  "team_names": {
+    "A": "Team USA",
+    "B": "Team CSA"
+  },
+  "point_system_values": {
+    "win_lead": "0",
+    "win_assist": "0",
+    "loss_lead": "0",
+    "loss_assist": "0",
+    "bonus_2_0_lead": "0",
+    "bonus_2_0_assist": "0"
+  },
+  "unit_player_counts": {
+    "10th US": {
+      "min": "10",
+      "max": "15"
+    },
+    "12th VA": {
+      "min": "30",
+      "max": "35"
+    },
+    "59th NY": {
+      "min": "15",
+      "max": "20"
+    },
+    "7th KS": {
+      "min": "0",
+      "max": "0"
+    },
+    "7th TX": {
+      "min": "23",
+      "max": "28"
+    },
+    "AVC": {
+      "min": "16",
+      "max": "18"
+    },
+    "CB": {
+      "min": "35",
+      "max": "38"
+    },
+    "CQB": {
+      "min": "10",
+      "max": "15"
+    },
+    "FSB": {
+      "min": "15",
+      "max": "20"
+    },
+    "II Corps": {
+      "min": "25",
+      "max": "30"
+    },
+    "JD": {
+      "min": "30",
+      "max": "35"
+    },
+    "MSG": {
+      "min": "15",
+      "max": "20"
+    },
+    "SR": {
+      "min": "2",
+      "max": "2"
+    },
+    "TB": {
+      "min": "0",
+      "max": "0"
+    },
+    "TKO": {
+      "min": "17",
+      "max": "22"
+    },
+    "15th AL": {
+      "min": "15",
+      "max": "20"
+    },
+    "I Corps": {
+      "min": "45",
+      "max": "50"
+    },
+    "IVB": {
+      "min": "24",
+      "max": "28"
+    },
+    "PA": {
+      "min": "6",
+      "max": "10"
+    },
+    "Sussy Brigade": {
+      "min": "25",
+      "max": "30"
+    }
+  }
+}
