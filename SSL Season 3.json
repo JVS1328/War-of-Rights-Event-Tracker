@@ -1,0 +1,147 @@
+{
+  "units": [
+    "10th TN",
+    "10th US",
+    "12th VA",
+    "44th AL",
+    "51st AL",
+    "59th NY",
+    "7th TX",
+    "AVC",
+    "CB",
+    "CQB",
+    "FSB",
+    "II Corps",
+    "JD",
+    "MSG",
+    "SR",
+    "TKO"
+  ],
+  "non_token_units": [
+    "44th AL",
+    "7th KS",
+    "SR"
+  ],
+  "season": [
+    {
+      "A": [
+        "10th US",
+        "12th VA",
+        "59th NY",
+        "CB",
+        "FSB",
+        "SR",
+        "TKO"
+      ],
+      "B": [
+        "10th TN",
+        "51st AL",
+        "7th TX",
+        "AVC",
+        "CQB",
+        "II Corps",
+        "JD",
+        "MSG"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "59th NY",
+      "lead_B": "10th TN",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1317,
+      "r1_casualties_B": 991,
+      "r2_casualties_A": 1381,
+      "r2_casualties_B": 1275
+    }
+  ],
+  "team_names": {
+    "A": "Team A",
+    "B": "Team B"
+  },
+  "point_system_values": {
+    "win_lead": "4",
+    "win_assist": "2",
+    "loss_lead": "0",
+    "loss_assist": "1",
+    "bonus_2_0_lead": "0",
+    "bonus_2_0_assist": "1"
+  },
+  "unit_player_counts": {
+    "10th US": {
+      "min": "23",
+      "max": "27"
+    },
+    "12th VA": {
+      "min": "23",
+      "max": "29"
+    },
+    "59th NY": {
+      "min": "15",
+      "max": "20"
+    },
+    "7th KS": {
+      "min": "0",
+      "max": "100"
+    },
+    "7th TX": {
+      "min": "23",
+      "max": "28"
+    },
+    "AVC": {
+      "min": "10",
+      "max": "15"
+    },
+    "CB": {
+      "min": "45",
+      "max": "50"
+    },
+    "CQB": {
+      "min": "13",
+      "max": "17"
+    },
+    "FSB": {
+      "min": "20",
+      "max": "23"
+    },
+    "II Corps": {
+      "min": "35",
+      "max": "40"
+    },
+    "JD": {
+      "min": "30",
+      "max": "35"
+    },
+    "MSG": {
+      "min": "8",
+      "max": "12"
+    },
+    "SR": {
+      "min": "2",
+      "max": "2"
+    },
+    "TB": {
+      "min": "0",
+      "max": "100"
+    },
+    "TKO": {
+      "min": "15",
+      "max": "20"
+    },
+    "10th TN": {
+      "min": "15",
+      "max": "18"
+    },
+    "51st AL": {
+      "min": "7",
+      "max": "10"
+    },
+    "44th AL": {
+      "min": "0",
+      "max": "100"
+    }
+  }
+}
