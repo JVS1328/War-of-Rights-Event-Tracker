@@ -5,6 +5,8 @@ from tkinter import messagebox, filedialog, font as tkFont
 from collections import Counter, defaultdict
 from pathlib import Path
 import csv
+import itertools
+import ast
 
 
 # Helper class for Tooltips
@@ -72,9 +74,9 @@ class SeasonTrackerGUI:
     def __init__(self, master: tk.Tk):
         self.master = master
         master.title("Season Tracker")
-        master.geometry("900x615") # Increased height
+        master.geometry("900x640") # Increased height
         master.resizable(True, True)
-        master.minsize(900, 615) # Lock minimum size
+        master.minsize(900, 640) # Lock minimum size
 
         # -------------------- DATA --------------------
         self.units: set[str] = set()
@@ -203,6 +205,8 @@ class SeasonTrackerGUI:
         tk.Button(tctl, text="Casualties", command=self.show_casualties_table).pack(fill=tk.X, pady=(2,0))
         tk.Button(tctl, text="Team Heatmap", command=self.show_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Opponent Heatmap", command=self.show_opponent_heatmap_stats).pack(fill=tk.X, pady=(2, 0))
+        self.balancer_button = tk.Button(tctl, text="Balancer", command=self.open_balancer_window, state=tk.DISABLED)
+        self.balancer_button.pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Point System", command=self.open_point_system_dialog).pack(fill=tk.X, pady=(2, 0)) # New Button
 
         # --- Round Winner and Lead Selection UI ---
@@ -334,6 +338,7 @@ class SeasonTrackerGUI:
         sel = self.week_list.curselection()
         if sel:
             self.current_week = self.season[sel[0]]
+            self.balancer_button.config(state=tk.NORMAL)
             self.round1_winner_var.set(self.current_week.get("round1_winner") or "None")
             self.round2_winner_var.set(self.current_week.get("round2_winner") or "None")
             self.lead_A_var.set(self.current_week.get("lead_A") or "")
@@ -349,6 +354,7 @@ class SeasonTrackerGUI:
             self.lead_B_r2_var.set(self.current_week.get("lead_B_r2") or "")
         else:
             self.current_week = None
+            self.balancer_button.config(state=tk.DISABLED)
             self.round1_winner_var.set("None")
             self.round2_winner_var.set("None")
             self.lead_A_var.set("")
@@ -1682,6 +1688,360 @@ class SeasonTrackerGUI:
         
         dialog.geometry(f"{dialog_width}x{dialog_height}+{master_x + x_offset}+{master_y + y_offset}")
         dialog.focus_set() # Ensure dialog gets focus
+    def open_balancer_window(self):
+        if not self.current_week:
+            messagebox.showwarning("No Week Selected", "Please select a week before opening the balancer.")
+            return
+
+        balancer_window = tk.Toplevel(self.master)
+        balancer_window.title("Team Balancer")
+        balancer_window.geometry("900x700")
+        balancer_window.minsize(800, 600)
+        balancer_window.grab_set()
+        balancer_window.transient(self.master)
+
+        # --- Data ---
+        assigned_in_week = self.current_week["A"].union(self.current_week["B"])
+        all_available_units = sorted(list(self.units - assigned_in_week))
+        
+        # These lists will be dynamically managed
+        available_pool = tk.StringVar(value=all_available_units)
+
+        # --- UI ---
+        main_frame = tk.Frame(balancer_window, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_columnconfigure(0, weight=2)
+        main_frame.grid_columnconfigure(1, weight=2)
+        main_frame.grid_rowconfigure(0, weight=1)
+
+        # --- LEFT: Available ---
+        left_frame = tk.Frame(main_frame)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        left_frame.grid_rowconfigure(1, weight=1) # Make listbox expand
+        left_frame.grid_columnconfigure(0, weight=1)
+
+        tk.Label(left_frame, text="Available Units Pool").grid(row=0, column=0, sticky="ew")
+        available_list = tk.Listbox(left_frame, listvariable=available_pool, selectmode=tk.EXTENDED)
+        available_list.grid(row=1, column=0, sticky="nsew")
+
+        # --- RIGHT: Constraints ---
+        right_frame = tk.Frame(main_frame)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        right_frame.grid_columnconfigure(0, weight=1)
+        right_frame.grid_rowconfigure(1, weight=1) # Make treeview expand
+        right_frame.grid_rowconfigure(3, weight=1) # Make treeview expand
+
+        # Max Player Difference
+        diff_frame = tk.Frame(right_frame)
+        diff_frame.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(diff_frame, text="Max Player Difference:").pack(side=tk.LEFT)
+        max_diff_spinbox = tk.Spinbox(diff_frame, from_=0, to=100, width=5)
+        max_diff_spinbox.pack(side=tk.LEFT, padx=5)
+        max_diff_spinbox.delete(0, "end")
+        max_diff_spinbox.insert(0, "1")
+
+        # Unit Counts
+        unit_counts_frame = tk.LabelFrame(right_frame, text="Unit Player Counts (Double-click to edit)", padx=5, pady=5)
+        unit_counts_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        unit_counts_tree = ttk.Treeview(unit_counts_frame, columns=("Unit", "Min", "Max"), show="headings")
+        unit_counts_tree.heading("Unit", text="Unit")
+        unit_counts_tree.heading("Min", text="Min Players")
+        unit_counts_tree.heading("Max", text="Max Players")
+        unit_counts_tree.column("Unit", width=120, stretch=tk.YES)
+        unit_counts_tree.column("Min", width=60, anchor="center")
+        unit_counts_tree.column("Max", width=60, anchor="center")
+        unit_counts_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Populate unit counts
+        all_units_for_counts = sorted(list(self.units))
+        for unit in all_units_for_counts:
+            unit_counts_tree.insert("", "end", values=(unit, "0", "100"))
+
+        # Opposing Units
+        opposing_units_frame = tk.LabelFrame(right_frame, text="Opposing Units", padx=5, pady=5)
+        opposing_units_frame.pack(fill=tk.BOTH, expand=True)
+        opposing_units_tree = ttk.Treeview(opposing_units_frame, columns=("UnitA", "UnitB"), show="headings", height=4)
+        opposing_units_tree.heading("UnitA", text="Team A")
+        opposing_units_tree.heading("UnitB", text="Team B")
+        opposing_units_tree.column("UnitA", stretch=tk.YES)
+        opposing_units_tree.column("UnitB", stretch=tk.YES)
+        opposing_units_tree.pack(fill=tk.BOTH, expand=True)
+        
+        def add_opposing_pair():
+            # Simple dialog to add a pair
+            dlg = tk.Toplevel(balancer_window)
+            dlg.title("Add Opposing Pair")
+            dlg.transient(balancer_window)
+            dlg.grab_set()
+            
+            var1 = tk.StringVar()
+            var2 = tk.StringVar()
+            
+            tk.Label(dlg, text="Team A:").pack(padx=5, pady=2)
+            ttk.Combobox(dlg, textvariable=var1, values=all_units_for_counts).pack(padx=5, pady=2)
+            tk.Label(dlg, text="Team B:").pack(padx=5, pady=2)
+            ttk.Combobox(dlg, textvariable=var2, values=all_units_for_counts).pack(padx=5, pady=2)
+
+            def on_ok():
+                u1, u2 = var1.get(), var2.get()
+                if u1 and u2 and u1 != u2:
+                    opposing_units_tree.insert("", "end", values=(u1, u2))
+                    dlg.destroy()
+                else:
+                    messagebox.showwarning("Invalid Pair", "Please select two different units.", parent=dlg)
+
+            tk.Button(dlg, text="OK", command=on_ok).pack(pady=10)
+            dlg.geometry(f"+{balancer_window.winfo_rootx()+50}+{balancer_window.winfo_rooty()+50}")
+
+
+        def remove_opposing_pair():
+            selected_items = opposing_units_tree.selection()
+            for item in selected_items:
+                opposing_units_tree.delete(item)
+
+        opposing_buttons_frame = tk.Frame(opposing_units_frame)
+        opposing_buttons_frame.pack(fill=tk.X, pady=(5,0))
+        tk.Button(opposing_buttons_frame, text="Add Pair...", command=add_opposing_pair).pack(side=tk.LEFT)
+        tk.Button(opposing_buttons_frame, text="Remove Selected", command=remove_opposing_pair).pack(side=tk.LEFT, padx=5)
+
+        # --- BOTTOM: Action Buttons ---
+        bottom_frame = tk.Frame(balancer_window)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(10, 0))
+
+        status_label = tk.Label(bottom_frame, text="")
+        status_label.pack(side=tk.LEFT)
+
+        def collect_and_run_balancer():
+            """Helper to gather current constraints and run the main logic."""
+            constraints = {
+                "available": ast.literal_eval(available_pool.get()) if available_pool.get() else [],
+                "max_diff": max_diff_spinbox.get(),
+                "unit_counts": {unit_counts_tree.item(i, "values")[0]: {"min": unit_counts_tree.item(i, "values")[1], "max": unit_counts_tree.item(i, "values")[2]} for i in unit_counts_tree.get_children()},
+                "opposing": [opposing_units_tree.item(i, "values") for i in opposing_units_tree.get_children()]
+            }
+            self.run_balancer(balancer_window, status_label, constraints)
+
+        balance_button = tk.Button(bottom_frame, text="Balance!", command=collect_and_run_balancer)
+        balance_button.pack(side=tk.RIGHT, padx=(5,0))
+
+        close_button = tk.Button(bottom_frame, text="Close", command=balancer_window.destroy)
+        close_button.pack(side=tk.RIGHT)
+
+        # --- Treeview Editing Logic ---
+        def on_tree_double_click(event):
+            item_id = unit_counts_tree.identify_row(event.y)
+            column_id = unit_counts_tree.identify_column(event.x)
+            
+            if not item_id or column_id in ("#0", "#1"): # Not editable or Unit column
+                return
+
+            x, y, width, height = unit_counts_tree.bbox(item_id, column_id)
+            
+            value = unit_counts_tree.set(item_id, column_id)
+            entry_var = tk.StringVar(value=value)
+            
+            entry = ttk.Entry(unit_counts_tree, textvariable=entry_var)
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.focus_set()
+
+            def on_entry_commit(event=None):
+                new_value = entry_var.get()
+                # Basic validation
+                if new_value.isdigit():
+                    unit_counts_tree.set(item_id, column_id, new_value)
+                entry.destroy()
+
+            entry.bind("<FocusOut>", on_entry_commit)
+            entry.bind("<Return>", on_entry_commit)
+
+        unit_counts_tree.bind("<Double-1>", on_tree_double_click)
+
+
+    def run_balancer(self, window, status_label, constraints):
+        """Placeholder for the actual balancing logic."""
+        status_label.config(text="Balancing...")
+        window.update_idletasks()
+
+        # --- 1. GATHER & VALIDATE INPUTS ---
+        try:
+            available = set(constraints["available"])
+
+            max_diff = int(constraints["max_diff"])
+            
+            unit_counts = {}
+            for unit, counts in constraints["unit_counts"].items():
+                unit_counts[unit] = {"min": int(counts["min"]), "max": int(counts["max"])}
+
+            opposing_pairs = [tuple(p) for p in constraints["opposing"]]
+            for u1, u2 in opposing_pairs:
+                pass
+
+        except ValueError as e:
+            messagebox.showerror("Invalid Constraint", str(e), parent=window)
+            status_label.config(text="Error!")
+            return
+
+        # --- 2. FETCH HISTORY ---
+        teammate_history, _ = self.compute_stats() # Full season history
+
+        # --- 3. RUN ALGORITHM ---
+        result = self._balance_teams(
+            available=list(available),
+            unit_counts=unit_counts,
+            opposing_pairs=opposing_pairs,
+            max_player_diff=max_diff,
+            teammate_history=teammate_history
+        )
+        
+        # --- 4. DISPLAY RESULTS ---
+        if result:
+            team_A, team_B, score, min_A, max_A, min_B, max_B = result
+            status_label.config(text=f"Best solution found! Avg. Diff: {score:.1f}")
+            self._display_balance_results(window, team_A, team_B, score, min_A, max_A, min_B, max_B)
+        else:
+            # The _balance_teams function will show its own, more specific message box.
+            status_label.config(text="Failed to find a valid balance.")
+
+    def _balance_teams(self, available, unit_counts, opposing_pairs, max_player_diff, teammate_history):
+        """
+        Finds the most balanced team composition by partitioning units,
+        respecting min/max player counts, max total player difference,
+        and opposing unit constraints.
+        """
+        try:
+            unit_data = {
+                unit: {"min": int(counts["min"]), "max": int(counts["max"])}
+                for unit, counts in unit_counts.items()
+            }
+        except (ValueError, TypeError):
+            messagebox.showerror("Invalid Constraint", "Min/Max values for all units must be valid integers.")
+            return None
+
+        # Filter out units with 0 min and 0 max, as they are not participating.
+        present_units = {
+            unit for unit, data in unit_data.items()
+            if not (data["min"] == 0 and data["max"] == 0)
+        }
+        
+        players = sorted(list(set(available) & present_units))
+        n_players = len(players)
+
+        opposing_map = defaultdict(set)
+        for p1, p2 in opposing_pairs:
+            opposing_map[p1].add(p2)
+            opposing_map[p2].add(p1)
+
+        best_solution = {"score": (float('inf'), float('inf'), float('inf')), "teams": None, "stats": None}
+
+        # --- Handle forced teams from opposing pairs ---
+        forced_A = {p[0] for p in opposing_pairs if p[0]}
+        forced_B = {p[1] for p in opposing_pairs if p[1]}
+
+        # Check for contradictions
+        conflict = forced_A.intersection(forced_B)
+        if conflict:
+            messagebox.showerror("Constraint Error", f"Units cannot be in both opposing teams: {', '.join(conflict)}")
+            return None
+
+        # Players to be assigned are those available, present, and not already forced into a team.
+        players_to_assign = sorted(list((set(available) & present_units) - forced_A - forced_B))
+        n_to_assign = len(players_to_assign)
+
+        # --- Iterative Solver using itertools ---
+        # Iterate through all possible sizes for the first team's additional members.
+        for size_A_additional in range(n_to_assign + 1):
+            for team_A_additional_tuple in itertools.combinations(players_to_assign, size_A_additional):
+                
+                team_A = forced_A.union(set(team_A_additional_tuple))
+                team_B = forced_B.union(set(players_to_assign) - set(team_A_additional_tuple))
+
+                # Evaluate this partition
+                min_A = sum(unit_data.get(p, {}).get('min', 0) for p in team_A)
+                max_A = sum(unit_data.get(p, {}).get('max', 0) for p in team_A)
+                min_B = sum(unit_data.get(p, {}).get('min', 0) for p in team_B)
+                max_B = sum(unit_data.get(p, {}).get('max', 0) for p in team_B)
+
+                gap = 0
+                if max_A < min_B:
+                    gap = min_B - max_A
+                elif max_B < min_A:
+                    gap = min_A - max_B
+                
+                min_diff = abs(min_A - min_B)
+                avg_A = (min_A + max_A) / 2 if team_A else 0
+                avg_B = (min_B + max_B) / 2 if team_B else 0
+                avg_diff = abs(avg_A - avg_B)
+
+                current_score = (gap, min_diff, avg_diff)
+
+                if current_score < best_solution["score"]:
+                    best_solution["score"] = current_score
+                    best_solution["teams"] = (list(team_A), list(team_B))
+                    best_solution["stats"] = (min_A, max_A, min_B, max_B)
+
+        # --- Main Execution ---
+        if best_solution["teams"]:
+            gap, min_diff, avg_diff = best_solution["score"]
+            if gap <= max_player_diff and min_diff <= max_player_diff:
+                team_A, team_B = best_solution["teams"]
+                min_A, max_A, min_B, max_B = best_solution["stats"]
+                return team_A, team_B, avg_diff, min_A, max_A, min_B, max_B
+            else:
+                msg = f"Could not find a balance within the max player difference of {max_player_diff}.\n"
+                if gap > max_player_diff:
+                    msg += f"The best possible balance has a range gap of {gap:.0f} players.\n"
+                if min_diff > max_player_diff:
+                    msg += f"The best possible balance has a minimums difference of {min_diff:.0f} players.\n"
+                messagebox.showinfo("Balancing Failed", msg.strip())
+                return None
+        else:
+            messagebox.showwarning("Balancing Failed", "No valid team composition could be found with the given constraints.")
+            return None
+
+    def _display_balance_results(self, parent_window, team_A, team_B, score, min_A, max_A, min_B, max_B):
+        results_window = tk.Toplevel(parent_window)
+        results_window.title("Balancer Results")
+        results_window.geometry("600x400")
+        results_window.transient(parent_window)
+        results_window.grab_set()
+
+        main_frame = tk.Frame(results_window, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
+
+        tk.Label(main_frame, text=f"Best Balance Found! Average Player Difference: {score:.1f}", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, pady=(0,10))
+
+        # Team A Display
+        frame_a = tk.LabelFrame(main_frame, text=f"Team A ({len(team_A)} units) | Players: {min_A}-{max_A}")
+        frame_a.grid(row=1, column=0, sticky="nsew", padx=(0,5))
+        list_a = tk.Listbox(frame_a)
+        list_a.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        for unit in sorted(team_A):
+            list_a.insert(tk.END, unit)
+
+        # Team B Display
+        frame_b = tk.LabelFrame(main_frame, text=f"Team B ({len(team_B)} units) | Players: {min_B}-{max_B}")
+        frame_b.grid(row=1, column=1, sticky="nsew", padx=(5,0))
+        list_b = tk.Listbox(frame_b)
+        list_b.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        for unit in sorted(team_B):
+            list_b.insert(tk.END, unit)
+
+        def apply_and_close():
+            if not self.current_week: return
+            self.current_week["A"] = set(team_A)
+            self.current_week["B"] = set(team_B)
+            self.refresh_team_lists()
+            self.refresh_units_list()
+            results_window.destroy()
+            parent_window.destroy()
+
+        button_frame = tk.Frame(main_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=(10,0))
+        tk.Button(button_frame, text="Apply to Week", command=apply_and_close).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Close", command=results_window.destroy).pack(side=tk.LEFT, padx=5)
 
 
 if __name__ == "__main__":
