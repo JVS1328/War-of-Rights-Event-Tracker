@@ -94,6 +94,7 @@ class SeasonTrackerGUI:
         self.current_week: dict | None = None
         self.team_names = {"A": tk.StringVar(value="Team A"), "B": tk.StringVar(value="Team B")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
+        self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         
         # Point system settings - dictionary of StringVars
         self.point_system_values = {
@@ -1489,6 +1490,7 @@ class SeasonTrackerGUI:
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
             "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
+            "unit_player_counts": self.unit_player_counts,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -1529,6 +1531,9 @@ class SeasonTrackerGUI:
             }
             for key, var in self.point_system_values.items():
                 var.set(loaded_point_system.get(key, default_points.get(key, "0"))) # Fallback to default_points, then "0"
+
+            self.unit_player_counts = defaultdict(lambda: {"min": "0", "max": "100"})
+            self.unit_player_counts.update(data.get("unit_player_counts", {}))
 
         except Exception as e:
             messagebox.showerror("Load error", str(e))
@@ -1755,7 +1760,8 @@ class SeasonTrackerGUI:
         # Populate unit counts
         all_units_for_counts = sorted(list(self.units))
         for unit in all_units_for_counts:
-            unit_counts_tree.insert("", "end", values=(unit, "0", "100"))
+            counts = self.unit_player_counts[unit]
+            unit_counts_tree.insert("", "end", values=(unit, counts["min"], counts["max"]))
 
         # Opposing Units
         opposing_units_frame = tk.LabelFrame(right_frame, text="Opposing Units", padx=5, pady=5)
@@ -1819,12 +1825,12 @@ class SeasonTrackerGUI:
                 "unit_counts": {unit_counts_tree.item(i, "values")[0]: {"min": unit_counts_tree.item(i, "values")[1], "max": unit_counts_tree.item(i, "values")[2]} for i in unit_counts_tree.get_children()},
                 "opposing": [opposing_units_tree.item(i, "values") for i in opposing_units_tree.get_children()]
             }
-            self.run_balancer(balancer_window, status_label, constraints)
+            self.run_balancer(balancer_window, status_label, constraints, save_unit_counts)
 
         balance_button = tk.Button(bottom_frame, text="Balance!", command=collect_and_run_balancer)
         balance_button.pack(side=tk.RIGHT, padx=(5,0))
 
-        close_button = tk.Button(bottom_frame, text="Close", command=balancer_window.destroy)
+        close_button = tk.Button(bottom_frame, text="Close", command=lambda: (save_unit_counts(), balancer_window.destroy()))
         close_button.pack(side=tk.RIGHT)
 
         # --- Treeview Editing Logic ---
@@ -1856,8 +1862,19 @@ class SeasonTrackerGUI:
 
         unit_counts_tree.bind("<Double-1>", on_tree_double_click)
 
+        # --- Save on Close ---
+        def save_unit_counts():
+            """Saves the current values from the treeview to the main app's dictionary."""
+            for item_id in unit_counts_tree.get_children():
+                values = unit_counts_tree.item(item_id, "values")
+                if values:
+                    unit, min_val, max_val = values
+                    self.unit_player_counts[unit] = {"min": min_val, "max": max_val}
 
-    def run_balancer(self, window, status_label, constraints):
+        balancer_window.protocol("WM_DELETE_WINDOW", lambda: (save_unit_counts(), balancer_window.destroy()))
+
+
+    def run_balancer(self, window, status_label, constraints, save_counts_func):
         """Placeholder for the actual balancing logic."""
         status_label.config(text="Balancing...")
         window.update_idletasks()
@@ -1897,7 +1914,7 @@ class SeasonTrackerGUI:
         if result:
             team_A, team_B, score, min_A, max_A, min_B, max_B = result
             status_label.config(text=f"Best solution found! Avg. Diff: {score:.1f}")
-            self._display_balance_results(window, team_A, team_B, score, min_A, max_A, min_B, max_B)
+            self._display_balance_results(window, team_A, team_B, score, min_A, max_A, min_B, max_B, save_counts_func)
         else:
             # The _balance_teams function will show its own, more specific message box.
             status_label.config(text="Failed to find a valid balance.")
@@ -1998,7 +2015,7 @@ class SeasonTrackerGUI:
             messagebox.showwarning("Balancing Failed", "No valid team composition could be found with the given constraints.")
             return None
 
-    def _display_balance_results(self, parent_window, team_A, team_B, score, min_A, max_A, min_B, max_B):
+    def _display_balance_results(self, parent_window, team_A, team_B, score, min_A, max_A, min_B, max_B, save_counts_func):
         results_window = tk.Toplevel(parent_window)
         results_window.title("Balancer Results")
         results_window.geometry("600x400")
@@ -2031,6 +2048,7 @@ class SeasonTrackerGUI:
 
         def apply_and_close():
             if not self.current_week: return
+            save_counts_func() # Save the counts before applying
             self.current_week["A"] = set(team_A)
             self.current_week["B"] = set(team_B)
             self.refresh_team_lists()
