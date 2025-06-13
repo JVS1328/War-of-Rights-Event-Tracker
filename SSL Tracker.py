@@ -1948,7 +1948,7 @@ class SeasonTrackerGUI:
             opposing_map[p1].add(p2)
             opposing_map[p2].add(p1)
 
-        best_solution = {"score": (float('inf'), float('inf'), float('inf')), "teams": None, "stats": None}
+        best_solution = {"score": (float('inf'), float('inf'), float('inf'), float('inf')), "teams": None, "stats": None}
 
         # --- Handle forced teams from opposing pairs ---
         forced_A = {p[0] for p in opposing_pairs if p[0]}
@@ -1989,7 +1989,14 @@ class SeasonTrackerGUI:
                 avg_B = (min_B + max_B) / 2 if team_B else 0
                 avg_diff = abs(avg_A - avg_B)
 
-                current_score = (gap, min_diff, avg_diff)
+                # Calculate teammate "heat" score. Lower is better, as it means units have played together less.
+                teammate_score = 0
+                for u1, u2 in itertools.combinations(team_A, 2):
+                    teammate_score += teammate_history[u1][u2]
+                for u1, u2 in itertools.combinations(team_B, 2):
+                    teammate_score += teammate_history[u1][u2]
+
+                current_score = (gap, min_diff, teammate_score, avg_diff)
 
                 if current_score < best_solution["score"]:
                     best_solution["score"] = current_score
@@ -1998,7 +2005,7 @@ class SeasonTrackerGUI:
 
         # --- Main Execution ---
         if best_solution["teams"]:
-            gap, min_diff, avg_diff = best_solution["score"]
+            gap, min_diff, teammate_score, avg_diff = best_solution["score"]
             if gap <= max_player_diff and min_diff <= max_player_diff:
                 team_A, team_B = best_solution["teams"]
                 min_A, max_A, min_B, max_B = best_solution["stats"]
