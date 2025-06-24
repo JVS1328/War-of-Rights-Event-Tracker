@@ -264,7 +264,7 @@
       "r2_casualties_B": 0
     },
     {
-      "name": "Week 10",
+      "name": "06/01/25",
       "A": [
         "II Corps",
         "IVB",
@@ -316,6 +316,58 @@
       "r1_casualties_B": 0,
       "r2_casualties_A": 0,
       "r2_casualties_B": 0
+    },
+    {
+      "name": "06/15/25",
+      "A": [
+        "15th AL",
+        "IVB",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "I Corps",
+        "JD"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 319,
+      "r1_casualties_B": 372,
+      "r2_casualties_A": 236,
+      "r2_casualties_B": 336
+    },
+    {
+      "name": "06/22/25",
+      "A": [
+        "I Corps",
+        "JD",
+        "Sussy Brigade"
+      ],
+      "B": [
+        "10th TN",
+        "15th AL",
+        "II Corps",
+        "IVB"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     }
   ],
   "team_names": {
@@ -332,8 +384,8 @@
   },
   "unit_player_counts": {
     "10th US": {
-      "min": "10",
-      "max": "15"
+      "min": "0",
+      "max": "0"
     },
     "12th VA": {
       "min": "30",
@@ -360,20 +412,20 @@
       "max": "38"
     },
     "CQB": {
-      "min": "10",
-      "max": "15"
+      "min": "0",
+      "max": "0"
     },
     "FSB": {
       "min": "15",
       "max": "20"
     },
     "II Corps": {
-      "min": "25",
-      "max": "30"
+      "min": "40",
+      "max": "45"
     },
     "JD": {
-      "min": "30",
-      "max": "35"
+      "min": "25",
+      "max": "30"
     },
     "MSG": {
       "min": "15",
@@ -392,24 +444,32 @@
       "max": "22"
     },
     "15th AL": {
-      "min": "15",
-      "max": "20"
+      "min": "20",
+      "max": "30"
     },
     "I Corps": {
-      "min": "45",
-      "max": "50"
+      "min": "30",
+      "max": "35"
     },
     "IVB": {
       "min": "24",
-      "max": "28"
+      "max": "29"
     },
     "PA": {
-      "min": "6",
-      "max": "10"
+      "min": "0",
+      "max": "0"
     },
     "Sussy Brigade": {
-      "min": "25",
-      "max": "30"
+      "min": "45",
+      "max": "50"
+    },
+    "10th TN": {
+      "min": "15",
+      "max": "20"
+    },
+    "III Corps": {
+      "min": "0",
+      "max": "0"
     }
   }
 }
