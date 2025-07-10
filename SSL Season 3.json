@@ -123,6 +123,41 @@
       "r1_casualties_B": 1560,
       "r2_casualties_A": 633,
       "r2_casualties_B": 814
+    },
+    {
+      "name": "07/09/25 - W4",
+      "A": [
+        "10th TN",
+        "12th VA",
+        "59th NY",
+        "AVC",
+        "CB",
+        "JD",
+        "MSG"
+      ],
+      "B": [
+        "10th US",
+        "51st AL",
+        "7th TX",
+        "CQB",
+        "FSB",
+        "II Corps",
+        "SR",
+        "TKO"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "MSG",
+      "lead_B": "TKO",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1338,
+      "r1_casualties_B": 1041,
+      "r2_casualties_A": 1421,
+      "r2_casualties_B": 2006
     }
   ],
   "team_names": {
@@ -139,64 +174,64 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "10",
-      "max": "15"
-    },
-    "10th US": {
-      "min": "25",
-      "max": "30"
-    },
-    "12th VA": {
-      "min": "31",
-      "max": "36"
-    },
-    "51st AL": {
-      "min": "8",
-      "max": "10"
-    },
-    "59th NY": {
       "min": "20",
       "max": "25"
     },
+    "10th US": {
+      "min": "27",
+      "max": "32"
+    },
+    "12th VA": {
+      "min": "22",
+      "max": "27"
+    },
+    "51st AL": {
+      "min": "15",
+      "max": "20"
+    },
+    "59th NY": {
+      "min": "25",
+      "max": "30"
+    },
     "7th TX": {
-      "min": "23",
-      "max": "28"
-    },
-    "AVC": {
-      "min": "10",
-      "max": "15"
-    },
-    "CB": {
-      "min": "40",
-      "max": "45"
-    },
-    "CQB": {
-      "min": "10",
-      "max": "15"
-    },
-    "FSB": {
-      "min": "16",
-      "max": "18"
-    },
-    "II Corps": {
       "min": "30",
       "max": "35"
     },
+    "AVC": {
+      "min": "8",
+      "max": "14"
+    },
+    "CB": {
+      "min": "45",
+      "max": "50"
+    },
+    "CQB": {
+      "min": "15",
+      "max": "20"
+    },
+    "FSB": {
+      "min": "15",
+      "max": "19"
+    },
+    "II Corps": {
+      "min": "40",
+      "max": "45"
+    },
     "JD": {
-      "min": "32",
-      "max": "37"
+      "min": "25",
+      "max": "30"
     },
     "MSG": {
-      "min": "6",
-      "max": "10"
+      "min": "15",
+      "max": "20"
     },
     "SR": {
-      "min": "0",
-      "max": "0"
+      "min": "2",
+      "max": "4"
     },
     "TKO": {
-      "min": "12",
-      "max": "14"
+      "min": "17",
+      "max": "18"
     }
   }
 }
