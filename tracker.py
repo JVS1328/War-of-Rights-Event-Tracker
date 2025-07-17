@@ -1996,6 +1996,23 @@ class SeasonTrackerGUI:
 
         best_solution = {"score": (float('inf'), float('inf'), float('inf'), float('inf')), "teams": None, "stats": None}
 
+        # --- Calculate average teammate count for penalty ---
+        all_counts = []
+        counted_pairs = set()
+        for u1, others in teammate_history.items():
+            for u2, count in others.items():
+                pair = tuple(sorted((u1, u2)))
+                if pair not in counted_pairs:
+                    all_counts.append(count)
+                    counted_pairs.add(pair)
+        
+        average_teammate_count = sum(all_counts) / len(all_counts) if all_counts else 0
+        over_teaming_threshold = round(average_teammate_count) #* 1.25
+        # A higher multiplier means a stronger penalty for going over the threshold.
+        over_teaming_penalty_multiplier = 10
+        print(f'Average Teammate Count: {average_teammate_count}')
+        print(f'Over Teaming Threshold: {over_teaming_threshold}')
+
         # --- Handle forced teams from opposing pairs ---
         forced_A = {p[0] for p in opposing_pairs if p[0]}
         forced_B = {p[1] for p in opposing_pairs if p[1]}
@@ -2038,9 +2055,17 @@ class SeasonTrackerGUI:
                 # Calculate teammate "heat" score. Lower is better, as it means units have played together less.
                 teammate_score = 0
                 for u1, u2 in itertools.combinations(team_A, 2):
-                    teammate_score += teammate_history[u1][u2]
+                    count = teammate_history[u1][u2]
+                    teammate_score += count
+                    # Add penalty for over-teaming
+                    if average_teammate_count > 0 and count > over_teaming_threshold:
+                        teammate_score += (count - over_teaming_threshold) * over_teaming_penalty_multiplier
                 for u1, u2 in itertools.combinations(team_B, 2):
-                    teammate_score += teammate_history[u1][u2]
+                    count = teammate_history[u1][u2]
+                    teammate_score += count
+                    # Add penalty for over-teaming
+                    if average_teammate_count > 0 and count > over_teaming_threshold:
+                        teammate_score += (count - over_teaming_threshold) * over_teaming_penalty_multiplier
 
                 current_score = (gap, min_diff, teammate_score, avg_diff)
 
