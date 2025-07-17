@@ -158,6 +158,76 @@
       "r1_casualties_B": 1041,
       "r2_casualties_A": 1421,
       "r2_casualties_B": 2006
+    },
+    {
+      "name": "07/16/25 - W5",
+      "A": [
+        "51st AL",
+        "59th NY",
+        "AVC",
+        "CB",
+        "CQB",
+        "II Corps",
+        "SR"
+      ],
+      "B": [
+        "10th TN",
+        "10th US",
+        "12th VA",
+        "7th TX",
+        "FSB",
+        "JD",
+        "MSG",
+        "TKO"
+      ],
+      "round1_winner": "B",
+      "round2_winner": null,
+      "lead_A": "CB",
+      "lead_B": "JD",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 2015,
+      "r1_casualties_B": 1531,
+      "r2_casualties_A": 1651,
+      "r2_casualties_B": 1747
+    },
+    {
+      "name": "Week 6",
+      "A": [
+        "10th TN",
+        "10th US",
+        "12th VA",
+        "51st AL",
+        "7th TX",
+        "CB",
+        "CQB"
+      ],
+      "B": [
+        "59th NY",
+        "AVC",
+        "FSB",
+        "II Corps",
+        "JD",
+        "MSG",
+        "SR",
+        "TKO"
+      ],
+      "round1_winner": null,
+      "round2_winner": null,
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0
     }
   ],
   "team_names": {
@@ -174,64 +244,64 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "20",
-      "max": "25"
+      "min": "17",
+      "max": "22"
     },
     "10th US": {
       "min": "27",
       "max": "32"
     },
     "12th VA": {
-      "min": "22",
-      "max": "27"
-    },
-    "51st AL": {
-      "min": "15",
-      "max": "20"
-    },
-    "59th NY": {
       "min": "25",
       "max": "30"
     },
-    "7th TX": {
-      "min": "30",
-      "max": "35"
+    "51st AL": {
+      "min": "12",
+      "max": "17"
     },
-    "AVC": {
-      "min": "8",
-      "max": "14"
-    },
-    "CB": {
-      "min": "45",
-      "max": "50"
-    },
-    "CQB": {
-      "min": "15",
-      "max": "20"
-    },
-    "FSB": {
-      "min": "15",
-      "max": "19"
-    },
-    "II Corps": {
+    "59th NY": {
       "min": "40",
       "max": "45"
     },
-    "JD": {
+    "7th TX": {
       "min": "25",
       "max": "30"
     },
+    "AVC": {
+      "min": "8",
+      "max": "12"
+    },
+    "CB": {
+      "min": "50",
+      "max": "55"
+    },
+    "CQB": {
+      "min": "12",
+      "max": "15"
+    },
+    "FSB": {
+      "min": "14",
+      "max": "19"
+    },
+    "II Corps": {
+      "min": "45",
+      "max": "50"
+    },
+    "JD": {
+      "min": "40",
+      "max": "45"
+    },
     "MSG": {
-      "min": "15",
-      "max": "20"
+      "min": "10",
+      "max": "15"
     },
     "SR": {
       "min": "2",
-      "max": "4"
+      "max": "2"
     },
     "TKO": {
-      "min": "17",
-      "max": "18"
+      "min": "11",
+      "max": "14"
     }
   }
 }
