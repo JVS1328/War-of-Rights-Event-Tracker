@@ -181,7 +181,7 @@
         "TKO"
       ],
       "round1_winner": "B",
-      "round2_winner": null,
+      "round2_winner": "A",
       "lead_A": "CB",
       "lead_B": "JD",
       "playoffs": false,
@@ -193,41 +193,6 @@
       "r1_casualties_B": 1531,
       "r2_casualties_A": 1651,
       "r2_casualties_B": 1747
-    },
-    {
-      "name": "Week 6",
-      "A": [
-        "10th TN",
-        "10th US",
-        "12th VA",
-        "51st AL",
-        "7th TX",
-        "CB",
-        "CQB"
-      ],
-      "B": [
-        "59th NY",
-        "AVC",
-        "FSB",
-        "II Corps",
-        "JD",
-        "MSG",
-        "SR",
-        "TKO"
-      ],
-      "round1_winner": null,
-      "round2_winner": null,
-      "lead_A": null,
-      "lead_B": null,
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 0,
-      "r1_casualties_B": 0,
-      "r2_casualties_A": 0,
-      "r2_casualties_B": 0
     }
   ],
   "team_names": {
@@ -303,5 +268,8 @@
       "min": "11",
       "max": "14"
     }
+  },
+  "manual_point_adjustments": {
+    "MSG": 1
   }
 }

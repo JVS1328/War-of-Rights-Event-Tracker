@@ -95,6 +95,7 @@ class SeasonTrackerGUI:
         self.team_names = {"A": tk.StringVar(value="Team A"), "B": tk.StringVar(value="Team B")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
+        self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
         
         # Point system settings - dictionary of StringVars
         self.point_system_values = {
@@ -807,12 +808,13 @@ class SeasonTrackerGUI:
 
         win = tk.Toplevel(self.master)
         win.title(f"Week {week_number} Points")
-        win.geometry("800x500")
-        win.minsize(600, 400)
+        win.geometry("900x500")
+        win.minsize(750, 400)
 
-        cols = ["unit", "pts", "rank", "delta", "lw", "ll", "aw", "al"]
+        cols = ["unit", "total_pts", "rank", "delta", "base_pts", "manual_adj", "lw", "ll", "aw", "al"]
         col_names = {
-            "unit": "Unit", "pts": "Points", "rank": "Rank", "delta": "Rank Δ",
+            "unit": "Unit", "total_pts": "Total Pts", "rank": "Rank", "delta": "Rank Δ",
+            "base_pts": "Base Pts", "manual_adj": "Manual Adj",
             "lw": "L-Wins", "ll": "L-Loss", "aw": "A-Wins", "al": "A-Loss"
         }
 
@@ -823,70 +825,125 @@ class SeasonTrackerGUI:
         
         for col_id in cols:
             tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
-            tree.column(col_id, width=80, anchor=tk.CENTER)
+            tree.column(col_id, width=70, anchor=tk.CENTER)
         tree.column("unit", width=150, anchor=tk.W)
-        tree.column("delta", width=60)
-        tree.column("pts", width=60)
-        tree.column("rank", width=60)
+        tree.column("total_pts", width=70, anchor=tk.CENTER)
+        tree.column("base_pts", width=70, anchor=tk.CENTER)
+        tree.column("manual_adj", width=80, anchor=tk.CENTER)
+        tree.column("rank", width=50, anchor=tk.CENTER)
+        tree.column("delta", width=60, anchor=tk.CENTER)
 
 
-        # --- Data Preparation ---
-        current_week_idx = selected_week_idx
-        if current_week_idx < 0:
-            tk.Label(win, text="No season data to display.").pack(padx=20, pady=20)
-            return
+        def redraw_table():
+            # Clear existing items
+            for item in tree.get_children():
+                tree.delete(item)
 
-        current_stats_data = self.calculate_points(max_week_index=current_week_idx)
-        
-        # Ensure all units have an entry
-        for unit in self.units:
-            if unit not in current_stats_data:
-                current_stats_data[unit] # This will trigger the defaultdict factory
+            # --- Data Preparation ---
+            current_week_idx = selected_week_idx
+            if current_week_idx < 0:
+                return # Nothing to draw
 
-        sorted_current_week_units = sorted(
-            current_stats_data.items(),
-            key=lambda item: (-item[1]["points"], item[0])
-        )
-        
-        current_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_current_week_units, 1)}
+            base_stats_data = self.calculate_points(max_week_index=current_week_idx)
 
-        previous_week_ranks = {}
-        if current_week_idx > 0:
-            prev_stats_data = self.calculate_points(max_week_index=current_week_idx - 1)
-            sorted_prev_week_units = sorted(
-                prev_stats_data.items(),
-                key=lambda item: (-item[1]["points"], item[0])
-            )
-            previous_week_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_prev_week_units, 1)}
+            # Combine with manual points to get total points for sorting and display
+            all_units_stats = []
+            for unit in self.units:
+                if unit in self.non_token_units: continue
+                base_stats = base_stats_data.get(unit, {"points": 0, "lw": 0, "ll": 0, "aw": 0, "al": 0})
+                manual_adj = self.manual_point_adjustments.get(unit, 0)
+                all_units_stats.append({
+                    "unit": unit,
+                    "base_pts": base_stats["points"],
+                    "manual_adj": manual_adj,
+                    "total_pts": base_stats["points"] + manual_adj,
+                    "lw": base_stats["lw"], "ll": base_stats["ll"],
+                    "aw": base_stats["aw"], "al": base_stats["al"],
+                })
 
-        # --- Populate Treeview ---
-        for unit_name, stats in sorted_current_week_units:
-            if unit_name in self.non_token_units:
-                continue
+            sorted_current_week_units = sorted(all_units_stats, key=lambda item: (-item["total_pts"], item["unit"]))
             
-            rank = current_ranks.get(unit_name, "-")
-            pts = stats["points"]
-            lw = stats["lw"]
-            ll = stats["ll"]
-            aw = stats["aw"]
-            al = stats["al"]
+            current_ranks = {item["unit"]: rank for rank, item in enumerate(sorted_current_week_units, 1)}
+
+            # Calculate previous week's ranks including manual adjustments for accurate delta
+            previous_week_ranks = {}
+            if current_week_idx > 0:
+                prev_stats_data = self.calculate_points(max_week_index=current_week_idx - 1)
+                prev_total_points_list = []
+                for unit in self.units:
+                    if unit in self.non_token_units: continue
+                    base_pts = prev_stats_data.get(unit, {}).get("points", 0)
+                    manual_adj = self.manual_point_adjustments.get(unit, 0)
+                    prev_total_points_list.append({"unit": unit, "total_pts": base_pts + manual_adj})
+                
+                sorted_prev_week_units = sorted(prev_total_points_list, key=lambda item: (-item["total_pts"], item["unit"]))
+                previous_week_ranks = {item["unit"]: rank for rank, item in enumerate(sorted_prev_week_units, 1)}
+
+            # --- Populate Treeview ---
+            for stats in sorted_current_week_units:
+                unit_name = stats["unit"]
+                rank = current_ranks.get(unit_name, "-")
+                total_pts, base_pts, manual_adj = stats["total_pts"], stats["base_pts"], stats["manual_adj"]
+                lw, ll, aw, al = stats["lw"], stats["ll"], stats["aw"], stats["al"]
+                
+                delta_display = "-"
+                prev_rank = previous_week_ranks.get(unit_name)
+                if prev_rank is not None and rank != "-":
+                    change = prev_rank - rank
+                    if change > 0: delta_display = f"↑{change}"
+                    elif change < 0: delta_display = f"↓{abs(change)}"
+                    else: delta_display = "↔0"
+                
+                tree.insert("", tk.END, values=(unit_name, total_pts, rank, delta_display, base_pts, manual_adj, lw, ll, aw, al))
+
+        def on_tree_double_click(event):
+            item_id = tree.identify_row(event.y)
+            column_id = tree.identify_column(event.x)
             
-            delta_display = "-"
-            prev_rank = previous_week_ranks.get(unit_name)
-            if prev_rank is not None and rank != "-":
-                change = prev_rank - rank
-                if change > 0: delta_display = f"↑{change}"
-                elif change < 0: delta_display = f"↓{abs(change)}"
-                else: delta_display = "↔0"
+            # Check if the click is on the "Manual Adj" column
+            if not item_id or tree.heading(column_id, "text") != "Manual Adj":
+                return
+
+            x, y, width, height = tree.bbox(item_id, column_id)
             
-            tree.insert("", tk.END, values=(unit_name, pts, rank, delta_display, lw, ll, aw, al))
+            # Get current value and unit name
+            values = tree.item(item_id, "values")
+            unit_name = values[0]
+            current_adj = values[cols.index("manual_adj")]
+            
+            entry_var = tk.StringVar(value=current_adj)
+            entry = ttk.Entry(tree, textvariable=entry_var, justify='center')
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.focus_set()
+            entry.select_range(0, tk.END)
+
+            def on_entry_commit(event=None):
+                new_value_str = entry_var.get()
+                entry.destroy()
+                try:
+                    # Allow empty string to reset to 0
+                    new_value = int(new_value_str) if new_value_str else 0
+                    self.manual_point_adjustments[unit_name] = new_value
+                    # If value becomes 0, remove it from dict to keep save file clean
+                    if new_value == 0 and unit_name in self.manual_point_adjustments:
+                        del self.manual_point_adjustments[unit_name]
+                    redraw_table() # Redraw to reflect changes in totals and ranks
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Manual adjustment must be an integer.", parent=win)
+
+            entry.bind("<FocusOut>", on_entry_commit)
+            entry.bind("<Return>", on_entry_commit)
+            entry.bind("<Escape>", lambda e: entry.destroy())
 
         # Scrollbars
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         tree.configure(yscrollcommand=vsb.set)
-
         tree.pack(fill=tk.BOTH, expand=True)
+        
+        # Bindings & Initial Draw
+        tree.bind("<Double-1>", on_tree_double_click)
+        redraw_table()
 
     def calculate_casualties(self, max_week_index: int | None = None) -> tuple[defaultdict[str, int], defaultdict[str, int]]:
         """Calculates casualties inflicted and lost for each lead unit."""
@@ -1536,6 +1593,7 @@ class SeasonTrackerGUI:
             "team_names": {k: v.get() for k, v in self.team_names.items()},
             "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
             "unit_player_counts": self.unit_player_counts,
+            "manual_point_adjustments": self.manual_point_adjustments,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -1581,6 +1639,9 @@ class SeasonTrackerGUI:
             self.unit_player_counts = defaultdict(lambda: {"min": "0", "max": "100"})
             self.unit_player_counts.update(data.get("unit_player_counts", {}))
 
+            self.manual_point_adjustments = defaultdict(int)
+            self.manual_point_adjustments.update(data.get("manual_point_adjustments", {}))
+
         except Exception as e:
             messagebox.showerror("Load error", str(e))
             # On error, reset to hardcoded defaults
@@ -1613,6 +1674,7 @@ class SeasonTrackerGUI:
             self.point_system_values["bonus_2_0_assist"].set("1")
             
             self.unit_points.clear()
+            self.manual_point_adjustments.clear()
 
             self.refresh_week_list()    # Updates week listbox (will be empty)
             self.refresh_units_list()   # Updates units listbox (will be empty)
