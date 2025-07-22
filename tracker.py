@@ -7,6 +7,7 @@ from pathlib import Path
 import csv
 import itertools
 import ast
+from maps import maps
 
 
 # Helper class for Tooltips
@@ -74,9 +75,9 @@ class SeasonTrackerGUI:
     def __init__(self, master: tk.Tk):
         self.master = master
         master.title("Season Tracker")
-        master.geometry("900x640") # Increased height
+        master.geometry("940x680") # Increased height
         master.resizable(True, True)
-        master.minsize(900, 640) # Lock minimum size
+        master.minsize(940, 680) # Lock minimum size
 
         # -------------------- DATA --------------------
         self.units: set[str] = set()
@@ -89,10 +90,12 @@ class SeasonTrackerGUI:
         #   "lead_A": str | None, "lead_B": str | None, # Unit name or None
         #   "playoffs": bool,
         #   "lead_A_r1": str | None, "lead_B_r1": str | None,
-        #   "lead_A_r2": str | None, "lead_B_r2": str | None
+        #   "lead_A_r2": str | None, "lead_B_r2": str | None,
+        #   "round1_map": str | None, "round2_map": str | None,
+        #   "round1_flipped": bool, "round2_flipped": bool
         # }
         self.current_week: dict | None = None
-        self.team_names = {"A": tk.StringVar(value="Team A"), "B": tk.StringVar(value="Team B")}
+        self.team_names = {"A": tk.StringVar(value="USA"), "B": tk.StringVar(value="CSA")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
@@ -112,7 +115,11 @@ class SeasonTrackerGUI:
         self.round2_winner_var = tk.StringVar()
         self.lead_A_var = tk.StringVar()
         self.lead_B_var = tk.StringVar()
-
+        self.round1_map_var = tk.StringVar()
+        self.round2_map_var = tk.StringVar()
+        self.round1_flipped_var = tk.BooleanVar()
+        self.round2_flipped_var = tk.BooleanVar()
+        
         # For casualties
         self.r1_casualties_A_var = tk.StringVar(value="0")
         self.r1_casualties_B_var = tk.StringVar(value="0")
@@ -203,6 +210,7 @@ class SeasonTrackerGUI:
         tk.Button(tctl, text="← Move", command=lambda: self.move_between_teams("B", "A")).pack(fill=tk.X)
         tk.Button(tctl, text="Move →", command=lambda: self.move_between_teams("A", "B")).pack(fill=tk.X, pady=(2, 0))
         tk.Button(tctl, text="Remove", command=self.remove_from_team).pack(fill=tk.X, pady=(10, 0))
+        tk.Button(tctl, text="Map Stats", command=self.show_map_stats).pack(fill=tk.X, pady=(2,0))
         tk.Button(tctl, text="Export Data", command=self.export_data).pack(fill=tk.X, pady=(30, 0))
         tk.Button(tctl, text="Points Table", command=self.show_points_table).pack(fill=tk.X, pady=(2,0)) # New Button
         tk.Button(tctl, text="Casualties", command=self.show_casualties_table).pack(fill=tk.X, pady=(2,0))
@@ -226,7 +234,23 @@ class SeasonTrackerGUI:
         tk.Label(round_frame2, text="Round 2 Winner:").pack(side=tk.LEFT, padx=(0,5))
         self.r2_winner_menu = tk.OptionMenu(round_frame2, self.round2_winner_var, "None", "A", "B", command=lambda v: self.set_round_winner(2, v))
         self.r2_winner_menu.pack(side=tk.LEFT, expand=True, fill=tk.X)
-
+        
+        # --- Map Selection UI ---
+        map_frame = tk.Frame(right, pady=5)
+        map_frame.grid(row=2, column=2, sticky="ew", padx=(10,0)) # Next to round winners
+        tk.Label(map_frame, text="R1 Map:").pack(side=tk.LEFT)
+        self.r1_map_menu = tk.OptionMenu(map_frame, self.round1_map_var, "", *self.get_all_maps(), command=lambda v: self.set_round_map(1, v))
+        self.r1_map_menu.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        
+        map_frame2 = tk.Frame(right, pady=5)
+        map_frame2.grid(row=3, column=2, sticky="ew", padx=(10,0)) # Next to round winners
+        tk.Label(map_frame2, text="R2 Map:").pack(side=tk.LEFT)
+        self.r2_map_menu = tk.OptionMenu(map_frame2, self.round2_map_var, "", *self.get_all_maps(), command=lambda v: self.set_round_map(2, v))
+        self.r2_map_menu.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        
+        tk.Checkbutton(map_frame, text="Flipped", variable=self.round1_flipped_var, command=lambda: self.set_round_flipped(1, self.round1_flipped_var.get())).pack(side=tk.LEFT)
+        tk.Checkbutton(map_frame2, text="Flipped", variable=self.round2_flipped_var, command=lambda: self.set_round_flipped(2, self.round2_flipped_var.get())).pack(side=tk.LEFT)
+        
         # --- Casualties Frame ---
         casualties_frame = tk.Frame(right, pady=5)
         casualties_frame.grid(row=4, column=1, sticky="ew", pady=(10,0))
@@ -315,7 +339,11 @@ class SeasonTrackerGUI:
             "lead_A_r1": None, "lead_B_r1": None,
             "lead_A_r2": None, "lead_B_r2": None,
             "r1_casualties_A": 0, "r1_casualties_B": 0,
-            "r2_casualties_A": 0, "r2_casualties_B": 0
+            "r2_casualties_A": 0, "r2_casualties_B": 0,
+            "round1_map": None,
+            "round2_map": None,
+            "round1_flipped": False,
+            "round2_flipped": False
         }
         self.season.append(new_week_data)
         self.refresh_week_list()
@@ -389,6 +417,10 @@ class SeasonTrackerGUI:
             self.round2_winner_var.set(self.current_week.get("round2_winner") or "None")
             self.lead_A_var.set(self.current_week.get("lead_A") or "")
             self.lead_B_var.set(self.current_week.get("lead_B") or "")
+            self.round1_map_var.set(self.current_week.get("round1_map") or "")
+            self.round2_map_var.set(self.current_week.get("round2_map") or "")
+            self.round1_flipped_var.set(self.current_week.get("round1_flipped", False))
+            self.round2_flipped_var.set(self.current_week.get("round2_flipped", False))
             self.r1_casualties_A_var.set(self.current_week.get("r1_casualties_A", 0))
             self.r1_casualties_B_var.set(self.current_week.get("r1_casualties_B", 0))
             self.r2_casualties_A_var.set(self.current_week.get("r2_casualties_A", 0))
@@ -405,6 +437,10 @@ class SeasonTrackerGUI:
             self.round2_winner_var.set("None")
             self.lead_A_var.set("")
             self.lead_B_var.set("")
+            self.round1_map_var.set("")
+            self.round2_map_var.set("")
+            self.round1_flipped_var.set(False)
+            self.round2_flipped_var.set(False)
             self.r1_casualties_A_var.set("0")
             self.r1_casualties_B_var.set("0")
             self.r2_casualties_A_var.set("0")
@@ -594,7 +630,22 @@ class SeasonTrackerGUI:
         elif round_num == 2:
             self.current_week["round2_winner"] = actual_winner
         # print(f"Set Round {round_num} winner to {actual_winner} for week {self.week_list.curselection()}")
-
+        
+    def set_round_map(self, round_num: int, map_name: str):
+        if not self.current_week: return
+        actual_map = map_name if map_name else None
+        if round_num == 1:
+            self.current_week["round1_map"] = actual_map
+        elif round_num == 2:
+            self.current_week["round2_map"] = actual_map
+    
+    def set_round_flipped(self, round_num: int, flipped: bool):
+        if not self.current_week: return
+        if round_num == 1:
+            self.current_week["round1_flipped"] = flipped
+        elif round_num == 2:
+            self.current_week["round2_flipped"] = flipped
+    
     def set_lead_unit(self, team_id_key: str, unit_name: str):
         if not self.current_week: return
         actual_unit = unit_name if unit_name else None # Store None if blank
@@ -636,6 +687,13 @@ class SeasonTrackerGUI:
             for child in [self.lead_A_menu, self.lead_B_menu]:
                 child.master.grid()
             self.playoffs_lead_frame.grid_remove()
+
+    def get_all_maps(self):
+        """Returns a flat list of all map names."""
+        all_maps = []
+        for map_group in maps.values():
+            all_maps.extend(map_group)
+        return sorted(all_maps)
 
     # ------------------------------------------------------------------
     # Stats
@@ -1161,37 +1219,39 @@ class SeasonTrackerGUI:
             return
 
         records = []
-        header = ['Week', 'Unit', 'Team', 'Round', 'Loss']
+        header = ['Week', 'Unit', 'Team', 'Round', 'Map', 'Loss']
         
         for week_idx, week_data in enumerate(self.season):
             week_num = week_idx + 1
             
             # --- Round 1 ---
             winner_r1 = week_data.get("round1_winner")
+            map_r1 = week_data.get("round1_map", "N/A")
             if winner_r1 and winner_r1 != "None":
                 loser_r1 = 'B' if winner_r1 == 'A' else 'A'
                 
                 for unit in week_data.get(winner_r1, set()):
-                    records.append([week_num, unit, self.team_names[winner_r1].get(), 1, 0])
+                    records.append([week_num, unit, self.team_names[winner_r1].get(), 1, map_r1, 0])
                 
                 for unit in week_data.get(loser_r1, set()):
-                    records.append([week_num, unit, self.team_names[loser_r1].get(), 1, 1])
+                    records.append([week_num, unit, self.team_names[loser_r1].get(), 1, map_r1, 1])
 
             # --- Round 2 ---
             winner_r2 = week_data.get("round2_winner")
+            map_r2 = week_data.get("round2_map", "N/A")
             if winner_r2 and winner_r2 != "None":
                 loser_r2 = 'B' if winner_r2 == 'A' else 'A'
 
                 for unit in week_data.get(winner_r2, set()):
-                    records.append([week_num, unit, self.team_names[winner_r2].get(), 2, 0])
+                    records.append([week_num, unit, self.team_names[winner_r2].get(), 2, map_r2, 0])
 
                 for unit in week_data.get(loser_r2, set()):
-                    records.append([week_num, unit, self.team_names[loser_r2].get(), 2, 1])
+                    records.append([week_num, unit, self.team_names[loser_r2].get(), 2, map_r2, 1])
 
         # Now, calculate the total losses per unit from the records
         losses_per_unit = Counter()
         for record in records:
-            if record[4] == 1: # if loss is 1
+            if record[5] == 1: # if loss is 1
                 losses_per_unit[record[1]] += 1
 
         # Write to CSV
@@ -1564,6 +1624,139 @@ class SeasonTrackerGUI:
 
         redraw_heatmap("All Weeks")
 
+    def show_map_stats(self):
+        """Displays a window with statistics for each map."""
+        stats_win = tk.Toplevel(self.master)
+        stats_win.title("Map Statistics")
+        stats_win.geometry("960x650") # Widened for new columns
+
+        # List of maps where USA is the attacker
+        usa_attack_maps = {
+            "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
+            "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
+            "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
+            "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
+            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+            "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
+        }
+
+        # --- Data Calculation ---
+        map_stats = defaultdict(lambda: {
+            "plays": 0,
+            "usa_wins": 0, "csa_wins": 0,
+            "attacker_wins": 0, "defender_wins": 0,
+            "total_casualties": 0, "usa_casualties": 0, "csa_casualties": 0
+        })
+        
+        overall_stats = {"attack_wins": 0, "defense_wins": 0, "total_plays": 0}
+
+        for week in self.season:
+            for r in [1, 2]:
+                map_name = week.get(f"round{r}_map")
+                winner = week.get(f"round{r}_winner")
+                flipped = week.get(f"round{r}_flipped", False)
+                if not map_name or winner is None:
+                    continue
+
+                stats = map_stats[map_name]
+                stats["plays"] += 1
+                overall_stats["total_plays"] += 1
+
+                # Determine who is USA/CSA for this round
+                usa_side = "A" if not flipped else "B"
+                csa_side = "B" if not flipped else "A"
+
+                # Determine who is Attacker/Defender for this map
+                map_usa_is_attacker = map_name in usa_attack_maps
+                attacker_side = usa_side if map_usa_is_attacker else csa_side
+                defender_side = csa_side if map_usa_is_attacker else usa_side
+                
+                # Tally USA/CSA wins
+                if winner == usa_side: stats["usa_wins"] += 1
+                elif winner == csa_side: stats["csa_wins"] += 1
+
+                # Tally Attacker/Defender wins
+                if winner == attacker_side:
+                    stats["attacker_wins"] += 1
+                    overall_stats["attack_wins"] += 1
+                elif winner == defender_side:
+                    stats["defender_wins"] += 1
+                    overall_stats["defense_wins"] += 1
+
+                # Tally casualties
+                cas_a = week.get(f"r{r}_casualties_A", 0)
+                cas_b = week.get(f"r{r}_casualties_B", 0)
+                usa_cas, csa_cas = (cas_a, cas_b) if not flipped else (cas_b, cas_a)
+                stats["usa_casualties"] += usa_cas
+                stats["csa_casualties"] += csa_cas
+                stats["total_casualties"] += usa_cas + csa_cas
+
+        # --- UI Setup ---
+        main_frame = tk.Frame(stats_win)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        tree_frame = ttk.Frame(main_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        cols = ["map", "plays", "att_win", "att_win_pct", "def_win", "def_win_pct", "usa_wins", "csa_wins", "usa_cas", "csa_cas", "total_cas", "avg_cas"]
+        col_names = {
+            "map": "Map", "plays": "Plays",
+            "att_win": "Att Wins", "att_win_pct": "Att Win %",
+            "def_win": "Def Wins", "def_win_pct": "Def Win %",
+            "usa_wins": "USA Wins", "csa_wins": "CSA Wins",
+            "usa_cas": "USA Cas.", "csa_cas": "CSA Cas.",
+            "total_cas": "Total Cas.", "avg_cas": "Avg Cas."
+        }
+
+        tree = ttk.Treeview(tree_frame, columns=cols, show="headings")
+        for col_id in cols:
+            tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
+            tree.column(col_id, anchor=tk.CENTER, width=80)
+        tree.column("map", anchor=tk.W, width=150)
+        tree.column("plays", anchor=tk.CENTER, width=50)
+
+        # --- Populate Tree ---
+        for map_name, data in sorted(map_stats.items()):
+            plays = data['plays']
+            att_win_ratio = (data['attacker_wins'] / plays * 100) if plays > 0 else 0
+            def_win_ratio = (data['defender_wins'] / plays * 100) if plays > 0 else 0
+            avg_cas = data['total_casualties'] / plays if plays > 0 else 0
+            tree.insert("", "end", values=(
+                map_name,
+                plays,
+                data["attacker_wins"], f"{att_win_ratio:.1f}%",
+                data["defender_wins"], f"{def_win_ratio:.1f}%",
+                data["usa_wins"],
+                data["csa_wins"],
+                data["usa_casualties"],
+                data["csa_casualties"],
+                data["total_casualties"],
+                f"{avg_cas:.0f}"
+            ))
+        
+        # --- Add Summary Footer ---
+        footer_frame = tk.Frame(main_frame)
+        footer_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(5,0))
+        
+        total_plays = overall_stats['total_plays']
+        overall_attack_wins = overall_stats['attack_wins']
+        overall_defense_wins = overall_stats['defense_wins']
+        
+        overall_attack_pct = (overall_attack_wins / total_plays * 100) if total_plays > 0 else 0
+        overall_defense_pct = (overall_defense_wins / total_plays * 100) if total_plays > 0 else 0
+
+        summary_text = (f"Attacker Wins: {overall_attack_wins} ({overall_attack_pct:.1f}%)   |   "
+                        f"Defender Wins: {overall_defense_wins} ({overall_defense_pct:.1f}%)   |   "
+                        f"Total Rounds: {total_plays}")
+        
+        tk.Label(footer_frame, text=summary_text, font=("Arial", 9, "bold")).pack()
+
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(fill=tk.BOTH, expand=True)
+
     # ------------------------------------------------------------------
     # Persistence helpers
     def save_to_file(self, path: Path):
@@ -1588,6 +1781,10 @@ class SeasonTrackerGUI:
                     "r1_casualties_B": wk.get("r1_casualties_B", 0),
                     "r2_casualties_A": wk.get("r2_casualties_A", 0),
                     "r2_casualties_B": wk.get("r2_casualties_B", 0),
+                    "round1_map": wk.get("round1_map"),
+                    "round2_map": wk.get("round2_map"),
+                    "round1_flipped": wk.get("round1_flipped", False),
+                    "round2_flipped": wk.get("round2_flipped", False),
                 } for i, wk in enumerate(self.season)
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
@@ -1621,7 +1818,11 @@ class SeasonTrackerGUI:
                     "r1_casualties_A": wk_data.get("r1_casualties_A", 0),
                     "r1_casualties_B": wk_data.get("r1_casualties_B", 0),
                     "r2_casualties_A": wk_data.get("r2_casualties_A", 0),
-                    "r2_casualties_B": wk_data.get("r2_casualties_B", 0)
+                    "r2_casualties_B": wk_data.get("r2_casualties_B", 0),
+                    "round1_map": wk_data.get("round1_map"),
+                    "round2_map": wk_data.get("round2_map"),
+                    "round1_flipped": wk_data.get("round1_flipped", False),
+                    "round2_flipped": wk_data.get("round2_flipped", False)
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:

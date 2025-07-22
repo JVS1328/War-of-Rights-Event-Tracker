@@ -53,7 +53,11 @@
       "r1_casualties_A": 1381,
       "r1_casualties_B": 1275,
       "r2_casualties_A": 1317,
-      "r2_casualties_B": 991
+      "r2_casualties_B": 991,
+      "round1_map": "Colquitt's Defence",
+      "round2_map": "Wagon Road",
+      "round1_flipped": false,
+      "round2_flipped": false
     },
     {
       "name": "06/18/25 - W2",
@@ -88,7 +92,11 @@
       "r1_casualties_A": 1594,
       "r1_casualties_B": 1273,
       "r2_casualties_A": 918,
-      "r2_casualties_B": 903
+      "r2_casualties_B": 903,
+      "round1_map": "East Woods Skirmish",
+      "round2_map": "Hooker's Push",
+      "round1_flipped": false,
+      "round2_flipped": false
     },
     {
       "name": "06/25/25 - W3",
@@ -122,7 +130,11 @@
       "r1_casualties_A": 1396,
       "r1_casualties_B": 1560,
       "r2_casualties_A": 633,
-      "r2_casualties_B": 814
+      "r2_casualties_B": 814,
+      "round1_map": "Cooke's Countercharge",
+      "round2_map": "Maryland Heights",
+      "round1_flipped": false,
+      "round2_flipped": true
     },
     {
       "name": "07/09/25 - W4",
@@ -157,7 +169,11 @@
       "r1_casualties_A": 1338,
       "r1_casualties_B": 1041,
       "r2_casualties_A": 1421,
-      "r2_casualties_B": 2006
+      "r2_casualties_B": 2006,
+      "round1_map": "Otto & Sherrick Farm",
+      "round2_map": "Roulette Lane",
+      "round1_flipped": false,
+      "round2_flipped": false
     },
     {
       "name": "07/16/25 - W5",
@@ -192,7 +208,11 @@
       "r1_casualties_A": 2015,
       "r1_casualties_B": 1531,
       "r2_casualties_A": 1651,
-      "r2_casualties_B": 1747
+      "r2_casualties_B": 1747,
+      "round1_map": "Confederate Encampment",
+      "round2_map": "Hill's Counterattack",
+      "round1_flipped": false,
+      "round2_flipped": false
     }
   ],
   "team_names": {
