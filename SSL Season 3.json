@@ -213,6 +213,45 @@
       "round2_map": "Hill's Counterattack",
       "round1_flipped": false,
       "round2_flipped": false
+    },
+    {
+      "name": "07/23/25 - W6",
+      "A": [
+        "12th VA",
+        "51st AL",
+        "59th NY",
+        "7th TX",
+        "FSB",
+        "JD",
+        "TKO"
+      ],
+      "B": [
+        "10th TN",
+        "10th US",
+        "AVC",
+        "CB",
+        "CQB",
+        "II Corps",
+        "MSG",
+        "SR"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "51st AL",
+      "lead_B": "II Corps",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1394,
+      "r1_casualties_B": 1898,
+      "r2_casualties_A": 922,
+      "r2_casualties_B": 1277,
+      "round1_map": "Colquitt's Defence",
+      "round2_map": "Flemming's Meadow",
+      "round1_flipped": true,
+      "round2_flipped": false
     }
   ],
   "team_names": {
@@ -230,51 +269,51 @@
   "unit_player_counts": {
     "10th TN": {
       "min": "17",
-      "max": "22"
+      "max": "19"
     },
     "10th US": {
-      "min": "27",
-      "max": "32"
+      "min": "24",
+      "max": "28"
     },
     "12th VA": {
       "min": "25",
       "max": "30"
     },
     "51st AL": {
-      "min": "12",
-      "max": "17"
+      "min": "18",
+      "max": "23"
     },
     "59th NY": {
-      "min": "40",
-      "max": "45"
+      "min": "35",
+      "max": "40"
     },
     "7th TX": {
-      "min": "25",
-      "max": "30"
+      "min": "30",
+      "max": "35"
     },
     "AVC": {
-      "min": "8",
-      "max": "12"
+      "min": "9",
+      "max": "13"
     },
     "CB": {
-      "min": "50",
-      "max": "55"
+      "min": "45",
+      "max": "50"
     },
     "CQB": {
-      "min": "12",
+      "min": "10",
       "max": "15"
     },
     "FSB": {
-      "min": "14",
-      "max": "19"
+      "min": "16",
+      "max": "18"
     },
     "II Corps": {
       "min": "45",
       "max": "50"
     },
     "JD": {
-      "min": "40",
-      "max": "45"
+      "min": "20",
+      "max": "25"
     },
     "MSG": {
       "min": "10",
@@ -285,8 +324,8 @@
       "max": "2"
     },
     "TKO": {
-      "min": "11",
-      "max": "14"
+      "min": "18",
+      "max": "19"
     }
   },
   "manual_point_adjustments": {
