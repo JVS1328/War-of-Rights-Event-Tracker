@@ -252,6 +252,45 @@
       "round2_map": "Flemming's Meadow",
       "round1_flipped": true,
       "round2_flipped": false
+    },
+    {
+      "name": "07/30/25 - W7",
+      "A": [
+        "10th US",
+        "12th VA",
+        "59th NY",
+        "7th TX",
+        "AVC",
+        "CQB",
+        "JD",
+        "SR"
+      ],
+      "B": [
+        "10th TN",
+        "51st AL",
+        "CB",
+        "FSB",
+        "II Corps",
+        "MSG",
+        "TKO"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "CQB",
+      "lead_B": "10th TN",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 885,
+      "r1_casualties_B": 1713,
+      "r2_casualties_A": 947,
+      "r2_casualties_B": 1472,
+      "round1_map": "Stefan's Lot",
+      "round2_map": "Alexander Farm",
+      "round1_flipped": false,
+      "round2_flipped": true
     }
   ],
   "team_names": {
@@ -268,52 +307,52 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "17",
-      "max": "19"
+      "min": "15",
+      "max": "20"
     },
     "10th US": {
-      "min": "24",
-      "max": "28"
+      "min": "19",
+      "max": "20"
     },
     "12th VA": {
       "min": "25",
       "max": "30"
     },
     "51st AL": {
-      "min": "18",
-      "max": "23"
+      "min": "15",
+      "max": "20"
     },
     "59th NY": {
-      "min": "35",
-      "max": "40"
+      "min": "25",
+      "max": "30"
     },
     "7th TX": {
-      "min": "30",
-      "max": "35"
+      "min": "25",
+      "max": "30"
     },
     "AVC": {
-      "min": "9",
-      "max": "13"
+      "min": "5",
+      "max": "10"
     },
     "CB": {
       "min": "45",
       "max": "50"
     },
     "CQB": {
-      "min": "10",
-      "max": "15"
-    },
-    "FSB": {
-      "min": "16",
-      "max": "18"
-    },
-    "II Corps": {
-      "min": "45",
-      "max": "50"
-    },
-    "JD": {
       "min": "20",
       "max": "25"
+    },
+    "FSB": {
+      "min": "15",
+      "max": "20"
+    },
+    "II Corps": {
+      "min": "35",
+      "max": "40"
+    },
+    "JD": {
+      "min": "25",
+      "max": "30"
     },
     "MSG": {
       "min": "10",
@@ -325,7 +364,7 @@
     },
     "TKO": {
       "min": "18",
-      "max": "19"
+      "max": "22"
     }
   },
   "manual_point_adjustments": {
