@@ -291,6 +291,45 @@
       "round2_map": "Alexander Farm",
       "round1_flipped": false,
       "round2_flipped": true
+    },
+    {
+      "name": "08/06/25 - W8",
+      "A": [
+        "10th TN",
+        "10th US",
+        "59th NY",
+        "7th TX",
+        "AVC",
+        "II Corps",
+        "SR",
+        "TKO"
+      ],
+      "B": [
+        "12th VA",
+        "51st AL",
+        "CB",
+        "CQB",
+        "FSB",
+        "JD",
+        "MSG"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": "59th NY",
+      "lead_B": "FSB",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1406,
+      "r1_casualties_B": 1340,
+      "r2_casualties_A": 1883,
+      "r2_casualties_B": 1214,
+      "round1_map": "Nicodemus Hill",
+      "round2_map": "Garland's Stand",
+      "round1_flipped": true,
+      "round2_flipped": false
     }
   ],
   "team_names": {
@@ -307,24 +346,24 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "15",
-      "max": "20"
+      "min": "14",
+      "max": "19"
     },
     "10th US": {
-      "min": "19",
-      "max": "20"
+      "min": "18",
+      "max": "21"
     },
     "12th VA": {
-      "min": "25",
-      "max": "30"
+      "min": "27",
+      "max": "32"
     },
     "51st AL": {
-      "min": "15",
-      "max": "20"
+      "min": "17",
+      "max": "23"
     },
     "59th NY": {
-      "min": "25",
-      "max": "30"
+      "min": "35",
+      "max": "40"
     },
     "7th TX": {
       "min": "25",
@@ -332,19 +371,19 @@
     },
     "AVC": {
       "min": "5",
-      "max": "10"
+      "max": "8"
     },
     "CB": {
-      "min": "45",
-      "max": "50"
+      "min": "50",
+      "max": "55"
     },
     "CQB": {
-      "min": "20",
-      "max": "25"
+      "min": "14",
+      "max": "16"
     },
     "FSB": {
-      "min": "15",
-      "max": "20"
+      "min": "16",
+      "max": "21"
     },
     "II Corps": {
       "min": "35",
@@ -355,15 +394,15 @@
       "max": "30"
     },
     "MSG": {
-      "min": "10",
-      "max": "15"
+      "min": "5",
+      "max": "10"
     },
     "SR": {
       "min": "2",
       "max": "2"
     },
     "TKO": {
-      "min": "18",
+      "min": "19",
       "max": "22"
     }
   },
