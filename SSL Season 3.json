@@ -330,6 +330,45 @@
       "round2_map": "Garland's Stand",
       "round1_flipped": true,
       "round2_flipped": false
+    },
+    {
+      "name": "08/13/25 - W9",
+      "A": [
+        "10th US",
+        "51st AL",
+        "AVC",
+        "CB",
+        "FSB",
+        "JD",
+        "MSG",
+        "SR"
+      ],
+      "B": [
+        "10th TN",
+        "12th VA",
+        "59th NY",
+        "7th TX",
+        "CQB",
+        "II Corps",
+        "TKO"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "CB",
+      "lead_B": "7th TX",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1397,
+      "r1_casualties_B": 1319,
+      "r2_casualties_A": 1735,
+      "r2_casualties_B": 1743,
+      "round1_map": "Crossroads",
+      "round2_map": "Shenandoah Street",
+      "round1_flipped": false,
+      "round2_flipped": true
     }
   ],
   "team_names": {
@@ -346,44 +385,44 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "14",
-      "max": "19"
+      "min": "12",
+      "max": "15"
     },
     "10th US": {
-      "min": "18",
-      "max": "21"
+      "min": "20",
+      "max": "24"
     },
     "12th VA": {
       "min": "27",
       "max": "32"
     },
     "51st AL": {
-      "min": "17",
-      "max": "23"
+      "min": "23",
+      "max": "28"
     },
     "59th NY": {
-      "min": "35",
-      "max": "40"
+      "min": "30",
+      "max": "35"
     },
     "7th TX": {
       "min": "25",
       "max": "30"
     },
     "AVC": {
-      "min": "5",
-      "max": "8"
+      "min": "10",
+      "max": "13"
     },
     "CB": {
-      "min": "50",
-      "max": "55"
+      "min": "60",
+      "max": "65"
     },
     "CQB": {
-      "min": "14",
-      "max": "16"
+      "min": "17",
+      "max": "22"
     },
     "FSB": {
       "min": "16",
-      "max": "21"
+      "max": "18"
     },
     "II Corps": {
       "min": "35",
@@ -402,11 +441,12 @@
       "max": "2"
     },
     "TKO": {
-      "min": "19",
-      "max": "22"
+      "min": "18",
+      "max": "19"
     }
   },
   "manual_point_adjustments": {
-    "MSG": 1
+    "MSG": 1,
+    "TKO": 1
   }
 }
