@@ -964,7 +964,7 @@ class SeasonTrackerGUI:
         bottom_frame = ttk.Frame(win)
         bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        projections_button = ttk.Button(bottom_frame, text="Season Projections", command=lambda: self.show_projections_ui(win))
+        projections_button = ttk.Button(bottom_frame, text="Season Projections", command=lambda: self.show_projections_ui(win, self.group_view_enabled.get()))
         projections_button.pack(side=tk.LEFT, pady=(5,0))
 
         # --- Grouping Button ---
@@ -1035,12 +1035,8 @@ class SeasonTrackerGUI:
                     division_name = division.get("name", "Unnamed Division")
                     division_units = set(division.get("units", []))
                     
-                    # Manual centering for the division header in the 'unit' column
-                    unit_col_width_chars = 20 # Estimated character width of the Unit column
-                    centered_name = f"{division_name:^{unit_col_width_chars}}"
-
                     # Create a collapsible header for the division with a custom tag
-                    division_id = tree.insert("", tk.END, text=division_name, open=True, values=(centered_name, "", "", "", "", "", "", "", "", ""), tags=('division_header',))
+                    division_id = tree.insert("", tk.END, text=division_name, open=True, values=(f"--- {division_name} ---", "", "", "", "", "", "", "", "", ""), tags=('division_header',))
 
                     # Filter stats for units in the current division
                     division_stats = [s for s in all_units_stats if s["unit"] in division_units]
@@ -2571,7 +2567,7 @@ class SeasonTrackerGUI:
         tk.Button(button_frame, text="Apply to Week", command=apply_and_close).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Close", command=results_window.destroy).pack(side=tk.LEFT, padx=5)
 
-    def show_projections_ui(self, parent_window):
+    def show_projections_ui(self, parent_window, group_view=False):
         """Displays the UI for season projections based on theoretical future results."""
         proj_win = tk.Toplevel(parent_window)
         proj_win.title("Season Projections")
@@ -2599,7 +2595,7 @@ class SeasonTrackerGUI:
             "theoretical_2_0_lead_wins", "theoretical_2_0_assist_wins",
             "theoretical_1_1_lead_wins", "theoretical_1_1_assist_wins",
             "theoretical_0_2_lead_losses", "theoretical_0_2_assist_losses",
-            "projected_pts"
+            "projected_pts", "rank"
         ]
         col_names = {
             "unit": "Unit", "current_pts": "Current Pts",
@@ -2609,9 +2605,10 @@ class SeasonTrackerGUI:
             "theoretical_1_1_assist_wins": "1-1 A-Wins",
             "theoretical_0_2_lead_losses": "0-2 L-Loss",
             "theoretical_0_2_assist_losses": "0-2 A-Loss",
-            "projected_pts": "Projected Pts"
+            "projected_pts": "Projected Pts",
+            "rank": "Projected Rank"
         }
-        
+
         tree = ttk.Treeview(main_frame, columns=cols, show="headings")
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -2619,24 +2616,11 @@ class SeasonTrackerGUI:
             tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
             tree.column(col_id, width=80, anchor=tk.CENTER)
         tree.column("unit", width=150, anchor=tk.W)
+        tree.column("rank", width=80, anchor=tk.CENTER)
 
-        # --- DATA PREPARATION & POPULATION ---
-        current_stats_data = self.calculate_points()
-        all_units_stats = []
-        for unit in self.units:
-            if unit in self.non_token_units: continue
-            base_stats = current_stats_data.get(unit, {"points": 0})
-            manual_adj = self.manual_point_adjustments.get(unit, 0)
-            total_pts = base_stats["points"] + manual_adj
-            all_units_stats.append({"unit": unit, "total_pts": total_pts})
-        
-        sorted_units = sorted(all_units_stats, key=lambda item: (-item["total_pts"], item["unit"]))
 
-        for stats in sorted_units:
-            unit_name = stats["unit"]
-            # Initialize projected points same as current points initially
-            values = [unit_name, stats["total_pts"]] + ["0"] * 6 + [stats["total_pts"]]
-            tree.insert("", tk.END, values=values, iid=unit_name)
+        # --- INITIAL DATA POPULATION ---
+        self.populate_projections_tree(tree, group_view)
 
         # --- IN-PLACE EDITING LOGIC ---
         def on_tree_double_click(event):
@@ -2644,6 +2628,10 @@ class SeasonTrackerGUI:
             column_id_str = tree.identify_column(event.x)
             
             if not item_id or not column_id_str: return
+            
+            # Prevent editing on division headers
+            if tree.tag_has('division_header', item_id):
+                return
 
             column_index = int(column_id_str.replace('#', '')) - 1
             column_key = cols[column_index]
@@ -2665,7 +2653,13 @@ class SeasonTrackerGUI:
                 entry.destroy()
                 if not new_value.isdigit():
                     entry_var.set("0") # Reset to 0 if invalid
+                
+                # Update the specific cell in the treeview
                 tree.set(item_id, column_key, entry_var.get())
+                
+                # After editing, immediately recalculate for the single row
+                self.calculate_and_display_projections(tree, group_view)
+
 
             entry.bind("<FocusOut>", on_entry_commit)
             entry.bind("<Return>", on_entry_commit)
@@ -2676,20 +2670,58 @@ class SeasonTrackerGUI:
         # --- CALCULATION BUTTON ---
         calc_button = ttk.Button(
             main_frame,
-            text="Calculate Projections",
-            command=lambda: self.calculate_and_display_projections(tree)
+            text="Calculate All Projections",
+            command=lambda: self.calculate_and_display_projections(tree, group_view)
         )
         calc_button.pack(pady=(10, 0))
 
-    def calculate_and_display_projections(self, tree):
-        """Calculates and updates the projections in the UI."""
-        # Retrieve point system values safely
+    def populate_projections_tree(self, tree, group_view=False):
+        """Prepares and populates the projections treeview for either overall or group view."""
+        for item in tree.get_children():
+            tree.delete(item)
+
+        current_stats_data = self.calculate_points()
+        all_units_stats = []
+        for unit in self.units:
+            if unit in self.non_token_units: continue
+            base_stats = current_stats_data.get(unit, {"points": 0})
+            manual_adj = self.manual_point_adjustments.get(unit, 0)
+            total_pts = base_stats["points"] + manual_adj
+            all_units_stats.append({
+                "unit": unit,
+                "total_pts": total_pts
+            })
+
+        if group_view and self.divisions:
+            # Grouped (Division) View
+            for division in self.divisions:
+                division_name = division.get("name", "Unnamed Division")
+                division_units = set(division.get("units", []))
+                
+                division_id = tree.insert("", tk.END, text=division_name, open=True, values=(f"--- {division_name} ---", "", "", "", "", "", "", "", "", ""), tags=('division_header',))
+                
+                division_stats = [s for s in all_units_stats if s["unit"] in division_units]
+                sorted_division_units = sorted(division_stats, key=lambda item: (-item["total_pts"], item["unit"]))
+                
+                for rank, stats in enumerate(sorted_division_units, 1):
+                    unit_name = stats["unit"]
+                    values = [unit_name, stats["total_pts"]] + ["0"] * 6 + [stats["total_pts"], rank]
+                    tree.insert(division_id, tk.END, values=values, iid=unit_name)
+        else:
+            # Overall (Default) View
+            sorted_units = sorted(all_units_stats, key=lambda item: (-item["total_pts"], item["unit"]))
+            for rank, stats in enumerate(sorted_units, 1):
+                unit_name = stats["unit"]
+                values = [unit_name, stats["total_pts"]] + ["0"] * 6 + [stats["total_pts"], rank]
+                tree.insert("", tk.END, values=values, iid=unit_name)
+
+    def calculate_and_display_projections(self, tree, group_view=False):
+        """Calculates and updates the projections in the UI, handling both overall and group ranking."""
         def get_point_value(key: str, default_val: int = 0) -> int:
             try:
                 val_str = self.point_system_values[key].get()
                 return int(val_str) if val_str and val_str.strip() else default_val
-            except (ValueError, KeyError):
-                return default_val
+            except (ValueError, KeyError): return default_val
 
         pts_win_lead = get_point_value("win_lead", 4)
         pts_win_assist = get_point_value("win_assist", 2)
@@ -2698,14 +2730,17 @@ class SeasonTrackerGUI:
         pts_bonus_2_0_lead = get_point_value("bonus_2_0_lead", 0)
         pts_bonus_2_0_assist = get_point_value("bonus_2_0_assist", 1)
 
-        for item_id in tree.get_children():
-            unit_name = tree.item(item_id, "values")[0]
-            current_total_points = int(tree.item(item_id, "values")[1])
+        all_projections = []
+
+        # --- Step 1: Calculate projected points for all units ---
+        def process_item(item_id):
+            values = tree.item(item_id, "values")
+            unit_name = values[0]
+            current_total_points = int(values[1])
             
             inputs = self.projection_inputs[unit_name]
             
             try:
-                # Get the count for each type of theoretical outcome
                 t_2_0_lw = int(inputs["theoretical_2_0_lead_wins"].get())
                 t_2_0_aw = int(inputs["theoretical_2_0_assist_wins"].get())
                 t_1_1_lw = int(inputs["theoretical_1_1_lead_wins"].get())
@@ -2713,16 +2748,13 @@ class SeasonTrackerGUI:
                 t_0_2_ll = int(inputs["theoretical_0_2_lead_losses"].get())
                 t_0_2_al = int(inputs["theoretical_0_2_assist_losses"].get())
 
-                # Correctly calculate points based on rounds
                 lead_wins = (t_2_0_lw * 2) + (t_1_1_lw * 1)
                 assist_wins = (t_2_0_aw * 2) + (t_1_1_aw * 1)
                 lead_losses = (t_1_1_lw * 1) + (t_0_2_ll * 2)
                 assist_losses = (t_1_1_aw * 1) + (t_0_2_al * 2)
                 
-                # Calculate bonus points for 2-0 weeks
                 bonus_points = (t_2_0_lw * pts_bonus_2_0_lead) + (t_2_0_aw * pts_bonus_2_0_assist)
 
-                # Calculate total theoretical points
                 theoretical_points = (
                     (lead_wins * pts_win_lead) +
                     (assist_wins * pts_win_assist) +
@@ -2733,10 +2765,35 @@ class SeasonTrackerGUI:
                 
                 projected_points = current_total_points + theoretical_points
                 tree.set(item_id, "projected_pts", projected_points)
-
-            except ValueError:
-                # Handle case where an input is not a valid integer
+                all_projections.append({"unit": unit_name, "projected_pts": projected_points, "iid": item_id})
+            except (ValueError, IndexError):
                 tree.set(item_id, "projected_pts", "Error")
+
+        for item_id in tree.get_children(''):
+            # If it's a division header, process its children
+            if tree.tag_has('division_header', item_id):
+                for child_id in tree.get_children(item_id):
+                    process_item(child_id)
+            # Otherwise, it's a regular item in the root
+            else:
+                process_item(item_id)
+
+        # --- Step 2: Sort and update ranks ---
+        if group_view and self.divisions:
+            # Grouped ranking
+            for division in self.divisions:
+                division_units = set(division.get("units", []))
+                
+                division_projections = [p for p in all_projections if p["unit"] in division_units]
+                sorted_division = sorted(division_projections, key=lambda x: (-x["projected_pts"], x["unit"]))
+                
+                for rank, proj in enumerate(sorted_division, 1):
+                    tree.set(proj["iid"], "rank", rank)
+        else:
+            # Overall ranking
+            sorted_projections = sorted(all_projections, key=lambda x: (-x["projected_pts"], x["unit"]))
+            for rank, proj in enumerate(sorted_projections, 1):
+                tree.set(proj["iid"], "rank", rank)
     def open_division_manager(self):
         division_window = tk.Toplevel(self.master)
         division_window.title("Division Management")
