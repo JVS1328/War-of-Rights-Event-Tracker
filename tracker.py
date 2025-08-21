@@ -910,6 +910,13 @@ class SeasonTrackerGUI:
         tree.column("manual_adj", width=80, anchor=tk.CENTER)
         tree.column("rank", width=50, anchor=tk.CENTER)
         tree.column("delta", width=60, anchor=tk.CENTER)
+        
+        # --- Bottom Frame for Buttons ---
+        bottom_frame = ttk.Frame(win)
+        bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        projections_button = ttk.Button(bottom_frame, text="Season Projections", command=lambda: self.show_projections_ui(win))
+        projections_button.pack(side=tk.LEFT, pady=(5,0))
 
 
         def redraw_table():
@@ -2442,6 +2449,173 @@ class SeasonTrackerGUI:
         button_frame.grid(row=2, column=0, columnspan=2, pady=(10,0))
         tk.Button(button_frame, text="Apply to Week", command=apply_and_close).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Close", command=results_window.destroy).pack(side=tk.LEFT, padx=5)
+
+    def show_projections_ui(self, parent_window):
+        """Displays the UI for season projections based on theoretical future results."""
+        proj_win = tk.Toplevel(parent_window)
+        proj_win.title("Season Projections")
+        proj_win.geometry("1100x600")
+        proj_win.minsize(900, 400)
+        proj_win.transient(parent_window)
+        proj_win.grab_set()
+
+        # Data structure for inputs
+        self.projection_inputs = defaultdict(lambda: {
+            "theoretical_2_0_lead_wins": tk.StringVar(value="0"),
+            "theoretical_2_0_assist_wins": tk.StringVar(value="0"),
+            "theoretical_1_1_lead_wins": tk.StringVar(value="0"),
+            "theoretical_1_1_assist_wins": tk.StringVar(value="0"),
+            "theoretical_0_2_lead_losses": tk.StringVar(value="0"),
+            "theoretical_0_2_assist_losses": tk.StringVar(value="0"),
+        })
+
+        # --- UI SETUP ---
+        main_frame = ttk.Frame(proj_win, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        cols = [
+            "unit", "current_pts",
+            "theoretical_2_0_lead_wins", "theoretical_2_0_assist_wins",
+            "theoretical_1_1_lead_wins", "theoretical_1_1_assist_wins",
+            "theoretical_0_2_lead_losses", "theoretical_0_2_assist_losses",
+            "projected_pts"
+        ]
+        col_names = {
+            "unit": "Unit", "current_pts": "Current Pts",
+            "theoretical_2_0_lead_wins": "2-0 L-Wins",
+            "theoretical_2_0_assist_wins": "2-0 A-Wins",
+            "theoretical_1_1_lead_wins": "1-1 L-Wins",
+            "theoretical_1_1_assist_wins": "1-1 A-Wins",
+            "theoretical_0_2_lead_losses": "0-2 L-Loss",
+            "theoretical_0_2_assist_losses": "0-2 A-Loss",
+            "projected_pts": "Projected Pts"
+        }
+        
+        tree = ttk.Treeview(main_frame, columns=cols, show="headings")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for col_id in cols:
+            tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
+            tree.column(col_id, width=80, anchor=tk.CENTER)
+        tree.column("unit", width=150, anchor=tk.W)
+
+        # --- DATA PREPARATION & POPULATION ---
+        current_stats_data = self.calculate_points()
+        all_units_stats = []
+        for unit in self.units:
+            if unit in self.non_token_units: continue
+            base_stats = current_stats_data.get(unit, {"points": 0})
+            manual_adj = self.manual_point_adjustments.get(unit, 0)
+            total_pts = base_stats["points"] + manual_adj
+            all_units_stats.append({"unit": unit, "total_pts": total_pts})
+        
+        sorted_units = sorted(all_units_stats, key=lambda item: (-item["total_pts"], item["unit"]))
+
+        for stats in sorted_units:
+            unit_name = stats["unit"]
+            # Initialize projected points same as current points initially
+            values = [unit_name, stats["total_pts"]] + ["0"] * 6 + [stats["total_pts"]]
+            tree.insert("", tk.END, values=values, iid=unit_name)
+
+        # --- IN-PLACE EDITING LOGIC ---
+        def on_tree_double_click(event):
+            item_id = tree.identify_row(event.y)
+            column_id_str = tree.identify_column(event.x)
+            
+            if not item_id or not column_id_str: return
+
+            column_index = int(column_id_str.replace('#', '')) - 1
+            column_key = cols[column_index]
+
+            # Only allow editing of theoretical input columns
+            if column_key not in self.projection_inputs[item_id]:
+                return
+
+            x, y, width, height = tree.bbox(item_id, column_id_str)
+            
+            entry_var = self.projection_inputs[item_id][column_key]
+            entry = ttk.Entry(tree, textvariable=entry_var, justify='center')
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.focus_set()
+            entry.select_range(0, tk.END)
+
+            def on_entry_commit(event=None):
+                new_value = entry_var.get()
+                entry.destroy()
+                if not new_value.isdigit():
+                    entry_var.set("0") # Reset to 0 if invalid
+                tree.set(item_id, column_key, entry_var.get())
+
+            entry.bind("<FocusOut>", on_entry_commit)
+            entry.bind("<Return>", on_entry_commit)
+            entry.bind("<Escape>", lambda e: entry.destroy())
+
+        tree.bind("<Double-1>", on_tree_double_click)
+
+        # --- CALCULATION BUTTON ---
+        calc_button = ttk.Button(
+            main_frame,
+            text="Calculate Projections",
+            command=lambda: self.calculate_and_display_projections(tree)
+        )
+        calc_button.pack(pady=(10, 0))
+
+    def calculate_and_display_projections(self, tree):
+        """Calculates and updates the projections in the UI."""
+        # Retrieve point system values safely
+        def get_point_value(key: str, default_val: int = 0) -> int:
+            try:
+                val_str = self.point_system_values[key].get()
+                return int(val_str) if val_str and val_str.strip() else default_val
+            except (ValueError, KeyError):
+                return default_val
+
+        pts_win_lead = get_point_value("win_lead", 4)
+        pts_win_assist = get_point_value("win_assist", 2)
+        pts_loss_lead = get_point_value("loss_lead", 0)
+        pts_loss_assist = get_point_value("loss_assist", 1)
+        pts_bonus_2_0_lead = get_point_value("bonus_2_0_lead", 0)
+        pts_bonus_2_0_assist = get_point_value("bonus_2_0_assist", 1)
+
+        for item_id in tree.get_children():
+            unit_name = tree.item(item_id, "values")[0]
+            current_total_points = int(tree.item(item_id, "values")[1])
+            
+            inputs = self.projection_inputs[unit_name]
+            
+            try:
+                # Get the count for each type of theoretical outcome
+                t_2_0_lw = int(inputs["theoretical_2_0_lead_wins"].get())
+                t_2_0_aw = int(inputs["theoretical_2_0_assist_wins"].get())
+                t_1_1_lw = int(inputs["theoretical_1_1_lead_wins"].get())
+                t_1_1_aw = int(inputs["theoretical_1_1_assist_wins"].get())
+                t_0_2_ll = int(inputs["theoretical_0_2_lead_losses"].get())
+                t_0_2_al = int(inputs["theoretical_0_2_assist_losses"].get())
+
+                # Correctly calculate points based on rounds
+                lead_wins = (t_2_0_lw * 2) + (t_1_1_lw * 1)
+                assist_wins = (t_2_0_aw * 2) + (t_1_1_aw * 1)
+                lead_losses = (t_1_1_lw * 1) + (t_0_2_ll * 2)
+                assist_losses = (t_1_1_aw * 1) + (t_0_2_al * 2)
+                
+                # Calculate bonus points for 2-0 weeks
+                bonus_points = (t_2_0_lw * pts_bonus_2_0_lead) + (t_2_0_aw * pts_bonus_2_0_assist)
+
+                # Calculate total theoretical points
+                theoretical_points = (
+                    (lead_wins * pts_win_lead) +
+                    (assist_wins * pts_win_assist) +
+                    (lead_losses * pts_loss_lead) +
+                    (assist_losses * pts_loss_assist) +
+                    bonus_points
+                )
+                
+                projected_points = current_total_points + theoretical_points
+                tree.set(item_id, "projected_pts", projected_points)
+
+            except ValueError:
+                # Handle case where an input is not a valid integer
+                tree.set(item_id, "projected_pts", "Error")
 
 
 if __name__ == "__main__":
