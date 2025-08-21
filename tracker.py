@@ -69,6 +69,54 @@ class Tooltip:
         if tw:
             tw.destroy()
 
+class DraggableListbox(tk.Listbox):
+    """A tkinter Listbox with drag-and-drop reordering of items."""
+    def __init__(self, master, **kw):
+        super().__init__(master, **kw)
+        self.bind("<Button-1>", self.on_start_drag)
+        self.bind("<B1-Motion>", self.on_drag)
+        self.bind("<ButtonRelease-1>", self.on_drop)
+        self.selection_anchor_index = None
+        self._dragged_item_text = None
+
+    def on_start_drag(self, event):
+        if self.size() > 0:
+            self.selection_anchor_index = self.nearest(event.y)
+            self._dragged_item_text = self.get(self.selection_anchor_index)
+
+    def on_drag(self, event):
+        if self.selection_anchor_index is None:
+            return
+        
+        i = self.nearest(event.y)
+        if i != self.selection_anchor_index:
+            # Reorder inside the same listbox
+            item_text = self.get(self.selection_anchor_index)
+            self.delete(self.selection_anchor_index)
+            self.insert(i, item_text)
+            self.selection_anchor_index = i
+
+    def on_drop(self, event):
+        if self._dragged_item_text is None:
+            return
+
+        # find the target listbox
+        target_listbox = self.winfo_containing(event.x_root, event.y_root)
+
+        if target_listbox is not self and isinstance(target_listbox, DraggableListbox):
+            # Dropped on a different listbox
+            y_in_target = target_listbox.winfo_pointery() - target_listbox.winfo_rooty()
+            target_index = target_listbox.nearest(y_in_target)
+            
+            if self._dragged_item_text not in target_listbox.get(0, tk.END):
+                target_listbox.insert(target_index, self._dragged_item_text)
+                target_listbox.update_idletasks() # Force redraw
+            
+            self.delete(self.get(0, tk.END).index(self._dragged_item_text))
+
+        self.selection_anchor_index = None
+        self._dragged_item_text = None
+        
 class SeasonTrackerGUI:
     """Two-team season tracker with minimal GUI, persistent save/load, and a global units list."""
 
@@ -101,6 +149,7 @@ class SeasonTrackerGUI:
         self.unit_points: defaultdict[str, int] = defaultdict(int)
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
+        self.divisions: list[dict] = []
         
         # Point system settings - dictionary of StringVars
         self.point_system_values = {
@@ -1839,6 +1888,7 @@ class SeasonTrackerGUI:
             "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
             "unit_player_counts": self.unit_player_counts,
             "manual_point_adjustments": self.manual_point_adjustments,
+            "divisions": self.divisions,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -1890,6 +1940,8 @@ class SeasonTrackerGUI:
 
             self.manual_point_adjustments = defaultdict(int)
             self.manual_point_adjustments.update(data.get("manual_point_adjustments", {}))
+            
+            self.divisions = data.get("divisions", [])
 
         except Exception as e:
             messagebox.showerror("Load error", str(e))
@@ -2035,7 +2087,10 @@ class SeasonTrackerGUI:
         
         cancel_button = tk.Button(buttons_frame, text="Cancel", command=on_cancel, width=10)
         cancel_button.pack(side=tk.RIGHT, padx=10)
-
+        
+        divisions_button = tk.Button(buttons_frame, text="Manage Divisions", command=self.open_division_manager)
+        divisions_button.pack(side=tk.BOTTOM, pady=(10,0))
+ 
         dialog.update_idletasks()
         master_x = self.master.winfo_rootx() # Use winfo_rootx for screen coordinates
         master_y = self.master.winfo_rooty()
@@ -2616,9 +2671,177 @@ class SeasonTrackerGUI:
             except ValueError:
                 # Handle case where an input is not a valid integer
                 tree.set(item_id, "projected_pts", "Error")
+    def open_division_manager(self):
+        division_window = tk.Toplevel(self.master)
+        division_window.title("Division Management")
+        division_window.geometry("800x600")
+        division_window.minsize(600, 400)
+        division_window.transient(self.master)
+        division_window.grab_set()
+
+        # --- Data ---
+        # Make a deep copy for editing, so changes can be cancelled
+        edited_divisions = [d.copy() for d in self.divisions]
+        
+        assigned_units = {unit for div in edited_divisions for unit in div.get("units", [])}
+        unassigned_units = sorted(list(self.units - assigned_units))
+
+        # --- UI Elements ---
+        main_frame = tk.Frame(division_window, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=3) # Give more space to divisions
+        main_frame.grid_rowconfigure(0, weight=1)
+
+        # Unassigned Units Pane
+        unassigned_frame = tk.LabelFrame(main_frame, text="Unassigned Units")
+        unassigned_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        unassigned_list = DraggableListbox(unassigned_frame, selectmode=tk.EXTENDED)
+        unassigned_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        for unit in unassigned_units:
+            unassigned_list.insert(tk.END, unit)
+
+        # Configured Divisions Pane
+        divisions_frame = tk.LabelFrame(main_frame, text="Configured Divisions")
+        divisions_frame.grid(row=0, column=1, sticky="nsew")
+        
+        # --- Function to sync data model from UI state ---
+        def sync_data_from_ui():
+            nonlocal unassigned_units
+            current_divisions = []
+            all_division_units = set()
+            
+            # Scrape units from each division listbox
+            for div_frame in divisions_frame.winfo_children():
+                if isinstance(div_frame, tk.LabelFrame):
+                    division_name = div_frame.cget("text")
+                    units_in_division = []
+                    # Find the listbox
+                    listbox = next((c for c in div_frame.winfo_children() if isinstance(c, tk.Listbox)), None)
+                    if not listbox: # More robustly find the listbox
+                         list_frame = next((c for c in div_frame.winfo_children() if isinstance(c, tk.Frame)), None)
+                         if list_frame:
+                           listbox = next((c for c in list_frame.winfo_children() if isinstance(c, DraggableListbox)), None)
+
+                    if listbox:
+                        units_in_division = list(listbox.get(0, tk.END))
+                        all_division_units.update(units_in_division)
+                    
+                    current_divisions.append({"name": division_name, "units": units_in_division})
+            
+            edited_divisions[:] = current_divisions
+            
+            # Update unassigned list based on what's NOT in a division
+            unassigned_units[:] = sorted(list(self.units - all_division_units))
+
+
+        # --- Function to redraw the divisions (simple & robust) ---
+        def redraw_divisions():
+            # Destroy all old division frames
+            for widget in list(divisions_frame.winfo_children()):
+                widget.destroy()
+
+            # Re-create all frames from the synced data model
+            for division in edited_divisions:
+                division_sub_frame = tk.LabelFrame(divisions_frame, text=division.get("name", "Unnamed Division"), padx=5, pady=5)
+                division_sub_frame.pack(fill=tk.X, expand=True, padx=5, pady=5)
+                
+                list_frame = tk.Frame(division_sub_frame)
+                list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+                unit_listbox = DraggableListbox(list_frame, selectmode=tk.EXTENDED, height=4)
+                unit_listbox.pack(fill=tk.BOTH, expand=True)
+                
+                for unit in sorted(division.get("units", [])):
+                    unit_listbox.insert(tk.END, unit)
+
+                controls_frame = tk.Frame(division_sub_frame)
+                controls_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5,0))
+                tk.Button(controls_frame, text="Rename", command=lambda d=division: rename_division(d)).pack(pady=2)
+                tk.Button(controls_frame, text="Delete", command=lambda d=division: delete_division(d)).pack(pady=2)
+
+            tk.Button(divisions_frame, text="+ Create Division", command=create_division).pack(pady=10)
+            
+            # Refresh the main unassigned list
+            unassigned_list.delete(0, tk.END)
+            for unit in unassigned_units:
+                unassigned_list.insert(tk.END, unit)
+
+        def create_division():
+            sync_data_from_ui() # Sync before modifying
+            from tkinter import simpledialog
+            new_name = simpledialog.askstring("Create Division", "Enter new division name:", parent=division_window)
+            if new_name and not any(d.get("name") == new_name for d in edited_divisions):
+                edited_divisions.append({"name": new_name, "units": []})
+                redraw_divisions()
+            elif new_name:
+                messagebox.showerror("Error", f"A division with the name '{new_name}' already exists.", parent=division_window)
+        
+        def rename_division(division_data):
+            sync_data_from_ui() # Sync before modifying
+            from tkinter import simpledialog
+            new_name = simpledialog.askstring("Rename Division", "Enter new name:", initialvalue=division_data.get("name"), parent=division_window)
+            if new_name and new_name != division_data.get("name") and not any(d.get("name") == new_name for d in edited_divisions):
+                division_data["name"] = new_name
+                redraw_divisions()
+            elif new_name:
+                messagebox.showerror("Error", f"A division with the name '{new_name}' already exists.", parent=division_window)
+
+        def delete_division(division_data):
+            if messagebox.askyesno("Delete Division", f"Are you sure you want to delete '{division_data.get('name')}'?", parent=division_window):
+                sync_data_from_ui() # Get the most up-to-date unit assignments
+                
+                # Find the units that need to be returned to the pool
+                units_to_return = []
+                for div in edited_divisions:
+                    if div['name'] == division_data['name']:
+                        units_to_return = div.get('units', [])
+                        break
+                
+                # Add them back to the unassigned list's source
+                unassigned_units.extend(units_to_return)
+
+                # Now, actually remove the division from the data
+                edited_divisions[:] = [d for d in edited_divisions if d['name'] != division_data['name']]
+                
+                # Finally, redraw the entire UI from the updated data
+                redraw_divisions()
+
+        redraw_divisions()
+                                     
+
+        # Bottom Buttons
+        buttons_frame = tk.Frame(division_window, padx=10, pady=10)
+        buttons_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        def save_and_close():
+            # Scrape the data from the UI to save it
+            new_division_data = []
+            for div_frame in divisions_frame.winfo_children():
+                if isinstance(div_frame, tk.LabelFrame):
+                    division_name = div_frame.cget("text")
+                    units_in_division = []
+                    # Find the listbox within the frame
+                    for list_frame in div_frame.winfo_children():
+                        if isinstance(list_frame, tk.Frame):
+                            for listbox in list_frame.winfo_children():
+                                if isinstance(listbox, DraggableListbox):
+                                    units_in_division = list(listbox.get(0, tk.END))
+                                    break
+                    if units_in_division:
+                         new_division_data.append({"name": division_name, "units": units_in_division})
+            
+            self.divisions = new_division_data
+            division_window.destroy()
+
+        save_button = tk.Button(buttons_frame, text="Save", command=save_and_close)
+        save_button.pack(side=tk.RIGHT, padx=5)
+        cancel_button = tk.Button(buttons_frame, text="Cancel", command=division_window.destroy)
+        cancel_button.pack(side=tk.RIGHT)
 
 
 if __name__ == "__main__":
     root = tk.Tk()
     SeasonTrackerGUI(root)
     root.mainloop()
+    
