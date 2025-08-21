@@ -6,6 +6,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 import csv
 import itertools
+import math
+import statistics
 import ast
 from maps import maps
 
@@ -725,6 +727,24 @@ class SeasonTrackerGUI:
                 teammate[u].update(v for v in b if v != u)
                 opponent[u].update(a)
         return teammate, opponent
+    
+    def calculate_min_max(self, data):
+        """Calculates the minimum and maximum values from a list of numbers."""
+        if not data:
+            return 0, 0
+        return min(data), max(data)
+
+    def calculate_average(self, data):
+        """Calculates the average of a list of numbers."""
+        if not data:
+            return 0
+        return statistics.mean(data)
+
+    def calculate_std_dev(self, data):
+        """Calculates the standard deviation of a list of numbers."""
+        if len(data) < 2:
+            return 0
+        return statistics.stdev(data)
 
     def get_detailed_interactions(self):
         """
@@ -1332,12 +1352,33 @@ class SeasonTrackerGUI:
 
             teammate_stats, _ = self.compute_stats(max_week_index=max_week_idx)
 
+
             # Find max count for color scaling
-            max_teammate_count = 0
-            for unit_data in teammate_stats.values():
-                for count_val in unit_data.values():
-                    if count_val > max_teammate_count:
-                        max_teammate_count = count_val
+            # --- Teammate Interaction Stats ---
+            interaction_counts = []
+            processed_pairs = set()
+            for unit1, teammates in teammate_stats.items():
+                for unit2, count in teammates.items():
+                    pair = tuple(sorted((unit1, unit2)))
+                    if pair not in processed_pairs:
+                        interaction_counts.append(count)
+                        processed_pairs.add(pair)
+
+            if interaction_counts:
+                min_val, max_val = self.calculate_min_max(interaction_counts)
+                avg_val = self.calculate_average(interaction_counts)
+                std_dev = self.calculate_std_dev(interaction_counts)
+                
+                week_str = f"Week {max_week_idx + 1}" if max_week_idx is not None else "All Weeks"
+                print(f"--- Teammate Interaction Stats for {week_str} ---")
+                print(f"  Min Times Played Together: {min_val}")
+                print(f"  Max Times Played Together: {max_val}")
+                print(f"  Average Times Played Together: {avg_val:.2f}")
+                print(f"  Standard Deviation of Times Played Together: {std_dev:.2f}")
+                print("-------------------------------------------------")
+
+            # Find max count for color scaling
+            max_teammate_count = max(interaction_counts) if interaction_counts else 0
             
             cell_size = 60
             padding = 75
