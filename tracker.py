@@ -2768,9 +2768,29 @@ class SeasonTrackerGUI:
             unassigned_list.insert(tk.END, unit)
 
         # Configured Divisions Pane
-        divisions_frame = tk.LabelFrame(main_frame, text="Configured Divisions")
-        divisions_frame.grid(row=0, column=1, sticky="nsew")
-        
+        divisions_container = tk.LabelFrame(main_frame, text="Configured Divisions")
+        divisions_container.grid(row=0, column=1, sticky="nsew")
+        divisions_container.grid_rowconfigure(0, weight=1)
+        divisions_container.grid_columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(divisions_container)
+        scrollbar = ttk.Scrollbar(divisions_container, orient="vertical", command=canvas.yview)
+        divisions_frame = ttk.Frame(canvas) # This frame will hold the division widgets
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        canvas_frame = canvas.create_window((0, 0), window=divisions_frame, anchor="nw")
+
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_frame, width=event.width)
+
+        divisions_frame.bind("<Configure>", on_frame_configure)
+        canvas.bind('<Configure>', on_canvas_configure)
+
         # --- Function to sync data model from UI state ---
         def sync_data_from_ui():
             nonlocal unassigned_units
@@ -2846,12 +2866,21 @@ class SeasonTrackerGUI:
         def rename_division(division_data):
             sync_data_from_ui() # Sync before modifying
             from tkinter import simpledialog
-            new_name = simpledialog.askstring("Rename Division", "Enter new name:", initialvalue=division_data.get("name"), parent=division_window)
-            if new_name and new_name != division_data.get("name") and not any(d.get("name") == new_name for d in edited_divisions):
-                division_data["name"] = new_name
+            old_name = division_data.get("name")
+            new_name = simpledialog.askstring("Rename Division", "Enter new name:", initialvalue=old_name, parent=division_window)
+            
+            if new_name and new_name != old_name:
+                # Check if new name already exists
+                if any(d.get("name") == new_name for d in edited_divisions):
+                    messagebox.showerror("Error", f"A division with the name '{new_name}' already exists.", parent=division_window)
+                    return
+
+                # Find the actual dictionary in the list and update it
+                for div in edited_divisions:
+                    if div.get("name") == old_name:
+                        div["name"] = new_name
+                        break
                 redraw_divisions()
-            elif new_name:
-                messagebox.showerror("Error", f"A division with the name '{new_name}' already exists.", parent=division_window)
 
         def delete_division(division_data):
             if messagebox.askyesno("Delete Division", f"Are you sure you want to delete '{division_data.get('name')}'?", parent=division_window):
@@ -2894,8 +2923,8 @@ class SeasonTrackerGUI:
                                 if isinstance(listbox, DraggableListbox):
                                     units_in_division = list(listbox.get(0, tk.END))
                                     break
-                    if units_in_division:
-                         new_division_data.append({"name": division_name, "units": units_in_division})
+                    # Making sure to check for empty divisions
+                    new_division_data.append({"name": division_name, "units": units_in_division})
             
             self.divisions = new_division_data
             division_window.destroy()
