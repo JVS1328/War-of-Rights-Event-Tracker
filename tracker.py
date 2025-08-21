@@ -967,6 +967,18 @@ class SeasonTrackerGUI:
         projections_button = ttk.Button(bottom_frame, text="Season Projections", command=lambda: self.show_projections_ui(win))
         projections_button.pack(side=tk.LEFT, pady=(5,0))
 
+        # --- Grouping Button ---
+        self.group_view_enabled = tk.BooleanVar(value=False)
+        
+        def toggle_group_view():
+            self.group_view_enabled.set(not self.group_view_enabled.get())
+            redraw_table()
+
+        group_button = ttk.Button(bottom_frame, text="Group Standings", command=toggle_group_view)
+        # Only show the button if there is division data
+        if self.divisions:
+            group_button.pack(side=tk.LEFT, padx=(10, 0), pady=(5,0))
+
 
         def redraw_table():
             # Clear existing items
@@ -1014,21 +1026,75 @@ class SeasonTrackerGUI:
                 previous_week_ranks = {item["unit"]: rank for rank, item in enumerate(sorted_prev_week_units, 1)}
 
             # --- Populate Treeview ---
-            for stats in sorted_current_week_units:
-                unit_name = stats["unit"]
-                rank = current_ranks.get(unit_name, "-")
-                total_pts, base_pts, manual_adj = stats["total_pts"], stats["base_pts"], stats["manual_adj"]
-                lw, ll, aw, al = stats["lw"], stats["ll"], stats["aw"], stats["al"]
+            if self.group_view_enabled.get():
+                # --- Grouped (Division) View ---
+                group_button.config(text="Overall Standings") # Update button text
+                all_units_by_division = {u for div in self.divisions for u in div.get("units", [])}
                 
-                delta_display = "-"
-                prev_rank = previous_week_ranks.get(unit_name)
-                if prev_rank is not None and rank != "-":
-                    change = prev_rank - rank
-                    if change > 0: delta_display = f"↑{change}"
-                    elif change < 0: delta_display = f"↓{abs(change)}"
-                    else: delta_display = "↔0"
-                
-                tree.insert("", tk.END, values=(unit_name, total_pts, rank, delta_display, base_pts, manual_adj, lw, ll, aw, al))
+                for division in self.divisions:
+                    division_name = division.get("name", "Unnamed Division")
+                    division_units = set(division.get("units", []))
+                    
+                    # Manual centering for the division header in the 'unit' column
+                    unit_col_width_chars = 20 # Estimated character width of the Unit column
+                    centered_name = f"{division_name:^{unit_col_width_chars}}"
+
+                    # Create a collapsible header for the division with a custom tag
+                    division_id = tree.insert("", tk.END, text=division_name, open=True, values=(centered_name, "", "", "", "", "", "", "", "", ""), tags=('division_header',))
+
+                    # Filter stats for units in the current division
+                    division_stats = [s for s in all_units_stats if s["unit"] in division_units]
+                    
+                    # Sort and rank within the division
+                    sorted_division_units = sorted(division_stats, key=lambda item: (-item["total_pts"], item["unit"]))
+                    
+                    # Calculate previous week's ranks for this division specifically
+                    previous_week_division_ranks = {}
+                    if current_week_idx > 0:
+                        prev_stats_data = self.calculate_points(max_week_index=current_week_idx - 1)
+                        prev_division_stats = []
+                        for unit_in_div in division_units:
+                            if unit_in_div in self.non_token_units: continue
+                            base_pts = prev_stats_data.get(unit_in_div, {}).get("points", 0)
+                            manual_adj = self.manual_point_adjustments.get(unit_in_div, 0)
+                            prev_division_stats.append({"unit": unit_in_div, "total_pts": base_pts + manual_adj})
+                        
+                        sorted_prev_division_units = sorted(prev_division_stats, key=lambda item: (-item["total_pts"], item["unit"]))
+                        previous_week_division_ranks = {item["unit"]: rank for rank, item in enumerate(sorted_prev_division_units, 1)}
+
+                    for rank_in_div, stats in enumerate(sorted_division_units, 1):
+                        unit_name = stats["unit"]
+                        total_pts, base_pts, manual_adj = stats["total_pts"], stats["base_pts"], stats["manual_adj"]
+                        lw, ll, aw, al = stats["lw"], stats["ll"], stats["aw"], stats["al"]
+
+                        delta_display = "-"
+                        prev_rank = previous_week_division_ranks.get(unit_name)
+                        if prev_rank is not None:
+                            change = prev_rank - rank_in_div
+                            if change > 0: delta_display = f"↑{change}"
+                            elif change < 0: delta_display = f"↓{abs(change)}"
+                            else: delta_display = "↔0"
+                        
+                        tree.insert(division_id, tk.END, values=(unit_name, total_pts, rank_in_div, delta_display, base_pts, manual_adj, lw, ll, aw, al))
+
+            else:
+                # --- Overall (Default) View ---
+                group_button.config(text="Group Standings") # Reset button text
+                for stats in sorted_current_week_units:
+                    unit_name = stats["unit"]
+                    rank = current_ranks.get(unit_name, "-")
+                    total_pts, base_pts, manual_adj = stats["total_pts"], stats["base_pts"], stats["manual_adj"]
+                    lw, ll, aw, al = stats["lw"], stats["ll"], stats["aw"], stats["al"]
+                    
+                    delta_display = "-"
+                    prev_rank = previous_week_ranks.get(unit_name)
+                    if prev_rank is not None and rank != "-":
+                        change = prev_rank - rank
+                        if change > 0: delta_display = f"↑{change}"
+                        elif change < 0: delta_display = f"↓{abs(change)}"
+                        else: delta_display = "↔0"
+                    
+                    tree.insert("", tk.END, values=(unit_name, total_pts, rank, delta_display, base_pts, manual_adj, lw, ll, aw, al))
 
         def on_tree_double_click(event):
             item_id = tree.identify_row(event.y)
