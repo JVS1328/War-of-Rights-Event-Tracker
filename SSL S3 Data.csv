@@ -1,0 +1,228 @@
+Losses by Unit (Binary)
+Week,Unit,Team,Round,Map,Loss
+1,TKO,Team A,1,Colquitt's Defence,0
+1,12th VA,Team A,1,Colquitt's Defence,0
+1,59th NY,Team A,1,Colquitt's Defence,0
+1,10th US,Team A,1,Colquitt's Defence,0
+1,CB,Team A,1,Colquitt's Defence,0
+1,FSB,Team A,1,Colquitt's Defence,0
+1,SR,Team A,1,Colquitt's Defence,0
+1,II Corps,Team B,1,Colquitt's Defence,1
+1,51st AL,Team B,1,Colquitt's Defence,1
+1,JD,Team B,1,Colquitt's Defence,1
+1,CQB,Team B,1,Colquitt's Defence,1
+1,10th TN,Team B,1,Colquitt's Defence,1
+1,AVC,Team B,1,Colquitt's Defence,1
+1,7th TX,Team B,1,Colquitt's Defence,1
+1,MSG,Team B,1,Colquitt's Defence,1
+1,TKO,Team A,2,Wagon Road,0
+1,12th VA,Team A,2,Wagon Road,0
+1,59th NY,Team A,2,Wagon Road,0
+1,10th US,Team A,2,Wagon Road,0
+1,CB,Team A,2,Wagon Road,0
+1,FSB,Team A,2,Wagon Road,0
+1,SR,Team A,2,Wagon Road,0
+1,II Corps,Team B,2,Wagon Road,1
+1,51st AL,Team B,2,Wagon Road,1
+1,JD,Team B,2,Wagon Road,1
+1,CQB,Team B,2,Wagon Road,1
+1,10th TN,Team B,2,Wagon Road,1
+1,AVC,Team B,2,Wagon Road,1
+1,7th TX,Team B,2,Wagon Road,1
+1,MSG,Team B,2,Wagon Road,1
+2,12th VA,Team B,1,East Woods Skirmish,0
+2,51st AL,Team B,1,East Woods Skirmish,0
+2,CB,Team B,1,East Woods Skirmish,0
+2,AVC,Team B,1,East Woods Skirmish,0
+2,7th TX,Team B,1,East Woods Skirmish,0
+2,FSB,Team B,1,East Woods Skirmish,0
+2,SR,Team B,1,East Woods Skirmish,0
+2,MSG,Team B,1,East Woods Skirmish,0
+2,II Corps,Team A,1,East Woods Skirmish,1
+2,TKO,Team A,1,East Woods Skirmish,1
+2,59th NY,Team A,1,East Woods Skirmish,1
+2,JD,Team A,1,East Woods Skirmish,1
+2,10th US,Team A,1,East Woods Skirmish,1
+2,CQB,Team A,1,East Woods Skirmish,1
+2,10th TN,Team A,1,East Woods Skirmish,1
+2,II Corps,Team A,2,Hooker's Push,0
+2,TKO,Team A,2,Hooker's Push,0
+2,59th NY,Team A,2,Hooker's Push,0
+2,JD,Team A,2,Hooker's Push,0
+2,10th US,Team A,2,Hooker's Push,0
+2,CQB,Team A,2,Hooker's Push,0
+2,10th TN,Team A,2,Hooker's Push,0
+2,12th VA,Team B,2,Hooker's Push,1
+2,51st AL,Team B,2,Hooker's Push,1
+2,CB,Team B,2,Hooker's Push,1
+2,AVC,Team B,2,Hooker's Push,1
+2,7th TX,Team B,2,Hooker's Push,1
+2,FSB,Team B,2,Hooker's Push,1
+2,SR,Team B,2,Hooker's Push,1
+2,MSG,Team B,2,Hooker's Push,1
+3,II Corps,Team B,1,Cooke's Countercharge,0
+3,12th VA,Team B,1,Cooke's Countercharge,0
+3,59th NY,Team B,1,Cooke's Countercharge,0
+3,CQB,Team B,1,Cooke's Countercharge,0
+3,7th TX,Team B,1,Cooke's Countercharge,0
+3,FSB,Team B,1,Cooke's Countercharge,0
+3,MSG,Team B,1,Cooke's Countercharge,0
+3,TKO,Team A,1,Cooke's Countercharge,1
+3,51st AL,Team A,1,Cooke's Countercharge,1
+3,JD,Team A,1,Cooke's Countercharge,1
+3,10th US,Team A,1,Cooke's Countercharge,1
+3,CB,Team A,1,Cooke's Countercharge,1
+3,10th TN,Team A,1,Cooke's Countercharge,1
+3,AVC,Team A,1,Cooke's Countercharge,1
+3,TKO,Team A,2,Maryland Heights,0
+3,51st AL,Team A,2,Maryland Heights,0
+3,JD,Team A,2,Maryland Heights,0
+3,10th US,Team A,2,Maryland Heights,0
+3,CB,Team A,2,Maryland Heights,0
+3,10th TN,Team A,2,Maryland Heights,0
+3,AVC,Team A,2,Maryland Heights,0
+3,II Corps,Team B,2,Maryland Heights,1
+3,12th VA,Team B,2,Maryland Heights,1
+3,59th NY,Team B,2,Maryland Heights,1
+3,CQB,Team B,2,Maryland Heights,1
+3,7th TX,Team B,2,Maryland Heights,1
+3,FSB,Team B,2,Maryland Heights,1
+3,MSG,Team B,2,Maryland Heights,1
+4,12th VA,Team A,1,Otto & Sherrick Farm,0
+4,59th NY,Team A,1,Otto & Sherrick Farm,0
+4,JD,Team A,1,Otto & Sherrick Farm,0
+4,CB,Team A,1,Otto & Sherrick Farm,0
+4,10th TN,Team A,1,Otto & Sherrick Farm,0
+4,AVC,Team A,1,Otto & Sherrick Farm,0
+4,MSG,Team A,1,Otto & Sherrick Farm,0
+4,II Corps,Team B,1,Otto & Sherrick Farm,1
+4,TKO,Team B,1,Otto & Sherrick Farm,1
+4,51st AL,Team B,1,Otto & Sherrick Farm,1
+4,10th US,Team B,1,Otto & Sherrick Farm,1
+4,CQB,Team B,1,Otto & Sherrick Farm,1
+4,7th TX,Team B,1,Otto & Sherrick Farm,1
+4,FSB,Team B,1,Otto & Sherrick Farm,1
+4,SR,Team B,1,Otto & Sherrick Farm,1
+4,12th VA,Team A,2,Roulette Lane,0
+4,59th NY,Team A,2,Roulette Lane,0
+4,JD,Team A,2,Roulette Lane,0
+4,CB,Team A,2,Roulette Lane,0
+4,10th TN,Team A,2,Roulette Lane,0
+4,AVC,Team A,2,Roulette Lane,0
+4,MSG,Team A,2,Roulette Lane,0
+4,II Corps,Team B,2,Roulette Lane,1
+4,TKO,Team B,2,Roulette Lane,1
+4,51st AL,Team B,2,Roulette Lane,1
+4,10th US,Team B,2,Roulette Lane,1
+4,CQB,Team B,2,Roulette Lane,1
+4,7th TX,Team B,2,Roulette Lane,1
+4,FSB,Team B,2,Roulette Lane,1
+4,SR,Team B,2,Roulette Lane,1
+5,TKO,Team B,1,Confederate Encampment,0
+5,12th VA,Team B,1,Confederate Encampment,0
+5,JD,Team B,1,Confederate Encampment,0
+5,10th US,Team B,1,Confederate Encampment,0
+5,10th TN,Team B,1,Confederate Encampment,0
+5,7th TX,Team B,1,Confederate Encampment,0
+5,FSB,Team B,1,Confederate Encampment,0
+5,MSG,Team B,1,Confederate Encampment,0
+5,II Corps,Team A,1,Confederate Encampment,1
+5,51st AL,Team A,1,Confederate Encampment,1
+5,59th NY,Team A,1,Confederate Encampment,1
+5,CQB,Team A,1,Confederate Encampment,1
+5,CB,Team A,1,Confederate Encampment,1
+5,AVC,Team A,1,Confederate Encampment,1
+5,SR,Team A,1,Confederate Encampment,1
+5,II Corps,Team A,2,Hill's Counterattack,0
+5,51st AL,Team A,2,Hill's Counterattack,0
+5,59th NY,Team A,2,Hill's Counterattack,0
+5,CQB,Team A,2,Hill's Counterattack,0
+5,CB,Team A,2,Hill's Counterattack,0
+5,AVC,Team A,2,Hill's Counterattack,0
+5,SR,Team A,2,Hill's Counterattack,0
+5,TKO,Team B,2,Hill's Counterattack,1
+5,12th VA,Team B,2,Hill's Counterattack,1
+5,JD,Team B,2,Hill's Counterattack,1
+5,10th US,Team B,2,Hill's Counterattack,1
+5,10th TN,Team B,2,Hill's Counterattack,1
+5,7th TX,Team B,2,Hill's Counterattack,1
+5,FSB,Team B,2,Hill's Counterattack,1
+5,MSG,Team B,2,Hill's Counterattack,1
+6,TKO,Team A,1,Colquitt's Defence,0
+6,12th VA,Team A,1,Colquitt's Defence,0
+6,51st AL,Team A,1,Colquitt's Defence,0
+6,59th NY,Team A,1,Colquitt's Defence,0
+6,JD,Team A,1,Colquitt's Defence,0
+6,7th TX,Team A,1,Colquitt's Defence,0
+6,FSB,Team A,1,Colquitt's Defence,0
+6,II Corps,Team B,1,Colquitt's Defence,1
+6,10th US,Team B,1,Colquitt's Defence,1
+6,CQB,Team B,1,Colquitt's Defence,1
+6,CB,Team B,1,Colquitt's Defence,1
+6,10th TN,Team B,1,Colquitt's Defence,1
+6,AVC,Team B,1,Colquitt's Defence,1
+6,SR,Team B,1,Colquitt's Defence,1
+6,MSG,Team B,1,Colquitt's Defence,1
+6,TKO,Team A,2,Flemming's Meadow,0
+6,12th VA,Team A,2,Flemming's Meadow,0
+6,51st AL,Team A,2,Flemming's Meadow,0
+6,59th NY,Team A,2,Flemming's Meadow,0
+6,JD,Team A,2,Flemming's Meadow,0
+6,7th TX,Team A,2,Flemming's Meadow,0
+6,FSB,Team A,2,Flemming's Meadow,0
+6,II Corps,Team B,2,Flemming's Meadow,1
+6,10th US,Team B,2,Flemming's Meadow,1
+6,CQB,Team B,2,Flemming's Meadow,1
+6,CB,Team B,2,Flemming's Meadow,1
+6,10th TN,Team B,2,Flemming's Meadow,1
+6,AVC,Team B,2,Flemming's Meadow,1
+6,SR,Team B,2,Flemming's Meadow,1
+6,MSG,Team B,2,Flemming's Meadow,1
+7,12th VA,Team A,1,Stefan's Lot,0
+7,59th NY,Team A,1,Stefan's Lot,0
+7,JD,Team A,1,Stefan's Lot,0
+7,10th US,Team A,1,Stefan's Lot,0
+7,CQB,Team A,1,Stefan's Lot,0
+7,AVC,Team A,1,Stefan's Lot,0
+7,7th TX,Team A,1,Stefan's Lot,0
+7,SR,Team A,1,Stefan's Lot,0
+7,II Corps,Team B,1,Stefan's Lot,1
+7,TKO,Team B,1,Stefan's Lot,1
+7,51st AL,Team B,1,Stefan's Lot,1
+7,CB,Team B,1,Stefan's Lot,1
+7,10th TN,Team B,1,Stefan's Lot,1
+7,FSB,Team B,1,Stefan's Lot,1
+7,MSG,Team B,1,Stefan's Lot,1
+7,12th VA,Team A,2,Alexander Farm,0
+7,59th NY,Team A,2,Alexander Farm,0
+7,JD,Team A,2,Alexander Farm,0
+7,10th US,Team A,2,Alexander Farm,0
+7,CQB,Team A,2,Alexander Farm,0
+7,AVC,Team A,2,Alexander Farm,0
+7,7th TX,Team A,2,Alexander Farm,0
+7,SR,Team A,2,Alexander Farm,0
+7,II Corps,Team B,2,Alexander Farm,1
+7,TKO,Team B,2,Alexander Farm,1
+7,51st AL,Team B,2,Alexander Farm,1
+7,CB,Team B,2,Alexander Farm,1
+7,10th TN,Team B,2,Alexander Farm,1
+7,FSB,Team B,2,Alexander Farm,1
+7,MSG,Team B,2,Alexander Farm,1
+
+Total Losses per Unit
+Unit,Total Losses
+10th TN,9
+10th US,7
+12th VA,3
+51st AL,9
+59th NY,3
+7th TX,7
+AVC,7
+CB,7
+CQB,9
+FSB,7
+II Corps,11
+JD,5
+MSG,9
+SR,6
+TKO,7
