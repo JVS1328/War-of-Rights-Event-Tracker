@@ -369,6 +369,83 @@
       "round2_map": "Shenandoah Street",
       "round1_flipped": false,
       "round2_flipped": true
+    },
+    {
+      "name": "08/20/25 - W10",
+      "A": [
+        "12th VA",
+        "AVC",
+        "CQB",
+        "FSB",
+        "II Corps",
+        "JD",
+        "SR",
+        "TKO"
+      ],
+      "B": [
+        "10th TN",
+        "10th US",
+        "51st AL",
+        "59th NY",
+        "7th TX",
+        "CB",
+        "MSG"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": "12th VA",
+      "lead_B": "MSG",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1719,
+      "r1_casualties_B": 1725,
+      "r2_casualties_A": 1556,
+      "r2_casualties_B": 1979,
+      "round1_map": "Wagon Road",
+      "round2_map": "Piper Farm",
+      "round1_flipped": false,
+      "round2_flipped": false
+    },
+    {
+      "name": "08/27/25 - W11",
+      "A": [
+        "10th US",
+        "59th NY",
+        "AVC",
+        "FSB",
+        "II Corps",
+        "JD",
+        "MSG"
+      ],
+      "B": [
+        "10th TN",
+        "12th VA",
+        "51st AL",
+        "CB",
+        "CQB",
+        "SR",
+        "TKO"
+      ],
+      "round1_winner": null,
+      "round2_winner": "B",
+      "lead_A": "AVC",
+      "lead_B": "CQB",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 0,
+      "r1_casualties_B": 0,
+      "r2_casualties_A": 0,
+      "r2_casualties_B": 0,
+      "round1_map": "Colquitt's Defence",
+      "round2_map": "Roulette Lane",
+      "round1_flipped": true,
+      "round2_flipped": false
     }
   ],
   "team_names": {
@@ -385,52 +462,52 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "12",
-      "max": "15"
+      "min": "18",
+      "max": "21"
     },
     "10th US": {
       "min": "20",
-      "max": "24"
+      "max": "25"
     },
     "12th VA": {
-      "min": "27",
-      "max": "32"
+      "min": "33",
+      "max": "38"
     },
     "51st AL": {
-      "min": "23",
-      "max": "28"
+      "min": "16",
+      "max": "21"
     },
     "59th NY": {
       "min": "30",
       "max": "35"
     },
     "7th TX": {
-      "min": "25",
-      "max": "30"
+      "min": "0",
+      "max": "0"
     },
     "AVC": {
       "min": "10",
-      "max": "13"
+      "max": "12"
     },
     "CB": {
-      "min": "60",
-      "max": "65"
+      "min": "50",
+      "max": "55"
     },
     "CQB": {
-      "min": "17",
-      "max": "22"
+      "min": "20",
+      "max": "25"
     },
     "FSB": {
-      "min": "16",
-      "max": "18"
+      "min": "24",
+      "max": "29"
     },
     "II Corps": {
-      "min": "35",
-      "max": "40"
+      "min": "38",
+      "max": "42"
     },
     "JD": {
-      "min": "25",
-      "max": "30"
+      "min": "30",
+      "max": "35"
     },
     "MSG": {
       "min": "5",
@@ -438,15 +515,41 @@
     },
     "SR": {
       "min": "2",
-      "max": "2"
+      "max": "4"
     },
     "TKO": {
-      "min": "18",
+      "min": "17",
       "max": "19"
     }
   },
   "manual_point_adjustments": {
     "MSG": 1,
     "TKO": 1
-  }
+  },
+  "divisions": [
+    {
+      "name": "Smoke",
+      "units": [
+        "CB",
+        "JD",
+        "AVC",
+        "CQB",
+        "10th TN",
+        "59th NY",
+        "FSB"
+      ]
+    },
+    {
+      "name": "Steel",
+      "units": [
+        "MSG",
+        "TKO",
+        "II Corps",
+        "51st AL",
+        "7th TX",
+        "10th US",
+        "12th VA"
+      ]
+    }
+  ]
 }
