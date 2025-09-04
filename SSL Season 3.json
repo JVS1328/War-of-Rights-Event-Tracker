@@ -5,6 +5,7 @@
     "12th VA",
     "51st AL",
     "59th NY",
+    "5th MN",
     "7th TX",
     "AVC",
     "CB",
@@ -17,6 +18,7 @@
     "TKO"
   ],
   "non_token_units": [
+    "5th MN",
     "SR"
   ],
   "season": [
@@ -446,6 +448,45 @@
       "round2_map": "Roulette Lane",
       "round1_flipped": true,
       "round2_flipped": false
+    },
+    {
+      "name": "09/03/25 - W12",
+      "A": [
+        "10th TN",
+        "5th MN",
+        "AVC",
+        "CB",
+        "CQB",
+        "FSB",
+        "JD",
+        "TKO"
+      ],
+      "B": [
+        "10th US",
+        "12th VA",
+        "51st AL",
+        "59th NY",
+        "II Corps",
+        "MSG",
+        "SR"
+      ],
+      "round1_winner": null,
+      "round2_winner": "A",
+      "lead_A": "TKO",
+      "lead_B": "II Corps",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 964,
+      "r1_casualties_B": 1489,
+      "r2_casualties_A": 1167,
+      "r2_casualties_B": 1676,
+      "round1_map": "Hooker's Push",
+      "round2_map": "Burnside Bridge",
+      "round1_flipped": false,
+      "round2_flipped": true
     }
   ],
   "team_names": {
@@ -462,64 +503,68 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "18",
-      "max": "21"
+      "min": "10",
+      "max": "15"
     },
     "10th US": {
-      "min": "20",
-      "max": "25"
+      "min": "28",
+      "max": "34"
     },
     "12th VA": {
-      "min": "33",
-      "max": "38"
+      "min": "31",
+      "max": "36"
     },
     "51st AL": {
-      "min": "16",
-      "max": "21"
+      "min": "14",
+      "max": "19"
     },
     "59th NY": {
-      "min": "30",
-      "max": "35"
+      "min": "33",
+      "max": "38"
     },
     "7th TX": {
       "min": "0",
       "max": "0"
     },
     "AVC": {
-      "min": "10",
+      "min": "7",
       "max": "12"
     },
     "CB": {
-      "min": "50",
-      "max": "55"
+      "min": "45",
+      "max": "50"
     },
     "CQB": {
-      "min": "20",
-      "max": "25"
+      "min": "9",
+      "max": "12"
     },
     "FSB": {
-      "min": "24",
-      "max": "29"
+      "min": "12",
+      "max": "17"
     },
     "II Corps": {
-      "min": "38",
-      "max": "42"
+      "min": "40",
+      "max": "45"
     },
     "JD": {
       "min": "30",
       "max": "35"
     },
     "MSG": {
-      "min": "5",
-      "max": "10"
+      "min": "4",
+      "max": "6"
     },
     "SR": {
       "min": "2",
-      "max": "4"
+      "max": "3"
     },
     "TKO": {
-      "min": "17",
-      "max": "19"
+      "min": "19",
+      "max": "23"
+    },
+    "5th MN": {
+      "min": "20",
+      "max": "25"
     }
   },
   "manual_point_adjustments": {
