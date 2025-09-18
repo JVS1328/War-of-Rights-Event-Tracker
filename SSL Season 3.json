@@ -3,6 +3,7 @@
     "10th TN",
     "10th US",
     "12th VA",
+    "23rd NYV",
     "51st AL",
     "59th NY",
     "5th MN",
@@ -470,7 +471,7 @@
         "MSG",
         "SR"
       ],
-      "round1_winner": null,
+      "round1_winner": "B",
       "round2_winner": "A",
       "lead_A": "TKO",
       "lead_B": "II Corps",
@@ -487,6 +488,85 @@
       "round2_map": "Burnside Bridge",
       "round1_flipped": false,
       "round2_flipped": true
+    },
+    {
+      "name": "09/10/25 - W13",
+      "A": [
+        "10th TN",
+        "10th US",
+        "12th VA",
+        "23rd NYV",
+        "51st AL",
+        "5th MN",
+        "CQB",
+        "FSB",
+        "MSG"
+      ],
+      "B": [
+        "59th NY",
+        "AVC",
+        "CB",
+        "II Corps",
+        "JD",
+        "SR",
+        "TKO"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "A",
+      "lead_A": "10th US",
+      "lead_B": "JD",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1588,
+      "r1_casualties_B": 1201,
+      "r2_casualties_A": 1175,
+      "r2_casualties_B": 1483,
+      "round1_map": "Pat's Turnpike",
+      "round2_map": "Stefan's Lot",
+      "round1_flipped": false,
+      "round2_flipped": false
+    },
+    {
+      "name": "09/17/25 - W14",
+      "A": [
+        "10th US",
+        "23rd NYV",
+        "AVC",
+        "CB",
+        "CQB",
+        "FSB",
+        "II Corps",
+        "SR"
+      ],
+      "B": [
+        "12th VA",
+        "51st AL",
+        "59th NY",
+        "5th MN",
+        "JD",
+        "MSG",
+        "TKO"
+      ],
+      "round1_winner": "A",
+      "round2_winner": "A",
+      "lead_A": null,
+      "lead_B": "51st AL",
+      "playoffs": false,
+      "lead_A_r1": null,
+      "lead_B_r1": null,
+      "lead_A_r2": null,
+      "lead_B_r2": null,
+      "r1_casualties_A": 1176,
+      "r1_casualties_B": 1403,
+      "r2_casualties_A": 1276,
+      "r2_casualties_B": 1355,
+      "round1_map": "Reno's Fall",
+      "round2_map": "Smith Field",
+      "round1_flipped": true,
+      "round2_flipped": false
     }
   ],
   "team_names": {
@@ -503,20 +583,20 @@
   },
   "unit_player_counts": {
     "10th TN": {
-      "min": "10",
-      "max": "15"
+      "min": "0",
+      "max": "0"
     },
     "10th US": {
-      "min": "28",
-      "max": "34"
+      "min": "21",
+      "max": "26"
     },
     "12th VA": {
-      "min": "31",
-      "max": "36"
+      "min": "35",
+      "max": "40"
     },
     "51st AL": {
-      "min": "14",
-      "max": "19"
+      "min": "20",
+      "max": "25"
     },
     "59th NY": {
       "min": "33",
@@ -527,44 +607,48 @@
       "max": "0"
     },
     "AVC": {
-      "min": "7",
-      "max": "12"
+      "min": "10",
+      "max": "13"
     },
     "CB": {
       "min": "45",
       "max": "50"
     },
     "CQB": {
-      "min": "9",
-      "max": "12"
+      "min": "15",
+      "max": "20"
     },
     "FSB": {
-      "min": "12",
-      "max": "17"
+      "min": "19",
+      "max": "23"
     },
     "II Corps": {
-      "min": "40",
-      "max": "45"
-    },
-    "JD": {
       "min": "30",
       "max": "35"
     },
+    "JD": {
+      "min": "27",
+      "max": "32"
+    },
     "MSG": {
       "min": "4",
-      "max": "6"
+      "max": "7"
     },
     "SR": {
       "min": "2",
       "max": "3"
     },
     "TKO": {
-      "min": "19",
-      "max": "23"
+      "min": "18",
+      "max": "19"
     },
     "5th MN": {
-      "min": "20",
-      "max": "25"
+      "min": "15",
+      "max": "20"
+    },
+    "23rd NYV": {
+      "min": "10",
+      "max": "15"
     }
   },
   "manual_point_adjustments": {
