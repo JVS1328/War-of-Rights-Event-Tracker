@@ -1081,7 +1081,6 @@ class SeasonTrackerGUI:
 
         tii_button = ttk.Button(bottom_frame, text="Teammate Impact Index", command=self.show_tii_table)
         tii_button.pack(side=tk.LEFT, padx=(10, 0), pady=(5,0))
-
         # --- Grouping Button ---
         self.group_view_enabled = tk.BooleanVar(value=False)
         
@@ -1310,7 +1309,225 @@ class SeasonTrackerGUI:
             
         # Scrollbar
         vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
+        # --- Bottom Frame for Buttons ---
+        bottom_frame = ttk.Frame(win)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
+
+        synergy_button = ttk.Button(bottom_frame, text="Roster Synergy Matrix", command=self.show_synergy_matrix)
+        synergy_button.pack(side=tk.LEFT)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    def show_synergy_matrix(self):
+        """Displays a window with the Roster Synergy Matrix."""
+        if not self.season:
+            messagebox.showinfo("Roster Synergy Matrix", "No season data available.")
+            return
+
+        sel = self.week_list.curselection()
+        selected_week_idx = sel[0] if sel else len(self.season) - 1
+        week_number = selected_week_idx + 1
+
+        win = tk.Toplevel(self.master)
+        win.title(f"Roster Synergy Matrix (Up to Week {week_number})")
+        win.geometry("900x700")
+
+        # Main frame
+        main_frame = ttk.Frame(win, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Synergy Tab
+        synergy_tab = ttk.Frame(notebook)
+        notebook.add(synergy_tab, text="Synergy Matrix")
+        
+        synergy_data, best_lineups, worst_lineups = self.calculate_roster_synergy(max_week_index=selected_week_idx)
+
+        if synergy_data:
+            active_units = sorted(list(set(unit for pair in synergy_data.keys() for unit in pair)))
+            
+            matrix_frame = ttk.LabelFrame(synergy_tab, text="Unit Pair Win Probability", padding="10")
+            matrix_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+            
+            tree = ttk.Treeview(matrix_frame)
+            tree["columns"] = ["unit"] + active_units
+            tree.column("#0", width=0, stretch=tk.NO)
+            tree.column("unit", anchor=tk.W, width=120)
+            tree.heading("unit", text="Unit", anchor=tk.W)
+
+            for unit in active_units:
+                tree.column(unit, anchor=tk.CENTER, width=60)
+                tree.heading(unit, text=unit, anchor=tk.CENTER)
+
+            for unit1 in active_units:
+                values = [unit1]
+                for unit2 in active_units:
+                    if unit1 == unit2:
+                        values.append("-")
+                    else:
+                        win_prob = synergy_data.get(tuple(sorted((unit1, unit2))), None)
+                        values.append(f"{win_prob:.1%}" if win_prob is not None else "N/A")
+                tree.insert("", "end", values=values)
+            tree.pack(fill=tk.BOTH, expand=True)
+
+        # Best/Worst Lineups Tab
+        lineups_tab = ttk.Frame(notebook)
+        notebook.add(lineups_tab, text="Best/Worst Lineups")
+
+        lineups_frame = ttk.Frame(lineups_tab, padding="10")
+        lineups_frame.pack(fill=tk.BOTH, expand=True)
+        lineups_frame.grid_columnconfigure(0, weight=1)
+        lineups_frame.grid_columnconfigure(1, weight=1)
+
+        best_frame = ttk.LabelFrame(lineups_frame, text="Best Performing Lineups")
+        best_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        
+        worst_frame = ttk.LabelFrame(lineups_frame, text="Worst Performing Lineups")
+        worst_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        for frame, lineups in [(best_frame, best_lineups), (worst_frame, worst_lineups)]:
+            lineup_tree = ttk.Treeview(frame, columns=("roster", "win_rate", "games"), show="headings")
+            lineup_tree.heading("roster", text="Roster")
+            lineup_tree.heading("win_rate", text="Win Rate")
+            lineup_tree.heading("games", text="Rounds Played")
+            lineup_tree.column("roster", width=300)
+            lineup_tree.pack(fill=tk.BOTH, expand=True)
+            for roster, rate, games in lineups:
+                lineup_tree.insert("", "end", values=(", ".join(roster), f"{rate:.1%}", games))
+
+        # Attack/Defend Tab
+        attack_defense_tab = ttk.Frame(notebook)
+        notebook.add(attack_defense_tab, text="Attack/Defense Stats")
+        
+        attack_defense_stats = self.calculate_attack_defense_performance(max_week_index=selected_week_idx)
+
+        attack_tree = ttk.Treeview(attack_defense_tab, columns=("unit", "attack_wins", "attack_losses", "attack_win_rate", "defend_wins", "defend_losses", "defend_win_rate"), show="headings")
+        for col in attack_tree["columns"]:
+            attack_tree.heading(col, text=col.replace("_", " ").title())
+        attack_tree.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        for unit, stats in sorted(attack_defense_stats.items(), key=lambda item: item[0]):
+            attack_games = stats["attack_wins"] + stats["attack_losses"]
+            defend_games = stats["defend_wins"] + stats["defend_losses"]
+            attack_win_rate = stats["attack_wins"] / attack_games if attack_games > 0 else 0
+            defend_win_rate = stats["defend_wins"] / defend_games if defend_games > 0 else 0
+            attack_tree.insert("", "end", values=(
+                unit,
+                stats["attack_wins"], stats["attack_losses"], f"{attack_win_rate:.1%}",
+                stats["defend_wins"], stats["defend_losses"], f"{defend_win_rate:.1%}"
+            ))
+
+
+    def calculate_roster_synergy(self, max_week_index: int | None = None):
+        weeks_to_process = self.season
+        if max_week_index is not None and 0 <= max_week_index < len(self.season):
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        pair_stats = defaultdict(lambda: {'wins': 0, 'games': 0})
+        roster_stats = defaultdict(lambda: {'wins': 0, 'games': 0})
+
+        for week in weeks_to_process:
+            for r_num in [1, 2]:
+                winner_team = week.get(f"round{r_num}_winner")
+                if not winner_team:
+                    continue
+
+                team_A = week.get("A", set())
+                team_B = week.get("B", set())
+                
+                winning_roster = team_A if winner_team == "A" else team_B
+                losing_roster = team_B if winner_team == "A" else team_A
+
+                # Full roster stats
+                roster_stats[tuple(sorted(winning_roster))]['wins'] += 1
+                roster_stats[tuple(sorted(winning_roster))]['games'] += 1
+                roster_stats[tuple(sorted(losing_roster))]['games'] += 1
+
+
+                # Pair stats for winning team
+                for pair in itertools.combinations(winning_roster, 2):
+                    pair_key = tuple(sorted(pair))
+                    pair_stats[pair_key]['wins'] += 1
+                    pair_stats[pair_key]['games'] += 1
+
+                # Pair stats for losing team
+                for pair in itertools.combinations(losing_roster, 2):
+                    pair_key = tuple(sorted(pair))
+                    pair_stats[pair_key]['games'] += 1
+
+        synergy_data = {pair: stats['wins'] / stats['games'] for pair, stats in pair_stats.items() if stats['games'] > 0}
+
+        # Calculate best/worst lineups
+        lineup_win_rates = {
+            roster: (stats['wins'] / stats['games'], stats['games'])
+            for roster, stats in roster_stats.items()
+            if stats['games'] > 0
+        }
+        
+        sorted_lineups = sorted(
+            lineup_win_rates.items(),
+            key=lambda item: item[1][0],
+            reverse=True
+        )
+        
+        # Format for display: (roster, win_rate, games)
+        best_lineups = [(r, wr, g) for r, (wr, g) in sorted_lineups[:5]]
+        worst_lineups = sorted([(r, wr, g) for r, (wr, g) in sorted_lineups[-5:]], key=lambda x: x[1])
+
+
+        return synergy_data, best_lineups, worst_lineups
+
+    def calculate_attack_defense_performance(self, max_week_index: int | None = None):
+        weeks_to_process = self.season
+        if max_week_index is not None:
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        unit_performance = defaultdict(lambda: {
+            "attack_wins": 0, "attack_losses": 0,
+            "defend_wins": 0, "defend_losses": 0
+        })
+
+        usa_attack_maps = {
+            "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
+            "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
+            "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
+            "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
+            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+            "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
+        }
+
+        for week in weeks_to_process:
+            for r in [1, 2]:
+                map_name = week.get(f"round{r}_map")
+                winner = week.get(f"round{r}_winner")
+                flipped = week.get(f"round{r}_flipped", False)
+                if not map_name or not winner:
+                    continue
+
+                usa_side = "A" if not flipped else "B"
+                csa_side = "B" if not flipped else "A"
+                
+                is_usa_attack = map_name in usa_attack_maps
+                attacker_side = usa_side if is_usa_attack else csa_side
+                defender_side = csa_side if is_usa_attack else usa_side
+
+                winning_team = week.get(winner, set())
+                losing_team_id = 'B' if winner == 'A' else 'A'
+                losing_team = week.get(losing_team_id, set())
+                
+                if winner == attacker_side:
+                    for unit in winning_team:
+                        unit_performance[unit]["attack_wins"] += 1
+                    for unit in losing_team:
+                        unit_performance[unit]["defend_losses"] += 1
+                else: # defender wins
+                    for unit in winning_team:
+                        unit_performance[unit]["defend_wins"] += 1
+                    for unit in losing_team:
+                        unit_performance[unit]["attack_losses"] += 1
+
+        return unit_performance
         tree.configure(yscrollcommand=vsb.set)
         tree.pack(fill=tk.BOTH, expand=True)
     def calculate_casualties(self, max_week_index: int | None = None) -> tuple[defaultdict[str, int], defaultdict[str, int]]:
