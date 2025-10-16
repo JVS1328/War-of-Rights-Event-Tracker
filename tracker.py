@@ -146,6 +146,7 @@ class SeasonTrackerGUI:
         # }
         self.current_week: dict | None = None
         self.team_names = {"A": tk.StringVar(value="USA"), "B": tk.StringVar(value="CSA")}
+        self.roster_strength_vars = {"A": tk.StringVar(value="Strength: -"), "B": tk.StringVar(value="Strength: -")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
@@ -248,8 +249,20 @@ class SeasonTrackerGUI:
         right.grid_columnconfigure(0, weight=1)
         right.grid_columnconfigure(2, weight=1)
 
-        tk.Entry(right, textvariable=self.team_names["A"], justify="center").grid(row=0, column=0)
-        tk.Entry(right, textvariable=self.team_names["B"], justify="center").grid(row=0, column=2)
+        # Team A
+        team_a_header = tk.Frame(right)
+        team_a_header.grid(row=0, column=0, sticky="ew")
+        team_a_header.grid_columnconfigure(0, weight=1)
+        tk.Entry(team_a_header, textvariable=self.team_names["A"], justify="center").pack(fill=tk.X, expand=True)
+        tk.Label(team_a_header, textvariable=self.roster_strength_vars["A"], font=("Arial", 8)).pack()
+        
+        # Team B
+        team_b_header = tk.Frame(right)
+        team_b_header.grid(row=0, column=2, sticky="ew")
+        team_b_header.grid_columnconfigure(0, weight=1)
+        tk.Entry(team_b_header, textvariable=self.team_names["B"], justify="center").pack(fill=tk.X, expand=True)
+        tk.Label(team_b_header, textvariable=self.roster_strength_vars["B"], font=("Arial", 8)).pack()
+
 
         self.list_a = tk.Listbox(right, selectmode=tk.SINGLE, width=25, exportselection=False)
         self.list_b = tk.Listbox(right, selectmode=tk.SINGLE, width=25, exportselection=False)
@@ -504,8 +517,9 @@ class SeasonTrackerGUI:
             self.lead_B_r2_var.set("")
 
         self.toggle_playoffs_mode(update_data=False) # Update UI based on loaded data
-        self.refresh_team_lists() # This will also call update_lead_menus
-        self.refresh_units_list() # Refresh units list to show available units for selected week
+        self.refresh_team_lists()
+        self.refresh_units_list()
+        self.calculate_and_display_roster_strength()
 
     # ------------------------------------------------------------------
     # Units management
@@ -613,7 +627,8 @@ class SeasonTrackerGUI:
         self.current_week[team].add(unit)
         self.current_week[other].discard(unit)
         self.refresh_team_lists()
-        self.refresh_units_list()  # Refresh units list to remove assigned unit
+        self.refresh_units_list()
+        self.calculate_and_display_roster_strength()
 
     def refresh_team_lists(self):
         self.list_a.delete(0, tk.END)
@@ -627,6 +642,7 @@ class SeasonTrackerGUI:
             display_text = f"*{u}" if u in self.non_token_units else u
             self.list_b.insert(tk.END, display_text)
         self.update_lead_menus()
+        self.calculate_and_display_roster_strength()
 
     def update_lead_menus(self):
         """Updates the lead unit OptionMenus based on current_week team rosters."""
@@ -3590,9 +3606,43 @@ class SeasonTrackerGUI:
 
         vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
+
+        bottom_frame = ttk.Frame(win)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
+        explain_button = ttk.Button(bottom_frame, text="Explain Elo", command=self.show_elo_explanation)
+        explain_button.pack(side=tk.LEFT)
         
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def show_elo_explanation(self):
+        """Displays a messagebox explaining the custom Elo rating system."""
+        explanation = """
+**Custom Elo Rating System Explained:**
+
+Our Elo system is designed to measure the relative strength of regiments based on their performance in weekly matches. It adapts the core principles of the standard Elo system with custom rules to fit our league's unique structure.
+
+**1. Core Concept:**
+- Every regiment starts with a baseline rating (e.g., 1500).
+- When two teams play, the system calculates an "expected outcome" based on the difference between their average Elo ratings.
+- If a team wins, it gains Elo points; if it loses, it loses points.
+
+**2. Strength of Field:**
+- **Upset Bonus:** Beating a team with a higher average Elo rating will grant you **more** points than beating a team with a lower rating.
+- **Punishment for Upsets:** Losing to a team with a lower average Elo will cause you to lose **more** points.
+
+**3. Player Count Weighting:**
+- A regiment's contribution to their team's average Elo is weighted by the average number of players they bring.
+- **Larger regiments have a greater impact** on their team's starting Elo and, consequently, receive a proportionally larger share of the Elo points gained or lost.
+
+**4. Lead Unit Multiplier (x1.5):**
+- The regiment designated as the "Lead Unit" for a round has its Elo gains or losses amplified.
+- This reflects the added responsibility and impact of leading a charge. A win as lead is more rewarding, and a loss is more punishing.
+
+**5. K-Factor (32):**
+- This value determines the maximum number of points that can be won or lost in a single match. A higher K-Factor leads to more volatile and faster-swinging ratings.
+"""
+        messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
 
     def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor=32, initial_rating=1500, lead_multiplier=1.5):
         """
@@ -3683,6 +3733,54 @@ class SeasonTrackerGUI:
             elo_changes = {unit: final_elos[unit] - initial_rating for unit in self.units}
             
         return final_elos, elo_changes
+
+
+    def calculate_and_display_roster_strength(self):
+        """Calculates and updates the Roster Strength labels in the UI."""
+        if not self.current_week:
+            self.roster_strength_vars["A"].set("Strength: -")
+            self.roster_strength_vars["B"].set("Strength: -")
+            return
+
+        # Calculate Elo ratings up to the week *before* the current one
+        # to get a baseline strength before this week's match.
+        current_week_idx = self.season.index(self.current_week)
+        previous_week_idx = current_week_idx - 1
+
+        if previous_week_idx < 0:
+            # No previous weeks, so all units are at initial rating
+            elo_ratings = defaultdict(lambda: 1500)
+        else:
+            try:
+                elo_ratings, _ = self.calculate_elo_ratings(max_week_index=previous_week_idx)
+            except Exception:
+                # If Elo fails for any reason, gracefully fall back
+                elo_ratings = defaultdict(lambda: 1500)
+
+        team_A_units = self.current_week.get("A", set())
+        team_B_units = self.current_week.get("B", set())
+
+        # Calculate weighted average for Team A
+        if team_A_units:
+            total_players_A = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units)
+            if total_players_A > 0:
+                avg_elo_A = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units) / total_players_A
+                self.roster_strength_vars["A"].set(f"Strength: {avg_elo_A:.2f}")
+            else:
+                self.roster_strength_vars["A"].set("Strength: -")
+        else:
+            self.roster_strength_vars["A"].set("Strength: -")
+
+        # Calculate weighted average for Team B
+        if team_B_units:
+            total_players_B = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units)
+            if total_players_B > 0:
+                avg_elo_B = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units) / total_players_B
+                self.roster_strength_vars["B"].set(f"Strength: {avg_elo_B:.2f}")
+            else:
+                self.roster_strength_vars["B"].set("Strength: -")
+        else:
+            self.roster_strength_vars["B"].set("Strength: -")
 
 
 if __name__ == "__main__":
