@@ -1546,17 +1546,19 @@ class SeasonTrackerGUI:
         likely_lineups_tab = ttk.Frame(notebook)
         notebook.add(likely_lineups_tab, text="Most Likely Lineups")
         
-        likely_lineups_frame = ttk.Frame(likely_lineups_tab, padding="10")
-        likely_lineups_frame.pack(fill=tk.BOTH, expand=True)
+        # This frame will hold the buttons at the top
+        top_button_frame = ttk.Frame(likely_lineups_tab, padding=(10, 10, 10, 0))
+        top_button_frame.pack(fill=tk.X)
 
-        # Add a button to trigger the calculation for most likely lineups
-        button_frame = ttk.Frame(likely_lineups_frame)
-        button_frame.pack(pady=10)
-        
-        calc_button = ttk.Button(button_frame, text="Calculate Most Likely Lineups", command=lambda: self.calculate_most_likely_lineups(selected_week_idx, likely_lineups_frame))
+        # This frame will hold the results of the calculation
+        results_display_frame = ttk.Frame(likely_lineups_tab, padding=(10, 0, 10, 10))
+        results_display_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Add buttons to the top frame
+        calc_button = ttk.Button(top_button_frame, text="Calculate Most Likely Lineups", command=lambda: self.calculate_most_likely_lineups(selected_week_idx, results_display_frame))
         calc_button.pack(side=tk.LEFT, padx=5)
 
-        explain_button = ttk.Button(button_frame, text="Explain Calculation", command=self.show_lineup_explanation)
+        explain_button = ttk.Button(top_button_frame, text="Explain Calculation", command=self.show_lineup_explanation)
         explain_button.pack(side=tk.LEFT, padx=5)
 
 
@@ -1653,9 +1655,9 @@ This tool identifies the strongest and weakest possible team compositions based 
 
     def calculate_most_likely_lineups(self, max_week_index, parent_frame):
         """Calculates and displays the most and least likely to win lineups."""
+        # Clear only the results frame, not the buttons
         for widget in parent_frame.winfo_children():
-            if not isinstance(widget, ttk.Button):
-                widget.destroy()
+            widget.destroy()
 
         # --- 1. GATHER DATA ---
         weeks_to_process = self.season[:max_week_index + 1]
