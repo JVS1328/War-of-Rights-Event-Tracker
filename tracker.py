@@ -1523,14 +1523,14 @@ class SeasonTrackerGUI:
         # Attack/Defend Tab
         attack_defense_tab = ttk.Frame(notebook)
         notebook.add(attack_defense_tab, text="Attack/Defense Stats")
-        
+
         attack_defense_stats = self.calculate_attack_defense_performance(max_week_index=selected_week_idx)
 
         attack_tree = ttk.Treeview(attack_defense_tab, columns=("unit", "attack_wins", "attack_losses", "attack_win_rate", "defend_wins", "defend_losses", "defend_win_rate"), show="headings")
         for col in attack_tree["columns"]:
             attack_tree.heading(col, text=col.replace("_", " ").title())
         attack_tree.pack(fill=tk.BOTH, expand=True, pady=5)
-        
+
         for unit, stats in sorted(attack_defense_stats.items(), key=lambda item: item[0]):
             attack_games = stats["attack_wins"] + stats["attack_losses"]
             defend_games = stats["defend_wins"] + stats["defend_losses"]
@@ -1541,7 +1541,56 @@ class SeasonTrackerGUI:
                 stats["attack_wins"], stats["attack_losses"], f"{attack_win_rate:.1%}",
                 stats["defend_wins"], stats["defend_losses"], f"{defend_win_rate:.1%}"
             ))
+            
+        # Most Likely to Win/Lose Tab
+        likely_lineups_tab = ttk.Frame(notebook)
+        notebook.add(likely_lineups_tab, text="Most Likely Lineups")
+        
+        likely_lineups_frame = ttk.Frame(likely_lineups_tab, padding="10")
+        likely_lineups_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Add a button to trigger the calculation for most likely lineups
+        button_frame = ttk.Frame(likely_lineups_frame)
+        button_frame.pack(pady=10)
+        
+        calc_button = ttk.Button(button_frame, text="Calculate Most Likely Lineups", command=lambda: self.calculate_most_likely_lineups(selected_week_idx, likely_lineups_frame))
+        calc_button.pack(side=tk.LEFT, padx=5)
+
+        explain_button = ttk.Button(button_frame, text="Explain Calculation", command=self.show_lineup_explanation)
+        explain_button.pack(side=tk.LEFT, padx=5)
+
+
+    def show_lineup_explanation(self):
+        """Displays a messagebox explaining the Most Likely Lineups calculation."""
+        explanation = """
+**Most Likely Lineups Calculation Explained:**
+
+This tool identifies the strongest and weakest possible team compositions based on historical performance up to the selected week.
+
+**1. Data Collection:**
+- The system gathers three key metrics for every regiment that has participated:
+    - **Win Rate:** The overall percentage of rounds won.
+    - **Elo Rating:** A skill rating adjusted for strength of schedule.
+    - **Adjusted TII:** The Teammate Impact Index, measuring a unit's effect on its teammates' success, weighted by player count.
+
+**2. Average Team Player Count:**
+- It calculates the average number of total players per team across all rounds played in the season so far. This determines the target player count for the generated lineups (e.g., 175 players).
+
+**3. Lineup Generation (Subset Sum):**
+- Using the average player count for each unit, the system finds all combinations of units whose total player counts are close to the target player count (within a certain tolerance). This is a variation of the "Subset Sum" or "Knapsack" problem.
+
+**4. Power Score Calculation:**
+- Each generated lineup is assigned a "Power Score".
+- For each regiment in the lineup, its Win Rate, Elo, and TII are normalized to a common scale and combined using a weighted average:
+    - **Win Rate: 40%**
+    - **Elo Rating: 30%**
+    - **Adjusted TII: 30%**
+- The total Power Score for the lineup is the average of the individual power scores of its members.
+
+**5. Ranking:**
+- All generated lineups are ranked by their final Power Score. The "Most Likely to Win" list shows the lineups with the highest scores, and the "Most Likely to Lose" list shows those with the lowest.
+"""
+        messagebox.showinfo("Lineup Calculation Explained", explanation, parent=self.master)
 
     def calculate_roster_synergy(self, max_week_index: int | None = None):
         weeks_to_process = self.season
@@ -1601,6 +1650,184 @@ class SeasonTrackerGUI:
 
 
         return synergy_data, best_lineups, worst_lineups
+
+    def calculate_most_likely_lineups(self, max_week_index, parent_frame):
+        """Calculates and displays the most and least likely to win lineups."""
+        for widget in parent_frame.winfo_children():
+            if not isinstance(widget, ttk.Button):
+                widget.destroy()
+
+        # --- 1. GATHER DATA ---
+        weeks_to_process = self.season[:max_week_index + 1]
+        if not weeks_to_process:
+            ttk.Label(parent_frame, text="Not enough historical data.").pack(pady=10)
+            return
+
+        # Get Elo, TII, and Win Rates
+        elos, _ = self.calculate_elo_ratings(max_week_index=max_week_index)
+        tii_stats, _ = self.calculate_teammate_impact(max_week_index=max_week_index)
+        
+        # Calculate overall win rate for each unit
+        unit_win_loss = defaultdict(lambda: {'wins': 0, 'games': 0})
+        for week in weeks_to_process:
+            for r_num in [1, 2]:
+                winner = week.get(f"round{r_num}_winner")
+                if not winner: continue
+                
+                team_a = week.get("A", set())
+                team_b = week.get("B", set())
+                winning_team = team_a if winner == "A" else team_b
+                losing_team = team_b if winner == "A" else team_a
+
+                for unit in winning_team:
+                    unit_win_loss[unit]['wins'] += 1
+                    unit_win_loss[unit]['games'] += 1
+                for unit in losing_team:
+                    unit_win_loss[unit]['games'] += 1
+
+        unit_win_rates = {
+            unit: (data['wins'] / data['games']) if data['games'] > 0 else 0
+            for unit, data in unit_win_loss.items()
+        }
+
+        # --- 2. DETERMINE AVERAGE TEAM PLAYER COUNT ---
+        total_players_per_team_per_week = []
+        for week_idx, week in enumerate(weeks_to_process):
+            team_a_units = week.get("A", set())
+            team_b_units = week.get("B", set())
+            
+            if team_a_units:
+                size_a = sum(self.get_unit_average_player_count(u, week_idx) for u in team_a_units)
+                total_players_per_team_per_week.append(size_a)
+            if team_b_units:
+                size_b = sum(self.get_unit_average_player_count(u, week_idx) for u in team_b_units)
+                total_players_per_team_per_week.append(size_b)
+
+        if not total_players_per_team_per_week:
+            ttk.Label(parent_frame, text="Not enough historical player data.").pack(pady=10)
+            return
+            
+        avg_player_count_target = statistics.mean(total_players_per_team_per_week)
+        
+        participating_units = {
+            unit: self.get_unit_average_player_count(unit, max_week_index)
+            for unit, data in unit_win_loss.items()
+            if data['games'] > 0 and self.get_unit_average_player_count(unit, max_week_index) > 0
+        }
+
+        # --- 3. GENERATE AND SCORE LINEUPS (KNAPSACK-LIKE APPROACH) ---
+        # Find all combinations of units that are close to the target player count
+        all_possible_lineups = self._find_lineups_for_player_target(participating_units, avg_player_count_target)
+        if not all_possible_lineups:
+            ttk.Label(parent_frame, text="Could not generate any valid lineups with the given units.").pack(pady=10)
+            return
+
+        scored_lineups = []
+        for lineup in all_possible_lineups:
+            power_score = self._calculate_lineup_power(lineup, elos, tii_stats, unit_win_rates)
+            scored_lineups.append((lineup, power_score))
+            
+        # Sort lineups by power score
+        scored_lineups.sort(key=lambda x: x[1], reverse=True)
+
+        # --- 4. DISPLAY RESULTS ---
+        results_frame = ttk.Frame(parent_frame)
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        results_frame.grid_columnconfigure(0, weight=1)
+        results_frame.grid_columnconfigure(1, weight=1)
+        
+        win_frame = ttk.LabelFrame(results_frame, text=f"Most Likely to Win (Target Players: {avg_player_count_target:.0f})")
+        win_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        
+        lose_frame = ttk.LabelFrame(results_frame, text=f"Most Likely to Lose (Target Players: {avg_player_count_target:.0f})")
+        lose_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        # Display top 15 winning
+        win_tree = ttk.Treeview(win_frame, columns=("roster", "score"), show="headings", selectmode="none")
+        win_tree.heading("roster", text="Roster")
+        win_tree.heading("score", text="Power Score")
+        win_tree.column("roster", width=300)
+        win_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        for lineup, score in scored_lineups[:15]:
+            win_tree.insert("", "end", values=(", ".join(lineup), f"{score:.2f}"))
+
+        # Display bottom 15 losing
+        lose_tree = ttk.Treeview(lose_frame, columns=("roster", "score"), show="headings", selectmode="none")
+        lose_tree.heading("roster", text="Roster")
+        lose_tree.heading("score", text="Power Score")
+        lose_tree.column("roster", width=300)
+        lose_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        for lineup, score in scored_lineups[-15:][::-1]: # Show worst at top
+            lose_tree.insert("", "end", values=(", ".join(lineup), f"{score:.2f}"))
+
+    def _find_lineups_for_player_target(self, units_with_players, target, tolerance_percent=5):
+        """
+        Finds combinations of units whose total average player count is close to the target.
+        This is a variation of the subset sum / knapsack problem.
+        """
+        items = list(units_with_players.items())
+        n = len(items)
+        # dp[i][j] will store combinations of first i items that sum to j
+        dp = defaultdict(list)
+        dp[0] = [[]] # Base case: sum of 0 is an empty set
+
+        for i in range(n):
+            unit_name, player_count = items[i]
+            player_count = int(round(player_count))
+            if player_count <= 0: continue
+
+            # Iterate backwards to avoid using the same item multiple times in one combination
+            for current_sum in sorted(dp.keys(), reverse=True):
+                new_sum = current_sum + player_count
+                for combo in dp[current_sum]:
+                    dp[new_sum].append(combo + [unit_name])
+        
+        # Find all combinations within the tolerance of the target
+        lower_bound = target * (1 - tolerance_percent / 100)
+        upper_bound = target * (1 + tolerance_percent / 100)
+        
+        valid_lineups = []
+        for s, combos in dp.items():
+            if lower_bound <= s <= upper_bound:
+                valid_lineups.extend(combos)
+        
+        # To avoid giant lists, we can limit the number of lineups
+        # and prioritize those closer to the target
+        valid_lineups.sort(key=lambda x: abs(sum(units_with_players[u] for u in x) - target))
+
+        return valid_lineups[:5000] # Limit to a reasonable number of lineups
+
+
+    def _calculate_lineup_power(self, lineup, elos, tii_stats, unit_win_rates):
+        """Calculates a power score for a given lineup."""
+        total_power = 0
+        
+        # Normalize Elo scores to a 0-1 scale for combination
+        all_elo_values = [v for k, v in elos.items() if isinstance(v, (int, float))]
+        min_elo, max_elo = (min(all_elo_values), max(all_elo_values)) if all_elo_values else (1500, 1500)
+        
+        # Normalize TII scores
+        all_tii_values = [v['adjusted_tii_score'] for v in tii_stats.values() if v.get('assist_games',0) + v.get('lead_games',0) > 0]
+        min_tii, max_tii = (min(all_tii_values), max(all_tii_values)) if all_tii_values else (0,1)
+
+        for unit in lineup:
+            # Win Rate (Weight: 0.4)
+            win_rate_score = unit_win_rates.get(unit, 0)
+            
+            # Normalized Elo (Weight: 0.3)
+            elo = elos.get(unit, 1500)
+            norm_elo = (elo - min_elo) / (max_elo - min_elo) if max_elo > min_elo else 0.5
+
+            # Normalized TII (Weight: 0.3)
+            tii = tii_stats.get(unit, {}).get('adjusted_tii_score', 0)
+            norm_tii = (tii - min_tii) / (max_tii - min_tii) if max_tii > min_tii else 0.5
+            
+            # Combine scores
+            unit_power = (win_rate_score * 0.4) + (norm_elo * 0.3) + (norm_tii * 0.3)
+            total_power += unit_power
+            
+        return total_power / len(lineup) if lineup else 0
+
 
     def calculate_attack_defense_performance(self, max_week_index: int | None = None):
         weeks_to_process = self.season
