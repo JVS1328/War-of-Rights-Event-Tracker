@@ -1579,10 +1579,10 @@
       "lead_B_r1": "51st AL",
       "lead_A_r2": "JD",
       "lead_B_r2": "MSG",
-      "r1_casualties_A": 0,
-      "r1_casualties_B": 0,
-      "r2_casualties_A": 0,
-      "r2_casualties_B": 0,
+      "r1_casualties_A": 1126,
+      "r1_casualties_B": 814,
+      "r2_casualties_A": 1913,
+      "r2_casualties_B": 1110,
       "round1_map": "Harper's Graveyard",
       "round2_map": "Otto & Sherrick Farm",
       "round1_flipped": false,
@@ -1688,10 +1688,10 @@
       "lead_B_r1": "CB",
       "lead_A_r2": "12th VA",
       "lead_B_r2": "AVC",
-      "r1_casualties_A": 0,
-      "r1_casualties_B": 0,
-      "r2_casualties_A": 0,
-      "r2_casualties_B": 0,
+      "r1_casualties_A": 1733,
+      "r1_casualties_B": 1140,
+      "r2_casualties_A": 1943,
+      "r2_casualties_B": 876,
       "round1_map": "Confederate Encampment",
       "round2_map": "Colquitt's Defence",
       "round1_flipped": false,
@@ -1879,5 +1879,13 @@
         "12th VA"
       ]
     }
-  ]
+  ],
+  "elo_system_values": {
+    "initial_elo": "1500",
+    "k_factor_standard": "96",
+    "k_factor_provisional": "128",
+    "provisional_rounds": "10",
+    "sweep_bonus_multiplier": "1.25",
+    "lead_multiplier": "2.0"
+  }
 }

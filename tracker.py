@@ -147,6 +147,7 @@ class SeasonTrackerGUI:
         self.current_week: dict | None = None
         self.team_names = {"A": tk.StringVar(value="USA"), "B": tk.StringVar(value="CSA")}
         self.roster_strength_vars = {"A": tk.StringVar(value="Strength: -"), "B": tk.StringVar(value="Strength: -")}
+        self.win_chance_vars = {"A": tk.StringVar(value="Win Chance: -"), "B": tk.StringVar(value="Win Chance: -")}
         self.unit_points: defaultdict[str, int] = defaultdict(int)
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
@@ -263,14 +264,20 @@ class SeasonTrackerGUI:
         team_a_header.grid(row=0, column=0, sticky="ew")
         team_a_header.grid_columnconfigure(0, weight=1)
         tk.Entry(team_a_header, textvariable=self.team_names["A"], justify="center").pack(fill=tk.X, expand=True)
-        tk.Label(team_a_header, textvariable=self.roster_strength_vars["A"], font=("Arial", 8)).pack()
+        strength_frame_A = tk.Frame(team_a_header)
+        strength_frame_A.pack()
+        tk.Label(strength_frame_A, textvariable=self.roster_strength_vars["A"], font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Label(strength_frame_A, textvariable=self.win_chance_vars["A"], font=("Arial", 8)).pack(side=tk.LEFT, padx=(5, 0))
         
         # Team B
         team_b_header = tk.Frame(right)
         team_b_header.grid(row=0, column=2, sticky="ew")
         team_b_header.grid_columnconfigure(0, weight=1)
         tk.Entry(team_b_header, textvariable=self.team_names["B"], justify="center").pack(fill=tk.X, expand=True)
-        tk.Label(team_b_header, textvariable=self.roster_strength_vars["B"], font=("Arial", 8)).pack()
+        strength_frame_B = tk.Frame(team_b_header)
+        strength_frame_B.pack()
+        tk.Label(strength_frame_B, textvariable=self.roster_strength_vars["B"], font=("Arial", 8)).pack(side=tk.LEFT)
+        tk.Label(strength_frame_B, textvariable=self.win_chance_vars["B"], font=("Arial", 8)).pack(side=tk.LEFT, padx=(5, 0))
 
 
         self.list_a = tk.Listbox(right, selectmode=tk.SINGLE, width=25, exportselection=False)
@@ -4216,6 +4223,8 @@ Our Elo system is designed to measure the relative strength of regiments based o
         if not self.current_week:
             self.roster_strength_vars["A"].set("Strength: -")
             self.roster_strength_vars["B"].set("Strength: -")
+            self.win_chance_vars["A"].set("Win Chance: -")
+            self.win_chance_vars["B"].set("Win Chance: -")
             return
 
         # Calculate Elo ratings up to the week *before* the current one
@@ -4223,42 +4232,57 @@ Our Elo system is designed to measure the relative strength of regiments based o
         current_week_idx = self.season.index(self.current_week)
         previous_week_idx = current_week_idx - 1
 
+        initial_rating = int(self.elo_system_values["initial_elo"].get())
         if previous_week_idx < 0:
             # No previous weeks, so all units are at initial rating
-            initial_rating = int(self.elo_system_values["initial_elo"].get())
             elo_ratings = defaultdict(lambda: initial_rating)
         else:
             try:
                 elo_ratings, _ = self.calculate_elo_ratings(max_week_index=previous_week_idx)
             except Exception:
                 # If Elo fails for any reason, gracefully fall back
-                initial_rating = int(self.elo_system_values["initial_elo"].get())
                 elo_ratings = defaultdict(lambda: initial_rating)
 
         team_A_units = self.current_week.get("A", set())
         team_B_units = self.current_week.get("B", set())
 
+        avg_elo_A, avg_elo_B = initial_rating, initial_rating
+        
         # Calculate weighted average for Team A
-        if team_A_units:
-            total_players_A = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units)
-            if total_players_A > 0:
-                avg_elo_A = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units) / total_players_A
-                self.roster_strength_vars["A"].set(f"Strength: {avg_elo_A:.2f}")
-            else:
-                self.roster_strength_vars["A"].set("Strength: -")
+        total_players_A = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units)
+        if team_A_units and total_players_A > 0:
+            avg_elo_A = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units) / total_players_A
+            self.roster_strength_vars["A"].set(f"Strength: {avg_elo_A:.0f}")
         else:
             self.roster_strength_vars["A"].set("Strength: -")
+            self.win_chance_vars["A"].set("Win Chance: -")
 
         # Calculate weighted average for Team B
-        if team_B_units:
-            total_players_B = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units)
-            if total_players_B > 0:
-                avg_elo_B = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units) / total_players_B
-                self.roster_strength_vars["B"].set(f"Strength: {avg_elo_B:.2f}")
-            else:
-                self.roster_strength_vars["B"].set("Strength: -")
+        total_players_B = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units)
+        if team_B_units and total_players_B > 0:
+            avg_elo_B = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units) / total_players_B
+            self.roster_strength_vars["B"].set(f"Strength: {avg_elo_B:.0f}")
         else:
             self.roster_strength_vars["B"].set("Strength: -")
+            self.win_chance_vars["B"].set("Win Chance: -")
+
+        # Calculate and display win chance if both teams have units
+        if team_A_units and team_B_units and total_players_A > 0 and total_players_B > 0:
+            expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
+            expected_B = 1 - expected_A
+            self.win_chance_vars["A"].set(f"Win Chance: {expected_A:.1%}")
+            self.win_chance_vars["B"].set(f"Win Chance: {expected_B:.1%}")
+        else:
+            # If one team is empty, the other has 100% chance, or it's undefined if both are empty
+            if team_A_units and total_players_A > 0:
+                self.win_chance_vars["A"].set("Win Chance: 100.0%")
+                self.win_chance_vars["B"].set("Win Chance: 0.0%")
+            elif team_B_units and total_players_B > 0:
+                self.win_chance_vars["A"].set("Win Chance: 0.0%")
+                self.win_chance_vars["B"].set("Win Chance: 100.0%")
+            else:
+                self.win_chance_vars["A"].set("Win Chance: -")
+                self.win_chance_vars["B"].set("Win Chance: -")
 
 
 if __name__ == "__main__":
