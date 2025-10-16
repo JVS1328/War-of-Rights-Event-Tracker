@@ -3892,7 +3892,7 @@ Our Elo system is designed to measure the relative strength of regiments based o
 
         win = tk.Toplevel(self.master)
         win.title(f"Unit Elo History (Up to Week {max_week_idx + 1})")
-        win.geometry("900x600")
+        win.geometry("1400x600")
 
         # --- Data Calculation ---
         # Calculate history only up to the selected week
@@ -3902,19 +3902,35 @@ Our Elo system is designed to measure the relative strength of regiments based o
         week_columns = ["Initial"] + [f"Week {i+1}" for i in range(max_week_idx + 1)]
         cols = ["unit"] + week_columns
         
-        tree = ttk.Treeview(win, columns=cols, show="headings")
-        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
-        tree.column("unit", width=150, anchor=tk.W)
-
-        for i, week_col in enumerate(week_columns):
-            tree.heading(week_col, text=week_col, command=lambda c=week_col: self.sort_column(tree, c, False))
-            tree.column(week_col, width=100, anchor=tk.CENTER)
-
-        # Get all units and sort them alphabetically
         # Get all units that have participated up to the selected week
         final_elos_for_participation = elo_history_by_week[-1] if elo_history_by_week else {}
         rounds_played = final_elos_for_participation.get("rounds_played", {})
         participating_units = sorted([unit for unit, rounds in rounds_played.items() if rounds > 0])
+
+        tree = ttk.Treeview(win, columns=cols, show="headings")
+
+        # --- Dynamic Column Sizing ---
+        # Calculate width for the 'Unit' column based on the longest name
+        if participating_units:
+            # Add extra chars for the asterisk and round count `* (XX)`
+            longest_unit_name = max(participating_units, key=len) + " (XX)"
+            font = tkFont.Font()
+            unit_col_width = font.measure(longest_unit_name) + 20 # Add padding
+        else:
+            unit_col_width = 150
+
+        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
+        tree.column("unit", width=unit_col_width, anchor=tk.W, stretch=tk.NO)
+
+        # Make other columns responsive
+        padding = 100 # Approx space for scrollbar, etc.
+        available_width = 1400 - unit_col_width - padding
+        week_col_width = available_width // len(week_columns) if week_columns else 100
+        week_col_width = max(week_col_width, 90) # Minimum width of 90
+
+        for i, week_col in enumerate(week_columns):
+            tree.heading(week_col, text=week_col, command=lambda c=week_col: self.sort_column(tree, c, False))
+            tree.column(week_col, width=week_col_width, anchor=tk.CENTER)
 
         
         # Prepare data for display
