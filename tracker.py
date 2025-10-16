@@ -161,6 +161,15 @@ class SeasonTrackerGUI:
             "bonus_2_0_lead": tk.StringVar(value="0"),
             "bonus_2_0_assist": tk.StringVar(value="1"),
         }
+        
+        self.elo_system_values = {
+            "initial_elo": tk.StringVar(value="1500"),
+            "k_factor_standard": tk.StringVar(value="96"),
+            "k_factor_provisional": tk.StringVar(value="128"),
+            "provisional_rounds": tk.StringVar(value="10"),
+            "sweep_bonus_multiplier": tk.StringVar(value="1.25"),
+            "lead_multiplier": tk.StringVar(value="2.0"),
+        }
 
         # For round winner and lead selection
         self.round1_winner_var = tk.StringVar()
@@ -2694,6 +2703,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             "unit_player_counts": self.unit_player_counts,
             "manual_point_adjustments": self.manual_point_adjustments,
             "divisions": self.divisions,
+            "elo_system_values": {k: v.get() for k, v in self.elo_system_values.items()},
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -2752,6 +2762,18 @@ This tool identifies the strongest and weakest possible team compositions based 
             
             self.divisions = data.get("divisions", [])
 
+            loaded_elo_system = data.get("elo_system_values", {})
+            default_elo = {
+                "initial_elo": "1500",
+                "k_factor_standard": "96",
+                "k_factor_provisional": "128",
+                "provisional_rounds": "10",
+                "sweep_bonus_multiplier": "1.25",
+                "lead_multiplier": "2.0",
+            }
+            for key, var in self.elo_system_values.items():
+                var.set(loaded_elo_system.get(key, default_elo.get(key, "0")))
+
         except Exception as e:
             messagebox.showerror("Load error", str(e))
             # On error, reset to hardcoded defaults
@@ -2782,6 +2804,13 @@ This tool identifies the strongest and weakest possible team compositions based 
             self.point_system_values["loss_assist"].set("1")
             self.point_system_values["bonus_2_0_lead"].set("0")
             self.point_system_values["bonus_2_0_assist"].set("1")
+
+            self.elo_system_values["initial_elo"].set("1500")
+            self.elo_system_values["k_factor_standard"].set("96")
+            self.elo_system_values["k_factor_provisional"].set("128")
+            self.elo_system_values["provisional_rounds"].set("10")
+            self.elo_system_values["sweep_bonus_multiplier"].set("1.25")
+            self.elo_system_values["lead_multiplier"].set("2.0")
             
             self.unit_points.clear()
             self.manual_point_adjustments.clear()
@@ -2898,7 +2927,10 @@ This tool identifies the strongest and weakest possible team compositions based 
         cancel_button.pack(side=tk.RIGHT, padx=10)
         
         divisions_button = tk.Button(buttons_frame, text="Manage Divisions", command=self.open_division_manager)
-        divisions_button.pack(side=tk.BOTTOM, pady=(10,0))
+        divisions_button.pack(side=tk.LEFT, pady=(10,0), padx=(0,5))
+        
+        elo_button = tk.Button(buttons_frame, text="Modify Elo System", command=self.open_elo_system_dialog)
+        elo_button.pack(side=tk.LEFT, pady=(10,0), padx=(5,0))
  
         dialog.update_idletasks()
         master_x = self.master.winfo_rootx() # Use winfo_rootx for screen coordinates
@@ -3775,6 +3807,79 @@ This tool identifies the strongest and weakest possible team compositions based 
         save_button.pack(side=tk.RIGHT, padx=5)
         cancel_button = tk.Button(buttons_frame, text="Cancel", command=division_window.destroy)
         cancel_button.pack(side=tk.RIGHT)
+        
+    def open_elo_system_dialog(self):
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Configure Elo System")
+        dialog.transient(self.master)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        main_frame = tk.Frame(dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        dialog_vars = {key: tk.StringVar(value=var.get()) for key, var in self.elo_system_values.items()}
+
+        fields = [
+            ("initial_elo", "Initial Elo:"),
+            ("k_factor_provisional", "Provisional K-Factor:"),
+            ("provisional_rounds", "Provisional Rounds:"),
+            ("k_factor_standard", "Standard K-Factor:"),
+            ("sweep_bonus_multiplier", "2-0 Sweep Bonus Multiplier:"),
+            ("lead_multiplier", "Lead Unit Multiplier:"),
+        ]
+
+        for i, (key, label_text) in enumerate(fields):
+            tk.Label(main_frame, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=2)
+            entry = tk.Entry(main_frame, textvariable=dialog_vars[key], width=10)
+            entry.grid(row=i, column=1, sticky=tk.E, pady=2, padx=5)
+
+        buttons_frame = tk.Frame(main_frame)
+        buttons_frame.grid(row=len(fields), column=0, columnspan=2, pady=(15, 5))
+
+        def on_ok():
+            temp_values = {}
+            try:
+                # Validate and convert
+                temp_values["initial_elo"] = int(dialog_vars["initial_elo"].get())
+                temp_values["k_factor_standard"] = int(dialog_vars["k_factor_standard"].get())
+                temp_values["k_factor_provisional"] = int(dialog_vars["k_factor_provisional"].get())
+                temp_values["provisional_rounds"] = int(dialog_vars["provisional_rounds"].get())
+                temp_values["sweep_bonus_multiplier"] = float(dialog_vars["sweep_bonus_multiplier"].get())
+                temp_values["lead_multiplier"] = float(dialog_vars["lead_multiplier"].get())
+            except ValueError:
+                messagebox.showerror("Invalid Input", "All Elo values must be valid numbers (integers or decimals).", parent=dialog)
+                return
+
+            # If all valid, update the main StringVars
+            for key, value in temp_values.items():
+                self.elo_system_values[key].set(str(value))
+            
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        ok_button = tk.Button(buttons_frame, text="OK", command=on_ok, width=10)
+        ok_button.pack(side=tk.LEFT, padx=10)
+        
+        cancel_button = tk.Button(buttons_frame, text="Cancel", command=on_cancel, width=10)
+        cancel_button.pack(side=tk.RIGHT, padx=10)
+
+        dialog.update_idletasks()
+        master_x = self.master.winfo_rootx()
+        master_y = self.master.winfo_rooty()
+        master_width = self.master.winfo_width()
+        master_height = self.master.winfo_height()
+        
+        dialog_width = dialog.winfo_reqwidth()
+        dialog_height = dialog.winfo_reqheight()
+
+        x_offset = (master_width - dialog_width) // 2
+        y_offset = (master_height - dialog_height) // 2
+        
+        dialog.geometry(f"+{master_x + x_offset}+{master_y + y_offset}")
+        dialog.focus_set()
 
     def show_elo_calculator(self):
         """Displays a window to calculate and show Elo ratings for all units."""
@@ -3979,11 +4084,27 @@ Our Elo system is designed to measure the relative strength of regiments based o
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=96, k_factor_provisional=128, provisional_rounds=10, initial_rating=1500, sweep_bonus_multiplier = 1.25, lead_multiplier=2.0):
+    def calculate_elo_ratings(self, max_week_index: int | None = None):
         """
         Calculates Elo ratings for all units, using a dynamic K-factor and accounting for player counts and lead units.
         Returns the final ratings, the changes from the last week, and total rounds played for each unit.
         """
+        try:
+            initial_rating = int(self.elo_system_values["initial_elo"].get())
+            k_factor_standard = int(self.elo_system_values["k_factor_standard"].get())
+            k_factor_provisional = int(self.elo_system_values["k_factor_provisional"].get())
+            provisional_rounds = int(self.elo_system_values["provisional_rounds"].get())
+            sweep_bonus_multiplier = float(self.elo_system_values["sweep_bonus_multiplier"].get())
+            lead_multiplier = float(self.elo_system_values["lead_multiplier"].get())
+        except (ValueError, KeyError):
+            # Fallback to defaults if settings are invalid
+            initial_rating=1500
+            k_factor_standard=96
+            k_factor_provisional=128
+            provisional_rounds=10
+            sweep_bonus_multiplier = 1.25
+            lead_multiplier=2.0
+
         elo_ratings = defaultdict(lambda: initial_rating)
         rounds_played = defaultdict(int)
 
@@ -4104,13 +4225,15 @@ Our Elo system is designed to measure the relative strength of regiments based o
 
         if previous_week_idx < 0:
             # No previous weeks, so all units are at initial rating
-            elo_ratings = defaultdict(lambda: 1500)
+            initial_rating = int(self.elo_system_values["initial_elo"].get())
+            elo_ratings = defaultdict(lambda: initial_rating)
         else:
             try:
                 elo_ratings, _ = self.calculate_elo_ratings(max_week_index=previous_week_idx)
             except Exception:
                 # If Elo fails for any reason, gracefully fall back
-                elo_ratings = defaultdict(lambda: 1500)
+                initial_rating = int(self.elo_system_values["initial_elo"].get())
+                elo_ratings = defaultdict(lambda: initial_rating)
 
         team_A_units = self.current_week.get("A", set())
         team_B_units = self.current_week.get("B", set())
