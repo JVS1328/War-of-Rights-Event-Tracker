@@ -1311,8 +1311,41 @@ class SeasonTrackerGUI:
 
         synergy_button = ttk.Button(bottom_frame, text="Roster Synergy Matrix", command=self.show_synergy_matrix)
         synergy_button.pack(side=tk.LEFT)
+        explain_button = ttk.Button(bottom_frame, text="Explain Metrics", command=self.show_tii_explanations)
+        explain_button.pack(side=tk.LEFT, padx=(10, 0))
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    def show_tii_explanations(self):
+        """Displays a messagebox explaining the Teammate Impact Index metrics."""
+        explanation = """
+**Teammate Impact Index (TII) Metrics Explained:**
+
+- **TII (Teammate Impact Index):** 
+  - Measures a unit's impact on its teammates' success.
+  - Calculated as `1 - (Average Loss Rate of Teammates When You Are on Their Team)`.
+  - A higher score suggests that when this unit is on a team, its teammates are more likely to win. A score of 1.000 would mean teammates never lose.
+
+- **Lead Impact:**
+  - The unit's win rate when it is assigned as the "Lead" unit for a round.
+  - Calculated as `(Lead Wins) / (Total Games as Lead)`.
+  - A high score indicates the unit is effective when leading the charge. The number in parentheses is the total number of rounds played as lead.
+
+- **Assist Impact:**
+  - The unit's win rate when it is NOT the "Lead" unit (i.e., acting as an "Assist").
+  - Calculated as `(Assist Wins) / (Total Games as Assist)`.
+  - A high score suggests the unit is a strong supporting member of the team. The number in parentheses is the total number of rounds played as an assist.
+
+- **Avg Teammate Loss Rate:**
+  - The average loss rate of a unit's teammates when this unit is present on their team.
+  - This is the core component of the TII score. A lower percentage is better, as it means your teammates lose less often when you are with them.
+
+- **Δ vs League Avg (Delta vs League Average):**
+  - The difference between this unit's "Avg Teammate Loss Rate" and the global average loss rate across all units in the league.
+  - A negative percentage (e.g., -5.0%) is GOOD. It means your teammates' loss rate is 5% lower than the league average when you are playing with them.
+  - A positive percentage (e.g., +3.0%) is BAD. It means your teammates are 3% more likely to lose when you are on their team compared to the average.
+"""
+        messagebox.showinfo("TII Metric Explanations", explanation, parent=self.master)
+
     def show_synergy_matrix(self):
         """Displays a window with the Roster Synergy Matrix."""
         if not self.season:
