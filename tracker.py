@@ -3873,10 +3873,12 @@ Our Elo system is designed to measure the relative strength of regiments based o
 - The regiment designated as the "Lead Unit" for a round has its Elo gains or losses amplified.
 - This reflects the added responsibility and impact of leading a charge. A win as lead is more rewarding, and a loss is more punishing.
 
-**5. Dynamic K-Factor:**
-- The K-Factor determines the maximum number of points exchanged in a match. Our system uses a dynamic K-Factor to improve rating accuracy.
-- **Provisional K-Factor (48):** For the first 10 rounds a regiment plays, a higher K-factor is used to help their Elo rating find its true level more quickly.
-- **Standard K-Factor (32):** After 10 rounds, a standard K-factor is used to stabilize the regiment's rating.
+**5. Dynamic K-Factor & Multipliers:**
+  - **K-Factor:** This determines the maximum number of points exchanged in a round. A dynamic K-Factor is used to improve rating accuracy over time.
+    - **Provisional K-Factor (128):** For the first 10 rounds a regiment plays, a higher K-factor helps their Elo rating find its true level more quickly.
+    - **Standard K-Factor (96):** After 10 rounds, a lower, standard K-factor is used to stabilize the regiment's rating.
+  - **Playoff Multiplier (x1.25):** Elo gains and losses are amplified in playoff matches to reflect higher stakes.
+  - **Sweep Bonus (x1.25):** If a team wins both rounds in a week (2-0), the Elo points they gain for each round are multiplied by 1.25, rewarding a dominant performance.
 """
         messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
 
@@ -3977,7 +3979,7 @@ Our Elo system is designed to measure the relative strength of regiments based o
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=32, k_factor_provisional=48, provisional_rounds=10, initial_rating=1500, lead_multiplier=2.0):
+    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=96, k_factor_provisional=128, provisional_rounds=10, initial_rating=1500, sweep_bonus_multiplier = 1.25, lead_multiplier=2.0):
         """
         Calculates Elo ratings for all units, using a dynamic K-factor and accounting for player counts and lead units.
         Returns the final ratings, the changes from the last week, and total rounds played for each unit.
@@ -4004,22 +4006,26 @@ Our Elo system is designed to measure the relative strength of regiments based o
                 continue
 
             # --- Calculate player-weighted Elo for each team ---
-            total_players_A = sum(self.get_unit_average_player_count(u, week_idx) for u in team_A_units)
-            total_players_B = sum(self.get_unit_average_player_count(u, week_idx) for u in team_B_units)
-
-            avg_elo_A = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_A_units) / total_players_A if total_players_A > 0 else initial_rating
-            avg_elo_B = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_B_units) / total_players_B if total_players_B > 0 else initial_rating
-
             is_playoffs = week_data.get("playoffs", False)
+
+            # --- Determine sweep bonuses before any rounds ---
+            round1_winner = week_data.get("round1_winner")
+            round2_winner = week_data.get("round2_winner")
+
+            sweep_bonus_A = sweep_bonus_multiplier if (round1_winner == "A" and round2_winner == "A") else 1.0
+            sweep_bonus_B = sweep_bonus_multiplier if (round1_winner == "B" and round2_winner == "B") else 1.0
 
             # --- Process each round ---
             for r in [1, 2]:
                 winner = week_data.get(f"round{r}_winner")
                 if not winner: continue
-                
-                # Increment rounds played for all participants in this round
-                for unit in team_A_units: rounds_played[unit] += 1
-                for unit in team_B_units: rounds_played[unit] += 1
+
+                # Calculate team Elo averages before each round
+                total_players_A = sum(self.get_unit_average_player_count(u, week_idx) for u in team_A_units)
+                total_players_B = sum(self.get_unit_average_player_count(u, week_idx) for u in team_B_units)
+
+                avg_elo_A = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_A_units) / total_players_A if total_players_A > 0 else initial_rating
+                avg_elo_B = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_B_units) / total_players_B if total_players_B > 0 else initial_rating
 
                 # Determine leads for the round
                 if is_playoffs:
@@ -4030,34 +4036,43 @@ Our Elo system is designed to measure the relative strength of regiments based o
                     lead_B = week_data.get("lead_B")
 
                 score_A, score_B = (1, 0) if winner == "A" else (0, 1)
-                
                 expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
+                base_change = score_A - expected_A
                 
                 # --- Distribute change based on player contribution & lead status ---
-                if total_players_A > 0:
-                    for unit in team_A_units:
+                def apply_elo_changes(team_units, total_players, lead_unit, sign, sweep_bonus):
+                    if total_players <= 0: return
+
+                    # Calculate weighted changes with lead multiplier
+                    weighted_changes = {
+                        unit: (self.get_unit_average_player_count(unit, week_idx) / total_players) * (lead_multiplier if unit == lead_unit else 1)
+                        for unit in team_units
+                    }
+                    
+                    # Normalize so the sum of weights is 1 again - disabled for now
+                    #total_weight = sum(weighted_changes.values())
+                    #if total_weight > 0:
+                    #    for u in team_units:
+                    #        weighted_changes[u] /= total_weight
+                    
+                    for unit in team_units:
                         # Determine K-factor for this unit based on rounds played BEFORE this round
                         k = k_factor_provisional if rounds_played[unit] < provisional_rounds else k_factor_standard
-                        base_change_for_unit = k * (score_A - expected_A)
                         
-                        player_count = self.get_unit_average_player_count(unit, week_idx)
-                        unit_weight = player_count / total_players_A
-                        multiplier = lead_multiplier if unit == lead_A else 1.0
-                        change = base_change_for_unit * unit_weight * len(team_A_units) * multiplier
-                        current_week_elos[unit] += change
+                        # Apply the normalized, weighted change
 
-                if total_players_B > 0:
-                     for unit in team_B_units:
-                        # Determine K-factor for this unit
-                        k = k_factor_provisional if rounds_played[unit] < provisional_rounds else k_factor_standard
-                        base_change_for_unit = k * (score_A - expected_A) # Note: Still based on score_A
+                        # Optional Playoff Multiplayer (higher stakes)
+                        round_multiplier = 1.25 if is_playoffs else 1.0
 
-                        player_count = self.get_unit_average_player_count(unit, week_idx)
-                        unit_weight = player_count / total_players_B
-                        multiplier = lead_multiplier if unit == lead_B else 1.0
-                        # Change for B is inverted
-                        change = -base_change_for_unit * unit_weight * len(team_B_units) * multiplier
-                        current_week_elos[unit] += change
+                        delta = k * base_change * weighted_changes[unit] * sign * round_multiplier * sweep_bonus
+                        current_week_elos[unit] += delta
+
+                apply_elo_changes(team_A_units, total_players_A, lead_A, 1, sweep_bonus_A)
+                apply_elo_changes(team_B_units, total_players_B, lead_B, -1, sweep_bonus_B)
+
+                # Increment rounds played AFTER Elo for the round is calculated
+                for unit in team_A_units: rounds_played[unit] += 1
+                for unit in team_B_units: rounds_played[unit] += 1
 
             elo_history_by_week.append(current_week_elos)
 

@@ -1555,8 +1555,8 @@
         "10th US",
         "23rd NYV",
         "59th NY",
+        "5th MN",
         "AVC",
-        "CQB",
         "FSB",
         "JD"
       ],
@@ -1564,6 +1564,7 @@
         "12th VA",
         "51st AL",
         "CB",
+        "CQB",
         "II Corps",
         "MSG",
         "SR",
@@ -1612,8 +1613,8 @@
           "max": "50"
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": "20",
+          "max": "25"
         },
         "7th TX": {
           "min": "0",
