@@ -394,7 +394,8 @@ class SeasonTrackerGUI:
             "round1_map": None,
             "round2_map": None,
             "round1_flipped": False,
-            "round2_flipped": False
+            "round2_flipped": False,
+            "unit_player_counts": {}
         }
         self.season.append(new_week_data)
         self.refresh_week_list()
@@ -921,6 +922,44 @@ class SeasonTrackerGUI:
         
         return stats
 
+    def get_unit_average_player_count(self, unit_name: str, max_week_index: int | None = None) -> float:
+        """
+        Calculates the average number of players a unit brings across all weeks they participated in,
+        up to a given max_week_index, using week-specific data if available.
+        If a week's data is missing, it's skipped. Defaults to 0 if no data exists.
+        """
+        weeks_to_process = self.season
+        if max_week_index is not None:
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        weekly_averages = []
+        for week in weeks_to_process:
+            # Check if the unit participated in this week
+            if unit_name in week.get("A", set()) or unit_name in week.get("B", set()):
+                # Use week-specific player counts if they exist
+                week_player_counts = week.get("unit_player_counts", {})
+                
+                if unit_name in week_player_counts:
+                    player_counts = week_player_counts[unit_name]
+                    try:
+                        min_players = int(player_counts.get("min", 0))
+                        max_players = int(player_counts.get("max", 0))
+                        
+                        # Only calculate an average if we have a valid max number
+                        if max_players > 0:
+                            weekly_averages.append((min_players + max_players) / 2)
+                            
+                    except (ValueError, TypeError):
+                        # Skip this week's data for this unit if it's malformed
+                        continue
+        
+        if not weekly_averages:
+            # If no valid weekly data was found across all participated weeks, return 0.
+            return 0.0
+
+        # Return the average of all the collected weekly averages.
+        return statistics.mean(weekly_averages)
+        
     def calculate_teammate_impact(self, max_week_index: int | None = None):
         """
         Calculates multiple Teammate Impact metrics:
@@ -1004,13 +1043,34 @@ class SeasonTrackerGUI:
             lead_impact = 1 - statistics.mean(lead_performances) if lead_performances else 0
             assist_impact = 1 - statistics.mean(assist_performances) if assist_performances else 0
 
+            # --- Part 3: Player Count Modifier ---
+            # Only calculate league average based on units that actually played.
+            participating_units = [u for u, perfs in unit_performances.items() if perfs]
+            all_unit_avg_players = [self.get_unit_average_player_count(u, max_week_index) for u in participating_units]
+            league_avg_players = statistics.mean(all_unit_avg_players) if all_unit_avg_players else 0 # Default to 0 if no one played
+
+            unit_avg_players = self.get_unit_average_player_count(unit_u, max_week_index)
+            
+            # The player modifier is based on how the unit's average count compares to the league's average count.
+            player_modifier = unit_avg_players / league_avg_players if league_avg_players > 0 else 1.0
+
+            # The "delta" from the average loss rate is what we modify.
+            delta_from_avg = global_avg_loss_rate - avg_teammate_loss_rate
+            modified_delta = delta_from_avg * player_modifier
+            
+            # The new TII is the inverse of the modified teammate loss rate.
+            modified_avg_teammate_loss_rate = global_avg_loss_rate - modified_delta
+            adjusted_tii_score = 1 - modified_avg_teammate_loss_rate
+
             impact_stats[unit_u] = {
                 "impact_score": original_tii_score,
+                "adjusted_tii_score": adjusted_tii_score,
                 "avg_teammate_loss_rate_with": avg_teammate_loss_rate,
                 "lead_impact": lead_impact,
                 "assist_impact": assist_impact,
                 "lead_games": len(lead_performances),
                 "assist_games": len(assist_performances),
+                "avg_players": unit_avg_players,
             }
 
         return impact_stats, global_avg_loss_rate
@@ -1251,10 +1311,11 @@ class SeasonTrackerGUI:
         win.title(f"Teammate Impact Index (Up to Week {week_number})")
         win.geometry("700x500")
 
-        cols = ["unit", "impact_score", "lead_impact", "assist_impact", "avg_teammate_loss_rate", "delta_vs_league_avg"]
+        cols = ["unit", "adjusted_tii", "impact_score", "lead_impact", "assist_impact", "avg_teammate_loss_rate", "delta_vs_league_avg"]
         col_names = {
-            "unit": "Unit",
-            "impact_score": "TII",
+            "unit": "Unit (Avg Players)",
+            "adjusted_tii": "Adj. TII",
+            "impact_score": "Original TII",
             "lead_impact": "Lead Impact",
             "assist_impact": "Assist Impact",
             "avg_teammate_loss_rate": "Avg Teammate Loss Rate",
@@ -1267,35 +1328,46 @@ class SeasonTrackerGUI:
             # Adjust column widths for new columns
             if col_id in ["lead_impact", "assist_impact"]:
                 tree.column(col_id, width=110, anchor=tk.CENTER)
-            elif col_id == "impact_score":
+            elif col_id in ["impact_score", "adjusted_tii"]:
                 tree.column(col_id, width=80, anchor=tk.CENTER)
             else:
                 tree.column(col_id, width=150, anchor=tk.CENTER)
-        tree.column("unit", anchor=tk.W, width=120)
+        tree.column("unit", anchor=tk.W, width=150) # Widen for player count
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         impact_data, global_avg_loss_rate = self.calculate_teammate_impact(max_week_index=selected_week_idx)
 
         table_data = []
         for unit, data in impact_data.items():
+            lead_games = data.get('lead_games', 0)
+            assist_games = data.get('assist_games', 0)
+            total_games = lead_games + assist_games
+            
+            # Only include units that have played at least one round.
+            if total_games == 0:
+                continue
+
             delta = data.get("avg_teammate_loss_rate_with", 0) - global_avg_loss_rate
             table_data.append({
                 "unit": unit,
+                "adjusted_tii_score": data.get('adjusted_tii_score', 0),
                 "impact_score": data.get('impact_score', 0),
                 "lead_impact": data.get('lead_impact', 0),
                 "assist_impact": data.get('assist_impact', 0),
-                "lead_games": data.get('lead_games', 0),
-                "assist_games": data.get('assist_games', 0),
+                "lead_games": lead_games,
+                "assist_games": assist_games,
                 "avg_teammate_loss_rate": data.get('avg_teammate_loss_rate_with', 0),
-                "delta_vs_league_avg": delta
+                "delta_vs_league_avg": delta,
+                "avg_players": data.get('avg_players', 0),
             })
         
-        # Default sort by original TII Score descending
-        table_data.sort(key=lambda x: x["impact_score"], reverse=True)
+        # Default sort by new Adjusted TII Score descending
+        table_data.sort(key=lambda x: x["adjusted_tii_score"], reverse=True)
 
         for row in table_data:
             tree.insert("", tk.END, values=(
-                row["unit"],
+                f"{row['unit']} ({row['avg_players']:.1f})",
+                f"{row['adjusted_tii_score']:.3f}",
                 f"{row['impact_score']:.3f}",
                 f"{row['lead_impact']:.1%} ({row['lead_games']})",
                 f"{row['assist_impact']:.1%} ({row['assist_games']})",
@@ -1320,29 +1392,33 @@ class SeasonTrackerGUI:
         explanation = """
 **Teammate Impact Index (TII) Metrics Explained:**
 
-- **TII (Teammate Impact Index):** 
-  - Measures a unit's impact on its teammates' success.
+- **Adj. TII (Adjusted Teammate Impact Index):**
+  - The primary ranking metric. This is the **Original TII** score modified by the number of players a unit typically brings.
+  - It amplifies the impact (positive or negative) of units that bring more players than the league average and lessens the impact of those that bring fewer.
+  - A unit's positive or negative effect on its teammates is considered more significant if they have a larger on-field presence.
+
+- **Unit (Avg Players):**
+  - Shows the unit's name and, in parentheses, the average number of players they are assumed to bring to each event (based on their min/max settings).
+
+- **Original TII:**
+  - Measures a unit's impact on its teammates' success, purely based on win/loss data.
   - Calculated as `1 - (Average Loss Rate of Teammates When You Are on Their Team)`.
-  - A higher score suggests that when this unit is on a team, its teammates are more likely to win. A score of 1.000 would mean teammates never lose.
+  - A higher score suggests that when this unit is on a team, its teammates are more likely to win.
 
 - **Lead Impact:**
   - The unit's win rate when it is assigned as the "Lead" unit for a round.
-  - Calculated as `(Lead Wins) / (Total Games as Lead)`.
   - A high score indicates the unit is effective when leading the charge. The number in parentheses is the total number of rounds played as lead.
 
 - **Assist Impact:**
   - The unit's win rate when it is NOT the "Lead" unit (i.e., acting as an "Assist").
-  - Calculated as `(Assist Wins) / (Total Games as Assist)`.
   - A high score suggests the unit is a strong supporting member of the team. The number in parentheses is the total number of rounds played as an assist.
 
 - **Avg Teammate Loss Rate:**
-  - The average loss rate of a unit's teammates when this unit is present on their team.
-  - This is the core component of the TII score. A lower percentage is better, as it means your teammates lose less often when you are with them.
+  - The average loss rate of a unit's teammates when this unit is present. This is the core component of the Original TII score. A lower percentage is better.
 
 - **Δ vs League Avg (Delta vs League Average):**
-  - The difference between this unit's "Avg Teammate Loss Rate" and the global average loss rate across all units in the league.
-  - A negative percentage (e.g., -5.0%) is GOOD. It means your teammates' loss rate is 5% lower than the league average when you are playing with them.
-  - A positive percentage (e.g., +3.0%) is BAD. It means your teammates are 3% more likely to lose when you are on their team compared to the average.
+  - The difference between this unit's "Avg Teammate Loss Rate" and the global average loss rate.
+  - A negative percentage (e.g., -5.0%) is **GOOD**. It means your teammates' loss rate is 5% lower than average when you are playing with them.
 """
         messagebox.showinfo("TII Metric Explanations", explanation, parent=self.master)
 
@@ -2362,6 +2438,7 @@ class SeasonTrackerGUI:
                     "round2_map": wk.get("round2_map"),
                     "round1_flipped": wk.get("round1_flipped", False),
                     "round2_flipped": wk.get("round2_flipped", False),
+                    "unit_player_counts": wk.get("unit_player_counts", {}),
                 } for i, wk in enumerate(self.season)
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
@@ -2400,7 +2477,8 @@ class SeasonTrackerGUI:
                     "round1_map": wk_data.get("round1_map"),
                     "round2_map": wk_data.get("round2_map"),
                     "round1_flipped": wk_data.get("round1_flipped", False),
-                    "round2_flipped": wk_data.get("round2_flipped", False)
+                    "round2_flipped": wk_data.get("round2_flipped", False),
+                    "unit_player_counts": wk_data.get("unit_player_counts", {}),
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:
@@ -2415,8 +2493,11 @@ class SeasonTrackerGUI:
             for key, var in self.point_system_values.items():
                 var.set(loaded_point_system.get(key, default_points.get(key, "0"))) # Fallback to default_points, then "0"
 
+            # Load global player counts, but ensure it's a defaultdict
             self.unit_player_counts = defaultdict(lambda: {"min": "0", "max": "100"})
-            self.unit_player_counts.update(data.get("unit_player_counts", {}))
+            global_counts = data.get("unit_player_counts", {})
+            if isinstance(global_counts, dict):
+                self.unit_player_counts.update(global_counts)
 
             self.manual_point_adjustments = defaultdict(int)
             self.manual_point_adjustments.update(data.get("manual_point_adjustments", {}))
@@ -2598,6 +2679,19 @@ class SeasonTrackerGUI:
         balancer_window.transient(self.master)
 
         # --- Data ---
+        week_idx = self.season.index(self.current_week)
+        # Determine which player counts to use
+        counts_to_use = {}
+        if self.current_week.get("unit_player_counts"):
+            # 1. Use counts from the current week if they exist
+            counts_to_use = self.current_week["unit_player_counts"]
+        elif week_idx > 0 and self.season[week_idx - 1].get("unit_player_counts"):
+            # 2. Fallback to the previous week's counts
+            counts_to_use = self.season[week_idx - 1]["unit_player_counts"]
+        else:
+            # 3. Fallback to global counts
+            counts_to_use = self.unit_player_counts
+
         assigned_in_week = self.current_week["A"].union(self.current_week["B"])
         all_available_units = sorted(list(self.units - assigned_in_week))
         
@@ -2649,11 +2743,12 @@ class SeasonTrackerGUI:
         unit_counts_tree.column("Max", width=60, anchor="center")
         unit_counts_tree.pack(fill=tk.BOTH, expand=True)
 
-        # Populate unit counts
+        # Populate unit counts smartly
         all_units_for_counts = sorted(list(self.units))
         for unit in all_units_for_counts:
-            counts = self.unit_player_counts[unit]
-            unit_counts_tree.insert("", "end", values=(unit, counts["min"], counts["max"]))
+            # Use the determined counts, but fallback to global defaults if a unit is somehow missing
+            counts = counts_to_use.get(unit, self.unit_player_counts.get(unit, {"min": "0", "max": "100"}))
+            unit_counts_tree.insert("", "end", values=(unit, counts.get("min", "0"), counts.get("max", "100")))
 
         # Opposing Units
         opposing_units_frame = tk.LabelFrame(right_frame, text="Opposing Units", padx=5, pady=5)
@@ -2722,7 +2817,30 @@ class SeasonTrackerGUI:
         balance_button = tk.Button(bottom_frame, text="Balance!", command=collect_and_run_balancer)
         balance_button.pack(side=tk.RIGHT, padx=(5,0))
 
-        close_button = tk.Button(bottom_frame, text="Close", command=lambda: (save_unit_counts(), balancer_window.destroy()))
+        # --- Save and Close Logic ---
+        def save_unit_counts(apply_to_week=False):
+            """
+            Saves the current values from the treeview to the main app's global dictionary
+            and optionally to the current week's specific dictionary.
+            """
+            current_counts_in_balancer = {}
+            for item_id in unit_counts_tree.get_children():
+                values = unit_counts_tree.item(item_id, "values")
+                if values:
+                    unit, min_val, max_val = values
+                    # Update the global dictionary first
+                    self.unit_player_counts[unit] = {"min": min_val, "max": max_val}
+                    current_counts_in_balancer[unit] = {"min": min_val, "max": max_val}
+            
+            # If not applying a balance, we still save the current state of the balancer to the week
+            if not apply_to_week and self.current_week:
+                self.current_week["unit_player_counts"] = current_counts_in_balancer
+
+        def on_close_window():
+            save_unit_counts(apply_to_week=False)
+            balancer_window.destroy()
+
+        close_button = tk.Button(bottom_frame, text="Close", command=on_close_window)
         close_button.pack(side=tk.RIGHT)
 
         # --- Treeview Editing Logic ---
@@ -2753,17 +2871,7 @@ class SeasonTrackerGUI:
             entry.bind("<Return>", on_entry_commit)
 
         unit_counts_tree.bind("<Double-1>", on_tree_double_click)
-
-        # --- Save on Close ---
-        def save_unit_counts():
-            """Saves the current values from the treeview to the main app's dictionary."""
-            for item_id in unit_counts_tree.get_children():
-                values = unit_counts_tree.item(item_id, "values")
-                if values:
-                    unit, min_val, max_val = values
-                    self.unit_player_counts[unit] = {"min": min_val, "max": max_val}
-
-        balancer_window.protocol("WM_DELETE_WINDOW", lambda: (save_unit_counts(), balancer_window.destroy()))
+        balancer_window.protocol("WM_DELETE_WINDOW", on_close_window)
 
 
     def run_balancer(self, window, status_label, constraints, save_counts_func):
@@ -2972,11 +3080,22 @@ class SeasonTrackerGUI:
 
         def apply_and_close():
             if not self.current_week: return
-            save_counts_func() # Save the counts before applying
+            
+            # First, save the unit counts from the balancer UI to the global setting
+            # This ensures the "master" list is up-to-date.
+            # This function is now designed to be called with True, signaling that
+            # we are applying a balance, so the week-specific data is finalized here.
+            save_counts_func(apply_to_week=True)
+
+            # Apply balanced teams to the current week's roster
             self.current_week["A"] = set(team_A)
             self.current_week["B"] = set(team_B)
+            
+            # Refresh main GUI to reflect the new rosters
             self.refresh_team_lists()
             self.refresh_units_list()
+
+            # Close balancer windows
             results_window.destroy()
             parent_window.destroy()
 
