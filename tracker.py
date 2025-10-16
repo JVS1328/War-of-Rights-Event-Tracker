@@ -921,6 +921,118 @@ class SeasonTrackerGUI:
         
         return stats
 
+    def calculate_teammate_impact(self, max_week_index: int | None = None):
+        """
+        New Teammate Impact Calculation
+        """
+        weeks_to_process = self.season
+        if max_week_index is not None and 0 <= max_week_index < len(self.season):
+            weeks_to_process = self.season[:max_week_index + 1]
+
+        # Store loss records for all units
+        unit_losses = defaultdict(list)
+        all_match_contexts = []
+
+        for week_idx, week in enumerate(weeks_to_process):
+            for r_num in [1, 2]:
+                winner = week.get(f"round{r_num}_winner")
+                if not winner:
+                    continue
+
+                team_A = week.get("A", set())
+                team_B = week.get("B", set())
+                
+                winning_team, losing_team = (team_A, team_B) if winner == "A" else (team_B, team_A)
+
+                context_key = (week_idx, week.get('name', f'Week {week_idx+1}'), r_num)
+                all_match_contexts.append({'context': context_key, 'units': winning_team})
+                all_match_contexts.append({'context': context_key, 'units': losing_team})
+
+
+                for unit in winning_team:
+                    unit_losses[unit].append(0)
+                for unit in losing_team:
+                    unit_losses[unit].append(1)
+
+        total_losses = []
+        for losses in unit_losses.values():
+            total_losses.extend(losses)
+        global_avg_teammate_loss_rate = statistics.mean(total_losses) if total_losses else 0
+
+        impact_stats = {}
+        all_units = self.units
+
+        for unit_u in all_units:
+            teammate_loss_rates_for_unit = []
+
+            # Find all matches unit U appeared in
+            matches_with_u = []
+            for match in all_match_contexts:
+                if unit_u in match['units']:
+                    matches_with_u.append(match)
+
+            if not matches_with_u:
+                impact_stats[unit_u] = {
+                    "avg_teammate_loss_rate_with": 0,
+                    "impact_score": 1.0,
+                }
+                continue
+
+            for match in matches_with_u:
+                teammates = match['units'] - {unit_u}
+                if not teammates:
+                    continue
+
+                # Compute avg loss rate of teammates in this match
+                match_teammate_losses = []
+                for teammate in teammates:
+                    # This is a simplification. We should ideally get the specific loss for that match.
+                    # Re-calculating losses per match context
+                    losses_in_match = []
+                    for t_unit in match['units']:
+                        if t_unit == unit_u: continue # Exclude U
+                        
+                        is_loss = 1 if t_unit in (losing_team if 'losing_team' in locals() else set()) else 0
+
+                    # To correctly calculate this, we need to know who lost each match context
+                    # Let's rebuild the win/loss mapping per context
+            
+            # Simplified approach:
+            # We need the loss status of each teammate in each shared match.
+            
+            # Let's collect all teammate performances from matches where U was present.
+            all_teammates_losses_in_u_matches = []
+            for week_idx, week in enumerate(weeks_to_process):
+                for r_num in [1, 2]:
+                    winner = week.get(f"round{r_num}_winner")
+                    if not winner: continue
+
+                    team_A, team_B = week.get("A", set()), week.get("B", set())
+                    winning_team, losing_team = (team_A, team_B) if winner == "A" else (team_B, team_A)
+
+                    if unit_u in winning_team:
+                        teammates = winning_team - {unit_u}
+                        if teammates:
+                            teammate_loss_rates_for_unit.extend([0] * len(teammates))
+                    elif unit_u in losing_team:
+                        teammates = losing_team - {unit_u}
+                        if teammates:
+                            teammate_loss_rates_for_unit.extend([1] * len(teammates))
+            
+            if teammate_loss_rates_for_unit:
+                avg_teammate_loss_rate = statistics.mean(teammate_loss_rates_for_unit)
+            else:
+                avg_teammate_loss_rate = 0
+
+            impact_score = 1 - avg_teammate_loss_rate
+            
+            impact_stats[unit_u] = {
+                "avg_teammate_loss_rate_with": avg_teammate_loss_rate,
+                "impact_score": impact_score,
+            }
+
+        return impact_stats, global_avg_teammate_loss_rate
+
     def show_points_table(self):
         if not self.season:
             messagebox.showinfo("Points Table", "No season data available.")
@@ -966,6 +1078,9 @@ class SeasonTrackerGUI:
 
         projections_button = ttk.Button(bottom_frame, text="Season Projections", command=lambda: self.show_projections_ui(win, self.group_view_enabled.get()))
         projections_button.pack(side=tk.LEFT, pady=(5,0))
+
+        tii_button = ttk.Button(bottom_frame, text="Teammate Impact Index", command=self.show_tii_table)
+        tii_button.pack(side=tk.LEFT, padx=(10, 0), pady=(5,0))
 
         # --- Grouping Button ---
         self.group_view_enabled = tk.BooleanVar(value=False)
@@ -1141,6 +1256,63 @@ class SeasonTrackerGUI:
         tree.bind("<Double-1>", on_tree_double_click)
         redraw_table()
 
+    def show_tii_table(self):
+        """Displays a table for the new Teammate Impact metrics."""
+        if not self.season:
+            messagebox.showinfo("Teammate Impact", "No season data available.")
+            return
+
+        sel = self.week_list.curselection()
+        selected_week_idx = sel[0] if sel else len(self.season) - 1
+        week_number = selected_week_idx + 1
+
+        win = tk.Toplevel(self.master)
+        win.title(f"Teammate Impact Index (Up to Week {week_number})")
+        win.geometry("700x500")
+
+        cols = ["unit", "impact_score", "avg_teammate_loss_rate", "delta_vs_league_avg"]
+        col_names = {
+            "unit": "Unit",
+            "avg_teammate_loss_rate": "Avg Teammate Loss Rate",
+            "impact_score": "Impact Score",
+            "delta_vs_league_avg": "\u0394 vs League Avg"
+        }
+
+        tree = ttk.Treeview(win, columns=cols, show="headings")
+        for col_id in cols:
+            tree.heading(col_id, text=col_names[col_id], command=lambda c=col_id: self.sort_column(tree, c, False))
+            tree.column(col_id, width=150, anchor=tk.CENTER)
+        tree.column("unit", anchor=tk.W, width=120)
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        impact_data, global_avg_loss_rate = self.calculate_teammate_impact(max_week_index=selected_week_idx)
+
+        table_data = []
+        for unit, data in impact_data.items():
+            delta = data["avg_teammate_loss_rate_with"] - global_avg_loss_rate
+            table_data.append({
+                "unit": unit,
+                "impact_score": data['impact_score'],
+                "avg_teammate_loss_rate": data['avg_teammate_loss_rate_with'],
+                "delta_vs_league_avg": delta
+            })
+        
+        # Default sort by Impact Score descending
+        table_data.sort(key=lambda x: x["impact_score"], reverse=True)
+
+        for row in table_data:
+            tree.insert("", tk.END, values=(
+                row["unit"],
+                f"{row['impact_score']:.3f}",
+                f"{row['avg_teammate_loss_rate']:.1%}",
+                f"{row['delta_vs_league_avg']:+.1%}"
+            ))
+            
+        # Scrollbar
+        vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.pack(fill=tk.BOTH, expand=True)
     def calculate_casualties(self, max_week_index: int | None = None) -> tuple[defaultdict[str, int], defaultdict[str, int]]:
         """Calculates casualties inflicted and lost for each lead unit."""
         inflicted = defaultdict(int)
@@ -2990,6 +3162,7 @@ class SeasonTrackerGUI:
         save_button.pack(side=tk.RIGHT, padx=5)
         cancel_button = tk.Button(buttons_frame, text="Cancel", command=division_window.destroy)
         cancel_button.pack(side=tk.RIGHT)
+
 
 
 if __name__ == "__main__":
