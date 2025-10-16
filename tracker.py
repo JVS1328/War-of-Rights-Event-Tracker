@@ -1123,6 +1123,9 @@ class SeasonTrackerGUI:
 
         tii_button = ttk.Button(bottom_frame, text="Teammate Impact Index", command=self.show_tii_table)
         tii_button.pack(side=tk.LEFT, padx=(10, 0), pady=(5,0))
+
+        elo_button = ttk.Button(bottom_frame, text="Elo Calculator", command=self.show_elo_calculator)
+        elo_button.pack(side=tk.LEFT, padx=(10, 0), pady=(5,0))
         # --- Grouping Button ---
         self.group_view_enabled = tk.BooleanVar(value=False)
         
@@ -3528,6 +3531,158 @@ class SeasonTrackerGUI:
         cancel_button = tk.Button(buttons_frame, text="Cancel", command=division_window.destroy)
         cancel_button.pack(side=tk.RIGHT)
 
+    def show_elo_calculator(self):
+        """Displays a window to calculate and show Elo ratings for all units."""
+        if not self.season:
+            messagebox.showinfo("Elo Calculator", "No season data available.")
+            return
+
+        sel = self.week_list.curselection()
+        selected_week_idx = sel[0] if sel else len(self.season) - 1
+
+        try:
+            # Get current and previous week's ratings to calculate change
+            current_elos, elo_changes = self.calculate_elo_ratings(max_week_index=selected_week_idx)
+            
+        except Exception as e:
+            messagebox.showerror("Elo Error", f"An error occurred during Elo calculation: {e}", parent=self.master)
+            return
+
+        # --- UI Setup ---
+        win = tk.Toplevel(self.master)
+        win.title(f"Elo Ratings (Up to Week {selected_week_idx + 1})")
+        win.geometry("600x600")
+
+        cols = ["rank", "unit", "rating", "change"]
+        tree = ttk.Treeview(win, columns=cols, show="headings")
+        tree.heading("rank", text="Rank", command=lambda: self.sort_column(tree, "rank", False))
+        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
+        tree.heading("rating", text="Elo Rating", command=lambda: self.sort_column(tree, "rating", False))
+        tree.heading("change", text="Elo Change", command=lambda: self.sort_column(tree, "change", False))
+
+        tree.column("rank", width=60, anchor="center")
+        tree.column("unit", width=200, anchor="w")
+        tree.column("rating", width=100, anchor="center")
+        tree.column("change", width=100, anchor="center")
+
+        # Combine data for sorting and display
+        display_data = []
+        rounds_played = current_elos.pop("rounds_played", {})
+        for unit, rating in current_elos.items():
+            change = elo_changes.get(unit, 0)
+            rounds = rounds_played.get(unit, 0)
+            display_data.append({"unit": unit, "rating": rating, "change": change, "rounds": rounds})
+
+        # Sort data by Elo rating descending
+        display_data.sort(key=lambda item: item["rating"], reverse=True)
+
+        for i, data in enumerate(display_data, 1):
+            change_val = data['change']
+            
+            change_str = "↔ 0.00"
+            if change_val > 0.005: # Threshold to avoid tiny floating point changes showing up
+                change_str = f"↑ {change_val:.2f}"
+            elif change_val < -0.005:
+                change_str = f"↓ {abs(change_val):.2f}"
+            
+            unit_display = f"{data['unit']} ({data['rounds']})"
+            tree.insert("", tk.END, values=(i, unit_display, f"{data['rating']:.2f}", change_str))
+
+        vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor=32, initial_rating=1500, lead_multiplier=1.5):
+        """
+        Calculates Elo ratings for all units, taking into account player counts, lead units, and rounds played.
+        Returns the final ratings, the changes from the last week, and total rounds played for each unit.
+        """
+        elo_ratings = defaultdict(lambda: initial_rating)
+        rounds_played = defaultdict(int)
+
+        # Initialize all units, including non-token ones, to get a baseline
+        for unit in self.units:
+            _ = elo_ratings[unit]
+            
+        elo_history_by_week = [elo_ratings.copy()]
+        weeks_to_process = self.season[:max_week_index + 1] if max_week_index is not None else self.season
+
+        for week_idx, week_data in enumerate(weeks_to_process):
+            last_week_elos = elo_history_by_week[-1]
+            current_week_elos = last_week_elos.copy()
+
+            team_A_units = week_data.get("A", set())
+            team_B_units = week_data.get("B", set())
+            
+            if not team_A_units or not team_B_units:
+                elo_history_by_week.append(current_week_elos)
+                continue
+
+            # --- Calculate player-weighted Elo for each team ---
+            total_players_A = sum(self.get_unit_average_player_count(u, week_idx) for u in team_A_units)
+            total_players_B = sum(self.get_unit_average_player_count(u, week_idx) for u in team_B_units)
+
+            avg_elo_A = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_A_units) / total_players_A if total_players_A > 0 else initial_rating
+            avg_elo_B = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_B_units) / total_players_B if total_players_B > 0 else initial_rating
+
+            is_playoffs = week_data.get("playoffs", False)
+
+            # --- Process each round ---
+            for r in [1, 2]:
+                winner = week_data.get(f"round{r}_winner")
+                if not winner: continue
+                
+                # Increment rounds played for all participants in this round
+                for unit in team_A_units: rounds_played[unit] += 1
+                for unit in team_B_units: rounds_played[unit] += 1
+
+                # Determine leads for the round
+                if is_playoffs:
+                    lead_A = week_data.get(f"lead_A_r{r}")
+                    lead_B = week_data.get(f"lead_B_r{r}")
+                else:
+                    lead_A = week_data.get("lead_A")
+                    lead_B = week_data.get("lead_B")
+
+                score_A, score_B = (1, 0) if winner == "A" else (0, 1)
+                
+                expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
+                
+                base_change = k_factor * (score_A - expected_A)
+                
+                # --- Distribute change based on player contribution & lead status ---
+                if total_players_A > 0:
+                    for unit in team_A_units:
+                        player_count = self.get_unit_average_player_count(unit, week_idx)
+                        unit_weight = player_count / total_players_A
+                        multiplier = lead_multiplier if unit == lead_A else 1.0
+                        change = base_change * unit_weight * len(team_A_units) * multiplier
+                        current_week_elos[unit] += change
+
+                if total_players_B > 0:
+                     for unit in team_B_units:
+                        player_count = self.get_unit_average_player_count(unit, week_idx)
+                        unit_weight = player_count / total_players_B
+                        multiplier = lead_multiplier if unit == lead_B else 1.0
+                        change = -base_change * unit_weight * len(team_B_units) * multiplier
+                        current_week_elos[unit] += change
+
+            elo_history_by_week.append(current_week_elos)
+
+        final_elos = elo_history_by_week[-1]
+        
+        # Pass rounds played back with the ratings
+        final_elos["rounds_played"] = rounds_played
+        
+        if len(elo_history_by_week) > 1:
+            prev_elos = elo_history_by_week[-2]
+            elo_changes = {unit: final_elos[unit] - prev_elos.get(unit, initial_rating) for unit in self.units}
+        else:
+            elo_changes = {unit: final_elos[unit] - initial_rating for unit in self.units}
+            
+        return final_elos, elo_changes
 
 
 if __name__ == "__main__":
