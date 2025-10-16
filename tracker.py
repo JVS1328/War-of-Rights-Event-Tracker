@@ -3864,7 +3864,7 @@ Our Elo system is designed to measure the relative strength of regiments based o
 - A regiment's contribution to their team's average Elo is weighted by the average number of players they bring.
 - **Larger regiments have a greater impact** on their team's starting Elo and, consequently, receive a proportionally larger share of the Elo points gained or lost.
 
-**4. Lead Unit Multiplier (x1.5):**
+**4. Lead Unit Multiplier (x2.0):**
 - The regiment designated as the "Lead Unit" for a round has its Elo gains or losses amplified.
 - This reflects the added responsibility and impact of leading a charge. A win as lead is more rewarding, and a loss is more punishing.
 
@@ -3875,7 +3875,7 @@ Our Elo system is designed to measure the relative strength of regiments based o
 """
         messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
 
-    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=32, k_factor_provisional=48, provisional_rounds=10, initial_rating=1500, lead_multiplier=1.5):
+    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=32, k_factor_provisional=48, provisional_rounds=10, initial_rating=1500, lead_multiplier=2.0):
         """
         Calculates Elo ratings for all units, using a dynamic K-factor and accounting for player counts and lead units.
         Returns the final ratings, the changes from the last week, and total rounds played for each unit.
