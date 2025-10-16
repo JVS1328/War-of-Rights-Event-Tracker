@@ -48,8 +48,14 @@ class SeasonAnalysisGUI:
             try:
                 with open(path, 'r') as f:
                     data = json.load(f)
+
+                # Process raw data into the correct types, especially sets for teams.
+                loaded_weeks = data.get("season", [])
+                for week_data in loaded_weeks:
+                    week_data["A"] = set(week_data.get("A", []))
+                    week_data["B"] = set(week_data.get("B", []))
                 
-                self.season_data.extend(data.get("season", []))
+                self.season_data.extend(loaded_weeks)
                 self.units.update(data.get("units", []))
 
             except Exception as e:
@@ -68,6 +74,45 @@ class SeasonAnalysisGUI:
             messagebox.showinfo("Success", f"{len(paths)} season(s) loaded successfully.")
         else:
             messagebox.showerror("Error", "No valid season data found in the selected files.")
+
+    def get_unit_average_player_count(self, unit_name: str, max_week_index: int | None = None) -> float:
+        """
+        Calculates the average number of players a unit brings across all weeks they participated in,
+        up to a given max_week_index, using week-specific data if available.
+        If a week's data is missing, it's skipped. Defaults to 0 if no data exists.
+        """
+        weeks_to_process = self.season_data
+        # This function in Season Analysis doesn't support max_week_index, but mimicking signature
+        # if max_week_index is not None:
+        #     weeks_to_process = self.season_data[:max_week_index + 1]
+
+        weekly_averages = []
+        for week in weeks_to_process:
+            # Check if the unit participated in this week
+            if unit_name in week.get("A", set()) or unit_name in week.get("B", set()):
+                # Use week-specific player counts if they exist
+                week_player_counts = week.get("unit_player_counts", {})
+                
+                if unit_name in week_player_counts:
+                    player_counts = week_player_counts[unit_name]
+                    try:
+                        min_players = int(player_counts.get("min", 0))
+                        max_players = int(player_counts.get("max", 0))
+                        
+                        # Only calculate an average if we have a valid max number
+                        if max_players > 0:
+                            weekly_averages.append((min_players + max_players) / 2)
+                            
+                    except (ValueError, TypeError):
+                        # Skip this week's data for this unit if it's malformed
+                        continue
+        
+        if not weekly_averages:
+            # If no valid weekly data was found across all participated weeks, return 0.
+            return 0.0
+
+        # Return the average of all the collected weekly averages.
+        return statistics.mean(weekly_averages)
 
     # Adapted from tracker.py
     def calculate_teammate_impact(self):
@@ -133,12 +178,12 @@ class SeasonAnalysisGUI:
 
                     team_A, team_B = week.get("A", set()), week.get("B", set())
                     if unit_u in team_A:
-                        teammates = set(team_A) - {unit_u}
+                        teammates = team_A - {unit_u}
                         is_loss = (winner == 'B')
                         if teammates:
                             teammate_loss_rates.extend([1 if is_loss else 0] * len(teammates))
                     elif unit_u in team_B:
-                        teammates = set(team_B) - {unit_u}
+                        teammates = team_B - {unit_u}
                         is_loss = (winner == 'A')
                         if teammates:
                             teammate_loss_rates.extend([1 if is_loss else 0] * len(teammates))
@@ -153,14 +198,35 @@ class SeasonAnalysisGUI:
 
             lead_impact = 1 - statistics.mean(lead_performances) if lead_performances else 0
             assist_impact = 1 - statistics.mean(assist_performances) if assist_performances else 0
+            
+            # --- Part 3: Player Count Modifier ---
+            # Only calculate league average based on units that actually played.
+            participating_units = [u for u, perfs in unit_performances.items() if perfs]
+            all_unit_avg_players = [self.get_unit_average_player_count(u) for u in participating_units]
+            league_avg_players = statistics.mean(all_unit_avg_players) if all_unit_avg_players else 0 # Default to 0 if no one played
+
+            unit_avg_players = self.get_unit_average_player_count(unit_u)
+            
+            # The player modifier is based on how the unit's average count compares to the league's average count.
+            player_modifier = unit_avg_players / league_avg_players if league_avg_players > 0 else 1.0
+
+            # The "delta" from the average loss rate is what we modify.
+            delta_from_avg = global_avg_loss_rate - avg_teammate_loss_rate
+            modified_delta = delta_from_avg * player_modifier
+            
+            # The new TII is the inverse of the modified teammate loss rate.
+            modified_avg_teammate_loss_rate = global_avg_loss_rate - modified_delta
+            adjusted_tii_score = 1 - modified_avg_teammate_loss_rate
 
             impact_stats[unit_u] = {
                 "impact_score": original_tii_score,
+                "adjusted_tii_score": adjusted_tii_score,
                 "avg_teammate_loss_rate_with": avg_teammate_loss_rate,
                 "lead_impact": lead_impact,
                 "assist_impact": assist_impact,
                 "lead_games": len(lead_performances),
                 "assist_games": len(assist_performances),
+                "avg_players": unit_avg_players,
             }
 
         return impact_stats, global_avg_loss_rate
@@ -236,10 +302,11 @@ class SeasonAnalysisGUI:
         win.title(f"Teammate Impact Index")
         win.geometry("700x500")
 
-        cols = ["unit", "impact_score", "lead_impact", "assist_impact", "avg_teammate_loss_rate", "delta_vs_league_avg"]
+        cols = ["unit", "adjusted_tii", "impact_score", "lead_impact", "assist_impact", "avg_teammate_loss_rate", "delta_vs_league_avg"]
         col_names = {
-            "unit": "Unit",
-            "impact_score": "TII",
+            "unit": "Unit (Avg Players)",
+            "adjusted_tii": "Adj. TII",
+            "impact_score": "Original TII",
             "lead_impact": "Lead Impact",
             "assist_impact": "Assist Impact",
             "avg_teammate_loss_rate": "Avg Teammate Loss Rate",
@@ -252,35 +319,46 @@ class SeasonAnalysisGUI:
             # Adjust column widths for new columns
             if col_id in ["lead_impact", "assist_impact"]:
                 tree.column(col_id, width=110, anchor=tk.CENTER)
-            elif col_id == "impact_score":
+            elif col_id in ["impact_score", "adjusted_tii"]:
                 tree.column(col_id, width=80, anchor=tk.CENTER)
             else:
                 tree.column(col_id, width=150, anchor=tk.CENTER)
-        tree.column("unit", anchor=tk.W, width=120)
+        tree.column("unit", anchor=tk.W, width=150) # Widen for player count
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         impact_data, global_avg_loss_rate = self.calculate_teammate_impact()
 
         table_data = []
         for unit, data in impact_data.items():
+            lead_games = data.get('lead_games', 0)
+            assist_games = data.get('assist_games', 0)
+            total_games = lead_games + assist_games
+            
+            # Only include units that have played at least one round.
+            if total_games == 0:
+                continue
+
             delta = data.get("avg_teammate_loss_rate_with", 0) - global_avg_loss_rate
             table_data.append({
                 "unit": unit,
+                "adjusted_tii_score": data.get('adjusted_tii_score', 0),
                 "impact_score": data.get('impact_score', 0),
                 "lead_impact": data.get('lead_impact', 0),
                 "assist_impact": data.get('assist_impact', 0),
-                "lead_games": data.get('lead_games', 0),
-                "assist_games": data.get('assist_games', 0),
+                "lead_games": lead_games,
+                "assist_games": assist_games,
                 "avg_teammate_loss_rate": data.get('avg_teammate_loss_rate_with', 0),
-                "delta_vs_league_avg": delta
+                "delta_vs_league_avg": delta,
+                "avg_players": data.get('avg_players', 0),
             })
         
-        # Default sort by original TII Score descending
-        table_data.sort(key=lambda x: x["impact_score"], reverse=True)
+        # Default sort by new Adjusted TII Score descending
+        table_data.sort(key=lambda x: x["adjusted_tii_score"], reverse=True)
 
         for row in table_data:
             tree.insert("", tk.END, values=(
-                row["unit"],
+                f"{row['unit']} ({row['avg_players']:.1f})",
+                f"{row['adjusted_tii_score']:.3f}",
                 f"{row['impact_score']:.3f}",
                 f"{row['lead_impact']:.1%} ({row['lead_games']})",
                 f"{row['assist_impact']:.1%} ({row['assist_games']})",
@@ -306,29 +384,33 @@ class SeasonAnalysisGUI:
         explanation = """
 **Teammate Impact Index (TII) Metrics Explained:**
 
-- **TII (Teammate Impact Index):**
-  - Measures a unit's impact on its teammates' success.
+- **Adj. TII (Adjusted Teammate Impact Index):**
+  - The primary ranking metric. This is the **Original TII** score modified by the number of players a unit typically brings.
+  - It amplifies the impact (positive or negative) of units that bring more players than the league average and lessens the impact of those that bring fewer.
+  - A unit's positive or negative effect on its teammates is considered more significant if they have a larger on-field presence.
+
+- **Unit (Avg Players):**
+  - Shows the unit's name and, in parentheses, the average number of players they are assumed to bring to each event (based on their min/max settings).
+
+- **Original TII:**
+  - Measures a unit's impact on its teammates' success, purely based on win/loss data.
   - Calculated as `1 - (Average Loss Rate of Teammates When You Are on Their Team)`.
-  - A higher score suggests that when this unit is on a team, its teammates are more likely to win. A score of 1.000 would mean teammates never lose.
+  - A higher score suggests that when this unit is on a team, its teammates are more likely to win.
 
 - **Lead Impact:**
   - The unit's win rate when it is assigned as the "Lead" unit for a round.
-  - Calculated as `(Lead Wins) / (Total Games as Lead)`.
   - A high score indicates the unit is effective when leading the charge. The number in parentheses is the total number of rounds played as lead.
 
 - **Assist Impact:**
   - The unit's win rate when it is NOT the "Lead" unit (i.e., acting as an "Assist").
-  - Calculated as `(Assist Wins) / (Total Games as Assist)`.
   - A high score suggests the unit is a strong supporting member of the team. The number in parentheses is the total number of rounds played as an assist.
 
 - **Avg Teammate Loss Rate:**
-  - The average loss rate of a unit's teammates when this unit is present on their team.
-  - This is the core component of the TII score. A lower percentage is better, as it means your teammates lose less often when you are with them.
+  - The average loss rate of a unit's teammates when this unit is present. This is the core component of the Original TII score. A lower percentage is better.
 
 - **Δ vs League Avg (Delta vs League Average):**
-  - The difference between this unit's "Avg Teammate Loss Rate" and the global average loss rate across all units in the league.
-  - A negative percentage (e.g., -5.0%) is GOOD. It means your teammates' loss rate is 5% lower than the league average when you are playing with them.
-  - A positive percentage (e.g., +3.0%) is BAD. It means your teammates are 3% more likely to lose when you are on their team compared to the average.
+  - The difference between this unit's "Avg Teammate Loss Rate" and the global average loss rate.
+  - A negative percentage (e.g., -5.0%) is **GOOD**. It means your teammates' loss rate is 5% lower than average when you are playing with them.
 """
         messagebox.showinfo("TII Metric Explanations", explanation, parent=self.master)
 
