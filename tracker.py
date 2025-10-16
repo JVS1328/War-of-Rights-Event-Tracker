@@ -3639,14 +3639,16 @@ Our Elo system is designed to measure the relative strength of regiments based o
 - The regiment designated as the "Lead Unit" for a round has its Elo gains or losses amplified.
 - This reflects the added responsibility and impact of leading a charge. A win as lead is more rewarding, and a loss is more punishing.
 
-**5. K-Factor (32):**
-- This value determines the maximum number of points that can be won or lost in a single match. A higher K-Factor leads to more volatile and faster-swinging ratings.
+**5. Dynamic K-Factor:**
+- The K-Factor determines the maximum number of points exchanged in a match. Our system uses a dynamic K-Factor to improve rating accuracy.
+- **Provisional K-Factor (48):** For the first 10 rounds a regiment plays, a higher K-factor is used to help their Elo rating find its true level more quickly.
+- **Standard K-Factor (32):** After 10 rounds, a standard K-factor is used to stabilize the regiment's rating.
 """
         messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
 
-    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor=32, initial_rating=1500, lead_multiplier=1.5):
+    def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=32, k_factor_provisional=48, provisional_rounds=10, initial_rating=1500, lead_multiplier=1.5):
         """
-        Calculates Elo ratings for all units, taking into account player counts, lead units, and rounds played.
+        Calculates Elo ratings for all units, using a dynamic K-factor and accounting for player counts and lead units.
         Returns the final ratings, the changes from the last week, and total rounds played for each unit.
         """
         elo_ratings = defaultdict(lambda: initial_rating)
@@ -3700,23 +3702,30 @@ Our Elo system is designed to measure the relative strength of regiments based o
                 
                 expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
                 
-                base_change = k_factor * (score_A - expected_A)
-                
                 # --- Distribute change based on player contribution & lead status ---
                 if total_players_A > 0:
                     for unit in team_A_units:
+                        # Determine K-factor for this unit based on rounds played BEFORE this round
+                        k = k_factor_provisional if rounds_played[unit] < provisional_rounds else k_factor_standard
+                        base_change_for_unit = k * (score_A - expected_A)
+                        
                         player_count = self.get_unit_average_player_count(unit, week_idx)
                         unit_weight = player_count / total_players_A
                         multiplier = lead_multiplier if unit == lead_A else 1.0
-                        change = base_change * unit_weight * len(team_A_units) * multiplier
+                        change = base_change_for_unit * unit_weight * len(team_A_units) * multiplier
                         current_week_elos[unit] += change
 
                 if total_players_B > 0:
                      for unit in team_B_units:
+                        # Determine K-factor for this unit
+                        k = k_factor_provisional if rounds_played[unit] < provisional_rounds else k_factor_standard
+                        base_change_for_unit = k * (score_A - expected_A) # Note: Still based on score_A
+
                         player_count = self.get_unit_average_player_count(unit, week_idx)
                         unit_weight = player_count / total_players_B
                         multiplier = lead_multiplier if unit == lead_B else 1.0
-                        change = -base_change * unit_weight * len(team_B_units) * multiplier
+                        # Change for B is inverted
+                        change = -base_change_for_unit * unit_weight * len(team_B_units) * multiplier
                         current_week_elos[unit] += change
 
             elo_history_by_week.append(current_week_elos)
