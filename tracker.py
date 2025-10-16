@@ -3816,7 +3816,9 @@ This tool identifies the strongest and weakest possible team compositions based 
         for unit, rating in current_elos.items():
             change = elo_changes.get(unit, 0)
             rounds = rounds_played.get(unit, 0)
-            display_data.append({"unit": unit, "rating": rating, "change": change, "rounds": rounds})
+            # Only include units that have played at least one round
+            if rounds > 0:
+                display_data.append({"unit": unit, "rating": rating, "change": change, "rounds": rounds})
 
         # Sort data by Elo rating descending
         display_data.sort(key=lambda item: item["rating"], reverse=True)
@@ -3840,6 +3842,9 @@ This tool identifies the strongest and weakest possible team compositions based 
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
         explain_button = ttk.Button(bottom_frame, text="Explain Elo", command=self.show_elo_explanation)
         explain_button.pack(side=tk.LEFT)
+
+        history_button = ttk.Button(bottom_frame, text="Show History", command=self.show_elo_history)
+        history_button.pack(side=tk.LEFT, padx=(10, 0))
         
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -3874,6 +3879,87 @@ Our Elo system is designed to measure the relative strength of regiments based o
 - **Standard K-Factor (32):** After 10 rounds, a standard K-factor is used to stabilize the regiment's rating.
 """
         messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
+
+    def show_elo_history(self):
+        """Displays a table with the Elo history and rank of each unit week by week."""
+        if not self.season:
+            messagebox.showinfo("Elo History", "No season data available.")
+            return
+
+        sel = self.week_list.curselection()
+        # Default to the last week if none is selected
+        max_week_idx = sel[0] if sel else len(self.season) - 1
+
+        win = tk.Toplevel(self.master)
+        win.title(f"Unit Elo History (Up to Week {max_week_idx + 1})")
+        win.geometry("900x600")
+
+        # --- Data Calculation ---
+        # Calculate history only up to the selected week
+        elo_history_by_week = [self.calculate_elo_ratings(max_week_index=i)[0] for i in range(max_week_idx + 1)]
+
+        # --- UI Setup ---
+        week_columns = ["Initial"] + [f"Week {i+1}" for i in range(max_week_idx + 1)]
+        cols = ["unit"] + week_columns
+        
+        tree = ttk.Treeview(win, columns=cols, show="headings")
+        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
+        tree.column("unit", width=150, anchor=tk.W)
+
+        for i, week_col in enumerate(week_columns):
+            tree.heading(week_col, text=week_col, command=lambda c=week_col: self.sort_column(tree, c, False))
+            tree.column(week_col, width=100, anchor=tk.CENTER)
+
+        # Get all units and sort them alphabetically
+        # Get all units that have participated up to the selected week
+        final_elos_for_participation = elo_history_by_week[-1] if elo_history_by_week else {}
+        rounds_played = final_elos_for_participation.get("rounds_played", {})
+        participating_units = sorted([unit for unit, rounds in rounds_played.items() if rounds > 0])
+
+        
+        # Prepare data for display
+        display_data_by_unit = defaultdict(dict)
+        initial_rating = 1500 # As defined in calculate_elo_ratings
+
+        for unit in participating_units:
+             display_data_by_unit[unit]["Initial"] = f"{initial_rating} (-)"
+
+        for week_idx, elo_data in enumerate(elo_history_by_week):
+            # Sort units by Elo for ranking within this week
+            sorted_units_this_week = sorted(
+                [item for item in elo_data.items() if isinstance(item[1], (int, float))],
+                key=lambda item: item[1],
+                reverse=True
+            )
+            ranks_this_week = {unit: rank for rank, (unit, _) in enumerate(sorted_units_this_week, 1)}
+            
+            # Get previous week's elo for change calculation
+            prev_week_elos = elo_history_by_week[week_idx-1] if week_idx > 0 else defaultdict(lambda: initial_rating)
+
+            for unit, rating in elo_data.items():
+                if isinstance(rating, (int, float)):
+                    rank = ranks_this_week.get(unit, '-')
+                    change = rating - prev_week_elos[unit]
+                    change_str = "↔"
+                    if change > 0.005: change_str = f"↑{change:.0f}"
+                    elif change < -0.005: change_str = f"↓{abs(change):.0f}"
+                    
+                    display_data_by_unit[unit][f"Week {week_idx+1}"] = f"{rating:.0f} ({rank}, {change_str})"
+
+        # Populate tree
+        for unit in participating_units:
+            # Include all participating units, including non-token ones
+            display_text = f"*{unit}" if unit in self.non_token_units else unit
+            values = [display_text]
+            for week_col in week_columns:
+                values.append(display_data_by_unit[unit].get(week_col, "N/A"))
+            tree.insert("", "end", values=values)
+            
+        vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
     def calculate_elo_ratings(self, max_week_index: int | None = None, k_factor_standard=32, k_factor_provisional=48, provisional_rounds=10, initial_rating=1500, lead_multiplier=2.0):
         """
