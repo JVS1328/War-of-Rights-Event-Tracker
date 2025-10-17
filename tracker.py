@@ -3964,35 +3964,52 @@ This tool identifies the strongest and weakest possible team compositions based 
     def show_elo_explanation(self):
         """Displays a messagebox explaining the custom Elo rating system."""
         explanation = """
-**Custom Elo Rating System Explained:**
+    **Custom Elo Rating System Explained**
 
-Our Elo system is designed to measure the relative strength of regiments based on their performance in weekly matches. It adapts the core principles of the standard Elo system with custom rules to fit our league's unique structure.
+    Our Elo system measures the relative strength of regiments based on weekly match performance. It expands the classic Elo formula with custom mechanics designed for War of Rights  capturing the unique dynamics of regiment size, leadership, and consistency.
 
-**1. Core Concept:**
-- Every regiment starts with a baseline rating (e.g., 1500).
-- When two teams play, the system calculates an "expected outcome" based on the difference between their average Elo ratings.
-- If a team wins, it gains Elo points; if it loses, it loses points.
+    **1. Core Concept**
+        - Every regiment starts with a baseline rating (typically **1500**).
+        - When two teams play, the system calculates an **expected outcome** based on their average Elo difference.
+        - If a team performs better than expected, they gain points; if worse, they lose points.
 
-**2. Strength of Field:**
-- **Upset Bonus:** Beating a team with a higher average Elo rating will grant you **more** points than beating a team with a lower rating.
-- **Punishment for Upsets:** Losing to a team with a lower average Elo will cause you to lose **more** points.
+    **2. Strength of Field & Upsets**
+        - **Upset Bonus:** Defeating a team rated much higher than your own grants extra Elo  the greater the upset, the bigger the reward.
+        - **Punishment for Upsets:** Losing to a much lower-rated team results in a heavier Elo loss.
+        - Upset effects scale smoothly with the Elo gap  there’s no arbitrary cutoff.
 
-**3. Player Count Weighting:**
-- A regiment's contribution to their team's average Elo is weighted by the average number of players they bring.
-- **Larger regiments have a greater impact** on their team's starting Elo and, consequently, receive a proportionally larger share of the Elo points gained or lost.
+    **3. Player Count Weighting (Log-Scaled & Normalized)**
+        - Each regiment’s Elo contribution is weighted by its **average player count**, 
+        but with *diminishing returns* using a **logarithmic scale**.
+        - Larger regiments still matter more, but each additional player adds slightly less impact.
+        - All weights are **normalized**, ensuring total Elo change per team is always balanced  
+        large rosters can’t inflate results, and smaller regiments still see meaningful movement.
+        - Example: A 30-player unit has ~1.5× the influence of a 10-player unit (not 3× as before).
 
-**4. Lead Unit Multiplier (x2.0):**
-- The regiment designated as the "Lead Unit" for a round has its Elo gains or losses amplified.
-- This reflects the added responsibility and impact of leading a charge. A win as lead is more rewarding, and a loss is more punishing.
+    **4. Lead Unit Multiplier (×2.0)**
+        - The designated **Lead Unit** for a round has its Elo impact doubled.
+        - A win as lead is more rewarding; a loss is more punishing  reflecting the higher responsibility of command.
 
-**5. Dynamic K-Factor & Multipliers:**
-  - **K-Factor:** This determines the maximum number of points exchanged in a round. A dynamic K-Factor is used to improve rating accuracy over time.
-    - **Provisional K-Factor (128):** For the first 10 rounds a regiment plays, a higher K-factor helps their Elo rating find its true level more quickly.
-    - **Standard K-Factor (96):** After 10 rounds, a lower, standard K-factor is used to stabilize the regiment's rating.
-  - **Playoff Multiplier (x1.25):** Elo gains and losses are amplified in playoff matches to reflect higher stakes.
-  - **Sweep Bonus (x1.25):** If a team wins both rounds in a week (2-0), the Elo points they gain for each round are multiplied by 1.25, rewarding a dominant performance.
-"""
+    **5. Match Outcomes & Round Structure**
+        - Each week typically includes **two rounds**.
+            - **2–0 Sweep:** Awards a **1.25× Sweep Bonus** for dominating both rounds.
+            - **1–1 Split:** Elo swings are slightly reduced to reflect a balanced outcome.
+        - Round results are processed independently, keeping the system accurate even when rosters shift week to week.
+
+    **6. Dynamic K-Factor & Other Multipliers**
+        - **Provisional K-Factor (128):** Used for a regiment’s first 10 rounds; helps new units reach accurate ratings quickly.
+        - **Standard K-Factor (96):** Used afterward to stabilize ratings.
+        - **Playoff Multiplier (×1.25):** Increases Elo volatility during playoff matches to reflect higher stakes.
+
+    **7. Fairness & Long-Term Balance**
+        - Elo changes are proportional and self-correcting over time.
+        - Smaller regiments aren’t overshadowed by larger allies.
+        - Ratings naturally stabilize around 1500, preventing inflation across seasons.
+
+    In short:  Our Elo system rewards **performance**, **leadership**, and **consistency** not just size. Every regiment, big or small, can climb the ranks through teamwork, execution, and grit.
+    """
         messagebox.showinfo("Elo System Explained", explanation, parent=self.master)
+
 
     def show_elo_history(self):
         """Displays a table with the Elo history and rank of each unit week by week."""
@@ -4170,18 +4187,18 @@ Our Elo system is designed to measure the relative strength of regiments based o
                 # --- Distribute change based on player contribution & lead status ---
                 def apply_elo_changes(team_units, total_players, lead_unit, sign, sweep_bonus):
                     if total_players <= 0: return
-
+                    ''' Old Method of Calculating Elo Changes Below - Disbabled for now.
                     # Calculate weighted changes with lead multiplier
                     weighted_changes = {
                         unit: (self.get_unit_average_player_count(unit, week_idx) / total_players) * (lead_multiplier if unit == lead_unit else 1)
                         for unit in team_units
                     }
                     
-                    # Normalize so the sum of weights is 1 again - disabled for now
-                    #total_weight = sum(weighted_changes.values())
-                    #if total_weight > 0:
-                    #    for u in team_units:
-                    #        weighted_changes[u] /= total_weight
+                    # Normalize so the sum of weights is 1 again - was disabled
+                    total_weight = sum(weighted_changes.values())
+                    if total_weight > 0:
+                        for u in team_units:
+                            weighted_changes[u] /= total_weight
                     
                     for unit in team_units:
                         # Determine K-factor for this unit based on rounds played BEFORE this round
@@ -4194,6 +4211,22 @@ Our Elo system is designed to measure the relative strength of regiments based o
 
                         delta = k * base_change * weighted_changes[unit] * sign * round_multiplier * sweep_bonus
                         current_week_elos[unit] += delta
+                        '''
+                    # Log-scaled + normalized weights
+                    weights = {
+                        u: math.log(1 + self.get_unit_average_player_count(u, week_idx))
+                        * (lead_multiplier if u == lead_unit else 1)
+                        for u in team_units
+                    }
+                    total_weight = sum(weights.values())
+                    for u in weights:
+                        weights[u] /= total_weight
+
+                    for u, w in weights.items():
+                        k = k_factor_provisional if rounds_played[u] < provisional_rounds else k_factor_standard
+                        round_multiplier = 1.25 if is_playoffs else 1.0
+                        delta = k * base_change * w * sign * round_multiplier * sweep_bonus
+                        current_week_elos[u] += delta
 
                 apply_elo_changes(team_A_units, total_players_A, lead_A, 1, sweep_bonus_A)
                 apply_elo_changes(team_B_units, total_players_B, lead_B, -1, sweep_bonus_B)
