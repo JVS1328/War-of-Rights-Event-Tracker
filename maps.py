@@ -19,7 +19,7 @@ maps = {
         "Piper Farm",
         "Hill's Counterattack"
     ],
-    "Harper's Ferry Skirmish Areas": [
+    "Harpers Ferry Skirmish Areas": [
         "Maryland Heights",
         "River Crossing",
         "Downtown",
@@ -39,7 +39,7 @@ maps = {
         "Reno's Fall",
         "Colquitt's Defense"
     ],
-    "Drillcamp Skirmish Maps": [
+    "Drillcamp Skirmish Areas": [
         "Alexander Farm",
         "Crossroads",
         "Smith Field",

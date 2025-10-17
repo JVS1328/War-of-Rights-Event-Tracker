@@ -180,6 +180,8 @@ class SeasonTrackerGUI:
             "light_defender": tk.StringVar(value="15"),
             "heavy_defender": tk.StringVar(value="30"),
         }
+        
+        self.map_biases: dict[str, tk.StringVar] = {}
 
         # For round winner and lead selection
         self.round1_winner_var = tk.StringVar()
@@ -2722,6 +2724,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             "divisions": self.divisions,
             "elo_system_values": {k: v.get() for k, v in self.elo_system_values.items()},
             "elo_bias_percentages": {k: v.get() for k, v in self.elo_bias_percentages.items()},
+            "map_biases": {k: v.get() for k, v in self.map_biases.items()},
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -2803,7 +2806,38 @@ This tool identifies the strongest and weakest possible team compositions based 
             }
             for key, var in self.elo_bias_percentages.items():
                var.set(loaded_elo_bias.get(key, default_bias.get(key, "0")))
-
+            
+            # Load map biases, creating StringVars as we go
+            self.map_biases.clear()
+            loaded_map_biases = data.get("map_biases", {})
+            default_biases = {
+               # ANTIETAM
+               "East Woods Skirmish": "2", "Hooker's Push": "2.5", "Hagerstown Turnpike": "1",
+               "Miller's Cornfield": "1.5", "East Woods": "2.5", "Nicodemus Hill": "2.5",
+               "Bloody Lane": "1.5", "Pry Ford": "2", "Pry Grist Mill": "1", "Pry House": "1.5",
+               "West Woods": "1.5", "Dunker Church": "1.5", "Burnside's Bridge": "2.5",
+               "Cooke's Countercharge": "1.5", "Otto and Sherrick Farms": "1",
+               "Roulette Lane": "1.5", "Piper Farm": "2", "Hill's Counterattack": "1",
+               # HARPERS FERRY
+               "Maryland Heights": "1.5", "River Crossing": "2.5", "Downtown": "1",
+               "School House Ridge": "1", "Bolivar Heights Camp": "1.5", "High Street": "1",
+               "Shenandoah Street": "1.5", "Harpers Ferry Graveyard": "1", "Washington Street": "1",
+               "Bolivar Heights Redoubt": "2",
+               # SOUTH MOUNTAIN
+               "Garland's Stand": "2.5", "Cox's Push": "2.5", "Hatch's Attack": "2",
+               "Anderson's Counterattack": "1", "Reno's Fall": "1.5", "Colquitt's Defense": "2",
+               # DRILL CAMP
+               "Alexander Farm": "2", "Crossroads": "0", "Smith Field": "1",
+               "Crecy's Cornfield": "1.5", "Crossley Creek": "1", "Larsen Homestead": "1.5",
+               "South Woodlot": "1.5", "Flemming's Meadow": "2", "Wagon Road": "2",
+               "Union Camp": "1.5", "Pat's Turnpike": "1.5", "Stefan's Lot": "1",
+               "Confederate Encampment": "2"
+            }
+            for map_name in self.get_all_maps():
+                # Use saved value, but fall back to the new default, then to "0"
+                bias_value = loaded_map_biases.get(map_name, default_biases.get(map_name, "0"))
+                self.map_biases[map_name] = tk.StringVar(value=str(bias_value))
+ 
         except Exception as e:
             messagebox.showerror("Load error", str(e))
             # On error, reset to hardcoded defaults
@@ -2847,6 +2881,35 @@ This tool identifies the strongest and weakest possible team compositions based 
             self.unit_points.clear()
             self.manual_point_adjustments.clear()
             self.divisions.clear()
+            self.map_biases.clear()
+ 
+            # Re-initialize map biases to default
+            default_biases = {
+               # ANTIETAM
+               "East Woods Skirmish": "2", "Hooker's Push": "2.5", "Hagerstown Turnpike": "1",
+               "Miller's Cornfield": "1.5", "East Woods": "2.5", "Nicodemus Hill": "2.5",
+               "Bloody Lane": "1.5", "Pry Ford": "2", "Pry Grist Mill": "1", "Pry House": "1.5",
+               "West Woods": "1.5", "Dunker Church": "1.5", "Burnside's Bridge": "2.5",
+               "Cooke's Countercharge": "1.5", "Otto and Sherrick Farms": "1",
+               "Roulette Lane": "1.5", "Piper Farm": "2", "Hill's Counterattack": "1",
+               # HARPERS FERRY
+               "Maryland Heights": "1.5", "River Crossing": "2.5", "Downtown": "1",
+               "School House Ridge": "1", "Bolivar Heights Camp": "1.5", "High Street": "1",
+               "Shenandoah Street": "1.5", "Harpers Ferry Graveyard": "1", "Washington Street": "1",
+               "Bolivar Heights Redoubt": "2",
+               # SOUTH MOUNTAIN
+               "Garland's Stand": "2.5", "Cox's Push": "2.5", "Hatch's Attack": "2",
+               "Anderson's Counterattack": "1", "Reno's Fall": "1.5", "Colquitt's Defense": "2",
+               # DRILL CAMP
+               "Alexander Farm": "2", "Crossroads": "0", "Smith Field": "1",
+               "Crecy's Cornfield": "1.5", "Crossley Creek": "1", "Larsen Homestead": "1.5",
+               "South Woodlot": "1.5", "Flemming's Meadow": "2", "Wagon Road": "2",
+               "Union Camp": "1.5", "Pat's Turnpike": "1.5", "Stefan's Lot": "1",
+               "Confederate Encampment": "2"
+            }
+            for map_name in self.get_all_maps():
+               default_value = default_biases.get(map_name, "0")
+               self.map_biases[map_name] = tk.StringVar(value=default_value)
  
             self.refresh_week_list()    # Updates week listbox (will be empty)
             self.refresh_units_list()   # Updates units listbox (will be empty)
@@ -3934,6 +3997,9 @@ This tool identifies the strongest and weakest possible team compositions based 
         cancel_button = tk.Button(buttons_frame, text="Cancel", command=on_cancel, width=10)
         cancel_button.pack(side=tk.RIGHT, padx=10)
 
+        map_biases_button = tk.Button(buttons_frame, text="Map Biases", command=self.open_map_bias_dialog)
+        map_biases_button.pack(side=tk.LEFT, pady=(10,0), padx=(0,5))
+
         dialog.update_idletasks()
         master_x = self.master.winfo_rootx()
         master_y = self.master.winfo_rooty()
@@ -3949,6 +4015,144 @@ This tool identifies the strongest and weakest possible team compositions based 
         dialog.geometry(f"+{master_x + x_offset}+{master_y + y_offset}")
         dialog.focus_set()
 
+    def open_map_bias_dialog(self):
+        """Opens a dialog to configure map biases."""
+        dialog = tk.Toplevel(self.master)
+        dialog.title("Configure Map Biases")
+        dialog.transient(self.master)
+        dialog.grab_set()
+        dialog.geometry("500x600")
+
+        main_frame = tk.Frame(dialog, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # --- BIAS OPTIONS ---
+        default_biases = {
+            # ANTIETAM
+            "East Woods Skirmish": "2", "Hooker's Push": "2.5", "Hagerstown Turnpike": "1",
+            "Miller's Cornfield": "1.5", "East Woods": "2.5", "Nicodemus Hill": "2.5",
+            "Bloody Lane": "1.5", "Pry Ford": "2", "Pry Grist Mill": "1", "Pry House": "1.5",
+            "West Woods": "1.5", "Dunker Church": "1.5", "Burnside's Bridge": "2.5",
+            "Cooke's Countercharge": "1.5", "Otto and Sherrick Farms": "1",
+            "Roulette Lane": "1.5", "Piper Farm": "2", "Hill's Counterattack": "1",
+            # HARPERS FERRY
+            "Maryland Heights": "1.5", "River Crossing": "2.5", "Downtown": "1",
+            "School House Ridge": "1", "Bolivar Heights Camp": "1.5", "High Street": "1",
+            "Shenandoah Street": "1.5", "Harpers Ferry Graveyard": "1", "Washington Street": "1",
+            "Bolivar Heights Redoubt": "2",
+            # SOUTH MOUNTAIN
+            "Garland's Stand": "2.5", "Cox's Push": "2.5", "Hatch's Attack": "2",
+            "Anderson's Counterattack": "1", "Reno's Fall": "1.5", "Colquitt's Defense": "2",
+            # DRILL CAMP
+            "Alexander Farm": "2", "Crossroads": "0", "Smith Field": "1",
+            "Crecy's Cornfield": "1.5", "Crossley Creek": "1", "Larsen Homestead": "1.5",
+            "South Woodlot": "1.5", "Flemming's Meadow": "2", "Wagon Road": "2",
+            "Union Camp": "1.5", "Pat's Turnpike": "1.5", "Stefan's Lot": "1",
+            "Confederate Encampment": "2"
+        }
+        bias_options = {
+            "Balanced": "0",
+            "Lightly Attack Biased": "1", "Heavily Attack Biased": "1.5",
+            "Lightly Defense Biased": "2", "Heavily Defense Biased": "2.5",
+        }
+        # Create a reverse mapping to display the text in the OptionMenu
+        reverse_bias_options = {v: k for k, v in bias_options.items()}
+
+        # Helper class for collapsible frames
+        class CollapsibleFrame(ttk.Frame):
+            def __init__(self, parent, text="", *args, **kwargs):
+                super().__init__(parent, *args, **kwargs)
+                self.columnconfigure(0, weight=1)
+                self.text = text
+                self.is_open = tk.BooleanVar(value=False) # Start Closed
+
+                header_frame = ttk.Frame(self, style="Collapsible.TFrame")
+                header_frame.grid(row=0, column=0, sticky="ew")
+                header_frame.columnconfigure(0, weight=1)
+
+                self.button = ttk.Label(header_frame, text=f"▶ {self.text}", font=("Segoe UI", 10, "bold"), anchor="w")
+                self.button.grid(row=0, column=0, sticky="ew", padx=5, pady=2)
+                self.button.bind("<Button-1>", self.toggle)
+                
+                self.frame = ttk.Frame(self, padding=(10, 5, 10, 10))
+                self.frame.grid(row=1, column=0, sticky="ew")
+                self.frame.grid_remove() # Start closed
+
+            def toggle(self, event=None):
+                if self.is_open.get():
+                    self.frame.grid_remove()
+                    self.button.config(text=f"▶ {self.text}")
+                    self.is_open.set(False)
+                else:
+                    self.frame.grid()
+                    self.button.config(text=f"▼ {self.text}")
+                    self.is_open.set(True)
+
+        style = ttk.Style(dialog)
+        style.configure("TFrame", background="#f0f0f0")
+        style.configure("Collapsible.TFrame", background="#e0e0e0")
+        style.configure("TLabel", background="#f0f0f0")
+        style.configure("TMenubutton", background="white", borderwidth=1, relief="solid")
+
+        small_font = tkFont.Font(family="Segoe UI", size=9)
+
+        for area, map_list in maps.items():
+            collapsible = CollapsibleFrame(scrollable_frame, text=area.replace("_", " ").title())
+            collapsible.pack(fill="x", expand=True, pady=(5, 0), padx=5)
+
+            # Use a grid within the collapsible frame for better alignment
+            collapsible.frame.columnconfigure(1, weight=1)
+            for i, map_name in enumerate(sorted(map_list)):
+                if map_name not in self.map_biases:
+                     default_value = default_biases.get(map_name, "0")
+                     self.map_biases[map_name] = tk.StringVar(value=default_value)
+
+                map_var = self.map_biases[map_name]
+
+                ttk.Label(collapsible.frame, text=f"{map_name}:", font=small_font) \
+                   .grid(row=i, column=0, sticky="w", padx=5, pady=3)
+
+                current_bias_text = reverse_bias_options.get(map_var.get(), "Balanced")
+                display_var = tk.StringVar(value=current_bias_text)
+
+                def create_callback(mv, dv):
+                    return lambda chosen_text: (mv.set(bias_options[chosen_text]), dv.set(chosen_text))
+
+                option_menu = ttk.OptionMenu(
+                    collapsible.frame,
+                    display_var,
+                    current_bias_text, # Initial value
+                    *bias_options.keys(),
+                    command=create_callback(map_var, display_var),
+                    style="TMenubutton"
+                )
+                
+                option_menu.grid(row=i, column=1, sticky="e", padx=5, pady=3)
+
+        scrollable_frame.columnconfigure(0, weight=1)
+        buttons_frame = tk.Frame(dialog, bg="#f0f0f0")
+        buttons_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
+
+        ok_button = tk.Button(buttons_frame, text="OK", command=dialog.destroy, width=10)
+        ok_button.pack(side=tk.RIGHT)
+        
     def show_elo_calculator(self):
         """Displays a window to calculate and show Elo ratings for all units."""
         if not self.season:
@@ -4229,71 +4433,15 @@ This tool identifies the strongest and weakest possible team compositions based 
 
     def get_map_bias_level(self, map_name):
         """
-        Returns the bias level for a given map.
-        0 = balanced, 1 = light attacker, 1.5 = heavy attacker, 2 = light defender, 2.5 = heavy defender.
-        POTENTIALLY, in the future, allow these to be modifiable like everything else.
+        Returns the bias level for a given map from the configured Map Biases.
+        0 = Balanced, 1 = Attacker Lightly Favored, 1.5 = Attacker Heavily Favored, 2 = Defender lightly favored, 2.5 = defender heavily favored.
         """
-        map_biases = {
-            # ANTIETAM
-            "East Woods Skirmish": 2,
-            "Hooker's Push": 2.5,
-            "Hagerstown Turnpike": 1,
-            "Miller's Cornfield": 1.5,
-            "East Woods": 2.5,
-            "Nicodemus Hill": 2.5,
-            "Bloody Lane": 1.5,
-            "Pry Ford": 2,
-            "Pry Grist Mill": 1,
-            "Pry House": 1.5,
-            "West Woods": 1.5,
-            "Dunker Church": 1.5,
-            "Burnside's Bridge": 2.5,
-            "Cooke's Countercharge": 1.5,
-            "Otto and Sherrick Farms": 1,
-            "Roulette Lane": 1.5,
-            "Piper Farm": 2,
-            "Hill's Counterattack": 1,
-
-            # HARPERS FERRY
-            "Maryland Heights": 1.5,
-            "River Crossing": 2.5,
-            "Downtown": 1,
-            "School House Ridge": 1,
-            "Bolivar Heights Camp": 1.5,
-            "High Street": 1,
-            "Shenandoah Street": 1.5,
-            "Harpers Ferry Graveyard": 1,
-            "Washington Street": 1,
-            "Bolivar Heights Redoubt": 2,
-
-            # SOUTH MOUNTAIN
-            "Garland's Stand": 2.5,
-            "Cox's Push": 2.5,
-            "Hatch's Attack": 2,
-            "Anderson's Counterattack": 1,
-            "Reno's Fall": 1.5,
-            "Colquitt's Defense": 2,
-
-            # DRILL CAMP
-            "Alexander Farm": 2,
-            "Crossroads": 0,
-            "Smith Field": 1,
-            "Crecy's Cornfield": 1.5,
-            "Larsen Homestead": 1.5,
-            "South Woodlot": 1.5,
-            "Flemming's Meadow": 2,
-            "Wagon Road": 2,
-            "Crossley Creek": 1,
-            "Union Camp": 1.5,
-            "Pat's Turnpike": 1.5,
-            "Stefan's Lot": 1,
-            "Confederate Encampment": 2
-        }
-        
-        for base_name, bias in map_biases.items():
-            if base_name in map_name:
-                return bias
-        return 0 # Default to balanced if map not found
+        if map_name and map_name in self.map_biases:
+            try:
+                return float(self.map_biases[map_name].get())
+            except (ValueError, TypeError):
+                return 0.0 # Default to balanced on error
+        return 0.0 # Default to balanced if map not found
 
     def calculate_elo_ratings(self, max_week_index: int | None = None):
         """
