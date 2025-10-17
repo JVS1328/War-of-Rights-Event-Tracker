@@ -4176,6 +4176,7 @@ This tool identifies the strongest and weakest possible team compositions based 
         """
         Returns the bias level for a given map.
         0 = balanced, 1 = light attacker, 1.5 = heavy attacker, 2 = light defender, 2.5 = heavy defender.
+        POTENTIALLY, in the future, allow these to be modifiable like everything else.
         """
         map_biases = {
             # ANTIETAM
