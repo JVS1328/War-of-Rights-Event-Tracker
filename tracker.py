@@ -194,6 +194,7 @@ class SeasonTrackerGUI:
         self.lead_B_r1_var = tk.StringVar()
         self.lead_A_r2_var = tk.StringVar()
         self.lead_B_r2_var = tk.StringVar()
+        self.show_non_token_elo_var = tk.BooleanVar(value=True)
 
 
         # Auto-load previous data (if available)
@@ -3935,17 +3936,6 @@ This tool identifies the strongest and weakest possible team compositions based 
         # Sort data by Elo rating descending
         display_data.sort(key=lambda item: item["rating"], reverse=True)
 
-        for i, data in enumerate(display_data, 1):
-            change_val = data['change']
-            
-            change_str = "↔ 0.00"
-            if change_val > 0.005: # Threshold to avoid tiny floating point changes showing up
-                change_str = f"↑ {change_val:.2f}"
-            elif change_val < -0.005:
-                change_str = f"↓ {abs(change_val):.2f}"
-            
-            unit_display = f"{data['unit']} ({data['rounds']})"
-            tree.insert("", tk.END, values=(i, unit_display, f"{data['rating']:.2f}", change_str))
 
         vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
@@ -3957,6 +3947,45 @@ This tool identifies the strongest and weakest possible team compositions based 
 
         history_button = ttk.Button(bottom_frame, text="Show History", command=self.show_elo_history)
         history_button.pack(side=tk.LEFT, padx=(10, 0))
+
+        def redraw_elo_table():
+            """Clears and redraws the Elo table based on the toggle state."""
+            for item in tree.get_children():
+                tree.delete(item)
+
+            show_non_token = self.show_non_token_elo_var.get()
+
+            # Filter data based on the toggle
+            filtered_data = []
+            for item in display_data:
+                if show_non_token or item["unit"] not in self.non_token_units:
+                    filtered_data.append(item)
+            
+            # Re-sort and rank the filtered data
+            filtered_data.sort(key=lambda item: item["rating"], reverse=True)
+
+            for i, data in enumerate(filtered_data, 1):
+                change_val = data['change']
+                change_str = "↔ 0.00"
+                if change_val > 0.005:
+                    change_str = f"↑ {change_val:.2f}"
+                elif change_val < -0.005:
+                    change_str = f"↓ {abs(change_val):.2f}"
+                
+                unit_display = f"*{data['unit']}" if data['unit'] in self.non_token_units else data['unit']
+                unit_display_with_rounds = f"{unit_display} ({data['rounds']})"
+                tree.insert("", tk.END, values=(i, unit_display_with_rounds, f"{data['rating']:.2f}", change_str))
+
+        toggle_button = ttk.Checkbutton(
+            bottom_frame,
+            text="Show Non-Token Units",
+            variable=self.show_non_token_elo_var,
+            command=redraw_elo_table
+        )
+        toggle_button.pack(side=tk.RIGHT, padx=(10, 0))
+
+        # Initial drawing of the table through the redraw function
+        redraw_elo_table()
         
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -4093,17 +4122,42 @@ This tool identifies the strongest and weakest possible team compositions based 
                     
                     display_data_by_unit[unit][f"Week {week_idx+1}"] = f"{rating:.0f} ({rank}, {change_str})"
 
-        # Populate tree
-        for unit in participating_units:
-            # Include all participating units, including non-token ones
-            display_text = f"*{unit}" if unit in self.non_token_units else unit
-            values = [display_text]
-            for week_col in week_columns:
-                values.append(display_data_by_unit[unit].get(week_col, "N/A"))
-            tree.insert("", "end", values=values)
             
         vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
+
+        def redraw_history_table():
+            """Clears and redraws the Elo history table based on the toggle."""
+            for item in tree.get_children():
+                tree.delete(item)
+
+            show_non_token = self.show_non_token_elo_var.get()
+            
+            filtered_units = []
+            if show_non_token:
+                filtered_units = participating_units
+            else:
+                filtered_units = [u for u in participating_units if u not in self.non_token_units]
+
+            for unit in filtered_units:
+                display_text = f"*{unit}" if unit in self.non_token_units else unit
+                values = [display_text]
+                for week_col in week_columns:
+                    values.append(display_data_by_unit[unit].get(week_col, "N/A"))
+                tree.insert("", "end", values=values)
+        
+        bottom_frame = ttk.Frame(win)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
+
+        toggle_button = ttk.Checkbutton(
+            bottom_frame,
+            text="Show Non-Token Units",
+            variable=self.show_non_token_elo_var,
+            command=redraw_history_table
+        )
+        toggle_button.pack(side=tk.RIGHT)
+
+        redraw_history_table() # Initial draw
 
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
