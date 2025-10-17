@@ -3924,7 +3924,7 @@ This tool identifies the strongest and weakest possible team compositions based 
         cols = ["rank", "unit", "rating", "change"]
         tree = ttk.Treeview(win, columns=cols, show="headings")
         tree.heading("rank", text="Rank", command=lambda: self.sort_column(tree, "rank", False))
-        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
+        tree.heading("unit", text="Unit (Rounds Played)", command=lambda: self.sort_column(tree, "unit", False))
         tree.heading("rating", text="Elo Rating", command=lambda: self.sort_column(tree, "rating", False))
         tree.heading("change", text="Elo Change", command=lambda: self.sort_column(tree, "change", False))
 
