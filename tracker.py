@@ -4172,6 +4172,73 @@ This tool identifies the strongest and weakest possible team compositions based 
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
+    def get_map_bias_level(self, map_name):
+        """
+        Returns the bias level for a given map.
+        0 = balanced, 1 = light attacker, 1.5 = heavy attacker, 2 = light defender, 2.5 = heavy defender.
+        """
+        map_biases = {
+            # ANTIETAM
+            "East Woods Skirmish": 2,
+            "Hooker's Push": 2.5,
+            "Hagerstown Turnpike": 1,
+            "Miller's Cornfield": 1.5,
+            "East Woods": 2.5,
+            "Nicodemus Hill": 2.5,
+            "Bloody Lane": 1.5,
+            "Pry Ford": 2,
+            "Pry Grist Mill": 1,
+            "Pry House": 1.5,
+            "West Woods": 1.5,
+            "Dunker Church": 1.5,
+            "Burnside's Bridge": 2.5,
+            "Cooke's Countercharge": 1.5,
+            "Otto and Sherrick Farms": 1,
+            "Roulette Lane": 1.5,
+            "Piper Farm": 2,
+            "Hill's Counterattack": 1,
+
+            # HARPERS FERRY
+            "Maryland Heights": 1.5,
+            "River Crossing": 2.5,
+            "Downtown": 1,
+            "School House Ridge": 1,
+            "Bolivar Heights Camp": 1.5,
+            "High Street": 1,
+            "Shenandoah Street": 1.5,
+            "Harpers Ferry Graveyard": 1,
+            "Washington Street": 1,
+            "Bolivar Heights Redoubt": 2,
+
+            # SOUTH MOUNTAIN
+            "Garland's Stand": 2.5,
+            "Cox's Push": 2.5,
+            "Hatch's Attack": 2,
+            "Anderson's Counterattack": 1,
+            "Reno's Fall": 1.5,
+            "Colquitt's Defense": 2,
+
+            # DRILL CAMP
+            "Alexander Farm": 2,
+            "Crossroads": 0,
+            "Smith Field": 1,
+            "Crecy's Cornfield": 1.5,
+            "Larsen Homestead": 1.5,
+            "South Woodlot": 1.5,
+            "Flemming's Meadow": 2,
+            "Wagon Road": 2,
+            "Crossley Creek": 1,
+            "Union Camp": 1.5,
+            "Pat's Turnpike": 1.5,
+            "Stefan's Lot": 1,
+            "Confederate Encampment": 2
+        }
+        
+        for base_name, bias in map_biases.items():
+            if base_name in map_name:
+                return bias
+        return 0 # Default to balanced if map not found
+
     def calculate_elo_ratings(self, max_week_index: int | None = None):
         """
         Calculates Elo ratings for all units, using a dynamic K-factor and accounting for player counts and lead units.
@@ -4248,8 +4315,40 @@ This tool identifies the strongest and weakest possible team compositions based 
                     lead_A = week_data.get("lead_A")
                     lead_B = week_data.get("lead_B")
 
+                # --- NEW: Apply Map Bias ---
+                map_name = week_data.get(f"round{r}_map")
+                map_bias_level = self.get_map_bias_level(map_name) if map_name else 0
+                
+                bias_elo_map = {0: 0, 1: 90, 1.5: 190, 2: -90, 2.5: -190}
+                bias_value = bias_elo_map.get(map_bias_level, 0)
+
+                usa_attack_maps = {
+                    "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
+                    "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
+                    "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
+                    "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
+                    "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+                    "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
+                }
+
+                adjusted_elo_A, adjusted_elo_B = avg_elo_A, avg_elo_B
+
+                if map_name:
+                    is_usa_attack = any(base_map in map_name for base_map in usa_attack_maps)
+                    flipped = week_data.get(f"round{r}_flipped", False)
+                    usa_side = "A" if not flipped else "B"
+                    
+                    attacker_side = usa_side if is_usa_attack else ("B" if usa_side == "A" else "A")
+
+                    if attacker_side == "A":
+                        adjusted_elo_A += bias_value
+                        adjusted_elo_B -= bias_value
+                    else: # Attacker is B
+                        adjusted_elo_B += bias_value
+                        adjusted_elo_A -= bias_value
+
                 score_A, score_B = (1, 0) if winner == "A" else (0, 1)
-                expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
+                expected_A = 1 / (1 + 10**((adjusted_elo_B - adjusted_elo_A) / 400))
                 base_change = score_A - expected_A
                 
                 # --- Distribute change based on player contribution & lead status ---
