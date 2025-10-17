@@ -37,7 +37,7 @@ maps = {
         "Hatch's Attack",
         "Anderson's Counterattack",
         "Reno's Fall",
-        "Colquitt's Defence"
+        "Colquitt's Defense"
     ],
     "Drillcamp Skirmish Maps": [
         "Alexander Farm",

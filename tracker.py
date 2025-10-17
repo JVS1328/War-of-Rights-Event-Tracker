@@ -1865,7 +1865,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
             "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
             "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
             "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
         }
 
@@ -2556,7 +2556,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
             "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
             "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+            "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
             "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
         }
 
@@ -4320,19 +4320,18 @@ This tool identifies the strongest and weakest possible team compositions based 
                 map_name = week_data.get(f"round{r}_map")
                 map_bias_level = self.get_map_bias_level(map_name) if map_name else 0
                 
-                bias_elo_map = {0: 0, 1: 90, 1.5: 190, 2: -90, 2.5: -190}
-                bias_value = bias_elo_map.get(map_bias_level, 0)
+                # Instead of Elo offsets, define percentage multipliers
+                bias_percent_map = {0: 1.00, 1: 1.15, 1.5: 1.30, 2: 0.85, 2.5: 0.70}
+                bias_multiplier = bias_percent_map.get(map_bias_level, 1.00)
 
                 usa_attack_maps = {
                     "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
                     "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
                     "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
                     "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-                    "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
+                    "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
                     "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
                 }
-
-                adjusted_elo_A, adjusted_elo_B = avg_elo_A, avg_elo_B
 
                 if map_name:
                     is_usa_attack = any(base_map in map_name for base_map in usa_attack_maps)
@@ -4341,15 +4340,20 @@ This tool identifies the strongest and weakest possible team compositions based 
                     
                     attacker_side = usa_side if is_usa_attack else ("B" if usa_side == "A" else "A")
 
-                    if attacker_side == "A":
-                        adjusted_elo_A += bias_value
-                        adjusted_elo_B -= bias_value
-                    else: # Attacker is B
-                        adjusted_elo_B += bias_value
-                        adjusted_elo_A -= bias_value
+                    # Compute expected outcome first
+                    expected_A = 1 / (1 + 10 ** ((avg_elo_B - avg_elo_A) / 400))
 
+                    # Apply percent bias to expected probability
+                    if attacker_side == "A":
+                        expected_A *= bias_multiplier
+                    else:
+                        expected_A /= bias_multiplier
+
+                    #expected_A = max(0.05, min(0.95, expected_A)) dont need this
+                else:
+                    expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
+                
                 score_A, score_B = (1, 0) if winner == "A" else (0, 1)
-                expected_A = 1 / (1 + 10**((adjusted_elo_B - adjusted_elo_A) / 400))
                 base_change = score_A - expected_A
                 
                 # --- Distribute change based on player contribution & lead status ---
