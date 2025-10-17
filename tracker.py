@@ -170,6 +170,8 @@ class SeasonTrackerGUI:
             "provisional_rounds": tk.StringVar(value="10"),
             "sweep_bonus_multiplier": tk.StringVar(value="1.25"),
             "lead_multiplier": tk.StringVar(value="2.0"),
+            "size_influence": tk.StringVar(value="1.0"),
+            "playoff_multiplier": tk.StringVar(value="1.25"),
         }
 
         # For round winner and lead selection
@@ -2707,7 +2709,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                 } for i, wk in enumerate(self.season)
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
-            "point_system_values": {k: v.get() for k, v in self.point_system_values.items()}, # Save all point values
+            "point_system_values": {k: v.get() for k, v in self.point_system_values.items()},
             "unit_player_counts": self.unit_player_counts,
             "manual_point_adjustments": self.manual_point_adjustments,
             "divisions": self.divisions,
@@ -2778,6 +2780,8 @@ This tool identifies the strongest and weakest possible team compositions based 
                 "provisional_rounds": "10",
                 "sweep_bonus_multiplier": "1.25",
                 "lead_multiplier": "2.0",
+                "size_influence": "1.0",
+                "playoff_multiplier": "1.25"
             }
             for key, var in self.elo_system_values.items():
                 var.set(loaded_elo_system.get(key, default_elo.get(key, "0")))
@@ -2819,6 +2823,8 @@ This tool identifies the strongest and weakest possible team compositions based 
             self.elo_system_values["provisional_rounds"].set("10")
             self.elo_system_values["sweep_bonus_multiplier"].set("1.25")
             self.elo_system_values["lead_multiplier"].set("2.0")
+            self.elo_system_values["size_influence"].set("1.0")
+            self.elo_system_values["playoff_multiplier"].set("1.25")
             
             self.unit_points.clear()
             self.manual_point_adjustments.clear()
@@ -3835,6 +3841,8 @@ This tool identifies the strongest and weakest possible team compositions based 
             ("k_factor_standard", "Standard K-Factor:"),
             ("sweep_bonus_multiplier", "2-0 Sweep Bonus Multiplier:"),
             ("lead_multiplier", "Lead Unit Multiplier:"),
+            ("size_influence", "Size Influence (Higher = More Impact):"),
+            ("playoff_multiplier", "Playoff Multiplier:"),
         ]
 
         for i, (key, label_text) in enumerate(fields):
@@ -3855,6 +3863,8 @@ This tool identifies the strongest and weakest possible team compositions based 
                 temp_values["provisional_rounds"] = int(dialog_vars["provisional_rounds"].get())
                 temp_values["sweep_bonus_multiplier"] = float(dialog_vars["sweep_bonus_multiplier"].get())
                 temp_values["lead_multiplier"] = float(dialog_vars["lead_multiplier"].get())
+                temp_values["size_influence"] = float(dialog_vars["size_influence"].get())
+                temp_values["playoff_multiplier"] = float(dialog_vars["playoff_multiplier"].get())
             except ValueError:
                 messagebox.showerror("Invalid Input", "All Elo values must be valid numbers (integers or decimals).", parent=dialog)
                 return
@@ -4174,6 +4184,8 @@ This tool identifies the strongest and weakest possible team compositions based 
             provisional_rounds = int(self.elo_system_values["provisional_rounds"].get())
             sweep_bonus_multiplier = float(self.elo_system_values["sweep_bonus_multiplier"].get())
             lead_multiplier = float(self.elo_system_values["lead_multiplier"].get())
+            size_influence = float(self.elo_system_values["size_influence"].get())
+            playoff_multiplier = float(self.elo_system_values["playoff_multiplier"].get())
         except (ValueError, KeyError):
             # Fallback to defaults if settings are invalid
             initial_rating=1500
@@ -4182,6 +4194,8 @@ This tool identifies the strongest and weakest possible team compositions based 
             provisional_rounds=10
             sweep_bonus_multiplier = 1.25
             lead_multiplier=2.0
+            size_influence = 1.0
+            playoff_multiplier = 1.25
 
         elo_ratings = defaultdict(lambda: initial_rating)
         rounds_played = defaultdict(int)
@@ -4268,7 +4282,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                         '''
                     # Log-scaled + normalized weights
                     weights = {
-                        u: math.log(1 + self.get_unit_average_player_count(u, week_idx))
+                        u: (math.log(1 + self.get_unit_average_player_count(u, week_idx)) ** size_influence)
                         * (lead_multiplier if u == lead_unit else 1)
                         for u in team_units
                     }
@@ -4278,7 +4292,7 @@ This tool identifies the strongest and weakest possible team compositions based 
 
                     for u, w in weights.items():
                         k = k_factor_provisional if rounds_played[u] < provisional_rounds else k_factor_standard
-                        round_multiplier = 1.25 if is_playoffs else 1.0
+                        round_multiplier = playoff_multiplier if is_playoffs else 1.0
                         delta = k * base_change * w * sign * round_multiplier * sweep_bonus
                         current_week_elos[u] += delta
 
