@@ -2846,7 +2846,8 @@ This tool identifies the strongest and weakest possible team compositions based 
             
             self.unit_points.clear()
             self.manual_point_adjustments.clear()
-
+            self.divisions.clear()
+ 
             self.refresh_week_list()    # Updates week listbox (will be empty)
             self.refresh_units_list()   # Updates units listbox (will be empty)
             
