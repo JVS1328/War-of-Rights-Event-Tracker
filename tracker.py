@@ -173,6 +173,13 @@ class SeasonTrackerGUI:
             "size_influence": tk.StringVar(value="1.0"),
             "playoff_multiplier": tk.StringVar(value="1.25"),
         }
+        
+        self.elo_bias_percentages = {
+            "light_attacker": tk.StringVar(value="15"),
+            "heavy_attacker": tk.StringVar(value="30"),
+            "light_defender": tk.StringVar(value="15"),
+            "heavy_defender": tk.StringVar(value="30"),
+        }
 
         # For round winner and lead selection
         self.round1_winner_var = tk.StringVar()
@@ -2714,6 +2721,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             "manual_point_adjustments": self.manual_point_adjustments,
             "divisions": self.divisions,
             "elo_system_values": {k: v.get() for k, v in self.elo_system_values.items()},
+            "elo_bias_percentages": {k: v.get() for k, v in self.elo_bias_percentages.items()},
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -2785,6 +2793,16 @@ This tool identifies the strongest and weakest possible team compositions based 
             }
             for key, var in self.elo_system_values.items():
                 var.set(loaded_elo_system.get(key, default_elo.get(key, "0")))
+
+            loaded_elo_bias = data.get("elo_bias_percentages", {})
+            default_bias = {
+               "light_attacker": "15",
+               "heavy_attacker": "30",
+               "light_defender": "15",
+               "heavy_defender": "30",
+            }
+            for key, var in self.elo_bias_percentages.items():
+               var.set(loaded_elo_bias.get(key, default_bias.get(key, "0")))
 
         except Exception as e:
             messagebox.showerror("Load error", str(e))
@@ -3833,6 +3851,7 @@ This tool identifies the strongest and weakest possible team compositions based 
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         dialog_vars = {key: tk.StringVar(value=var.get()) for key, var in self.elo_system_values.items()}
+        bias_dialog_vars = {key: tk.StringVar(value=var.get()) for key, var in self.elo_bias_percentages.items()}
 
         fields = [
             ("initial_elo", "Initial Elo:"),
@@ -3849,9 +3868,27 @@ This tool identifies the strongest and weakest possible team compositions based 
             tk.Label(main_frame, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=2)
             entry = tk.Entry(main_frame, textvariable=dialog_vars[key], width=10)
             entry.grid(row=i, column=1, sticky=tk.E, pady=2, padx=5)
+            
+        # --- BIAS PERCENTAGES ---
+        tk.Label(main_frame, text="").grid(row=len(fields), column=0) # Spacer
+        tk.Label(main_frame, text="Map Bias Elo Multipliers (%)", font=("Arial", 9, "bold")).grid(row=len(fields)+1, column=0, columnspan=2, pady=(5,2))
+
+        bias_fields = [
+            ("light_attacker", "Light Attacker Bias %:"),
+            ("heavy_attacker", "Heavy Attacker Bias %:"),
+            ("light_defender", "Light Defender Bias %:"),
+            ("heavy_defender", "Heavy Defender Bias %:"),
+        ]
+
+        for i, (key, label_text) in enumerate(bias_fields):
+            row_idx = len(fields) + 2 + i
+            tk.Label(main_frame, text=label_text).grid(row=row_idx, column=0, sticky=tk.W, pady=2)
+            entry = tk.Entry(main_frame, textvariable=bias_dialog_vars[key], width=10)
+            entry.grid(row=row_idx, column=1, sticky=tk.E, pady=2, padx=5)
+
 
         buttons_frame = tk.Frame(main_frame)
-        buttons_frame.grid(row=len(fields), column=0, columnspan=2, pady=(15, 5))
+        buttons_frame.grid(row=len(fields) + len(bias_fields) + 2, column=0, columnspan=2, pady=(15, 5))
 
         def on_ok():
             temp_values = {}
@@ -3865,14 +3902,26 @@ This tool identifies the strongest and weakest possible team compositions based 
                 temp_values["lead_multiplier"] = float(dialog_vars["lead_multiplier"].get())
                 temp_values["size_influence"] = float(dialog_vars["size_influence"].get())
                 temp_values["playoff_multiplier"] = float(dialog_vars["playoff_multiplier"].get())
+                
+                # Validate bias percentages
+                bias_values = {}
+                for key, s_var in bias_dialog_vars.items():
+                    val_str = s_var.get()
+                    if not val_str.strip(): # Allow empty string, treat as 0
+                        bias_values[key] = 0
+                        continue
+                    bias_values[key] = int(val_str)
+
             except ValueError:
-                messagebox.showerror("Invalid Input", "All Elo values must be valid numbers (integers or decimals).", parent=dialog)
+                messagebox.showerror("Invalid Input", "All Elo values must be valid numbers (integers or decimals). Bias must be an integer.", parent=dialog)
                 return
 
             # If all valid, update the main StringVars
             for key, value in temp_values.items():
                 self.elo_system_values[key].set(str(value))
-            
+            for key, value in bias_values.items():
+               self.elo_bias_percentages[key].set(str(value))
+
             dialog.destroy()
 
         def on_cancel():
@@ -4321,7 +4370,20 @@ This tool identifies the strongest and weakest possible team compositions based 
                 map_bias_level = self.get_map_bias_level(map_name) if map_name else 0
                 
                 # Instead of Elo offsets, define percentage multipliers
-                bias_percent_map = {0: 1.00, 1: 1.15, 1.5: 1.30, 2: 0.85, 2.5: 0.70}
+                try:
+                   light_att = int(self.elo_bias_percentages["light_attacker"].get())
+                   heavy_att = int(self.elo_bias_percentages["heavy_attacker"].get())
+                   light_def = int(self.elo_bias_percentages["light_defender"].get())
+                   heavy_def = int(self.elo_bias_percentages["heavy_defender"].get())
+                   bias_percent_map = {
+                       0: 1.00,
+                       1: 1.0 + (light_att / 100.0),
+                       1.5: 1.0 + (heavy_att / 100.0),
+                       2: 1.0 - (light_def / 100.0),
+                       2.5: 1.0 - (heavy_def / 100.0)
+                   }
+                except (ValueError, KeyError):
+                   bias_percent_map = {0: 1.00, 1: 1.15, 1.5: 1.30, 2: 0.85, 2.5: 0.70} # Fallback
                 bias_multiplier = bias_percent_map.get(map_bias_level, 1.00)
 
                 usa_attack_maps = {
