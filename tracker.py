@@ -4610,10 +4610,15 @@ This tool identifies the strongest and weakest possible team compositions based 
                     for u in weights:
                         weights[u] /= total_weight
 
+                    #Make Elo you gain/lose within a team, more proportional to the Elo of the unit and those around it.
+                    #team_avg_elo = sum(current_week_elos[u] for u in team_units) / len(team_units)
+
                     for u, w in weights.items():
                         k = k_factor_provisional if rounds_played[u] < provisional_rounds else k_factor_standard
                         round_multiplier = playoff_multiplier if is_playoffs else 1.0
-                        delta = k * base_change * w * sign * round_multiplier * sweep_bonus
+                        # Relative factor: how far below or above the team average this unit is
+                        #relative_factor = (team_avg_elo / current_week_elos[u]) ** 0.25  # sqrt smooths extremes
+                        delta = k * base_change * w * sign * round_multiplier * sweep_bonus #* relative_factor
                         current_week_elos[u] += delta
 
                 apply_elo_changes(team_A_units, total_players_A, lead_A, 1, sweep_bonus_A)
