@@ -4075,22 +4075,27 @@ This tool identifies the strongest and weakest possible team compositions based 
         large rosters can’t inflate results, and smaller regiments still see meaningful movement.
         - Example: A 30-player unit has ~1.5× the influence of a 10-player unit (not 3× as before).
 
-    **4. Lead Unit Multiplier (×2.0)**
+    **4. Map Bias Adjustment**
+        - To account for built-in map imbalances, the system adjusts the **expected outcome** before calculating Elo changes.
+        - Each map is classified as balanced, light/heavy attacker-favored, or light/heavy defender-favored.
+        - Based on this, a **bias multiplier** is applied to the starting win probability. For example, a heavy attacker-favored map increases the attacker's expected win chance by **30%**, making a defender victory a significant upset worth more Elo.
+        - This ensures that wins on difficult maps are rewarded more heavily, and losses are less punishing.
+
+    **5. Lead Unit Multiplier (×2.0)**
         - The designated **Lead Unit** for a round has its Elo impact doubled.
         - A win as lead is more rewarding; a loss is more punishing  reflecting the higher responsibility of command.
 
-    **5. Match Outcomes & Round Structure**
+    **6. Match Outcomes & Round Structure**
         - Each week typically includes **two rounds**.
             - **2–0 Sweep:** Awards a **1.25× Sweep Bonus** for dominating both rounds.
-            - **1–1 Split:** Elo swings are slightly reduced to reflect a balanced outcome.
         - Round results are processed independently, keeping the system accurate even when rosters shift week to week.
 
-    **6. Dynamic K-Factor & Other Multipliers**
+    **7. Dynamic K-Factor & Other Multipliers**
         - **Provisional K-Factor (128):** Used for a regiment’s first 10 rounds; helps new units reach accurate ratings quickly.
         - **Standard K-Factor (96):** Used afterward to stabilize ratings.
         - **Playoff Multiplier (×1.25):** Increases Elo volatility during playoff matches to reflect higher stakes.
 
-    **7. Fairness & Long-Term Balance**
+    **8. Fairness & Long-Term Balance**
         - Elo changes are proportional and self-correcting over time.
         - Smaller regiments aren’t overshadowed by larger allies.
         - Ratings naturally stabilize around 1500, preventing inflation across seasons.
