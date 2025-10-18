@@ -4299,7 +4299,13 @@ This tool identifies the strongest and weakest possible team compositions based 
         - **Standard K-Factor (96):** Used afterward to stabilize ratings.
         - **Playoff Multiplier (×1.25):** Increases Elo volatility during playoff matches to reflect higher stakes.
 
-    **8. Fairness & Long-Term Balance**
+    **8. Proportional Intra-Team Elo Distribution**
+        - To ensure fairness within a team, the amount of Elo gained or lost is **proportional** to a unit’s rating relative to its own team’s average.
+        - **Higher-rated units** gain slightly less on a win and lose a bit more on a loss, as they are expected to perform well.
+        - **Lower-rated units** gain more on a win and lose less on a loss, rewarding them for contributing to an upset.
+        - This prevents high-Elo units from "farming" points off lower-rated teammates and ensures every unit's contribution is fairly recognized.
+
+    **9. Fairness & Long-Term Balance**
         - Elo changes are proportional and self-correcting over time.
         - Smaller regiments aren’t overshadowed by larger allies.
         - Ratings naturally stabilize around 1500, preventing inflation across seasons.
