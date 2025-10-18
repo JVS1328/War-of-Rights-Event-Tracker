@@ -4565,7 +4565,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                     else:
                         expected_A /= bias_multiplier
 
-                    #expected_A = max(0.05, min(0.95, expected_A)) dont need this
+                    expected_A = max(0.05, min(0.95, expected_A)) # Clamp to avoid extremes
                 else:
                     expected_A = 1 / (1 + 10**((avg_elo_B - avg_elo_A) / 400))
                 
@@ -4617,7 +4617,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                         k = k_factor_provisional if rounds_played[u] < provisional_rounds else k_factor_standard
                         round_multiplier = playoff_multiplier if is_playoffs else 1.0
                         # Relative factor: how far below or above the team average this unit is
-                        relative_factor = (team_avg_elo / current_week_elos[u]) ** 0.5  # sqrt smooths extremes
+                        relative_factor = max(0.8, min(1.2, (team_avg_elo / current_week_elos[u]) ** 0.5))
                         delta = k * base_change * w * sign * round_multiplier * sweep_bonus * relative_factor
                         current_week_elos[u] += delta
 
