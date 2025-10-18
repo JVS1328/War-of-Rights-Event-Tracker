@@ -663,12 +663,38 @@ class SeasonTrackerGUI:
         self.list_b.delete(0, tk.END)
         if not self.current_week:
             return
+
+        # Calculate Elo and TII up to the week *before* the current one
+        current_week_idx = self.season.index(self.current_week)
+        previous_week_idx = current_week_idx - 1
+        
+        initial_rating = int(self.elo_system_values["initial_elo"].get())
+        if previous_week_idx < 0:
+            elo_ratings = defaultdict(lambda: initial_rating)
+            tii_stats = {}
+        else:
+            try:
+                elo_ratings, _ = self.calculate_elo_ratings(max_week_index=previous_week_idx)
+                tii_stats, _ = self.calculate_teammate_impact(max_week_index=previous_week_idx)
+            except Exception:
+                elo_ratings = defaultdict(lambda: initial_rating)
+                tii_stats = {}
+
+        # Helper to format and insert text
+        def insert_unit_with_stats(listbox, unit_name):
+            elo = elo_ratings.get(unit_name, initial_rating)
+            tii_data = tii_stats.get(unit_name, {})
+            tii = tii_data.get('adjusted_tii_score', 0) if tii_data else 0
+
+            asterisk = "*" if unit_name in self.non_token_units else ""
+            display_text = f"{asterisk}{unit_name} | TII: {tii:.2f} | Elo: {elo:.0f}"
+            listbox.insert(tk.END, display_text)
+
         for u in sorted(self.current_week["A"]):
-            display_text = f"*{u}" if u in self.non_token_units else u
-            self.list_a.insert(tk.END, display_text)
+            insert_unit_with_stats(self.list_a, u)
         for u in sorted(self.current_week["B"]):
-            display_text = f"*{u}" if u in self.non_token_units else u
-            self.list_b.insert(tk.END, display_text)
+            insert_unit_with_stats(self.list_b, u)
+            
         self.update_lead_menus()
         self.calculate_and_display_roster_strength()
 
