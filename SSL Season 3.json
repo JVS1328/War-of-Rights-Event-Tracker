@@ -1766,6 +1766,45 @@
           "max": "20"
         }
       }
+    },
+    {
+      "name": "10/22/25 - PR3",
+      "A": [
+        "10th US",
+        "12th VA",
+        "51st AL",
+        "59th NY",
+        "AVC",
+        "FSB",
+        "II Corps"
+      ],
+      "B": [
+        "23rd NYV",
+        "CB",
+        "CQB",
+        "JD",
+        "MSG",
+        "SR",
+        "TKO"
+      ],
+      "round1_winner": "B",
+      "round2_winner": "B",
+      "lead_A": null,
+      "lead_B": null,
+      "playoffs": true,
+      "lead_A_r1": "51st AL",
+      "lead_B_r1": "MSG",
+      "lead_A_r2": "AVC",
+      "lead_B_r2": "CB",
+      "r1_casualties_A": 1492,
+      "r1_casualties_B": 1617,
+      "r2_casualties_A": 1220,
+      "r2_casualties_B": 1254,
+      "round1_map": "Cooke's Countercharge",
+      "round2_map": "Roulette Lane",
+      "round1_flipped": false,
+      "round2_flipped": false,
+      "unit_player_counts": {}
     }
   ],
   "team_names": {
@@ -1786,20 +1825,20 @@
       "max": "0"
     },
     "10th US": {
-      "min": "30",
-      "max": "35"
+      "min": "28",
+      "max": "34"
     },
     "12th VA": {
-      "min": "45",
-      "max": "50"
+      "min": "15",
+      "max": "20"
     },
     "51st AL": {
-      "min": "17",
-      "max": "22"
+      "min": "18",
+      "max": "23"
     },
     "59th NY": {
-      "min": "32",
-      "max": "35"
+      "min": "40",
+      "max": "45"
     },
     "7th TX": {
       "min": "0",
@@ -1807,46 +1846,46 @@
     },
     "AVC": {
       "min": "9",
-      "max": "12"
+      "max": "14"
     },
     "CB": {
       "min": "60",
       "max": "65"
     },
     "CQB": {
-      "min": "12",
-      "max": "16"
+      "min": "8",
+      "max": "13"
     },
     "FSB": {
-      "min": "12",
-      "max": "17"
+      "min": "14",
+      "max": "19"
     },
     "II Corps": {
-      "min": "30",
-      "max": "35"
+      "min": "25",
+      "max": "30"
     },
     "JD": {
-      "min": "28",
-      "max": "32"
+      "min": "23",
+      "max": "28"
     },
     "MSG": {
-      "min": "4",
-      "max": "6"
+      "min": "35",
+      "max": "40"
     },
     "SR": {
-      "min": "2",
+      "min": "3",
       "max": "3"
     },
     "TKO": {
-      "min": "18",
-      "max": "20"
+      "min": "13",
+      "max": "18"
     },
     "5th MN": {
-      "min": "27",
-      "max": "33"
+      "min": "0",
+      "max": "0"
     },
     "23rd NYV": {
-      "min": "5",
+      "min": "7",
       "max": "10"
     }
   },
