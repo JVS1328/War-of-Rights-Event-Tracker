@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3 } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download } from 'lucide-react';
 
 const WarOfRightsLogAnalyzer = () => {
   const [rounds, setRounds] = useState([]);
@@ -10,6 +10,9 @@ const WarOfRightsLogAnalyzer = () => {
   const [playerAssignments, setPlayerAssignments] = useState({});
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [newRegiment, setNewRegiment] = useState('');
+  const [expandedRegiments, setExpandedRegiments] = useState({});
+  const [editingRegiment, setEditingRegiment] = useState(null);
+  const [newRegimentName, setNewRegimentName] = useState('');
   const [smartMatchPreview, setSmartMatchPreview] = useState(null);
   const [showSmartMatchPreview, setShowSmartMatchPreview] = useState(false);
   const [pendingEdits, setPendingEdits] = useState({});
@@ -572,6 +575,9 @@ const WarOfRightsLogAnalyzer = () => {
     setEditingPlayer(null);
     setNewRegiment('');
     setPendingEdits({});
+    setExpandedRegiments({});
+    setEditingRegiment(null);
+    setNewRegimentName('');
   };
 
   const startEditPlayer = (playerName, currentRegiment) => {
@@ -668,18 +674,83 @@ const WarOfRightsLogAnalyzer = () => {
       if (!playerMap[death.player]) {
         playerMap[death.player] = {
           name: death.player,
-          regiment: baseRegiment,  // Always use base regiment for sorting
-          displayRegiment: pendingEdits[death.player] || baseRegiment,  // Use pending for display
+          regiment: baseRegiment,
+          displayRegiment: pendingEdits[death.player] || baseRegiment,
           deaths: 0
         };
       }
       playerMap[death.player].deaths++;
     });
 
-    // Sort by base regiment (not pending edits) to prevent view jumping
     return Object.values(playerMap).sort((a, b) =>
       a.regiment.localeCompare(b.regiment) || b.deaths - a.deaths
     );
+  };
+
+  const getPlayersByRegiment = () => {
+    const players = getAllPlayers();
+    const regimentMap = {};
+    
+    players.forEach(player => {
+      const regiment = player.displayRegiment;
+      if (!regimentMap[regiment]) {
+        regimentMap[regiment] = [];
+      }
+      regimentMap[regiment].push(player);
+    });
+    
+    return Object.entries(regimentMap)
+      .map(([name, players]) => ({
+        name,
+        players,
+        playerCount: players.length
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const toggleRegiment = (regimentName) => {
+    setExpandedRegiments(prev => ({
+      ...prev,
+      [regimentName]: !prev[regimentName]
+    }));
+  };
+
+  const transferRegiment = (fromRegiment, toRegiment) => {
+    if (!selectedRound || fromRegiment === toRegiment) return;
+    
+    const players = getAllPlayers().filter(p => p.displayRegiment === fromRegiment);
+    const newPendingEdits = { ...pendingEdits };
+    
+    players.forEach(player => {
+      newPendingEdits[player.name] = toRegiment;
+    });
+    
+    setPendingEdits(newPendingEdits);
+  };
+
+  const renameRegiment = (oldName, newName) => {
+    if (!selectedRound || !newName || oldName === newName) return;
+    
+    const players = getAllPlayers().filter(p => p.displayRegiment === oldName);
+    const newPendingEdits = { ...pendingEdits };
+    
+    players.forEach(player => {
+      newPendingEdits[player.name] = newName;
+    });
+    
+    setPendingEdits(newPendingEdits);
+    setEditingRegiment(null);
+    setNewRegimentName('');
+  };
+
+  const deleteRegiment = (regimentName) => {
+    if (!selectedRound || regimentName === 'UNTAGGED') return;
+    
+    if (!confirm(`Delete regiment "${regimentName}" and move all players to UNTAGGED?`)) {
+      return;
+    }
+    
+    transferRegiment(regimentName, 'UNTAGGED');
   };
 
   // Helper function to format seconds as HH:MM:SS
@@ -927,6 +998,30 @@ const WarOfRightsLogAnalyzer = () => {
     return `${mins}m ${secs}s`;
   };
 
+  const exportRegimentCasualtiesCSV = () => {
+    if (!regimentStats.length || !selectedRound) return;
+
+    const csvRows = [
+      ['Regiment Name', 'Casualties'],
+      ...regimentStats.map(regiment => [
+        regiment.name,
+        regiment.casualties
+      ])
+    ];
+
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `round_${selectedRound.id}_casualties.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -1003,6 +1098,14 @@ const WarOfRightsLogAnalyzer = () => {
                   </h2>
                   {selectedRound && (
                     <div className="flex gap-2">
+                      <button
+                        onClick={exportRegimentCasualtiesCSV}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                        title="Export as CSV"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export CSV
+                      </button>
                       <button
                         onClick={generateSmartMatchPreview}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
@@ -1722,72 +1825,178 @@ const WarOfRightsLogAnalyzer = () => {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto mb-6">
-                {getAllPlayers().map((player) => (
-                  <div
-                    key={player.name}
-                    className="bg-slate-600 rounded-lg p-4 flex justify-between items-center gap-4"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-white truncate">
-                        {player.name}
-                      </div>
-                      <div className="text-sm text-slate-400">
-                        Deaths: {player.deaths}
+              <div className="space-y-3 max-h-[600px] overflow-y-auto mb-6">
+                {getPlayersByRegiment().map((regiment) => (
+                  <div key={regiment.name} className="bg-slate-600 rounded-lg overflow-hidden">
+                    {/* Regiment Header */}
+                    <div className="bg-slate-700 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          onClick={() => toggleRegiment(regiment.name)}
+                          className="flex items-center gap-2 flex-1 text-left hover:text-amber-400 transition"
+                        >
+                          {expandedRegiments[regiment.name] ? (
+                            <ChevronDown className="w-5 h-5 text-amber-400" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5 text-slate-400" />
+                          )}
+                          <span className="font-bold text-lg text-white">
+                            {regiment.name}
+                          </span>
+                          <span className="text-sm text-slate-400">
+                            ({regiment.playerCount} player{regiment.playerCount !== 1 ? 's' : ''})
+                          </span>
+                        </button>
+
+                        {/* Regiment Controls */}
+                        <div className="flex items-center gap-2">
+                          {editingRegiment === regiment.name ? (
+                            <>
+                              <input
+                                type="text"
+                                value={newRegimentName}
+                                onChange={(e) => setNewRegimentName(e.target.value)}
+                                placeholder="New name"
+                                className="px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    renameRegiment(regiment.name, newRegimentName);
+                                  }
+                                }}
+                              />
+                              <button
+                                onClick={() => renameRegiment(regiment.name, newRegimentName)}
+                                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingRegiment(null);
+                                  setNewRegimentName('');
+                                }}
+                                className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditingRegiment(regiment.name);
+                                  setNewRegimentName(regiment.name);
+                                }}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition flex items-center gap-1"
+                                title="Rename regiment"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Rename
+                              </button>
+                              
+                              <select
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    transferRegiment(regiment.name, e.target.value);
+                                    e.target.value = '';
+                                  }
+                                }}
+                                className="px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                title="Transfer all players to another regiment"
+                              >
+                                <option value="">Transfer to...</option>
+                                {getAvailableRegiments()
+                                  .filter(r => r !== regiment.name)
+                                  .map(reg => (
+                                    <option key={reg} value={reg}>{reg}</option>
+                                  ))}
+                              </select>
+
+                              {regiment.name !== 'UNTAGGED' && (
+                                <button
+                                  onClick={() => deleteRegiment(regiment.name)}
+                                  className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition"
+                                  title="Delete regiment (moves players to UNTAGGED)"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    
-                    {editingPlayer === player.name ? (
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={newRegiment}
-                          onChange={(e) => setNewRegiment(e.target.value)}
-                          className="px-3 py-1 bg-slate-700 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
-                        >
-                          {getAvailableRegiments().map(reg => (
-                            <option key={reg} value={reg}>{reg}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={savePlayerEdit}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => {
-                            updatePendingEdit(player.name, newRegiment);
-                            setEditingPlayer(null);
-                          }}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
-                        >
-                          Queue
-                        </button>
-                        <button
-                          onClick={() => setEditingPlayer(null)}
-                          className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded transition"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 text-white rounded font-semibold ${
-                          pendingEdits[player.name] ? 'bg-blue-600' : 'bg-amber-600'
-                        }`}>
-                          {player.displayRegiment}
-                        </span>
-                        {pendingEdits[player.name] && (
-                          <span className="text-xs text-blue-400">
-                            (pending)
-                          </span>
-                        )}
-                        <button
-                          onClick={() => startEditPlayer(player.name, player.regiment)}
-                          className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+
+                    {/* Players List (Collapsible) */}
+                    {expandedRegiments[regiment.name] && (
+                      <div className="p-4 space-y-2 bg-slate-600">
+                        {regiment.players.map((player) => (
+                          <div
+                            key={player.name}
+                            className="bg-slate-700 rounded-lg p-3 flex justify-between items-center gap-4"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-white truncate text-sm">
+                                {player.name}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                Deaths: {player.deaths}
+                              </div>
+                            </div>
+                            
+                            {editingPlayer === player.name ? (
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={newRegiment}
+                                  onChange={(e) => setNewRegiment(e.target.value)}
+                                  className="px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                >
+                                  {getAvailableRegiments().map(reg => (
+                                    <option key={reg} value={reg}>{reg}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={savePlayerEdit}
+                                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    updatePendingEdit(player.name, newRegiment);
+                                    setEditingPlayer(null);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                                >
+                                  Queue
+                                </button>
+                                <button
+                                  onClick={() => setEditingPlayer(null)}
+                                  className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                {pendingEdits[player.name] && (
+                                  <div className="flex items-center gap-1 text-xs">
+                                    <ArrowRight className="w-3 h-3 text-blue-400" />
+                                    <span className="text-blue-400 font-semibold">
+                                      {pendingEdits[player.name]}
+                                    </span>
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => startEditPlayer(player.name, player.regiment)}
+                                  className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
