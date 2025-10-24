@@ -19,6 +19,8 @@ const WarOfRightsLogAnalyzer = () => {
   const [timeRangeEnd, setTimeRangeEnd] = useState(100);
   const [hoverInfo, setHoverInfo] = useState(null);
   const svgRef = useRef(null);
+  const [showAllLossRates, setShowAllLossRates] = useState(false);
+  const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(false);
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -755,10 +757,10 @@ const WarOfRightsLogAnalyzer = () => {
   };
 
   // Get highest loss rates (deaths per player)
-  const getHighestLossRates = () => {
+  const getHighestLossRates = (showAll = false) => {
     if (!regimentStats.length) return [];
     
-    return regimentStats
+    const filtered = regimentStats
       .filter(regiment => {
         const playerCount = Object.keys(regiment.players).length;
         return regiment.name !== 'UNTAGGED' && playerCount >= 2;
@@ -773,8 +775,9 @@ const WarOfRightsLogAnalyzer = () => {
           lossRate: parseFloat(lossRate)
         };
       })
-      .sort((a, b) => b.lossRate - a.lossRate)
-      .slice(0, 10);
+      .sort((a, b) => b.lossRate - a.lossRate);
+    
+    return showAll ? filtered : filtered.slice(0, 10);
   };
 
   // Get top 10 individual death counts
@@ -806,7 +809,7 @@ const WarOfRightsLogAnalyzer = () => {
   };
 
   // Get time in combat per regiment (based on first and last death)
-  const getTimeInCombat = () => {
+  const getTimeInCombat = (showAll = false) => {
     if (!selectedRound || !regimentStats.length) return [];
     
     const roundKey = `round_${selectedRound.id}`;
@@ -865,7 +868,7 @@ const WarOfRightsLogAnalyzer = () => {
       regimentCombatTime[regiment].totalDeaths++;
     });
     
-    return Object.values(regimentCombatTime)
+    const sorted = Object.values(regimentCombatTime)
       .filter(reg => regimentPlayerCounts[reg.name] && regimentPlayerCounts[reg.name].size >= 2)
       .map(reg => {
         // Calculate average combat duration (active combat periods)
@@ -913,8 +916,9 @@ const WarOfRightsLogAnalyzer = () => {
           combatPeriods: combatPeriods.length
         };
       })
-      .sort((a, b) => b.combatDuration - a.combatDuration)
-      .slice(0, 10);
+      .sort((a, b) => b.combatDuration - a.combatDuration);
+    
+    return showAll ? sorted : sorted.slice(0, 10);
   };
 
   const formatSeconds = (seconds) => {
@@ -1479,12 +1483,20 @@ const WarOfRightsLogAnalyzer = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Highest Loss Rates */}
                 <div className="bg-slate-700 rounded-lg p-6">
-                  <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-6 h-6" />
-                    Highest Loss Rates
-                  </h2>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <BarChart3 className="w-6 h-6" />
+                      Highest Loss Rates
+                    </h2>
+                    <button
+                      onClick={() => setShowAllLossRates(!showAllLossRates)}
+                      className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                    >
+                      {showAllLossRates ? 'Top 10' : 'Show All'}
+                    </button>
+                  </div>
                   <div className="space-y-2">
-                    {getHighestLossRates().map((regiment, index) => (
+                    {getHighestLossRates(showAllLossRates).map((regiment, index) => (
                       <div key={regiment.name} className="bg-slate-600 rounded-lg p-3">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-white font-semibold">
@@ -1546,10 +1558,18 @@ const WarOfRightsLogAnalyzer = () => {
 
               {/* Time in Combat Table */}
               <div className="bg-slate-700 rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                  <Timer className="w-6 h-6" />
-                  Time in Combat (Per Regiment)
-                </h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <Timer className="w-6 h-6" />
+                    Time in Combat (Per Regiment)
+                  </h2>
+                  <button
+                    onClick={() => setShowAllTimeInCombat(!showAllTimeInCombat)}
+                    className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                  >
+                    {showAllTimeInCombat ? 'Top 10' : 'Show All'}
+                  </button>
+                </div>
                 <div className="mb-3 text-sm text-slate-400">
                   <p>Combat periods are calculated by grouping deaths within 60 seconds. Excludes first 1 Minute of round.</p>
                 </div>
@@ -1568,7 +1588,7 @@ const WarOfRightsLogAnalyzer = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {getTimeInCombat().map((regiment, index) => (
+                      {getTimeInCombat(showAllTimeInCombat).map((regiment, index) => (
                         <tr key={regiment.name} className="border-b border-slate-600 hover:bg-slate-600 transition">
                           <td className="py-3 px-4 text-amber-400 font-bold">{index + 1}</td>
                           <td className="py-3 px-4 text-white font-semibold">{regiment.name}</td>
