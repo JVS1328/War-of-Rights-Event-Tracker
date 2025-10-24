@@ -506,16 +506,6 @@ const WarOfRightsLogAnalyzer = () => {
         return;
       }
 
-      // Estimate death time based on position in kills array
-      const estimatedDeathTime = roundDurationSeconds > 0
-        ? (index / round.kills.length) * roundDurationSeconds
-        : 0;
-      
-      // Skip deaths in the first 1 minute (60 seconds)
-      if (estimatedDeathTime < 60) {
-        return;
-      }
-
       let regiment = assignments[death.player] || extractRegimentTag(death.player);
       // Normalize to merge duplicates
       regiment = normalizeRegimentTag(regiment);
@@ -973,8 +963,15 @@ const WarOfRightsLogAnalyzer = () => {
     const regimentCombatTime = {};
     const regimentPlayerCounts = {};
     const regimentDeathTimes = {}; // Track all death times per regiment
+    const playerFirstRespawn = {}; // Track each player's first respawn
     
     selectedRound.kills.forEach((death, index) => {
+      // Skip first respawn for each player (initial spawn)
+      if (!playerFirstRespawn[death.player]) {
+        playerFirstRespawn[death.player] = true;
+        return;
+      }
+
       const regiment = normalizeRegimentTag(
         assignments[death.player] || extractRegimentTag(death.player)
       );
@@ -984,9 +981,6 @@ const WarOfRightsLogAnalyzer = () => {
       
       // Estimate death time based on position
       const estimatedDeathTime = (index / selectedRound.kills.length) * roundDurationSeconds;
-      
-      // Skip deaths in first 1 minute for combat calculations
-      if (estimatedDeathTime < 60) return;
       
       // Track unique players per regiment
       if (!regimentPlayerCounts[regiment]) {
@@ -1783,7 +1777,7 @@ const WarOfRightsLogAnalyzer = () => {
                   </button>
                 </div>
                 <div className="mb-3 text-sm text-slate-400">
-                  <p>Combat periods are calculated by grouping deaths within 60 seconds. Excludes first 1 Minute of round.</p>
+                  <p>Combat periods are calculated by grouping deaths within 60 seconds. Excludes initial spawns.</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
