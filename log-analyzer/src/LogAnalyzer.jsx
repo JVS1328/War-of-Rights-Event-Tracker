@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3 } from 'lucide-react';
 
 const WarOfRightsLogAnalyzer = () => {
   const [rounds, setRounds] = useState([]);
@@ -13,6 +13,9 @@ const WarOfRightsLogAnalyzer = () => {
   const [smartMatchPreview, setSmartMatchPreview] = useState(null);
   const [showSmartMatchPreview, setShowSmartMatchPreview] = useState(false);
   const [pendingEdits, setPendingEdits] = useState({});
+  const [hoveredRegiment, setHoveredRegiment] = useState(null);
+  const [timeRangeStart, setTimeRangeStart] = useState(0);
+  const [timeRangeEnd, setTimeRangeEnd] = useState(100);
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -654,6 +657,190 @@ const WarOfRightsLogAnalyzer = () => {
     );
   };
 
+  // Get regiment losses over time for timeline graph
+  const getRegimentLossesOverTime = () => {
+    if (!selectedRound) return { buckets: [], regiments: [] };
+    
+    const roundKey = `round_${selectedRound.id}`;
+    const assignments = playerAssignments[roundKey] || {};
+    const roundDurationSeconds = getRoundDurationSeconds();
+    
+    if (roundDurationSeconds === 0) return { buckets: [], regiments: [] };
+    
+    // Create time buckets (every 2 minutes)
+    const bucketSize = 120; // 2 minutes in seconds
+    const numBuckets = Math.ceil(roundDurationSeconds / bucketSize);
+    
+    // Track deaths per regiment per time bucket and player counts
+    const regimentTimeline = {};
+    const regimentPlayerCounts = {};
+    
+    selectedRound.kills.forEach((death, index) => {
+      const regiment = normalizeRegimentTag(
+        assignments[death.player] || extractRegimentTag(death.player)
+      );
+      
+      // Skip UNTAGGED
+      if (regiment === 'UNTAGGED') return;
+      
+      // Track unique players per regiment
+      if (!regimentPlayerCounts[regiment]) {
+        regimentPlayerCounts[regiment] = new Set();
+      }
+      regimentPlayerCounts[regiment].add(death.player);
+      
+      // Estimate death time based on position in kills array
+      const estimatedDeathTime = (index / selectedRound.kills.length) * roundDurationSeconds;
+      const bucketIndex = Math.floor(estimatedDeathTime / bucketSize);
+      
+      if (!regimentTimeline[regiment]) {
+        regimentTimeline[regiment] = Array(numBuckets).fill(0);
+      }
+      
+      if (bucketIndex < numBuckets) {
+        regimentTimeline[regiment][bucketIndex]++;
+      }
+    });
+    
+    // Filter regiments with less than 2 players and sort by total deaths
+    const filteredRegiments = Object.entries(regimentTimeline)
+      .filter(([name]) => regimentPlayerCounts[name] && regimentPlayerCounts[name].size >= 2)
+      .map(([name, deaths]) => ({
+        name,
+        deaths,
+        total: deaths.reduce((a, b) => a + b, 0)
+      }))
+      .sort((a, b) => b.total - a.total);
+    
+    return {
+      buckets: Array.from({ length: numBuckets }, (_, i) => {
+        const minutes = Math.floor((i * bucketSize) / 60);
+        return `${minutes}m`;
+      }),
+      regiments: filteredRegiments
+    };
+  };
+
+  // Get highest loss rates (deaths per player)
+  const getHighestLossRates = () => {
+    if (!regimentStats.length) return [];
+    
+    return regimentStats
+      .filter(regiment => {
+        const playerCount = Object.keys(regiment.players).length;
+        return regiment.name !== 'UNTAGGED' && playerCount >= 2;
+      })
+      .map(regiment => {
+        const playerCount = Object.keys(regiment.players).length;
+        const lossRate = playerCount > 0 ? (regiment.casualties / playerCount).toFixed(2) : 0;
+        return {
+          name: regiment.name,
+          casualties: regiment.casualties,
+          playerCount,
+          lossRate: parseFloat(lossRate)
+        };
+      })
+      .sort((a, b) => b.lossRate - a.lossRate)
+      .slice(0, 10);
+  };
+
+  // Get top 10 individual death counts
+  const getTopIndividualDeaths = () => {
+    if (!selectedRound) return [];
+    
+    const roundKey = `round_${selectedRound.id}`;
+    const assignments = playerAssignments[roundKey] || {};
+    const playerDeaths = {};
+    
+    selectedRound.kills.forEach(death => {
+      const regiment = normalizeRegimentTag(
+        assignments[death.player] || extractRegimentTag(death.player)
+      );
+      
+      if (!playerDeaths[death.player]) {
+        playerDeaths[death.player] = {
+          name: death.player,
+          regiment,
+          deaths: 0
+        };
+      }
+      playerDeaths[death.player].deaths++;
+    });
+    
+    return Object.values(playerDeaths)
+      .sort((a, b) => b.deaths - a.deaths)
+      .slice(0, 10);
+  };
+
+  // Get time in combat per regiment (based on first and last death)
+  const getTimeInCombat = () => {
+    if (!selectedRound || !regimentStats.length) return [];
+    
+    const roundKey = `round_${selectedRound.id}`;
+    const assignments = playerAssignments[roundKey] || {};
+    const roundDurationSeconds = getRoundDurationSeconds();
+    
+    if (roundDurationSeconds === 0) return [];
+    
+    const regimentCombatTime = {};
+    const regimentPlayerCounts = {};
+    
+    selectedRound.kills.forEach((death, index) => {
+      const regiment = normalizeRegimentTag(
+        assignments[death.player] || extractRegimentTag(death.player)
+      );
+      
+      // Skip UNTAGGED
+      if (regiment === 'UNTAGGED') return;
+      
+      // Track unique players per regiment
+      if (!regimentPlayerCounts[regiment]) {
+        regimentPlayerCounts[regiment] = new Set();
+      }
+      regimentPlayerCounts[regiment].add(death.player);
+      
+      // Estimate death time based on position
+      const estimatedDeathTime = (index / selectedRound.kills.length) * roundDurationSeconds;
+      
+      if (!regimentCombatTime[regiment]) {
+        regimentCombatTime[regiment] = {
+          name: regiment,
+          firstDeath: estimatedDeathTime,
+          lastDeath: estimatedDeathTime,
+          totalDeaths: 0
+        };
+      }
+      
+      regimentCombatTime[regiment].firstDeath = Math.min(
+        regimentCombatTime[regiment].firstDeath,
+        estimatedDeathTime
+      );
+      regimentCombatTime[regiment].lastDeath = Math.max(
+        regimentCombatTime[regiment].lastDeath,
+        estimatedDeathTime
+      );
+      regimentCombatTime[regiment].totalDeaths++;
+    });
+    
+    return Object.values(regimentCombatTime)
+      .filter(reg => regimentPlayerCounts[reg.name] && regimentPlayerCounts[reg.name].size >= 2)
+      .map(reg => ({
+        ...reg,
+        combatDuration: reg.lastDeath - reg.firstDeath,
+        combatDurationFormatted: formatSeconds(reg.lastDeath - reg.firstDeath),
+        firstDeathFormatted: formatSeconds(reg.firstDeath),
+        lastDeathFormatted: formatSeconds(reg.lastDeath)
+      }))
+      .sort((a, b) => b.combatDuration - a.combatDuration)
+      .slice(0, 10);
+  };
+
+  const formatSeconds = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}m ${secs}s`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -823,6 +1010,406 @@ const WarOfRightsLogAnalyzer = () => {
                     Select a round to view statistics
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* New Analytics Section */}
+          {selectedRound && !showEditor && !showSmartMatchPreview && (
+            <div className="mt-6 space-y-6">
+              {/* Timeline Graph */}
+              <div className="bg-slate-700 rounded-lg p-6">
+                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6" />
+                  Regiment Losses Over Time
+                </h2>
+                {(() => {
+                  const timelineData = getRegimentLossesOverTime();
+                  if (timelineData.regiments.length === 0) {
+                    return <p className="text-slate-400 text-center py-8">No timeline data available</p>;
+                  }
+                  
+                  const colors = [
+                    { line: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },  // red
+                    { line: '#f97316', bg: 'rgba(249, 115, 22, 0.1)' }, // orange
+                    { line: '#eab308', bg: 'rgba(234, 179, 8, 0.1)' },  // yellow
+                    { line: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },  // green
+                    { line: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' }, // blue
+                    { line: '#a855f7', bg: 'rgba(168, 85, 247, 0.1)' }, // purple
+                    { line: '#ec4899', bg: 'rgba(236, 72, 153, 0.1)' }, // pink
+                    { line: '#06b6d4', bg: 'rgba(6, 182, 212, 0.1)' },  // cyan
+                    { line: '#84cc16', bg: 'rgba(132, 204, 22, 0.1)' }, // lime
+                    { line: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' }, // amber
+                  ];
+                  
+                  const graphHeight = 300;
+                  
+                  // Calculate start and end indices based on range sliders
+                  const startIndex = Math.floor((timeRangeStart / 100) * timelineData.buckets.length);
+                  const endIndex = Math.ceil((timeRangeEnd / 100) * timelineData.buckets.length);
+                  
+                  // Get the selected range of data
+                  const selectedRange = {
+                    start: startIndex,
+                    end: endIndex,
+                    buckets: timelineData.buckets.slice(startIndex, endIndex)
+                  };
+                  
+                  // Calculate deaths in the selected range
+                  const regimentsInRange = timelineData.regiments.map(regiment => {
+                    const deathsInRange = regiment.deaths.slice(startIndex, endIndex);
+                    return {
+                      ...regiment,
+                      deathsInRange,
+                      totalInRange: deathsInRange.reduce((a, b) => a + b, 0)
+                    };
+                  });
+                  
+                  // Calculate max deaths in the visible range for proper scaling
+                  const maxDeathsInRange = Math.max(
+                    1, // Minimum of 1 to avoid division by zero
+                    ...regimentsInRange.flatMap(r => r.deathsInRange)
+                  );
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Time Range Slider */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="text-white text-sm font-medium">
+                            Time Range: {timelineData.buckets[startIndex] || '0m'} - {timelineData.buckets[Math.min(endIndex - 1, timelineData.buckets.length - 1)] || '0m'}
+                          </label>
+                          <button
+                            onClick={() => {
+                              setTimeRangeStart(0);
+                              setTimeRangeEnd(100);
+                            }}
+                            className="text-xs text-amber-400 hover:text-amber-300 transition"
+                          >
+                            Reset Range
+                          </button>
+                        </div>
+                        
+                        {/* Custom Range Slider */}
+                        <div className="relative h-8 flex items-center">
+                          {/* Track background */}
+                          <div className="absolute w-full h-2 bg-slate-600 rounded-lg" />
+                          
+                          {/* Active range */}
+                          <div
+                            className="absolute h-2 bg-green-500 rounded-lg"
+                            style={{
+                              left: `${timeRangeStart}%`,
+                              width: `${timeRangeEnd - timeRangeStart}%`
+                            }}
+                          />
+                          
+                          {/* Start handle */}
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={timeRangeStart}
+                            onChange={(e) => {
+                              const newStart = Number(e.target.value);
+                              if (newStart < timeRangeEnd - 1) {
+                                setTimeRangeStart(newStart);
+                              }
+                            }}
+                            className="absolute w-full appearance-none bg-transparent pointer-events-none"
+                            style={{
+                              zIndex: timeRangeStart > 50 ? 5 : 4
+                            }}
+                          />
+                          
+                          {/* End handle */}
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={timeRangeEnd}
+                            onChange={(e) => {
+                              const newEnd = Number(e.target.value);
+                              if (newEnd > timeRangeStart + 1) {
+                                setTimeRangeEnd(newEnd);
+                              }
+                            }}
+                            className="absolute w-full appearance-none bg-transparent pointer-events-none"
+                            style={{
+                              zIndex: timeRangeEnd <= 50 ? 5 : 4
+                            }}
+                          />
+                          
+                          {/* Custom thumb styling */}
+                          <style>{`
+                            input[type="range"]::-webkit-slider-thumb {
+                              appearance: none;
+                              width: 20px;
+                              height: 20px;
+                              border-radius: 50%;
+                              background: #22c55e;
+                              cursor: pointer;
+                              pointer-events: all;
+                              border: 3px solid #1e293b;
+                              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                            }
+                            input[type="range"]::-webkit-slider-thumb:hover {
+                              background: #16a34a;
+                              transform: scale(1.1);
+                            }
+                            input[type="range"]::-moz-range-thumb {
+                              width: 20px;
+                              height: 20px;
+                              border-radius: 50%;
+                              background: #22c55e;
+                              cursor: pointer;
+                              pointer-events: all;
+                              border: 3px solid #1e293b;
+                              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                            }
+                            input[type="range"]::-moz-range-thumb:hover {
+                              background: #16a34a;
+                              transform: scale(1.1);
+                            }
+                          `}</style>
+                        </div>
+                        
+                        {/* Time labels */}
+                        <div className="flex justify-between text-xs text-slate-400 px-1">
+                          <span>Start: {timelineData.buckets[startIndex] || '0m'}</span>
+                          <span>End: {timelineData.buckets[Math.min(endIndex - 1, timelineData.buckets.length - 1)] || '0m'}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Legend */}
+                      <div className="flex flex-wrap gap-3">
+                        {regimentsInRange.map((regiment, idx) => (
+                          <div
+                            key={regiment.name}
+                            className="flex items-center gap-2 cursor-pointer transition-all hover:scale-105"
+                            onMouseEnter={() => setHoveredRegiment(regiment.name)}
+                            onMouseLeave={() => setHoveredRegiment(null)}
+                            style={{
+                              opacity: hoveredRegiment === null || hoveredRegiment === regiment.name ? 1 : 0.3
+                            }}
+                          >
+                            <div
+                              className="w-4 h-4 rounded transition-all"
+                              style={{
+                                backgroundColor: colors[idx % colors.length].line,
+                                boxShadow: hoveredRegiment === regiment.name ? `0 0 8px ${colors[idx % colors.length].line}` : 'none'
+                              }}
+                            />
+                            <span className="text-white text-sm font-medium">
+                              {regiment.name} ({regiment.totalInRange})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Line Graph */}
+                      <div className="relative bg-slate-800 rounded-lg p-4" style={{ height: `${graphHeight}px` }}>
+                        <svg
+                          width="100%"
+                          height="100%"
+                          viewBox={`0 0 1000 ${graphHeight}`}
+                          preserveAspectRatio="none"
+                          className="overflow-visible"
+                        >
+                          {/* Grid lines */}
+                          {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => (
+                            <line
+                              key={i}
+                              x1="0"
+                              y1={graphHeight - (fraction * graphHeight)}
+                              x2="1000"
+                              y2={graphHeight - (fraction * graphHeight)}
+                              stroke="#475569"
+                              strokeWidth="1"
+                              strokeDasharray="4"
+                            />
+                          ))}
+                          
+                          {/* Lines for each regiment */}
+                          {regimentsInRange.map((regiment, regIndex) => {
+                            const isHighlighted = hoveredRegiment === null || hoveredRegiment === regiment.name;
+                            const opacity = isHighlighted ? 1 : 0.15;
+                            const strokeWidth = isHighlighted ? (hoveredRegiment === regiment.name ? 4 : 3) : 2;
+                            
+                            // Show only data in the selected range, rescaled to fill the view
+                            const points = regiment.deathsInRange.map((count, bucketIndex) => {
+                              const x = (bucketIndex / Math.max(1, regiment.deathsInRange.length - 1)) * 1000;
+                              const y = graphHeight - ((count / maxDeathsInRange) * (graphHeight - 20));
+                              return `${x},${y}`;
+                            }).join(' ');
+                            
+                            return (
+                              <g
+                                key={regiment.name}
+                                onMouseEnter={() => setHoveredRegiment(regiment.name)}
+                                onMouseLeave={() => setHoveredRegiment(null)}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                {/* Line */}
+                                <polyline
+                                  points={points}
+                                  fill="none"
+                                  stroke={colors[regIndex % colors.length].line}
+                                  strokeWidth={strokeWidth}
+                                  strokeLinejoin="round"
+                                  strokeLinecap="round"
+                                  opacity={opacity}
+                                  className="transition-all duration-200"
+                                />
+                                {/* Data points */}
+                                {regiment.deathsInRange.map((count, bucketIndex) => {
+                                  const x = (bucketIndex / Math.max(1, regiment.deathsInRange.length - 1)) * 1000;
+                                  const y = graphHeight - ((count / maxDeathsInRange) * (graphHeight - 20));
+                                  return (
+                                    <circle
+                                      key={bucketIndex}
+                                      cx={x}
+                                      cy={y}
+                                      r={isHighlighted ? (hoveredRegiment === regiment.name ? 5 : 4) : 3}
+                                      fill={colors[regIndex % colors.length].line}
+                                      opacity={opacity}
+                                      className="transition-all duration-200"
+                                    >
+                                      <title>{`${regiment.name} at ${selectedRange.buckets[bucketIndex]}: ${count} deaths`}</title>
+                                    </circle>
+                                  );
+                                })}
+                              </g>
+                            );
+                          })}
+                        </svg>
+                        
+                        {/* Y-axis labels - scaled to visible range */}
+                        <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-xs text-slate-400 pr-2">
+                          <span>{maxDeathsInRange}</span>
+                          <span>{Math.floor(maxDeathsInRange * 0.75)}</span>
+                          <span>{Math.floor(maxDeathsInRange * 0.5)}</span>
+                          <span>{Math.floor(maxDeathsInRange * 0.25)}</span>
+                          <span>0</span>
+                        </div>
+                      </div>
+                      
+                      {/* X-axis labels - only show selected range */}
+                      <div className="flex justify-between text-xs text-slate-400 px-4">
+                        {selectedRange.buckets.map((label, i) => (
+                          i % Math.ceil(selectedRange.buckets.length / 8) === 0 ? (
+                            <span key={i}>{label}</span>
+                          ) : null
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Two Column Layout for Tables */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Highest Loss Rates */}
+                <div className="bg-slate-700 rounded-lg p-6">
+                  <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-6 h-6" />
+                    Highest Loss Rates
+                  </h2>
+                  <div className="space-y-2">
+                    {getHighestLossRates().map((regiment, index) => (
+                      <div key={regiment.name} className="bg-slate-600 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-white font-semibold">
+                            {index + 1}. {regiment.name}
+                          </span>
+                          <span className="text-red-400 font-bold text-lg">
+                            {regiment.lossRate}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-400">
+                          {regiment.casualties} deaths / {regiment.playerCount} players
+                        </div>
+                        <div className="mt-2 bg-slate-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full"
+                            style={{ width: `${Math.min(100, (regiment.lossRate / 10) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top Individual Deaths */}
+                <div className="bg-slate-700 rounded-lg p-6">
+                  <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                    <Award className="w-6 h-6" />
+                    Top 10 Individual Deaths
+                  </h2>
+                  <div className="space-y-2">
+                    {getTopIndividualDeaths().map((player, index) => (
+                      <div key={player.name} className="bg-slate-600 rounded-lg p-3">
+                        <div className="flex justify-between items-center">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-400 font-bold text-lg">
+                                #{index + 1}
+                              </span>
+                              <span className="text-white font-medium truncate">
+                                {player.name}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-400 mt-1">
+                              {player.regiment}
+                            </div>
+                          </div>
+                          <div className="text-right ml-2">
+                            <div className="text-red-400 font-bold text-xl">
+                              {player.deaths}
+                            </div>
+                            <div className="text-xs text-slate-400">deaths</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Time in Combat Table */}
+              <div className="bg-slate-700 rounded-lg p-6">
+                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                  <Timer className="w-6 h-6" />
+                  Time in Combat (Per Regiment)
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-600">
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">Rank</th>
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">Regiment</th>
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">Combat Duration</th>
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">First Death</th>
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">Last Death</th>
+                        <th className="text-left py-3 px-4 text-slate-300 font-semibold">Total Deaths</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getTimeInCombat().map((regiment, index) => (
+                        <tr key={regiment.name} className="border-b border-slate-600 hover:bg-slate-600 transition">
+                          <td className="py-3 px-4 text-amber-400 font-bold">{index + 1}</td>
+                          <td className="py-3 px-4 text-white font-semibold">{regiment.name}</td>
+                          <td className="py-3 px-4 text-green-400 font-semibold">
+                            {regiment.combatDurationFormatted}
+                          </td>
+                          <td className="py-3 px-4 text-slate-300">{regiment.firstDeathFormatted}</td>
+                          <td className="py-3 px-4 text-slate-300">{regiment.lastDeathFormatted}</td>
+                          <td className="py-3 px-4 text-red-400 font-semibold">{regiment.totalDeaths}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
