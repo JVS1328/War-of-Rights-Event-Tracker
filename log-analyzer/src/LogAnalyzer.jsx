@@ -1,30 +1,78 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle } from 'lucide-react';
 
+const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
+
 const WarOfRightsLogAnalyzer = () => {
-  const [rounds, setRounds] = useState([]);
-  const [selectedRound, setSelectedRound] = useState(null);
+  // Load initial state from localStorage
+  const loadFromStorage = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Error loading from localStorage:', error);
+    }
+    return null;
+  };
+
+  const savedState = loadFromStorage();
+
+  const [rounds, setRounds] = useState(savedState?.rounds || []);
+  const [selectedRound, setSelectedRound] = useState(savedState?.selectedRound || null);
   const [regimentStats, setRegimentStats] = useState([]);
   const [selectedRegiment, setSelectedRegiment] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
-  const [playerAssignments, setPlayerAssignments] = useState({});
+  const [playerAssignments, setPlayerAssignments] = useState(savedState?.playerAssignments || {});
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [newRegiment, setNewRegiment] = useState('');
-  const [expandedRegiments, setExpandedRegiments] = useState({});
+  const [expandedRegiments, setExpandedRegiments] = useState(savedState?.expandedRegiments || {});
   const [editingRegiment, setEditingRegiment] = useState(null);
   const [newRegimentName, setNewRegimentName] = useState('');
   const [smartMatchPreview, setSmartMatchPreview] = useState(null);
   const [showSmartMatchPreview, setShowSmartMatchPreview] = useState(false);
   const [pendingEdits, setPendingEdits] = useState({});
   const [hoveredRegiment, setHoveredRegiment] = useState(null);
-  const [pinnedRegiment, setPinnedRegiment] = useState(null);
-  const [timeRangeStart, setTimeRangeStart] = useState(0);
-  const [timeRangeEnd, setTimeRangeEnd] = useState(100);
+  const [pinnedRegiment, setPinnedRegiment] = useState(savedState?.pinnedRegiment || null);
+  const [timeRangeStart, setTimeRangeStart] = useState(savedState?.timeRangeStart || 0);
+  const [timeRangeEnd, setTimeRangeEnd] = useState(savedState?.timeRangeEnd || 100);
   const [hoverInfo, setHoverInfo] = useState(null);
   const svgRef = useRef(null);
-  const [showAllLossRates, setShowAllLossRates] = useState(false);
-  const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(false);
+  const [showAllLossRates, setShowAllLossRates] = useState(savedState?.showAllLossRates || false);
+  const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(savedState?.showAllTimeInCombat || false);
   const [showWarning, setShowWarning] = useState(false);
+
+  // Save state to localStorage whenever relevant state changes
+  useEffect(() => {
+    const stateToSave = {
+      rounds,
+      selectedRound,
+      playerAssignments,
+      expandedRegiments,
+      pinnedRegiment,
+      timeRangeStart,
+      timeRangeEnd,
+      showAllLossRates,
+      showAllTimeInCombat,
+    };
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  }, [rounds, selectedRound, playerAssignments, expandedRegiments, pinnedRegiment, timeRangeStart, timeRangeEnd, showAllLossRates, showAllTimeInCombat]);
+
+  // Restore selected round's stats on mount if there's a saved selected round
+  useEffect(() => {
+    if (savedState?.selectedRound && rounds.length > 0) {
+      const round = rounds.find(r => r.id === savedState.selectedRound.id);
+      if (round) {
+        analyzeRound(round);
+      }
+    }
+  }, []); // Only run once on mount
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -420,7 +468,18 @@ const WarOfRightsLogAnalyzer = () => {
       parsedRounds.push(currentRound);
     }
 
+    // Reset all state when loading a new log file
     setRounds(parsedRounds);
+    setSelectedRound(null);
+    setRegimentStats([]);
+    setSelectedRegiment(null);
+    setPlayerAssignments({});
+    setExpandedRegiments({});
+    setPinnedRegiment(null);
+    setTimeRangeStart(0);
+    setTimeRangeEnd(100);
+    setShowAllLossRates(false);
+    setShowAllTimeInCombat(false);
     setShowWarning(true);
   };
 
