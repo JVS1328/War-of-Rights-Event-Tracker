@@ -5,6 +5,7 @@ const WarOfRightsLogAnalyzer = () => {
   const [rounds, setRounds] = useState([]);
   const [selectedRound, setSelectedRound] = useState(null);
   const [regimentStats, setRegimentStats] = useState([]);
+  const [selectedRegiment, setSelectedRegiment] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
   const [playerAssignments, setPlayerAssignments] = useState({});
   const [editingPlayer, setEditingPlayer] = useState(null);
@@ -252,7 +253,8 @@ const WarOfRightsLogAnalyzer = () => {
           endTime: null,
           duration: null,
           kills: [],
-          teamkills: []
+          teamkills: [],
+          playerSessions: {}
         };
       }
 
@@ -270,6 +272,35 @@ const WarOfRightsLogAnalyzer = () => {
           const minutes = Math.floor(durationSeconds / 60);
           const seconds = durationSeconds % 60;
           currentRound.duration = `${minutes}m ${seconds}s`;
+        }
+      }
+
+      // Detect player joins
+      if (line.includes('has joined the server') && currentRound) {
+        const match = line.match(/<(\d{2}:\d{2}:\d{2})>\s+Player\s+(.+?)\s+has joined the server/);
+        if (match) {
+          const time = match[1];
+          const playerName = match[2].trim();
+          if (!currentRound.playerSessions[playerName]) {
+            currentRound.playerSessions[playerName] = [];
+          }
+          currentRound.playerSessions[playerName].push({ join: time, leave: null });
+        }
+      }
+
+      // Detect player leaves
+      if (line.includes('has left the server') && currentRound) {
+        const match = line.match(/<(\d{2}:\d{2}:\d{2})>\s+Player\s+(.+?)\s+has left the server/);
+        if (match) {
+          const time = match[1];
+          const playerName = match[2].trim();
+          if (currentRound.playerSessions[playerName]) {
+            const sessions = currentRound.playerSessions[playerName];
+            const lastSession = sessions[sessions.length - 1];
+            if (lastSession && !lastSession.leave) {
+              lastSession.leave = time;
+            }
+          }
         }
       }
 
@@ -308,12 +339,19 @@ const WarOfRightsLogAnalyzer = () => {
         regimentCasualties[regiment] = {
           name: regiment,
           casualties: 0,
-          deaths: []
+          deaths: [],
+          players: {}
         };
       }
 
       regimentCasualties[regiment].casualties++;
       regimentCasualties[regiment].deaths.push(death.player);
+      
+      // Track individual player deaths
+      if (!regimentCasualties[regiment].players[death.player]) {
+        regimentCasualties[regiment].players[death.player] = 0;
+      }
+      regimentCasualties[regiment].players[death.player]++;
     });
 
     // Convert to array and sort by casualties
@@ -336,8 +374,78 @@ const WarOfRightsLogAnalyzer = () => {
 
   const handleRoundSelect = (round) => {
     setSelectedRound(round);
+    setSelectedRegiment(null);
     setShowEditor(false);
     analyzeRound(round);
+  };
+
+  const handleRegimentClick = (regiment) => {
+    setSelectedRegiment(selectedRegiment?.name === regiment.name ? null : regiment);
+  };
+
+  const getRoundDurationSeconds = () => {
+    if (!selectedRound || !selectedRound.startTime || !selectedRound.endTime) return 0;
+    if (selectedRound.startTime === 'Unknown' || selectedRound.endTime === 'Unknown') return 0;
+    
+    const start = selectedRound.startTime.split(':').map(Number);
+    const end = selectedRound.endTime.split(':').map(Number);
+    const startSeconds = start[0] * 3600 + start[1] * 60 + start[2];
+    const endSeconds = end[0] * 3600 + end[1] * 60 + end[2];
+    return endSeconds - startSeconds;
+  };
+
+  const timeToSeconds = (timeStr) => {
+    const parts = timeStr.split(':').map(Number);
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  };
+
+  const getPlayerPresenceData = (regimentName) => {
+    if (!selectedRound) return [];
+    
+    const roundDuration = getRoundDurationSeconds();
+    if (roundDuration === 0) return [];
+
+    const regiment = regimentStats.find(r => r.name === regimentName);
+    if (!regiment) return [];
+
+    const roundStartSeconds = timeToSeconds(selectedRound.startTime);
+    const roundEndSeconds = timeToSeconds(selectedRound.endTime);
+
+    // Get unique players and their death counts
+    const playerData = Object.entries(regiment.players).map(([playerName, deathCount]) => {
+      let presenceSeconds = 0;
+
+      // Calculate actual presence from join/leave sessions
+      const sessions = selectedRound.playerSessions[playerName];
+      if (sessions && sessions.length > 0) {
+        sessions.forEach(session => {
+          const joinTime = timeToSeconds(session.join);
+          const leaveTime = session.leave ? timeToSeconds(session.leave) : roundEndSeconds;
+          
+          // Clamp to round boundaries
+          const effectiveJoin = Math.max(joinTime, roundStartSeconds);
+          const effectiveLeave = Math.min(leaveTime, roundEndSeconds);
+          
+          if (effectiveLeave > effectiveJoin) {
+            presenceSeconds += (effectiveLeave - effectiveJoin);
+          }
+        });
+      } else {
+        // If no session data, assume they were present the whole round
+        presenceSeconds = roundDuration;
+      }
+      
+      const presencePercentage = Math.min(100, Math.round((presenceSeconds / roundDuration) * 100));
+      
+      return {
+        name: playerName,
+        deaths: deathCount,
+        presence: presencePercentage
+      };
+    });
+
+    // Sort by death count (high to low)
+    return playerData.sort((a, b) => b.deaths - a.deaths);
   };
 
   const openEditor = () => {
@@ -508,29 +616,65 @@ const WarOfRightsLogAnalyzer = () => {
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {regimentStats.length > 0 ? (
                       regimentStats.map((regiment, index) => (
-                        <div
-                          key={regiment.name}
-                          className="bg-slate-600 rounded-lg p-4"
-                        >
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="font-bold text-lg text-amber-400">
-                              {index + 1}. {regiment.name}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-slate-400">Deaths:</span>
-                              <span className="text-red-400 font-semibold ml-2">
-                                {regiment.casualties}
+                        <div key={regiment.name} className="bg-slate-600 rounded-lg overflow-hidden">
+                          <button
+                            onClick={() => handleRegimentClick(regiment)}
+                            className="w-full p-4 text-left hover:bg-slate-500 transition"
+                          >
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="font-bold text-lg text-amber-400">
+                                {index + 1}. {regiment.name}
+                              </span>
+                              <span className="text-slate-400 text-sm">
+                                {selectedRegiment?.name === regiment.name ? '▼' : '▶'}
                               </span>
                             </div>
-                            <div>
-                              <span className="text-slate-400">Players:</span>
-                              <span className="text-blue-400 font-semibold ml-2">
-                                {new Set(regiment.deaths).size}
-                              </span>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <span className="text-slate-400">Deaths:</span>
+                                <span className="text-red-400 font-semibold ml-2">
+                                  {regiment.casualties}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400">Players:</span>
+                                <span className="text-blue-400 font-semibold ml-2">
+                                  {new Set(regiment.deaths).size}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          </button>
+                          
+                          {selectedRegiment?.name === regiment.name && (
+                            <div className="bg-slate-700 p-4 border-t border-slate-500">
+                              <h3 className="text-sm font-semibold text-amber-300 mb-3">Individual Players</h3>
+                              <div className="space-y-2">
+                                {getPlayerPresenceData(regiment.name).map((player) => (
+                                  <div key={player.name} className="bg-slate-600 rounded p-3">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <span className="text-white text-sm font-medium flex-1 mr-2">
+                                        {player.name}
+                                      </span>
+                                      <span className="text-red-400 font-semibold text-sm whitespace-nowrap">
+                                        {player.deaths} {player.deaths === 1 ? 'death' : 'deaths'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                                        <div
+                                          className="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full transition-all"
+                                          style={{ width: `${player.presence}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-emerald-400 text-xs font-semibold whitespace-nowrap">
+                                        {player.presence}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))
                     ) : (
