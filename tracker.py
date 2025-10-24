@@ -4442,104 +4442,159 @@ This tool identifies the strongest and weakest possible team compositions based 
             return
 
         sel = self.week_list.curselection()
-        # Default to the last week if none is selected
         max_week_idx = sel[0] if sel else len(self.season) - 1
 
         win = tk.Toplevel(self.master)
-        win.title(f"Unit Elo History (Up to Week {max_week_idx + 1})")
+        win.title(f"Unit Elo History")
         win.geometry("1400x600")
 
+        # --- Week Range Selector Frame ---
+        selector_frame = ttk.Frame(win)
+        selector_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        
+        tk.Label(selector_frame, text="From:").pack(side=tk.LEFT, padx=(0, 5))
+        start_week_var = tk.StringVar()
+        start_week_options = ["Initial"] + [f"Week {i+1}" for i in range(len(self.season))]
+        start_week_combo = ttk.Combobox(selector_frame, textvariable=start_week_var,
+                                        values=start_week_options, state="readonly", width=12)
+        start_week_combo.pack(side=tk.LEFT, padx=(0, 15))
+        start_week_combo.set("Initial")
+        
+        tk.Label(selector_frame, text="To:").pack(side=tk.LEFT, padx=(0, 5))
+        end_week_var = tk.StringVar()
+        end_week_options = [f"Week {i+1}" for i in range(len(self.season))]
+        end_week_combo = ttk.Combobox(selector_frame, textvariable=end_week_var,
+                                      values=end_week_options, state="readonly", width=12)
+        end_week_combo.pack(side=tk.LEFT)
+        end_week_combo.set(f"Week {max_week_idx + 1}")
+
         # --- Data Calculation ---
-        # Calculate history only up to the selected week
-        elo_history_by_week = [self.calculate_elo_ratings(max_week_index=i)[0] for i in range(max_week_idx + 1)]
+        elo_history_by_week = [self.calculate_elo_ratings(max_week_index=i)[0] for i in range(len(self.season))]
+        
+        # Get all participating units
+        final_elos = elo_history_by_week[-1] if elo_history_by_week else {}
+        rounds_played = final_elos.get("rounds_played", {})
+        participating_units = sorted([unit for unit, rounds in rounds_played.items() if rounds > 0])
+
+        start_week_str = start_week_var.get()
+        end_week_str = end_week_var.get()
 
         # --- UI Setup ---
-        week_columns = ["Initial"] + [f"Week {i+1}" for i in range(max_week_idx + 1)]
-        cols = ["unit"] + week_columns
-        
-        # Get all units that have participated up to the selected week
-        final_elos_for_participation = elo_history_by_week[-1] if elo_history_by_week else {}
-        rounds_played = final_elos_for_participation.get("rounds_played", {})
-        participating_units = sorted([unit for unit, rounds in rounds_played.items() if rounds > 0])
+        cols = ["unit", "start_elo", "start_rank", "end_elo", "end_rank", "elo_change"]
+        col_names = {
+            "unit": "Unit",
+            "start_elo": f"{start_week_str} Elo",
+            "start_rank": f"{start_week_str} Rank",
+            "end_elo": f"{end_week_str} Elo",
+            "end_rank": f"{end_week_str} Rank",
+            "elo_change": "Elo Change"
+        }
 
         tree = ttk.Treeview(win, columns=cols, show="headings")
 
-        # --- Dynamic Column Sizing ---
-        # Calculate width for the 'Unit' column based on the longest name
-        if participating_units:
-            # Add extra chars for the asterisk and round count `* (XX)`
-            longest_unit_name = max(participating_units, key=len) + " (XX)"
-            font = tkFont.Font()
-            unit_col_width = font.measure(longest_unit_name) + 20 # Add padding
-        else:
-            unit_col_width = 150
-
-        tree.heading("unit", text="Unit", command=lambda: self.sort_column(tree, "unit", False))
-        tree.column("unit", width=unit_col_width, anchor=tk.W, stretch=tk.NO)
-
-        # Make other columns responsive
-        padding = 100 # Approx space for scrollbar, etc.
-        available_width = 1400 - unit_col_width - padding
-        week_col_width = available_width // len(week_columns) if week_columns else 100
-        week_col_width = max(week_col_width, 90) # Minimum width of 90
-
-        for i, week_col in enumerate(week_columns):
-            tree.heading(week_col, text=week_col, command=lambda c=week_col: self.sort_column(tree, c, False))
-            tree.column(week_col, width=week_col_width, anchor=tk.CENTER)
-
+        # Configure columns
+        tree.heading("unit", text=col_names["unit"], command=lambda: self.sort_column(tree, "unit", False))
+        tree.column("unit", width=150, anchor=tk.W)
         
-        # Prepare data for display
-        display_data_by_unit = defaultdict(dict)
-        initial_rating = 1500 # As defined in calculate_elo_ratings
+        for col in ["start_elo", "start_rank", "end_elo", "end_rank", "elo_change"]:
+            tree.heading(col, text=col_names[col], command=lambda c=col: self.sort_column(tree, c, False))
+            tree.column(col, width=100, anchor=tk.CENTER)
 
-        for unit in participating_units:
-             display_data_by_unit[unit]["Initial"] = f"{initial_rating} (-)"
-
-        for week_idx, elo_data in enumerate(elo_history_by_week):
-            # Sort units by Elo for ranking within this week
-            sorted_units_this_week = sorted(
-                [item for item in elo_data.items() if isinstance(item[1], (int, float))],
-                key=lambda item: item[1],
-                reverse=True
-            )
-            ranks_this_week = {unit: rank for rank, (unit, _) in enumerate(sorted_units_this_week, 1)}
-            
-            # Get previous week's elo for change calculation
-            prev_week_elos = elo_history_by_week[week_idx-1] if week_idx > 0 else defaultdict(lambda: initial_rating)
-
-            for unit, rating in elo_data.items():
-                if isinstance(rating, (int, float)):
-                    rank = ranks_this_week.get(unit, '-')
-                    change = rating - prev_week_elos[unit]
-                    change_str = "↔"
-                    if change > 0.005: change_str = f"↑{change:.0f}"
-                    elif change < -0.005: change_str = f"↓{abs(change):.0f}"
-                    
-                    display_data_by_unit[unit][f"Week {week_idx+1}"] = f"{rating:.0f} ({rank}, {change_str})"
-
-            
         vsb = ttk.Scrollbar(win, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
 
         def redraw_history_table():
-            """Clears and redraws the Elo history table based on the toggle."""
+            """Redraws the table based on selected week range."""
             for item in tree.get_children():
                 tree.delete(item)
 
-            show_non_token = self.show_non_token_elo_var.get()
+            # Parse selected weeks
+            start_week_str = start_week_var.get()
+            end_week_str = end_week_var.get()
             
+            # Update column headers dynamically
+            tree.heading("start_elo", text=f"{start_week_str} Elo")
+            tree.heading("start_rank", text=f"{start_week_str} Rank")
+            tree.heading("end_elo", text=f"{end_week_str} Elo")
+            tree.heading("end_rank", text=f"{end_week_str} Rank")
+            
+            # Determine start index (-1 for Initial, 0+ for weeks)
+            if start_week_str == "Initial":
+                start_idx = -1
+            else:
+                try:
+                    start_idx = int(start_week_str.split(" ")[1]) - 1
+                except (ValueError, IndexError):
+                    start_idx = -1
+            
+            # Determine end index
+            try:
+                end_idx = int(end_week_str.split(" ")[1]) - 1
+            except (ValueError, IndexError):
+                end_idx = len(self.season) - 1
+            
+            # Validate range
+            if start_idx >= end_idx and start_idx != -1:
+                messagebox.showwarning("Invalid Range", "Start week must be before end week.", parent=win)
+                return
+            try:
+                initial_rating = int(self.elo_system_values["initial_elo"].get())
+            except:
+                initial_rating = 1500
+            
+            # Get Elo data for start and end weeks
+            if start_idx == -1:
+                start_elos = defaultdict(lambda: initial_rating)
+                start_ranks = {}
+            else:
+                start_elos = elo_history_by_week[start_idx]
+                sorted_start = sorted(
+                    [item for item in start_elos.items() if isinstance(item[1], (int, float))],
+                    key=lambda item: item[1],
+                    reverse=True
+                )
+                start_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_start, 1)}
+            
+            end_elos = elo_history_by_week[end_idx]
+            sorted_end = sorted(
+                [item for item in end_elos.items() if isinstance(item[1], (int, float))],
+                key=lambda item: item[1],
+                reverse=True
+            )
+            end_ranks = {unit: rank for rank, (unit, _) in enumerate(sorted_end, 1)}
+            
+            # Filter units based on toggle
+            show_non_token = self.show_non_token_elo_var.get()
             filtered_units = []
             if show_non_token:
                 filtered_units = participating_units
             else:
                 filtered_units = [u for u in participating_units if u not in self.non_token_units]
 
+            # Populate table
             for unit in filtered_units:
                 display_text = f"*{unit}" if unit in self.non_token_units else unit
-                values = [display_text]
-                for week_col in week_columns:
-                    values.append(display_data_by_unit[unit].get(week_col, "N/A"))
-                tree.insert("", "end", values=values)
+                
+                start_elo = start_elos.get(unit, initial_rating)
+                start_rank = start_ranks.get(unit, "-")
+                end_elo = end_elos.get(unit, initial_rating)
+                end_rank = end_ranks.get(unit, "-")
+                
+                elo_change = end_elo - start_elo
+                change_str = "↔ 0"
+                if elo_change > 0.005:
+                    change_str = f"↑ {elo_change:.0f}"
+                elif elo_change < -0.005:
+                    change_str = f"↓ {abs(elo_change):.0f}"
+                
+                tree.insert("", "end", values=(
+                    display_text,
+                    f"{start_elo:.0f}",
+                    start_rank,
+                    f"{end_elo:.0f}",
+                    end_rank,
+                    change_str
+                ))
         
         bottom_frame = ttk.Frame(win)
         bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(5, 10))
@@ -4551,6 +4606,10 @@ This tool identifies the strongest and weakest possible team compositions based 
             command=redraw_history_table
         )
         toggle_button.pack(side=tk.RIGHT)
+
+        # Bind dropdown changes to redraw
+        start_week_combo.bind("<<ComboboxSelected>>", lambda e: redraw_history_table())
+        end_week_combo.bind("<<ComboboxSelected>>", lambda e: redraw_history_table())
 
         redraw_history_table() # Initial draw
 
