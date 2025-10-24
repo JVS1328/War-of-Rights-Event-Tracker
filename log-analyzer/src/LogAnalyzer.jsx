@@ -453,11 +453,10 @@ const WarOfRightsLogAnalyzer = () => {
 
       // Detect respawns (casualties)
       if (line.includes('[CPlayer::ClDoRespawn]') && currentRound) {
-        const match = line.match(/\[CPlayer::ClDoRespawn\]\s+"([^"]+)"\s+beginning respawning with revive counter\s+(\d+)/);
+        const match = line.match(/\[CPlayer::ClDoRespawn\]\s+"([^"]+)"\s+beginning respawning/);
         if (match) {
           currentRound.kills.push({
-            player: match[1].trim(),
-            reviveCounter: parseInt(match[2])
+            player: match[1].trim()
           });
         }
       }
@@ -487,6 +486,7 @@ const WarOfRightsLogAnalyzer = () => {
     const roundKey = `round_${round.id}`;
     const assignments = customAssignments || playerAssignments[roundKey] || {};
     const regimentCasualties = {};
+    const playerFirstRespawn = {}; // Track each player's first respawn
     
     // Calculate round duration from the round parameter
     let roundDurationSeconds = 0;
@@ -498,14 +498,20 @@ const WarOfRightsLogAnalyzer = () => {
       roundDurationSeconds = endSeconds - startSeconds;
     }
 
-    // Count respawns (deaths) per regiment, excluding first 1 minute
+    // Count respawns (deaths) per regiment, skipping first respawn per player
     round.kills.forEach((death, index) => {
+      // Skip first respawn for each player (initial spawn)
+      if (!playerFirstRespawn[death.player]) {
+        playerFirstRespawn[death.player] = true;
+        return;
+      }
+
       // Estimate death time based on position in kills array
       const estimatedDeathTime = roundDurationSeconds > 0
         ? (index / round.kills.length) * roundDurationSeconds
         : 0;
       
-      // Skip deaths in the first 1 minutes (60 seconds)
+      // Skip deaths in the first 1 minute (60 seconds)
       if (estimatedDeathTime < 60) {
         return;
       }
@@ -839,8 +845,15 @@ const WarOfRightsLogAnalyzer = () => {
     // Track deaths per regiment per time bucket and player counts
     const regimentTimeline = {};
     const regimentPlayerCounts = {};
+    const playerFirstRespawn = {}; // Track each player's first respawn
     
     selectedRound.kills.forEach((death, index) => {
+      // Skip first respawn for each player (initial spawn)
+      if (!playerFirstRespawn[death.player]) {
+        playerFirstRespawn[death.player] = true;
+        return;
+      }
+
       const regiment = normalizeRegimentTag(
         assignments[death.player] || extractRegimentTag(death.player)
       );
@@ -919,8 +932,15 @@ const WarOfRightsLogAnalyzer = () => {
     const roundKey = `round_${selectedRound.id}`;
     const assignments = playerAssignments[roundKey] || {};
     const playerDeaths = {};
+    const playerFirstRespawn = {}; // Track each player's first respawn
     
     selectedRound.kills.forEach(death => {
+      // Skip first respawn for each player (initial spawn)
+      if (!playerFirstRespawn[death.player]) {
+        playerFirstRespawn[death.player] = true;
+        return;
+      }
+
       const regiment = normalizeRegimentTag(
         assignments[death.player] || extractRegimentTag(death.player)
       );

@@ -5003,6 +5003,9 @@ This tool identifies the strongest and weakest possible team compositions based 
                         msg += f"\n... and {len(unmatched) - 10} more"
                 
                 messagebox.showinfo("CSV Loaded", msg, parent=self.master)
+                
+                # Refresh the main window's strength and win chance labels
+                self.calculate_and_display_roster_strength()
         except Exception as e:
             messagebox.showerror("CSV Load Error",
                                f"Failed to load CSV: {str(e)}",
