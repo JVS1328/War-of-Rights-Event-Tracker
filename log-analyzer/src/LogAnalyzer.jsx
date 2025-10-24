@@ -9,32 +9,76 @@ const WarOfRightsLogAnalyzer = () => {
   const [playerAssignments, setPlayerAssignments] = useState({});
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [newRegiment, setNewRegiment] = useState('');
+  const [smartMatchThreshold, setSmartMatchThreshold] = useState(70);
+  const [smartMatchPreview, setSmartMatchPreview] = useState(null);
+  const [showSmartMatchPreview, setShowSmartMatchPreview] = useState(false);
+
+  const normalizeRegimentTag = (tag) => {
+    if (!tag) return tag;
+    
+    // Remove all company/unit suffixes and extra characters
+    // Handles: (A), (B), (WB), .A, .B, .I*, .CG, . C, etc.
+    let normalized = tag
+      .replace(/\([A-Z0-9*]+\)$/i, '')  // Remove (A), (B), (WB), etc.
+      .replace(/\.[A-Z0-9*\s]+$/i, '')  // Remove .A, .B, .I*, .CG, . C, etc.
+      .replace(/\|+$/, '')              // Remove trailing pipes |
+      .replace(/\s+/g, '')              // Remove ALL spaces (23rd NYV -> 23rdNYV)
+      .trim();
+    
+    return normalized;
+  };
 
   const extractRegimentTag = (playerName) => {
-    // Common patterns: [TAG], {TAG}, TAG-, TAG|, (TAG)
-    const patterns = [
-      /^\[([^\]]+)\]/,           // [51stAL]
-      /^\{([^\}]+)\}/,           // {59THNY}
-      /^([A-Z0-9]+)-/,           // JD-
-      /^([A-Z0-9]+)\|/,          // SR|
-      /^\(([^\)]+)\)/,           // (1stTX)
-      /^([A-Z]{2,})\s*\[/,       // FSB [
-      /^([A-Z]{2,})\{/,          // MSG{
-      /^([A-Z]{2,})-/,           // II-
-      /^([A-Z]+\d+[A-Z]*)\s/     // 10thUS or 59thNY
+    // Priority order: Check for outer brackets first (CB[8th OH] should extract CB, not 8th OH)
+    const outerBracketPatterns = [
+      /^([A-Z]{2,})\[/,          // CB[ or FSB[ - outer tag before bracket
+      /^([A-Z]{2,})\{/,          // MSG{ - outer tag before brace
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of outerBracketPatterns) {
       const match = playerName.match(pattern);
       if (match) {
-        return match[1].trim().toUpperCase();
+        let tag = match[1].trim().toUpperCase();
+        return normalizeRegimentTag(tag);
+      }
+    }
+
+    // Then check for standard bracket/brace patterns
+    const bracketPatterns = [
+      /^\[([^\]]+)\]/,           // [51stAL]
+      /^\{([^\}]+)\}/,           // {59THNY}
+      /^\(([^\)]+)\)/,           // (1stTX)
+    ];
+
+    for (const pattern of bracketPatterns) {
+      const match = playerName.match(pattern);
+      if (match) {
+        let tag = match[1].trim().toUpperCase();
+        return normalizeRegimentTag(tag);
+      }
+    }
+
+    // Then check for delimiter patterns
+    const delimiterPatterns = [
+      /^([A-Z0-9]+)-/,           // JD-
+      /^([A-Z0-9]+)\|/,          // SR| or 10THSC|
+      /^([A-Z]{2,})-/,           // II-
+      /^([A-Z]+\d+[A-Z]*)\s/,    // 10thUS or 59thNY
+    ];
+
+    for (const pattern of delimiterPatterns) {
+      const match = playerName.match(pattern);
+      if (match) {
+        let tag = match[1].trim().toUpperCase();
+        return normalizeRegimentTag(tag);
       }
     }
 
     // If no pattern matches, take first word if it looks like a tag
     const firstWord = playerName.split(/[\s\[\{\(\-]/)[0];
     if (firstWord && firstWord.length <= 10 && /[A-Z]/.test(firstWord)) {
-      return firstWord.toUpperCase();
+      let tag = firstWord.toUpperCase();
+      return normalizeRegimentTag(tag);
     }
 
     return 'UNTAGGED';
@@ -65,7 +109,28 @@ const WarOfRightsLogAnalyzer = () => {
     return dp[m][n];
   };
 
-  const smartMatch = () => {
+  const getAvailableRegiments = () => {
+    if (!selectedRound) return [];
+    
+    const roundKey = `round_${selectedRound.id}`;
+    const assignments = playerAssignments[roundKey] || {};
+    const regimentMap = {};
+    
+    // Collect all regiments and normalize them
+    selectedRound.kills.forEach(death => {
+      const regiment = assignments[death.player] || extractRegimentTag(death.player);
+      if (regiment !== 'UNTAGGED') {
+        const normalized = normalizeRegimentTag(regiment);
+        if (!regimentMap[normalized]) {
+          regimentMap[normalized] = normalized;
+        }
+      }
+    });
+    
+    return Object.keys(regimentMap).sort();
+  };
+
+  const generateSmartMatchPreview = () => {
     if (!selectedRound) return;
 
     const roundKey = `round_${selectedRound.id}`;
@@ -84,34 +149,68 @@ const WarOfRightsLogAnalyzer = () => {
     // Find small units (1-2 members)
     const smallUnits = Object.keys(regimentCounts).filter(reg => regimentCounts[reg] <= 2 && reg !== 'UNTAGGED');
 
-    let matchCount = 0;
+    const matches = [];
+    // Convert threshold: 50% = 0.5 difference allowed, 90% = 0.1 difference allowed
+    const threshold = (100 - smartMatchThreshold) / 100;
 
     // For each small unit, try to match to a large regiment
     smallUnits.forEach(smallUnit => {
       let bestMatch = null;
       let bestScore = Infinity;
+      let bestSimilarity = 1;
 
       largeRegiments.forEach(largeReg => {
         const distance = levenshteinDistance(smallUnit.toLowerCase(), largeReg.toLowerCase());
-        const similarity = distance / Math.max(smallUnit.length, largeReg.length);
+        const maxLen = Math.max(smallUnit.length, largeReg.length);
+        const similarity = distance / maxLen;
         
-        // If similarity is good (< 30% difference), consider it
-        if (similarity < 0.3 && distance < bestScore) {
+        // Use the threshold from slider - lower threshold means more lenient matching
+        if (similarity <= threshold && distance < bestScore) {
           bestScore = distance;
           bestMatch = largeReg;
+          bestSimilarity = similarity;
         }
       });
 
-      // If we found a match, reassign all players from small unit to large regiment
+      // If we found a match, collect the changes
       if (bestMatch) {
+        const affectedPlayers = [];
         selectedRound.kills.forEach(death => {
           const playerRegiment = currentAssignments[death.player] || extractRegimentTag(death.player);
-          if (playerRegiment === smallUnit) {
-            currentAssignments[death.player] = bestMatch;
-            matchCount++;
+          if (playerRegiment === smallUnit && !affectedPlayers.includes(death.player)) {
+            affectedPlayers.push(death.player);
           }
         });
+
+        if (affectedPlayers.length > 0) {
+          matches.push({
+            fromRegiment: smallUnit,
+            toRegiment: bestMatch,
+            players: affectedPlayers,
+            similarity: Math.round((1 - bestSimilarity) * 100)
+          });
+        }
       }
+    });
+
+    setSmartMatchPreview(matches);
+    setShowSmartMatchPreview(true);
+  };
+
+  const applySmartMatch = () => {
+    if (!smartMatchPreview || !selectedRound) return;
+
+    const roundKey = `round_${selectedRound.id}`;
+    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    
+    let totalChanges = 0;
+    smartMatchPreview.forEach(match => {
+      match.players.forEach(player => {
+        // Check if there's a player-specific override
+        const targetRegiment = match.playerOverrides?.[player] || match.toRegiment;
+        currentAssignments[player] = targetRegiment;
+        totalChanges++;
+      });
     });
 
     setPlayerAssignments({
@@ -122,7 +221,15 @@ const WarOfRightsLogAnalyzer = () => {
     // Refresh stats
     analyzeRound(selectedRound, currentAssignments);
     
-    alert(`Smart Match complete! Reassigned ${matchCount} player(s) to matching regiments.`);
+    setShowSmartMatchPreview(false);
+    setSmartMatchPreview(null);
+    
+    alert(`Smart Match applied! Reassigned ${totalChanges} player(s) to matching regiments.`);
+  };
+
+  const cancelSmartMatch = () => {
+    setShowSmartMatchPreview(false);
+    setSmartMatchPreview(null);
   };
 
   const parseLogFile = (logText) => {
@@ -193,7 +300,9 @@ const WarOfRightsLogAnalyzer = () => {
 
     // Count respawns (deaths) per regiment
     round.kills.forEach(death => {
-      const regiment = assignments[death.player] || extractRegimentTag(death.player);
+      let regiment = assignments[death.player] || extractRegimentTag(death.player);
+      // Normalize to merge duplicates
+      regiment = normalizeRegimentTag(regiment);
 
       if (!regimentCasualties[regiment]) {
         regimentCasualties[regiment] = {
@@ -246,12 +355,25 @@ const WarOfRightsLogAnalyzer = () => {
     setNewRegiment(currentRegiment);
   };
 
+  const updateSmartMatchPlayer = (matchIndex, playerIndex, newRegimentValue) => {
+    const updatedPreview = [...smartMatchPreview];
+    const match = updatedPreview[matchIndex];
+    
+    // Update the specific player's target regiment
+    if (!match.playerOverrides) {
+      match.playerOverrides = {};
+    }
+    match.playerOverrides[match.players[playerIndex]] = newRegimentValue;
+    
+    setSmartMatchPreview(updatedPreview);
+  };
+
   const savePlayerEdit = () => {
     if (!editingPlayer || !newRegiment || !selectedRound) return;
 
     const roundKey = `round_${selectedRound.id}`;
     const currentAssignments = { ...playerAssignments[roundKey] } || {};
-    currentAssignments[editingPlayer] = newRegiment.toUpperCase().trim();
+    currentAssignments[editingPlayer] = newRegiment;
 
     setPlayerAssignments({
       ...playerAssignments,
@@ -266,9 +388,10 @@ const WarOfRightsLogAnalyzer = () => {
   };
 
   const getPlayerRegiment = (playerName) => {
-    if (!selectedRound) return extractRegimentTag(playerName);
+    if (!selectedRound) return normalizeRegimentTag(extractRegimentTag(playerName));
     const roundKey = `round_${selectedRound.id}`;
-    return playerAssignments[roundKey]?.[playerName] || extractRegimentTag(playerName);
+    const assigned = playerAssignments[roundKey]?.[playerName];
+    return assigned ? normalizeRegimentTag(assigned) : normalizeRegimentTag(extractRegimentTag(playerName));
   };
 
   const getAllPlayers = () => {
@@ -365,7 +488,7 @@ const WarOfRightsLogAnalyzer = () => {
                   {selectedRound && (
                     <div className="flex gap-2">
                       <button
-                        onClick={smartMatch}
+                        onClick={generateSmartMatchPreview}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
                       >
                         <Zap className="w-4 h-4" />
@@ -425,8 +548,106 @@ const WarOfRightsLogAnalyzer = () => {
             </div>
           )}
 
+          {/* Smart Match Preview Modal */}
+          {showSmartMatchPreview && smartMatchPreview && (
+            <div className="bg-slate-700 rounded-lg p-6 mb-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                  <Zap className="w-6 h-6" />
+                  Smart Match Preview - {smartMatchPreview.length} Match{smartMatchPreview.length !== 1 ? 'es' : ''} Found
+                </h2>
+                <button
+                  onClick={cancelSmartMatch}
+                  className="p-2 bg-slate-600 hover:bg-slate-500 rounded-lg transition"
+                >
+                  <X className="w-5 h-5 text-white" />
+                </button>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-slate-300 mb-2">
+                  Match Threshold: {smartMatchThreshold}% similarity
+                </label>
+                <input
+                  type="range"
+                  min="50"
+                  max="90"
+                  value={smartMatchThreshold}
+                  onChange={(e) => setSmartMatchThreshold(parseInt(e.target.value))}
+                  onMouseUp={generateSmartMatchPreview}
+                  onTouchEnd={generateSmartMatchPreview}
+                  className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                />
+                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                  <span>50% (More matches)</span>
+                  <span>90% (Fewer matches)</span>
+                </div>
+              </div>
+
+              {smartMatchPreview.length > 0 ? (
+                <>
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto mb-6">
+                    {smartMatchPreview.map((match, matchIndex) => (
+                      <div key={matchIndex} className="bg-slate-600 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-3 py-1 bg-red-600 text-white rounded font-semibold">
+                            {match.fromRegiment}
+                          </span>
+                          <span className="text-slate-400">→</span>
+                          <span className="px-3 py-1 bg-green-600 text-white rounded font-semibold">
+                            {match.toRegiment}
+                          </span>
+                          <span className="text-slate-400 text-sm ml-auto">
+                            {match.similarity}% match
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {match.players.map((player, playerIndex) => (
+                            <div key={player} className="flex items-center gap-2 bg-slate-700 rounded p-2">
+                              <span className="text-white flex-1 text-sm">{player}</span>
+                              <select
+                                value={match.playerOverrides?.[player] || match.toRegiment}
+                                onChange={(e) => updateSmartMatchPlayer(matchIndex, playerIndex, e.target.value)}
+                                className="px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                              >
+                                {getAvailableRegiments().map(reg => (
+                                  <option key={reg} value={reg}>{reg}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={applySmartMatch}
+                      className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-semibold"
+                    >
+                      Apply Changes
+                    </button>
+                    <button
+                      onClick={cancelSmartMatch}
+                      className="flex-1 px-4 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-slate-400">
+                    No matches found at {smartMatchThreshold}% threshold. Try lowering the threshold.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Player Editor Modal */}
-          {showEditor && selectedRound && (
+          {showEditor && selectedRound && !showSmartMatchPreview && (
             <div className="bg-slate-700 rounded-lg p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
@@ -441,9 +662,9 @@ const WarOfRightsLogAnalyzer = () => {
                 </button>
               </div>
 
-              <div className="mb-4">
+              <div className="mb-6">
                 <button
-                  onClick={smartMatch}
+                  onClick={generateSmartMatchPreview}
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition w-full justify-center"
                 >
                   <Zap className="w-4 h-4" />
@@ -468,13 +689,15 @@ const WarOfRightsLogAnalyzer = () => {
                     
                     {editingPlayer === player.name ? (
                       <div className="flex items-center gap-2">
-                        <input
-                          type="text"
+                        <select
                           value={newRegiment}
                           onChange={(e) => setNewRegiment(e.target.value)}
                           className="px-3 py-1 bg-slate-700 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
-                          placeholder="Regiment tag"
-                        />
+                        >
+                          {getAvailableRegiments().map(reg => (
+                            <option key={reg} value={reg}>{reg}</option>
+                          ))}
+                        </select>
                         <button
                           onClick={savePlayerEdit}
                           className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded transition"
