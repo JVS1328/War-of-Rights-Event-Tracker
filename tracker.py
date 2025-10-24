@@ -4807,6 +4807,71 @@ This tool identifies the strongest and weakest possible team compositions based 
                 self.win_chance_vars["B"].set("Win Chance: -")
 
 
+    def load_casualties_from_csv(self, team_name, round_key, dialog_data):
+        """Loads casualties from a CSV file and populates the casualty inputs with fuzzy matching."""
+        csv_path = filedialog.askopenfilename(
+            title="Select Casualty CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if not csv_path:
+            return
+        
+        def normalize_name(name):
+            """Normalize regiment name for matching by removing spaces and converting to lowercase."""
+            return name.replace(" ", "").replace("-", "").lower()
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                next(reader)  # Skip header row
+                
+                # Build a normalized lookup map for available units
+                available_units = list(dialog_data[team_name]["casualties"][round_key].keys())
+                normalized_map = {normalize_name(unit): unit for unit in available_units}
+                
+                casualties_loaded = 0
+                unmatched = []
+                
+                for row in reader:
+                    if len(row) < 2:
+                        continue
+                    
+                    csv_regiment_name = row[0].strip()
+                    if not csv_regiment_name:
+                        continue
+                        
+                    try:
+                        casualties = int(row[1])
+                    except (ValueError, IndexError):
+                        continue
+                    
+                    # Try exact match first
+                    if csv_regiment_name in available_units:
+                        dialog_data[team_name]["casualties"][round_key][csv_regiment_name].set(str(casualties))
+                        casualties_loaded += 1
+                    else:
+                        # Try normalized fuzzy match
+                        normalized_csv = normalize_name(csv_regiment_name)
+                        if normalized_csv in normalized_map:
+                            matched_unit = normalized_map[normalized_csv]
+                            dialog_data[team_name]["casualties"][round_key][matched_unit].set(str(casualties))
+                            casualties_loaded += 1
+                        else:
+                            unmatched.append(csv_regiment_name)
+                
+                # Show results
+                msg = f"Loaded casualties for {casualties_loaded} regiment(s)."
+                if unmatched:
+                    msg += f"\n\nUnmatched regiments ({len(unmatched)}):\n" + "\n".join(unmatched[:10])
+                    if len(unmatched) > 10:
+                        msg += f"\n... and {len(unmatched) - 10} more"
+                
+                messagebox.showinfo("CSV Loaded", msg, parent=self.master)
+        except Exception as e:
+            messagebox.showerror("CSV Load Error",
+                               f"Failed to load CSV: {str(e)}",
+                               parent=self.master)
+
     def open_weekly_casualty_input(self):
         """Opens a dialog to input per-unit attendance and casualties for the selected week."""
         sel = self.week_list.curselection()
@@ -4839,21 +4904,13 @@ This tool identifies the strongest and weakest possible team compositions based 
             panel = ttk.LabelFrame(parent, text=f"{team_name} Units")
             panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
             panel.columnconfigure(0, weight=1)
-            panel.rowconfigure(1, weight=1)
 
-            # Attending List
-            ttk.Label(panel, text="Attending").grid(row=0, column=0, sticky="ew")
-            attending_list = tk.Listbox(panel, selectmode=tk.EXTENDED)
-            attending_list.grid(row=1, column=0, sticky="nsew", padx=5)
-            
-            # Auto-populate with units from the selected week's roster
+            # Get roster units for casualty entries
             roster_units = sorted(list(week_data.get(team_id, set())))
-            for unit in roster_units:
-                attending_list.insert(tk.END, unit)
 
             # --- Casualties Frames ---
             cas_main_frame = ttk.Frame(panel)
-            cas_main_frame.grid(row=2, column=0, sticky="nsew", pady=(10,0))
+            cas_main_frame.grid(row=0, column=0, sticky="nsew", pady=(10,0))
             cas_main_frame.columnconfigure(0, weight=1)
             cas_main_frame.columnconfigure(1, weight=1)
 
@@ -4861,6 +4918,11 @@ This tool identifies the strongest and weakest possible team compositions based 
                 round_key = f"r{round_num}"
                 cas_frame = ttk.LabelFrame(parent_frame, text=f"Round {round_num} Casualties")
                 cas_frame.pack(fill=tk.BOTH, expand=True, padx=(0, 2), pady=(0,5))
+                
+                # Button to load CSV
+                load_csv_btn = ttk.Button(cas_frame, text="Load CSV",
+                                         command=lambda: self.load_casualties_from_csv(team_name, round_key, dialog_data))
+                load_csv_btn.pack(pady=(5,0))
                 
                 # This frame will contain the dynamically added casualty entries
                 entries_frame = ttk.Frame(cas_frame)
@@ -4874,7 +4936,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                 existing_casualties = week_data.get("weekly_casualties", {}).get(team_name, {}).get(round_key, {})
 
                 # Create new entries for currently listed units
-                for i, unit in enumerate(attending_list.get(0, tk.END)):
+                for i, unit in enumerate(roster_units):
                     ttk.Label(entries_frame, text=f"{unit}:").grid(row=i, column=0, sticky="w")
                     var = tk.StringVar(value=str(existing_casualties.get(unit, 0)))
                     entry = ttk.Entry(entries_frame, textvariable=var, width=8)
@@ -4890,13 +4952,13 @@ This tool identifies the strongest and weakest possible team compositions based 
             r2_frame.grid(row=0, column=1, sticky="nsew")
             create_casualty_sub_panel(r2_frame, 2)
 
-            return attending_list
+            return None
 
         team_a_name = self.team_names["A"].get()
         team_b_name = self.team_names["B"].get()
         
-        usa_attending = create_team_panel(main_frame, team_a_name, "A")
-        csa_attending = create_team_panel(main_frame, team_b_name, "B")
+        create_team_panel(main_frame, team_a_name, "A")
+        create_team_panel(main_frame, team_b_name, "B")
 
         def on_save():
             try:
