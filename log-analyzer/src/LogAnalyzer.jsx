@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle } from 'lucide-react';
 
 const WarOfRightsLogAnalyzer = () => {
   const [rounds, setRounds] = useState([]);
@@ -24,6 +24,7 @@ const WarOfRightsLogAnalyzer = () => {
   const svgRef = useRef(null);
   const [showAllLossRates, setShowAllLossRates] = useState(false);
   const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -420,6 +421,7 @@ const WarOfRightsLogAnalyzer = () => {
     }
 
     setRounds(parsedRounds);
+    setShowWarning(true);
   };
 
   const analyzeRound = (round, customAssignments = null) => {
@@ -1025,6 +1027,33 @@ const WarOfRightsLogAnalyzer = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Warning Modal */}
+        {showWarning && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-lg shadow-2xl border-2 border-amber-500 max-w-2xl w-full p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <AlertTriangle className="w-8 h-8 text-amber-500 flex-shrink-0 mt-1" />
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-amber-400 mb-3">Important Notice</h2>
+                  <p className="text-slate-200 text-lg leading-relaxed">
+                    You may need to transfer members of regiments from the <span className="font-semibold text-amber-400">UNTAGGED</span> group,
+                    and transfer merc regiments into main regiment lists when you select a round to view.
+                    Use the <span className="font-semibold text-blue-400">'Edit Players'</span> button to do this or you may have inaccurate data!
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowWarning(false)}
+                  className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold"
+                >
+                  Got it!
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-8">
           <h1 className="text-4xl font-bold text-amber-400 mb-2 flex items-center gap-3">
             <Users className="w-10 h-10" />
