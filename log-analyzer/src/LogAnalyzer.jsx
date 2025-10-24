@@ -10,9 +10,9 @@ const WarOfRightsLogAnalyzer = () => {
   const [playerAssignments, setPlayerAssignments] = useState({});
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [newRegiment, setNewRegiment] = useState('');
-  const [smartMatchThreshold, setSmartMatchThreshold] = useState(70);
   const [smartMatchPreview, setSmartMatchPreview] = useState(null);
   const [showSmartMatchPreview, setShowSmartMatchPreview] = useState(false);
+  const [pendingEdits, setPendingEdits] = useState({});
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -137,62 +137,149 @@ const WarOfRightsLogAnalyzer = () => {
     const roundKey = `round_${selectedRound.id}`;
     const currentAssignments = { ...playerAssignments[roundKey] } || {};
     
-    // Build regiment list with counts
-    const regimentCounts = {};
+    // Build regiment list with counts and player lists
+    const regimentData = {};
     selectedRound.kills.forEach(death => {
       const currentRegiment = currentAssignments[death.player] || extractRegimentTag(death.player);
-      regimentCounts[currentRegiment] = (regimentCounts[currentRegiment] || 0) + 1;
-    });
-
-    // Find large regiments (2+ members)
-    const largeRegiments = Object.keys(regimentCounts).filter(reg => regimentCounts[reg] >= 2);
-    
-    // Find small units (1-2 members)
-    const smallUnits = Object.keys(regimentCounts).filter(reg => regimentCounts[reg] <= 2 && reg !== 'UNTAGGED');
-
-    const matches = [];
-    // Convert threshold: 50% = 0.5 difference allowed, 90% = 0.1 difference allowed
-    const threshold = (100 - smartMatchThreshold) / 100;
-
-    // For each small unit, try to match to a large regiment
-    smallUnits.forEach(smallUnit => {
-      let bestMatch = null;
-      let bestScore = Infinity;
-      let bestSimilarity = 1;
-
-      largeRegiments.forEach(largeReg => {
-        const distance = levenshteinDistance(smallUnit.toLowerCase(), largeReg.toLowerCase());
-        const maxLen = Math.max(smallUnit.length, largeReg.length);
-        const similarity = distance / maxLen;
-        
-        // Use the threshold from slider - lower threshold means more lenient matching
-        if (similarity <= threshold && distance < bestScore) {
-          bestScore = distance;
-          bestMatch = largeReg;
-          bestSimilarity = similarity;
-        }
-      });
-
-      // If we found a match, collect the changes
-      if (bestMatch) {
-        const affectedPlayers = [];
-        selectedRound.kills.forEach(death => {
-          const playerRegiment = currentAssignments[death.player] || extractRegimentTag(death.player);
-          if (playerRegiment === smallUnit && !affectedPlayers.includes(death.player)) {
-            affectedPlayers.push(death.player);
-          }
-        });
-
-        if (affectedPlayers.length > 0) {
-          matches.push({
-            fromRegiment: smallUnit,
-            toRegiment: bestMatch,
-            players: affectedPlayers,
-            similarity: Math.round((1 - bestSimilarity) * 100)
-          });
-        }
+      if (!regimentData[currentRegiment]) {
+        regimentData[currentRegiment] = {
+          count: 0,
+          players: []
+        };
+      }
+      if (!regimentData[currentRegiment].players.includes(death.player)) {
+        regimentData[currentRegiment].players.push(death.player);
+        regimentData[currentRegiment].count++;
       }
     });
+
+    // Find regiments with 2+ members (target regiments to match TO)
+    const targetRegiments = Object.keys(regimentData).filter(reg => regimentData[reg].count >= 2);
+    
+    // Find regiments with 1 member (including UNTAGGED) - these need matching
+    const singlePlayerRegiments = Object.keys(regimentData).filter(reg => regimentData[reg].count === 1);
+
+    const matches = [];
+    const playerMatches = {}; // Track individual player matches
+
+    // Helper function to extract all possible regiment tags from a player name
+    const extractAllPossibleTags = (playerName) => {
+      const tags = new Set();
+      const nameUpper = playerName.toUpperCase();
+      
+      // Extract tags from brackets/braces/parens
+      const bracketMatches = [
+        ...nameUpper.matchAll(/\[([^\]]+)\]/g),
+        ...nameUpper.matchAll(/\{([^\}]+)\}/g),
+        ...nameUpper.matchAll(/\(([^\)]+)\)/g)
+      ];
+      
+      bracketMatches.forEach(match => {
+        const tag = normalizeRegimentTag(match[1].trim());
+        if (tag && tag !== 'UNTAGGED') {
+          tags.add(tag);
+        }
+      });
+      
+      // Extract tags before delimiters
+      const delimiterMatches = [
+        nameUpper.match(/^([A-Z0-9]+)[-_]/),
+        nameUpper.match(/^([A-Z0-9]+)\|/),
+        nameUpper.match(/^([A-Z]+\d+[A-Z]*)\s/)
+      ];
+      
+      delimiterMatches.forEach(match => {
+        if (match) {
+          const tag = normalizeRegimentTag(match[1].trim());
+          if (tag && tag !== 'UNTAGGED') {
+            tags.add(tag);
+          }
+        }
+      });
+      
+      // Extract first word if it looks like a tag
+      const firstWord = playerName.split(/[\s\[\{\(\-_|]/)[0];
+      if (firstWord && firstWord.length <= 10 && /[A-Z]/.test(firstWord)) {
+        const tag = normalizeRegimentTag(firstWord.toUpperCase());
+        if (tag && tag !== 'UNTAGGED') {
+          tags.add(tag);
+        }
+      }
+      
+      return Array.from(tags);
+    };
+
+    // Check each player in single-player regiments (including UNTAGGED)
+    singlePlayerRegiments.forEach(sourceReg => {
+      regimentData[sourceReg].players.forEach(playerName => {
+        const playerNameUpper = playerName.toUpperCase();
+        
+        // Extract all possible tags from the player's name
+        const playerTags = extractAllPossibleTags(playerName);
+        
+        // Check if ANY target regiment tag appears in the player's name (substring or extracted)
+        targetRegiments.forEach(targetReg => {
+          const targetRegUpper = targetReg.toUpperCase();
+          const targetRegNormalized = normalizeRegimentTag(targetReg);
+          
+          let isMatch = false;
+          
+          // Method 1: Direct substring check
+          if (playerNameUpper.includes(targetRegUpper)) {
+            isMatch = true;
+          }
+          
+          // Method 2: Check if any extracted tag matches the target regiment
+          if (!isMatch) {
+            playerTags.forEach(playerTag => {
+              const playerTagNormalized = normalizeRegimentTag(playerTag);
+              if (playerTagNormalized === targetRegNormalized) {
+                isMatch = true;
+              }
+            });
+          }
+          
+          if (isMatch) {
+            if (!playerMatches[targetReg]) {
+              playerMatches[targetReg] = [];
+            }
+            playerMatches[targetReg].push({
+              player: playerName,
+              fromRegiment: sourceReg
+            });
+          }
+        });
+      });
+    });
+
+    // Convert playerMatches to the format expected by the UI
+    Object.keys(playerMatches).forEach(targetReg => {
+      const playerList = playerMatches[targetReg];
+      
+      // Group by source regiment for cleaner display
+      const bySourceReg = {};
+      playerList.forEach(({ player, fromRegiment }) => {
+        if (!bySourceReg[fromRegiment]) {
+          bySourceReg[fromRegiment] = {
+            players: []
+          };
+        }
+        bySourceReg[fromRegiment].players.push(player);
+      });
+
+      // Create a match entry for each source regiment
+      Object.keys(bySourceReg).forEach(sourceReg => {
+        matches.push({
+          fromRegiment: sourceReg,
+          toRegiment: targetReg,
+          players: bySourceReg[sourceReg].players,
+          similarity: 100 // Always 100% since we only show substring matches
+        });
+      });
+    });
+
+    // Sort matches by target regiment name
+    matches.sort((a, b) => a.toRegiment.localeCompare(b.toRegiment));
 
     setSmartMatchPreview(matches);
     setShowSmartMatchPreview(true);
@@ -456,11 +543,14 @@ const WarOfRightsLogAnalyzer = () => {
     setShowEditor(false);
     setEditingPlayer(null);
     setNewRegiment('');
+    setPendingEdits({});
   };
 
   const startEditPlayer = (playerName, currentRegiment) => {
     setEditingPlayer(playerName);
-    setNewRegiment(currentRegiment);
+    // Check if there's a pending edit for this player, otherwise use current regiment
+    const pendingRegiment = pendingEdits[playerName];
+    setNewRegiment(pendingRegiment || currentRegiment);
   };
 
   const updateSmartMatchPlayer = (matchIndex, playerIndex, newRegimentValue) => {
@@ -488,11 +578,50 @@ const WarOfRightsLogAnalyzer = () => {
       [roundKey]: currentAssignments
     });
 
+    // Clear this player from pending edits
+    const updatedPending = { ...pendingEdits };
+    delete updatedPending[editingPlayer];
+    setPendingEdits(updatedPending);
+
     setEditingPlayer(null);
     setNewRegiment('');
 
     // Refresh stats
     analyzeRound(selectedRound, currentAssignments);
+  };
+
+  const updatePendingEdit = (playerName, regiment) => {
+    setPendingEdits({
+      ...pendingEdits,
+      [playerName]: regiment
+    });
+  };
+
+  const saveAllEdits = () => {
+    if (!selectedRound || Object.keys(pendingEdits).length === 0) return;
+
+    const roundKey = `round_${selectedRound.id}`;
+    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    
+    // Apply all pending edits
+    Object.entries(pendingEdits).forEach(([playerName, regiment]) => {
+      currentAssignments[playerName] = regiment;
+    });
+
+    setPlayerAssignments({
+      ...playerAssignments,
+      [roundKey]: currentAssignments
+    });
+
+    // Clear pending edits and editing state
+    setPendingEdits({});
+    setEditingPlayer(null);
+    setNewRegiment('');
+
+    // Refresh stats
+    analyzeRound(selectedRound, currentAssignments);
+
+    alert(`Saved ${Object.keys(pendingEdits).length} player assignment(s)!`);
   };
 
   const getPlayerRegiment = (playerName) => {
@@ -507,14 +636,20 @@ const WarOfRightsLogAnalyzer = () => {
     
     const playerMap = {};
     selectedRound.kills.forEach(death => {
-      const regiment = getPlayerRegiment(death.player);
+      const baseRegiment = getPlayerRegiment(death.player);
       if (!playerMap[death.player]) {
-        playerMap[death.player] = { name: death.player, regiment, deaths: 0 };
+        playerMap[death.player] = {
+          name: death.player,
+          regiment: baseRegiment,  // Always use base regiment for sorting
+          displayRegiment: pendingEdits[death.player] || baseRegiment,  // Use pending for display
+          deaths: 0
+        };
       }
       playerMap[death.player].deaths++;
     });
 
-    return Object.values(playerMap).sort((a, b) => 
+    // Sort by base regiment (not pending edits) to prevent view jumping
+    return Object.values(playerMap).sort((a, b) =>
       a.regiment.localeCompare(b.regiment) || b.deaths - a.deaths
     );
   };
@@ -708,24 +843,11 @@ const WarOfRightsLogAnalyzer = () => {
                 </button>
               </div>
 
-              <div className="mb-6">
-                <label className="block text-slate-300 mb-2">
-                  Match Threshold: {smartMatchThreshold}% similarity
-                </label>
-                <input
-                  type="range"
-                  min="50"
-                  max="90"
-                  value={smartMatchThreshold}
-                  onChange={(e) => setSmartMatchThreshold(parseInt(e.target.value))}
-                  onMouseUp={generateSmartMatchPreview}
-                  onTouchEnd={generateSmartMatchPreview}
-                  className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>50% (More matches)</span>
-                  <span>90% (Fewer matches)</span>
-                </div>
+              <div className="mb-6 bg-slate-600 rounded-lg p-4">
+                <p className="text-slate-300 text-sm">
+                  Showing players in 1-person regiments or UNTAGGED that have any regiment tag in their name.
+                  Review and confirm matches below.
+                </p>
               </div>
 
               {smartMatchPreview.length > 0 ? (
@@ -783,7 +905,7 @@ const WarOfRightsLogAnalyzer = () => {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-slate-400">
-                    No matches found at {smartMatchThreshold}% threshold. Try lowering the threshold.
+                    No matches found. All players in 1-person regiments or UNTAGGED don't have any regiment tags in their names.
                   </p>
                 </div>
               )}
@@ -816,7 +938,7 @@ const WarOfRightsLogAnalyzer = () => {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="space-y-2 max-h-[600px] overflow-y-auto mb-6">
                 {getAllPlayers().map((player) => (
                   <div
                     key={player.name}
@@ -849,6 +971,15 @@ const WarOfRightsLogAnalyzer = () => {
                           Save
                         </button>
                         <button
+                          onClick={() => {
+                            updatePendingEdit(player.name, newRegiment);
+                            setEditingPlayer(null);
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
+                        >
+                          Queue
+                        </button>
+                        <button
                           onClick={() => setEditingPlayer(null)}
                           className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded transition"
                         >
@@ -857,9 +988,16 @@ const WarOfRightsLogAnalyzer = () => {
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 bg-amber-600 text-white rounded font-semibold">
-                          {player.regiment}
+                        <span className={`px-3 py-1 text-white rounded font-semibold ${
+                          pendingEdits[player.name] ? 'bg-blue-600' : 'bg-amber-600'
+                        }`}>
+                          {player.displayRegiment}
                         </span>
+                        {pendingEdits[player.name] && (
+                          <span className="text-xs text-blue-400">
+                            (pending)
+                          </span>
+                        )}
                         <button
                           onClick={() => startEditPlayer(player.name, player.regiment)}
                           className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
@@ -871,6 +1009,18 @@ const WarOfRightsLogAnalyzer = () => {
                   </div>
                 ))}
               </div>
+
+              {/* Save All Button */}
+              {Object.keys(pendingEdits).length > 0 && (
+                <div className="sticky bottom-0 bg-slate-700 pt-4 border-t border-slate-600">
+                  <button
+                    onClick={saveAllEdits}
+                    className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-semibold flex items-center justify-center gap-2"
+                  >
+                    Save All Changes ({Object.keys(pendingEdits).length} pending)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
