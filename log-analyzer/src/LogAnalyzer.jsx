@@ -486,7 +486,8 @@ const WarOfRightsLogAnalyzer = () => {
     const roundKey = `round_${round.id}`;
     const assignments = customAssignments || playerAssignments[roundKey] || {};
     const regimentCasualties = {};
-    const playerFirstRespawn = {}; // Track each player's first respawn
+    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
+    const playerSessionCounts = {}; // Track how many sessions each player has
     
     // Calculate round duration from the round parameter
     let roundDurationSeconds = 0;
@@ -498,11 +499,23 @@ const WarOfRightsLogAnalyzer = () => {
       roundDurationSeconds = endSeconds - startSeconds;
     }
 
-    // Count respawns (deaths) per regiment, skipping first respawn per player
+    // Count sessions for each player (for skipping reconnect spawns)
+    Object.entries(round.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
+
+    // Count respawns (deaths) per regiment, skipping first respawn per player and first respawn after each reconnect
     round.kills.forEach((death, index) => {
-      // Skip first respawn for each player (initial spawn)
-      if (!playerFirstRespawn[death.player]) {
-        playerFirstRespawn[death.player] = true;
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      // Initialize tracking for this player
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      // Skip if we haven't skipped enough respawns yet (one per session)
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
         return;
       }
 
@@ -835,12 +848,23 @@ const WarOfRightsLogAnalyzer = () => {
     // Track deaths per regiment per time bucket and player counts
     const regimentTimeline = {};
     const regimentPlayerCounts = {};
-    const playerFirstRespawn = {}; // Track each player's first respawn
+    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
+    const playerSessionCounts = {}; // Track how many sessions each player has
+    
+    // Count sessions for each player
+    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
     
     selectedRound.kills.forEach((death, index) => {
-      // Skip first respawn for each player (initial spawn)
-      if (!playerFirstRespawn[death.player]) {
-        playerFirstRespawn[death.player] = true;
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
         return;
       }
 
@@ -922,12 +946,23 @@ const WarOfRightsLogAnalyzer = () => {
     const roundKey = `round_${selectedRound.id}`;
     const assignments = playerAssignments[roundKey] || {};
     const playerDeaths = {};
-    const playerFirstRespawn = {}; // Track each player's first respawn
+    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
+    const playerSessionCounts = {}; // Track how many sessions each player has
+    
+    // Count sessions for each player
+    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
     
     selectedRound.kills.forEach(death => {
-      // Skip first respawn for each player (initial spawn)
-      if (!playerFirstRespawn[death.player]) {
-        playerFirstRespawn[death.player] = true;
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
         return;
       }
 
@@ -963,12 +998,23 @@ const WarOfRightsLogAnalyzer = () => {
     const regimentCombatTime = {};
     const regimentPlayerCounts = {};
     const regimentDeathTimes = {}; // Track all death times per regiment
-    const playerFirstRespawn = {}; // Track each player's first respawn
+    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
+    const playerSessionCounts = {}; // Track how many sessions each player has
+    
+    // Count sessions for each player
+    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
     
     selectedRound.kills.forEach((death, index) => {
-      // Skip first respawn for each player (initial spawn)
-      if (!playerFirstRespawn[death.player]) {
-        playerFirstRespawn[death.player] = true;
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
         return;
       }
 
