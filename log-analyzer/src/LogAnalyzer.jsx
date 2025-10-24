@@ -78,7 +78,7 @@ const WarOfRightsLogAnalyzer = () => {
     if (!tag) return tag;
     
     // Remove all company/unit suffixes and extra characters
-    // Handles: (A), (B), (WB), .A, .B, .I*, .CG, . C, etc.
+    // Handles: (A), (B), (WB), .A, .B, .I*, .CG, . C, etc..
     let normalized = tag
       .replace(/\([A-Z0-9*]+\)$/i, '')  // Remove (A), (B), (WB), etc.
       .replace(/\.[A-Z0-9*\s]+$/i, '')  // Remove .A, .B, .I*, .CG, . C, etc.
