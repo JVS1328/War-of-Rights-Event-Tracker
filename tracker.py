@@ -997,6 +997,36 @@ class SeasonTrackerGUI:
         
         return stats
 
+    def get_unit_player_count_for_week(self, unit_name: str, week_index: int) -> float:
+        """
+        Gets the player count for a specific unit in a specific week.
+        Returns the average of min/max for that week, or falls back to global defaults.
+        """
+        if week_index < 0 or week_index >= len(self.season):
+            return 0.0
+        
+        week_data = self.season[week_index]
+        week_player_counts = week_data.get("unit_player_counts", {})
+        
+        if unit_name in week_player_counts:
+            player_counts = week_player_counts[unit_name]
+            try:
+                min_players = int(player_counts.get("min", 0))
+                max_players = int(player_counts.get("max", 0))
+                if max_players > 0:
+                    return (min_players + max_players) / 2
+            except (ValueError, TypeError):
+                pass
+        
+        # Fallback to global player counts
+        global_counts = self.unit_player_counts.get(unit_name, {"min": "0", "max": "100"})
+        try:
+            min_players = int(global_counts.get("min", 0))
+            max_players = int(global_counts.get("max", 100))
+            return (min_players + max_players) / 2
+        except (ValueError, TypeError):
+            return 0.0
+
     def get_unit_average_player_count(self, unit_name: str, max_week_index: int | None = None) -> float:
         """
         Calculates the average number of players a unit brings across all weeks they participated in,
@@ -4600,12 +4630,12 @@ This tool identifies the strongest and weakest possible team compositions based 
                 winner = week_data.get(f"round{r}_winner")
                 if not winner: continue
 
-                # Calculate team Elo averages before each round
-                total_players_A = sum(self.get_unit_average_player_count(u, week_idx) for u in team_A_units)
-                total_players_B = sum(self.get_unit_average_player_count(u, week_idx) for u in team_B_units)
+                # Calculate team Elo averages before each round using WEEK-SPECIFIC player counts
+                total_players_A = sum(self.get_unit_player_count_for_week(u, week_idx) for u in team_A_units)
+                total_players_B = sum(self.get_unit_player_count_for_week(u, week_idx) for u in team_B_units)
 
-                avg_elo_A = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_A_units) / total_players_A if total_players_A > 0 else initial_rating
-                avg_elo_B = sum(current_week_elos[u] * self.get_unit_average_player_count(u, week_idx) for u in team_B_units) / total_players_B if total_players_B > 0 else initial_rating
+                avg_elo_A = sum(current_week_elos[u] * self.get_unit_player_count_for_week(u, week_idx) for u in team_A_units) / total_players_A if total_players_A > 0 else initial_rating
+                avg_elo_B = sum(current_week_elos[u] * self.get_unit_player_count_for_week(u, week_idx) for u in team_B_units) / total_players_B if total_players_B > 0 else initial_rating
 
                 # Determine leads for the round
                 if is_playoffs:
@@ -4696,9 +4726,9 @@ This tool identifies the strongest and weakest possible team compositions based 
                         delta = k * base_change * weighted_changes[unit] * sign * round_multiplier * sweep_bonus
                         current_week_elos[unit] += delta
                         '''
-                    # Log-scaled + normalized weights
+                    # Log-scaled + normalized weights using WEEK-SPECIFIC player counts
                     weights = {
-                        u: (math.log(1 + self.get_unit_average_player_count(u, week_idx)) ** size_influence)
+                        u: (math.log(1 + self.get_unit_player_count_for_week(u, week_idx)) ** size_influence)
                         * (lead_multiplier if u == lead_unit else 1)
                         for u in team_units
                     }
@@ -4770,19 +4800,19 @@ This tool identifies the strongest and weakest possible team compositions based 
 
         avg_elo_A, avg_elo_B = initial_rating, initial_rating
         
-        # Calculate weighted average for Team A
-        total_players_A = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units)
+        # Calculate weighted average for Team A using WEEK-SPECIFIC player counts
+        total_players_A = sum(self.get_unit_player_count_for_week(u, current_week_idx) for u in team_A_units)
         if team_A_units and total_players_A > 0:
-            avg_elo_A = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_A_units) / total_players_A
+            avg_elo_A = sum(elo_ratings[u] * self.get_unit_player_count_for_week(u, current_week_idx) for u in team_A_units) / total_players_A
             self.roster_strength_vars["A"].set(f"Strength: {avg_elo_A:.0f}")
         else:
             self.roster_strength_vars["A"].set("Strength: -")
             self.win_chance_vars["A"].set("Win Chance: -")
 
-        # Calculate weighted average for Team B
-        total_players_B = sum(self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units)
+        # Calculate weighted average for Team B using WEEK-SPECIFIC player counts
+        total_players_B = sum(self.get_unit_player_count_for_week(u, current_week_idx) for u in team_B_units)
         if team_B_units and total_players_B > 0:
-            avg_elo_B = sum(elo_ratings[u] * self.get_unit_average_player_count(u, current_week_idx) for u in team_B_units) / total_players_B
+            avg_elo_B = sum(elo_ratings[u] * self.get_unit_player_count_for_week(u, current_week_idx) for u in team_B_units) / total_players_B
             self.roster_strength_vars["B"].set(f"Strength: {avg_elo_B:.0f}")
         else:
             self.roster_strength_vars["B"].set("Strength: -")

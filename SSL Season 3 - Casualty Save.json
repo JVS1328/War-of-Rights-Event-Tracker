@@ -1940,8 +1940,8 @@
       "lead_B_r1": "MSG",
       "lead_A_r2": "AVC",
       "lead_B_r2": "CB",
-      "r1_casualties_A": 1365,
-      "r1_casualties_B": 1540,
+      "r1_casualties_A": 1510,
+      "r1_casualties_B": 1692,
       "r2_casualties_A": 991,
       "r2_casualties_B": 1213,
       "round1_map": "Cooke's Countercharge",
@@ -2021,12 +2021,12 @@
       "weekly_casualties": {
         "Team A": {
           "r1": {
-            "10th US": 168,
-            "12th VA": 81,
-            "51st AL": 258,
-            "59th NY": 408,
-            "AVC": 84,
-            "FSB": 182,
+            "10th US": 214,
+            "12th VA": 88,
+            "51st AL": 273,
+            "59th NY": 480,
+            "AVC": 83,
+            "FSB": 188,
             "II Corps": 184
           },
           "r2": {
@@ -2041,13 +2041,13 @@
         },
         "Team B": {
           "r1": {
-            "23rd NYV": 71,
-            "CB": 611,
-            "CQB": 96,
-            "JD": 273,
-            "MSG": 360,
-            "SR": 13,
-            "TKO": 116
+            "23rd NYV": 80,
+            "CB": 658,
+            "CQB": 100,
+            "JD": 298,
+            "MSG": 416,
+            "SR": 15,
+            "TKO": 125
           },
           "r2": {
             "23rd NYV": 84,
@@ -2080,67 +2080,67 @@
       "max": "0"
     },
     "10th US": {
-      "min": "28",
-      "max": "34"
+      "min": "21",
+      "max": "25"
     },
     "12th VA": {
-      "min": "15",
-      "max": "20"
+      "min": "40",
+      "max": "44"
     },
     "51st AL": {
-      "min": "18",
-      "max": "23"
+      "min": "14",
+      "max": "19"
     },
     "59th NY": {
-      "min": "40",
-      "max": "45"
+      "min": "45",
+      "max": "50"
     },
     "7th TX": {
       "min": "0",
       "max": "0"
     },
     "AVC": {
-      "min": "9",
-      "max": "14"
+      "min": "8",
+      "max": "10"
     },
     "CB": {
-      "min": "60",
-      "max": "65"
+      "min": "45",
+      "max": "50"
     },
     "CQB": {
-      "min": "8",
-      "max": "13"
-    },
-    "FSB": {
       "min": "14",
       "max": "19"
+    },
+    "FSB": {
+      "min": "19",
+      "max": "23"
     },
     "II Corps": {
       "min": "25",
       "max": "30"
     },
     "JD": {
-      "min": "23",
-      "max": "28"
+      "min": "45",
+      "max": "50"
     },
     "MSG": {
-      "min": "35",
-      "max": "40"
+      "min": "7",
+      "max": "10"
     },
     "SR": {
-      "min": "3",
+      "min": "2",
       "max": "3"
     },
     "TKO": {
-      "min": "13",
-      "max": "18"
+      "min": "18",
+      "max": "21"
     },
     "5th MN": {
-      "min": "0",
-      "max": "0"
+      "min": "20",
+      "max": "25"
     },
     "23rd NYV": {
-      "min": "7",
+      "min": "5",
       "max": "10"
     }
   },
