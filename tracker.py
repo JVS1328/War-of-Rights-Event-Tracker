@@ -152,6 +152,7 @@ class SeasonTrackerGUI:
         self.unit_player_counts: defaultdict[str, dict] = defaultdict(lambda: {"min": "0", "max": "100"})
         self.manual_point_adjustments: defaultdict[str, int] = defaultdict(int)
         self.divisions: list[dict] = []
+        self.weekly_casualties: defaultdict[int, dict] = defaultdict(dict) # week_idx -> {unit: deaths}
         
         # Point system settings - dictionary of StringVars
         self.point_system_values = {
@@ -436,7 +437,11 @@ class SeasonTrackerGUI:
             "round2_map": None,
             "round1_flipped": False,
             "round2_flipped": False,
-            "unit_player_counts": {}
+            "unit_player_counts": {},
+            "weekly_casualties": {
+                "USA": {"r1": {}, "r2": {}},
+                "CSA": {"r1": {}, "r2": {}}
+            } # New field for per-unit casualties
         }
         self.season.append(new_week_data)
         self.refresh_week_list()
@@ -1938,44 +1943,92 @@ This tool identifies the strongest and weakest possible team compositions based 
         tree.configure(yscrollcommand=vsb.set)
         tree.pack(fill=tk.BOTH, expand=True)
     def calculate_casualties(self, max_week_index: int | None = None) -> tuple[defaultdict[str, int], defaultdict[str, int]]:
-        """Calculates casualties inflicted and lost for each lead unit."""
+        """
+        Calculates casualties inflicted and lost for each unit based on weekly attendance and death reports.
+        Kills are distributed based on a weighted formula considering unit size, deaths, and a constant.
+        """
         inflicted = defaultdict(int)
         lost = defaultdict(int)
+        c = 5  # Constant for weight calculation, prevents division by zero
 
         weeks_to_process = self.season
         if max_week_index is not None:
             weeks_to_process = self.season[:max_week_index + 1]
 
+        # First, aggregate all deaths for each unit across all relevant weeks
         for week in weeks_to_process:
-            if week.get("playoffs", False):
-                # Handle playoffs logic
-                for r_num in [1, 2]:
-                    lead_a = week.get(f"lead_A_r{r_num}")
-                    lead_b = week.get(f"lead_B_r{r_num}")
-                    cas_a = week.get(f"r{r_num}_casualties_A", 0)
-                    cas_b = week.get(f"r{r_num}_casualties_B", 0)
-                    if lead_a:
-                        lost[lead_a] += cas_a
-                        inflicted[lead_a] += cas_b
-                    if lead_b:
-                        lost[lead_b] += cas_b
-                        inflicted[lead_b] += cas_a
-            else:
-                # Handle regular season logic
-                lead_a = week.get("lead_A")
-                lead_b = week.get("lead_B")
-                r1_cas_a = week.get("r1_casualties_A", 0)
-                r1_cas_b = week.get("r1_casualties_B", 0)
-                r2_cas_a = week.get("r2_casualties_A", 0)
-                r2_cas_b = week.get("r2_casualties_B", 0)
+            weekly_cas = week.get("weekly_casualties", {})
+            team_a_name = self.team_names["A"].get()
+            team_b_name = self.team_names["B"].get()
 
-                if lead_a:
-                    lost[lead_a] += r1_cas_a + r2_cas_a
-                    inflicted[lead_a] += r1_cas_b + r2_cas_b
-                if lead_b:
-                    lost[lead_b] += r1_cas_b + r2_cas_b
-                    inflicted[lead_b] += r1_cas_a + r2_cas_a
+            for team_name in [team_a_name, team_b_name]:
+                for round_key in ["r1", "r2"]:
+                    cas_data = weekly_cas.get(team_name, {}).get(round_key, {})
+                    for unit, deaths in cas_data.items():
+                        if deaths >= 0:
+                            lost[unit] += deaths
         
+        # Now, iterate again to distribute kills based on the final death counts
+        for week in weeks_to_process:
+            week_idx = self.season.index(week)
+            weekly_cas = week.get("weekly_casualties", {})
+            if not weekly_cas:
+                continue
+            
+            team_a_name = self.team_names["A"].get()
+            team_b_name = self.team_names["B"].get()
+
+            # Helper function to distribute kills
+            def distribute_kills(total_deaths_inflicted, friendly_units_data, current_week_idx):
+                if not friendly_units_data:
+                    return
+
+                # Create a list of dicts for easier processing
+                regiments = []
+                for unit, deaths in friendly_units_data.items():
+                    avg_players = self.get_unit_average_player_count(unit, max_week_index=current_week_idx)
+                    regiments.append({"name": unit, "men": avg_players, "deaths": lost.get(unit, 0)})
+
+                # Step 1: Compute participation weights
+                for r in regiments:
+                    # Use the total deaths for the unit from the first pass
+                    total_unit_deaths = r["deaths"]
+                    r["weight"] = r["men"] * (total_unit_deaths / (total_unit_deaths + c)) if (total_unit_deaths + c) != 0 else 0
+
+
+                # Step 2: Normalize weights
+                total_weight = sum(r.get("weight", 0) for r in regiments)
+                if total_weight == 0:  # Prevent division by zero if all weights are 0
+                    if regiments:
+                        # Fallback to even distribution if no weights could be calculated
+                        kills_per_unit = total_deaths_inflicted / len(regiments)
+                        for r in regiments:
+                            inflicted[r["name"]] += kills_per_unit
+                    return
+                
+                # Step 3: Assign kills
+                for r in regiments:
+                    est_kills = total_deaths_inflicted * (r["weight"] / total_weight)
+                    inflicted[r["name"]] += est_kills
+
+            # --- Round 1 ---
+            usa_cas_r1 = {u: d for u, d in weekly_cas.get(team_a_name, {}).get("r1", {}).items() if d >= 0}
+            csa_cas_r1 = {u: d for u, d in weekly_cas.get(team_b_name, {}).get("r1", {}).items() if d >= 0}
+            total_usa_deaths_r1 = sum(usa_cas_r1.values())
+            total_csa_deaths_r1 = sum(csa_cas_r1.values())
+            
+            distribute_kills(total_usa_deaths_r1, csa_cas_r1, week_idx)
+            distribute_kills(total_csa_deaths_r1, usa_cas_r1, week_idx)
+
+            # --- Round 2 ---
+            usa_cas_r2 = {u: d for u, d in weekly_cas.get(team_a_name, {}).get("r2", {}).items() if d >= 0}
+            csa_cas_r2 = {u: d for u, d in weekly_cas.get(team_b_name, {}).get("r2", {}).items() if d >= 0}
+            total_usa_deaths_r2 = sum(usa_cas_r2.values())
+            total_csa_deaths_r2 = sum(csa_cas_r2.values())
+            
+            distribute_kills(total_usa_deaths_r2, csa_cas_r2, week_idx)
+            distribute_kills(total_csa_deaths_r2, usa_cas_r2, week_idx)
+
         return inflicted, lost
 
     def show_casualties_table(self):
@@ -2009,6 +2062,11 @@ This tool identifies the strongest and weakest possible team compositions based 
         tk.Label(top_frame, text="Show Stats Up To:").pack(side=tk.LEFT, padx=(0, 5))
         week_selector = ttk.Combobox(top_frame, textvariable=week_selector_var, values=week_options, state="readonly", width=15)
         week_selector.pack(side=tk.LEFT)
+
+        bottom_frame = tk.Frame(win, padx=10, pady=5)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        tk.Button(bottom_frame, text="Input Weekly Casualties", command=self.open_weekly_casualty_input).pack(side=tk.LEFT)
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
@@ -2044,36 +2102,40 @@ This tool identifies the strongest and weakest possible team compositions based 
 
             inflicted, lost = self.calculate_casualties(max_week_index=max_week_idx)
             
-            # Count games played as lead for each unit up to the selected week
-            games_as_lead = defaultdict(int)
+            # Count games attended for each unit up to the selected week
+            games_attended = defaultdict(int)
             for week_idx, week in enumerate(self.season):
                 if week_idx > max_week_idx: break
-                if week.get("playoffs", False):
-                    for r_num in [1, 2]:
-                        lead_a = week.get(f"lead_A_r{r_num}")
-                        lead_b = week.get(f"lead_B_r{r_num}")
-                        if lead_a: games_as_lead[lead_a] += 1
-                        if lead_b: games_as_lead[lead_b] += 1
-                else:
-                    lead_a = week.get("lead_A")
-                    lead_b = week.get("lead_B")
-                    if lead_a: games_as_lead[lead_a] += 1
-                    if lead_b: games_as_lead[lead_b] += 1
+                weekly_cas = week.get("weekly_casualties", {})
+                team_a_name = self.team_names["A"].get()
+                team_b_name = self.team_names["B"].get()
+                
+                # Check attendance for round 1
+                r1_attended = set(weekly_cas.get(team_a_name, {}).get("r1", {}).keys()) | \
+                              set(weekly_cas.get(team_b_name, {}).get("r1", {}).keys())
+                for unit in r1_attended:
+                    games_attended[unit] += 1
+                
+                # Check attendance for round 2
+                r2_attended = set(weekly_cas.get(team_a_name, {}).get("r2", {}).keys()) | \
+                              set(weekly_cas.get(team_b_name, {}).get("r2", {}).keys())
+                for unit in r2_attended:
+                    games_attended[unit] += 1
 
             table_data = []
-            all_lead_units = set(inflicted.keys()) | set(lost.keys())
-            for unit in sorted(list(all_lead_units)):
+            all_involved_units = set(inflicted.keys()) | set(lost.keys())
+            for unit in sorted(list(all_involved_units)):
                 inflicted_count = inflicted.get(unit, 0)
                 lost_count = lost.get(unit, 0)
-                games = games_as_lead.get(unit, 0)
-                
+                games = games_attended.get(unit, 0)
+
                 kd_ratio_val = inflicted_count / lost_count if lost_count > 0 else float('inf')
                 kd_ratio_str = f"{kd_ratio_val:.2f}" if lost_count > 0 else "∞"
-                
+
                 inflicted_pg = f"{inflicted_count / games:.2f}" if games > 0 else "0.00"
                 lost_pg = f"{lost_count / games:.2f}" if games > 0 else "0.00"
 
-                table_data.append((unit, inflicted_count, lost_count, kd_ratio_str, inflicted_pg, lost_pg, kd_ratio_val))
+                table_data.append((unit, int(inflicted_count), lost_count, kd_ratio_str, inflicted_pg, lost_pg, kd_ratio_val))
 
             # Default sort by K/D
             table_data.sort(key=lambda x: x[6], reverse=True)
@@ -2741,6 +2803,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                     "round1_flipped": wk.get("round1_flipped", False),
                     "round2_flipped": wk.get("round2_flipped", False),
                     "unit_player_counts": wk.get("unit_player_counts", {}),
+                    "weekly_casualties": wk.get("weekly_casualties", {"USA": {"r1": {}, "r2": {}}, "CSA": {"r1": {}, "r2": {}}}),
                 } for i, wk in enumerate(self.season)
             ],
             "team_names": {k: v.get() for k, v in self.team_names.items()},
@@ -2784,6 +2847,7 @@ This tool identifies the strongest and weakest possible team compositions based 
                     "round1_flipped": wk_data.get("round1_flipped", False),
                     "round2_flipped": wk_data.get("round2_flipped", False),
                     "unit_player_counts": wk_data.get("unit_player_counts", {}),
+                    "weekly_casualties": wk_data.get("weekly_casualties", {"USA": {"r1": {}, "r2": {}}, "CSA": {"r1": {}, "r2": {}}}),
                 })
             for k, v in data.get("team_names", {}).items():
                 if k in self.team_names:
@@ -4741,6 +4805,142 @@ This tool identifies the strongest and weakest possible team compositions based 
             else:
                 self.win_chance_vars["A"].set("Win Chance: -")
                 self.win_chance_vars["B"].set("Win Chance: -")
+
+
+    def open_weekly_casualty_input(self):
+        """Opens a dialog to input per-unit attendance and casualties for the selected week."""
+        sel = self.week_list.curselection()
+        if not sel:
+            messagebox.showwarning("No Week Selected", "Please select a week to input casualties for.")
+            return
+        week_idx = sel[0]
+        week_data = self.season[week_idx]
+
+        dialog = tk.Toplevel(self.master)
+        dialog.title(f"Input Casualties for {week_data.get('name', f'Week {week_idx+1}')}")
+        dialog.geometry("700x550")
+        dialog.minsize(600, 400)
+        dialog.transient(self.master)
+        dialog.grab_set()
+
+        # Data store for the dialog
+        dialog_data = {
+            self.team_names["A"].get(): {"casualties": {"r1": {}, "r2": {}}},
+            self.team_names["B"].get(): {"casualties": {"r1": {}, "r2": {}}}
+        }
+
+        main_frame = ttk.Frame(dialog, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        main_frame.rowconfigure(0, weight=1)
+
+        def create_team_panel(parent, team_name, team_id):
+            panel = ttk.LabelFrame(parent, text=f"{team_name} Units")
+            panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            panel.columnconfigure(0, weight=1)
+            panel.rowconfigure(1, weight=1)
+
+            # Attending List
+            ttk.Label(panel, text="Attending").grid(row=0, column=0, sticky="ew")
+            attending_list = tk.Listbox(panel, selectmode=tk.EXTENDED)
+            attending_list.grid(row=1, column=0, sticky="nsew", padx=5)
+            
+            # Auto-populate with units from the selected week's roster
+            roster_units = sorted(list(week_data.get(team_id, set())))
+            for unit in roster_units:
+                attending_list.insert(tk.END, unit)
+
+            # --- Casualties Frames ---
+            cas_main_frame = ttk.Frame(panel)
+            cas_main_frame.grid(row=2, column=0, sticky="nsew", pady=(10,0))
+            cas_main_frame.columnconfigure(0, weight=1)
+            cas_main_frame.columnconfigure(1, weight=1)
+
+            def create_casualty_sub_panel(parent_frame, round_num):
+                round_key = f"r{round_num}"
+                cas_frame = ttk.LabelFrame(parent_frame, text=f"Round {round_num} Casualties")
+                cas_frame.pack(fill=tk.BOTH, expand=True, padx=(0, 2), pady=(0,5))
+                
+                # This frame will contain the dynamically added casualty entries
+                entries_frame = ttk.Frame(cas_frame)
+                entries_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                entries_frame.columnconfigure(1, weight=1)
+                
+                # Ensure the dict exists
+                dialog_data[team_name]["casualties"][round_key] = {}
+
+                # Load existing data for this week for the specific round
+                existing_casualties = week_data.get("weekly_casualties", {}).get(team_name, {}).get(round_key, {})
+
+                # Create new entries for currently listed units
+                for i, unit in enumerate(attending_list.get(0, tk.END)):
+                    ttk.Label(entries_frame, text=f"{unit}:").grid(row=i, column=0, sticky="w")
+                    var = tk.StringVar(value=str(existing_casualties.get(unit, 0)))
+                    entry = ttk.Entry(entries_frame, textvariable=var, width=8)
+                    entry.grid(row=i, column=1, sticky="w", padx=5)
+                    dialog_data[team_name]["casualties"][round_key][unit] = var
+
+            # Create panels for both rounds
+            r1_frame = ttk.Frame(cas_main_frame)
+            r1_frame.grid(row=0, column=0, sticky="nsew")
+            create_casualty_sub_panel(r1_frame, 1)
+
+            r2_frame = ttk.Frame(cas_main_frame)
+            r2_frame.grid(row=0, column=1, sticky="nsew")
+            create_casualty_sub_panel(r2_frame, 2)
+
+            return attending_list
+
+        team_a_name = self.team_names["A"].get()
+        team_b_name = self.team_names["B"].get()
+        
+        usa_attending = create_team_panel(main_frame, team_a_name, "A")
+        csa_attending = create_team_panel(main_frame, team_b_name, "B")
+
+        def on_save():
+            try:
+                team_a_name = self.team_names["A"].get()
+                team_b_name = self.team_names["B"].get()
+                
+                # Helper to process a round's data
+                def process_round_casualties(team_name, round_key):
+                    casualties = {}
+                    if round_key in dialog_data[team_name]["casualties"]:
+                        for unit, var in dialog_data[team_name]["casualties"][round_key].items():
+                            try:
+                                casualties[unit] = int(var.get()) if var.get() else 0
+                            except ValueError:
+                                casualties[unit] = 0 # Default to 0 on invalid input
+                    return casualties
+
+                # Process both rounds for both teams
+                usa_r1_cas = process_round_casualties(team_a_name, "r1")
+                usa_r2_cas = process_round_casualties(team_a_name, "r2")
+                csa_r1_cas = process_round_casualties(team_b_name, "r1")
+                csa_r2_cas = process_round_casualties(team_b_name, "r2")
+
+                week_data["weekly_casualties"] = {
+                    team_a_name: {"r1": usa_r1_cas, "r2": usa_r2_cas},
+                    team_b_name: {"r1": csa_r1_cas, "r2": csa_r2_cas},
+                }
+
+                # Recalculate and save the main casualty numbers for the week
+                week_data["r1_casualties_A"] = sum(usa_r1_cas.values())
+                week_data["r1_casualties_B"] = sum(csa_r1_cas.values())
+                week_data["r2_casualties_A"] = sum(usa_r2_cas.values())
+                week_data["r2_casualties_B"] = sum(csa_r2_cas.values())
+
+
+                self.on_week_select() # Refresh main window UI
+                dialog.destroy()
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Casualties must be whole numbers.", parent=dialog)
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=10)
+        ttk.Button(button_frame, text="Save", command=on_save).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
 
 if __name__ == "__main__":
