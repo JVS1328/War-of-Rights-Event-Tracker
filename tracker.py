@@ -4808,7 +4808,7 @@ This tool identifies the strongest and weakest possible team compositions based 
 
 
     def load_casualties_from_csv(self, team_name, round_key, dialog_data):
-        """Loads casualties from a CSV file and populates the casualty inputs with fuzzy matching."""
+        """Loads casualties and player counts from a CSV file and populates the casualty inputs with fuzzy matching."""
         csv_path = filedialog.askopenfilename(
             title="Select Casualty CSV",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
@@ -4830,7 +4830,18 @@ This tool identifies the strongest and weakest possible team compositions based 
                 normalized_map = {normalize_name(unit): unit for unit in available_units}
                 
                 casualties_loaded = 0
+                player_counts_loaded = 0
                 unmatched = []
+                
+                # Get current week data to update player counts
+                sel = self.week_list.curselection()
+                if sel:
+                    week_idx = sel[0]
+                    week_data = self.season[week_idx]
+                    
+                    # Ensure unit_player_counts exists in week_data
+                    if "unit_player_counts" not in week_data:
+                        week_data["unit_player_counts"] = {}
                 
                 for row in reader:
                     if len(row) < 2:
@@ -4845,8 +4856,18 @@ This tool identifies the strongest and weakest possible team compositions based 
                     except (ValueError, IndexError):
                         continue
                     
+                    # Try to get player count from Column C (index 2)
+                    player_count = None
+                    if len(row) >= 3:
+                        try:
+                            player_count = int(row[2])
+                        except (ValueError, IndexError):
+                            player_count = None
+                    
                     # Try exact match first
+                    matched_unit = None
                     if csv_regiment_name in available_units:
+                        matched_unit = csv_regiment_name
                         dialog_data[team_name]["casualties"][round_key][csv_regiment_name].set(str(casualties))
                         casualties_loaded += 1
                     else:
@@ -4858,9 +4879,35 @@ This tool identifies the strongest and weakest possible team compositions based 
                             casualties_loaded += 1
                         else:
                             unmatched.append(csv_regiment_name)
+                    
+                    # Update player counts if we have a match and player count data
+                    if matched_unit and player_count is not None and sel:
+                        # Initialize unit's player count dict if it doesn't exist
+                        if matched_unit not in week_data["unit_player_counts"]:
+                            week_data["unit_player_counts"][matched_unit] = {"min": "0", "max": "100"}
+                        
+                        # Round 1 (r1) -> update max, Round 2 (r2) -> update min
+                        if round_key == "r1":
+                            week_data["unit_player_counts"][matched_unit]["max"] = str(player_count)
+                        elif round_key == "r2":
+                            week_data["unit_player_counts"][matched_unit]["min"] = str(player_count)
+                        
+                        # Swap if min > max
+                        try:
+                            min_val = int(week_data["unit_player_counts"][matched_unit]["min"])
+                            max_val = int(week_data["unit_player_counts"][matched_unit]["max"])
+                            if min_val > max_val:
+                                week_data["unit_player_counts"][matched_unit]["min"] = str(max_val)
+                                week_data["unit_player_counts"][matched_unit]["max"] = str(min_val)
+                        except (ValueError, KeyError):
+                            pass
+                        
+                        player_counts_loaded += 1
                 
                 # Show results
                 msg = f"Loaded casualties for {casualties_loaded} regiment(s)."
+                if player_counts_loaded > 0:
+                    msg += f"\nLoaded player counts for {player_counts_loaded} regiment(s)."
                 if unmatched:
                     msg += f"\n\nUnmatched regiments ({len(unmatched)}):\n" + "\n".join(unmatched[:10])
                     if len(unmatched) > 10:

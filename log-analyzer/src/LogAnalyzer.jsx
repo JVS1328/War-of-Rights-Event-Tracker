@@ -1063,10 +1063,11 @@ const WarOfRightsLogAnalyzer = () => {
     if (!regimentStats.length || !selectedRound) return;
 
     const csvRows = [
-      ['Regiment Name', 'Casualties'],
+      ['Regiment Name', 'Casualties', 'Player Count'],
       ...regimentStats.map(regiment => [
         regiment.name,
-        regiment.casualties
+        regiment.casualties,
+        Object.keys(regiment.players).length
       ])
     ];
 
