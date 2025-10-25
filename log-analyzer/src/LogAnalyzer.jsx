@@ -43,7 +43,7 @@ const WarOfRightsLogAnalyzer = () => {
   const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(savedState?.showAllTimeInCombat || false);
   const [showWarning, setShowWarning] = useState(false);
 
-  // Save state to localStorage whenever relevant state changes
+  // Save state to localStorage whenever relevant state changes!
   useEffect(() => {
     const stateToSave = {
       rounds,
