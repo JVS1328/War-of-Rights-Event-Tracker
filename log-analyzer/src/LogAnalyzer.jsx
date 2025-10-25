@@ -1234,7 +1234,7 @@ const WarOfRightsLogAnalyzer = () => {
                         {round.kills.length} casualties
                       </div>
                       <div className="text-sm opacity-75">
-                        {Object.keys(round.playerSessions).length} players
+                        {new Set(round.kills.map(k => k.player)).size} players
                       </div>
                     </button>
                   ))}
