@@ -173,8 +173,7 @@ const WarOfRightsLogAnalyzer = () => {
   const getAvailableRegiments = () => {
     if (!selectedRound) return [];
     
-    const roundKey = `round_${selectedRound.id}`;
-    const assignments = playerAssignments[roundKey] || {};
+    const assignments = playerAssignments || {};
     const regimentMap = {};
     
     // Collect all regiments and normalize them
@@ -194,8 +193,7 @@ const WarOfRightsLogAnalyzer = () => {
   const generateSmartMatchPreview = () => {
     if (!selectedRound) return;
 
-    const roundKey = `round_${selectedRound.id}`;
-    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    const currentAssignments = { ...playerAssignments } || {};
     
     // Build regiment list with counts and player lists
     const regimentData = {};
@@ -348,8 +346,7 @@ const WarOfRightsLogAnalyzer = () => {
   const applySmartMatch = () => {
     if (!smartMatchPreview || !selectedRound) return;
 
-    const roundKey = `round_${selectedRound.id}`;
-    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    const currentAssignments = { ...playerAssignments } || {};
     
     let totalChanges = 0;
     smartMatchPreview.forEach(match => {
@@ -361,10 +358,7 @@ const WarOfRightsLogAnalyzer = () => {
       });
     });
 
-    setPlayerAssignments({
-      ...playerAssignments,
-      [roundKey]: currentAssignments
-    });
+    setPlayerAssignments(currentAssignments);
 
     // Refresh stats
     analyzeRound(selectedRound, currentAssignments);
@@ -483,8 +477,7 @@ const WarOfRightsLogAnalyzer = () => {
   };
 
   const analyzeRound = (round, customAssignments = null) => {
-    const roundKey = `round_${round.id}`;
-    const assignments = customAssignments || playerAssignments[roundKey] || {};
+    const assignments = customAssignments || playerAssignments || {};
     const regimentCasualties = {};
     const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
     const playerSessionCounts = {}; // Track how many sessions each player has
@@ -673,14 +666,10 @@ const WarOfRightsLogAnalyzer = () => {
   const savePlayerEdit = () => {
     if (!editingPlayer || !newRegiment || !selectedRound) return;
 
-    const roundKey = `round_${selectedRound.id}`;
-    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    const currentAssignments = { ...playerAssignments } || {};
     currentAssignments[editingPlayer] = newRegiment;
 
-    setPlayerAssignments({
-      ...playerAssignments,
-      [roundKey]: currentAssignments
-    });
+    setPlayerAssignments(currentAssignments);
 
     // Clear this player from pending edits
     const updatedPending = { ...pendingEdits };
@@ -704,18 +693,14 @@ const WarOfRightsLogAnalyzer = () => {
   const saveAllEdits = () => {
     if (!selectedRound || Object.keys(pendingEdits).length === 0) return;
 
-    const roundKey = `round_${selectedRound.id}`;
-    const currentAssignments = { ...playerAssignments[roundKey] } || {};
+    const currentAssignments = { ...playerAssignments } || {};
     
     // Apply all pending edits
     Object.entries(pendingEdits).forEach(([playerName, regiment]) => {
       currentAssignments[playerName] = regiment;
     });
 
-    setPlayerAssignments({
-      ...playerAssignments,
-      [roundKey]: currentAssignments
-    });
+    setPlayerAssignments(currentAssignments);
 
     // Clear pending edits and editing state
     setPendingEdits({});
@@ -730,8 +715,7 @@ const WarOfRightsLogAnalyzer = () => {
 
   const getPlayerRegiment = (playerName) => {
     if (!selectedRound) return normalizeRegimentTag(extractRegimentTag(playerName));
-    const roundKey = `round_${selectedRound.id}`;
-    const assigned = playerAssignments[roundKey]?.[playerName];
+    const assigned = playerAssignments[playerName];
     return assigned ? normalizeRegimentTag(assigned) : normalizeRegimentTag(extractRegimentTag(playerName));
   };
 
@@ -835,8 +819,7 @@ const WarOfRightsLogAnalyzer = () => {
   const getRegimentLossesOverTime = () => {
     if (!selectedRound) return { buckets: [], regiments: [], bucketSeconds: [] };
     
-    const roundKey = `round_${selectedRound.id}`;
-    const assignments = playerAssignments[roundKey] || {};
+    const assignments = playerAssignments || {};
     const roundDurationSeconds = getRoundDurationSeconds();
     
     if (roundDurationSeconds === 0) return { buckets: [], regiments: [], bucketSeconds: [] };
@@ -943,8 +926,7 @@ const WarOfRightsLogAnalyzer = () => {
   const getTopIndividualDeaths = () => {
     if (!selectedRound) return [];
     
-    const roundKey = `round_${selectedRound.id}`;
-    const assignments = playerAssignments[roundKey] || {};
+    const assignments = playerAssignments || {};
     const playerDeaths = {};
     const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
     const playerSessionCounts = {}; // Track how many sessions each player has
@@ -989,8 +971,7 @@ const WarOfRightsLogAnalyzer = () => {
   const getTimeInCombat = (showAll = false) => {
     if (!selectedRound || !regimentStats.length) return [];
     
-    const roundKey = `round_${selectedRound.id}`;
-    const assignments = playerAssignments[roundKey] || {};
+    const assignments = playerAssignments || {};
     const roundDurationSeconds = getRoundDurationSeconds();
     
     if (roundDurationSeconds === 0) return [];
