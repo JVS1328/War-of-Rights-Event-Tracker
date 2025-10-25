@@ -1233,6 +1233,9 @@ const WarOfRightsLogAnalyzer = () => {
                       <div className="text-sm opacity-75">
                         {round.kills.length} casualties
                       </div>
+                      <div className="text-sm opacity-75">
+                        {Object.keys(round.playerSessions).length} players
+                      </div>
                     </button>
                   ))}
                 </div>
