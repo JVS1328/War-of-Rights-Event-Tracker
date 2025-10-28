@@ -967,7 +967,7 @@ const WarOfRightsLogAnalyzer = () => {
       .slice(0, 10);
   };
 
-  // Get time in combat per regiment (based on first and last death)
+  // Get time in combat per regiment (based on periods with 5%+ casualty rate per minute)
   const getTimeInCombat = (showAll = false) => {
     if (!selectedRound || !regimentStats.length) return [];
     
@@ -1015,7 +1015,7 @@ const WarOfRightsLogAnalyzer = () => {
       }
       regimentPlayerCounts[regiment].add(death.player);
       
-      // Track death times for average combat duration calculation
+      // Track death times for combat period calculation
       if (!regimentDeathTimes[regiment]) {
         regimentDeathTimes[regiment] = [];
       }
@@ -1044,27 +1044,51 @@ const WarOfRightsLogAnalyzer = () => {
     const sorted = Object.values(regimentCombatTime)
       .filter(reg => regimentPlayerCounts[reg.name] && regimentPlayerCounts[reg.name].size >= 2)
       .map(reg => {
-        // Calculate average combat duration (active combat periods)
-        // Group deaths into combat periods - deaths within 60 seconds are considered same combat period
+        const playerCount = regimentPlayerCounts[reg.name].size;
         const deathTimes = regimentDeathTimes[reg.name].sort((a, b) => a - b);
-        const combatPeriods = [];
-        let currentPeriod = null;
-        const combatGapThreshold = 60; // 60 seconds gap = new combat period
         
-        deathTimes.forEach(deathTime => {
-          if (!currentPeriod) {
-            currentPeriod = { start: deathTime, end: deathTime };
-          } else if (deathTime - currentPeriod.end <= combatGapThreshold) {
-            // Extend current combat period
-            currentPeriod.end = deathTime;
-          } else {
-            // Start new combat period
-            combatPeriods.push(currentPeriod);
-            currentPeriod = { start: deathTime, end: deathTime };
+        // Calculate combat periods dynamically based on casualty rate
+        // Combat starts when we see ≥5% casualties in a rolling window, ends when it drops below
+        const combatPeriods = [];
+        const windowSize = 30; // 30 second rolling window to check casualty rate
+        const casualtyThreshold = Math.max(1, Math.ceil(playerCount * 0.05)); // 5% threshold, minimum 1
+        
+        let currentPeriod = null;
+        
+        // Process each death and check if we're in a combat period
+        deathTimes.forEach((deathTime, index) => {
+          // Count deaths in the rolling window ending at this death
+          const windowStart = deathTime - windowSize;
+          const deathsInWindow = deathTimes.filter(t => t > windowStart && t <= deathTime).length;
+          
+          const inCombat = deathsInWindow >= casualtyThreshold;
+          
+          if (inCombat) {
+            if (!currentPeriod) {
+              // Start new combat period
+              currentPeriod = { start: deathTime, end: deathTime };
+            } else {
+              // Extend current combat period
+              currentPeriod.end = deathTime;
+            }
+          } else if (currentPeriod) {
+            // Check if we should end the current period
+            // Look ahead to see if combat picks up again soon
+            const lookAheadWindow = 15; // 15 seconds grace period
+            const nextDeaths = deathTimes.slice(index + 1).filter(t => t <= deathTime + lookAheadWindow);
+            
+            if (nextDeaths.length === 0) {
+              // No more deaths soon, end the period
+              combatPeriods.push(currentPeriod);
+              currentPeriod = null;
+            } else {
+              // Keep period open, might pick up again
+              currentPeriod.end = deathTime;
+            }
           }
         });
         
-        // Don't forget the last period
+        // Close any open period
         if (currentPeriod) {
           combatPeriods.push(currentPeriod);
         }
@@ -1080,13 +1104,14 @@ const WarOfRightsLogAnalyzer = () => {
         
         return {
           ...reg,
-          combatDuration: reg.lastDeath - reg.firstDeath,
-          combatDurationFormatted: formatSeconds(reg.lastDeath - reg.firstDeath),
+          combatDuration: totalActiveCombatTime,
+          combatDurationFormatted: formatSeconds(totalActiveCombatTime),
           firstDeathFormatted: formatSeconds(reg.firstDeath),
           lastDeathFormatted: formatSeconds(reg.lastDeath),
           avgCombatDuration: avgCombatDuration,
           avgCombatDurationFormatted: formatSeconds(avgCombatDuration),
-          combatPeriods: combatPeriods.length
+          combatPeriods: combatPeriods.length,
+          casualtyThreshold: casualtyThreshold
         };
       })
       .sort((a, b) => b.combatDuration - a.combatDuration);
@@ -1098,6 +1123,55 @@ const WarOfRightsLogAnalyzer = () => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}m ${secs}s`;
+  };
+
+  // Get first and last deaths of the round (excluding initial spawns)
+  const getFirstAndLastDeaths = () => {
+    if (!selectedRound) return { firstDeath: null, lastDeath: null };
+    
+    const assignments = playerAssignments || {};
+    const playerRespawnSkipCount = {};
+    const playerSessionCounts = {};
+    const validDeaths = [];
+    
+    // Count sessions for each player
+    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
+    
+    // Collect all valid deaths (excluding initial spawns)
+    selectedRound.kills.forEach((death, index) => {
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      // Skip initial spawns
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
+        return;
+      }
+      
+      const regiment = normalizeRegimentTag(
+        assignments[death.player] || extractRegimentTag(death.player)
+      );
+      
+      validDeaths.push({
+        player: death.player,
+        regiment: regiment,
+        index: index
+      });
+    });
+    
+    if (validDeaths.length === 0) {
+      return { firstDeath: null, lastDeath: null };
+    }
+    
+    return {
+      firstDeath: validDeaths[0],
+      lastDeath: validDeaths[validDeaths.length - 1]
+    };
   };
 
   const exportRegimentCasualtiesCSV = () => {
@@ -1807,7 +1881,7 @@ const WarOfRightsLogAnalyzer = () => {
                   </button>
                 </div>
                 <div className="mb-3 text-sm text-slate-400">
-                  <p>Combat periods are calculated by grouping deaths within 60 seconds. Excludes initial spawns.</p>
+                  <p>Combat periods start when ≥5% of the regiment dies within 30 seconds and end when the casualty rate drops below that threshold. Excludes initial spawns.</p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -1843,6 +1917,77 @@ const WarOfRightsLogAnalyzer = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              {/* First and Last Deaths */}
+              <div className="bg-slate-700 rounded-lg p-6">
+                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                  <Skull className="w-6 h-6" />
+                  First & Last Deaths
+                </h2>
+                {(() => {
+                  const { firstDeath, lastDeath } = getFirstAndLastDeaths();
+                  
+                  if (!firstDeath && !lastDeath) {
+                    return (
+                      <p className="text-slate-400 text-center py-8">
+                        No deaths recorded in this round (excluding initial spawns)
+                      </p>
+                    );
+                  }
+                  
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* First Death */}
+                      {firstDeath && (
+                        <div className="bg-slate-600 rounded-lg p-6">
+                          <h3 className="text-lg font-bold text-green-400 mb-4 flex items-center gap-2">
+                            <Skull className="w-5 h-5" />
+                            First Death
+                          </h3>
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-sm text-slate-400 mb-1">Player</div>
+                              <div className="text-white font-semibold text-lg break-words">
+                                {firstDeath.player}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-slate-400 mb-1">Regiment</div>
+                              <div className="inline-block px-3 py-1 bg-amber-600 text-white rounded font-semibold">
+                                {firstDeath.regiment}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Last Death */}
+                      {lastDeath && (
+                        <div className="bg-slate-600 rounded-lg p-6">
+                          <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2">
+                            <Skull className="w-5 h-5" />
+                            Last Death
+                          </h3>
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-sm text-slate-400 mb-1">Player</div>
+                              <div className="text-white font-semibold text-lg break-words">
+                                {lastDeath.player}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-slate-400 mb-1">Regiment</div>
+                              <div className="inline-block px-3 py-1 bg-amber-600 text-white rounded font-semibold">
+                                {lastDeath.regiment}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
