@@ -81,6 +81,7 @@ const SeasonTracker = () => {
 
   // State management
   const [units, setUnits] = useState(savedState?.units || []);
+  const [nonTokenUnits, setNonTokenUnits] = useState(savedState?.nonTokenUnits || []);
   const [weeks, setWeeks] = useState(savedState?.weeks || []);
   const [selectedWeek, setSelectedWeek] = useState(savedState?.selectedWeek || null);
   const [teamNames, setTeamNames] = useState(savedState?.teamNames || { A: 'USA', B: 'CSA' });
@@ -119,6 +120,8 @@ const SeasonTracker = () => {
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
+  const [showNonTokenElo, setShowNonTokenElo] = useState(true);
+  const [rankByElo, setRankByElo] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   const [editingWeek, setEditingWeek] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
@@ -137,6 +140,7 @@ const SeasonTracker = () => {
   useEffect(() => {
     const stateToSave = {
       units,
+      nonTokenUnits,
       weeks,
       selectedWeek,
       teamNames,
@@ -154,7 +158,7 @@ const SeasonTracker = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases]);
+  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases]);
 
   // Unit Management
   const addUnit = () => {
@@ -171,11 +175,21 @@ const SeasonTracker = () => {
     if (!confirm(`Remove ${unitName}? This will remove it from all weeks.`)) return;
     
     setUnits(units.filter(u => u !== unitName));
+    setNonTokenUnits(nonTokenUnits.filter(u => u !== unitName));
     setWeeks(weeks.map(week => ({
       ...week,
       teamA: week.teamA.filter(u => u !== unitName),
       teamB: week.teamB.filter(u => u !== unitName)
     })));
+  };
+
+  // Toggle non-token status for a unit
+  const toggleNonTokenStatus = (unitName) => {
+    if (nonTokenUnits.includes(unitName)) {
+      setNonTokenUnits(nonTokenUnits.filter(u => u !== unitName));
+    } else {
+      setNonTokenUnits([...nonTokenUnits, unitName]);
+    }
   };
 
   // Week Management
@@ -272,6 +286,9 @@ const SeasonTracker = () => {
     const stats = {};
     
     units.forEach(unit => {
+      // Skip non-token units in point calculations
+      if (nonTokenUnits.includes(unit)) return;
+      
       stats[unit] = {
         points: 0,
         leadWins: 0,
@@ -309,6 +326,9 @@ const SeasonTracker = () => {
         // Award points to winning team (skip in playoffs)
         if (!isPlayoffs) {
           winningTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+            
             if (unit === leadWinner) {
               stats[unit].points += pointSystem.winLead;
               stats[unit].leadWins++;
@@ -320,6 +340,9 @@ const SeasonTracker = () => {
 
           // Award points to losing team
           losingTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+            
             if (unit === leadLoser) {
               stats[unit].points += pointSystem.lossLead;
               stats[unit].leadLosses++;
@@ -331,6 +354,9 @@ const SeasonTracker = () => {
         } else {
           // In playoffs, still track wins/losses but no points
           winningTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+            
             if (unit === leadWinner) {
               stats[unit].leadWins++;
             } else {
@@ -339,6 +365,9 @@ const SeasonTracker = () => {
           });
           
           losingTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+            
             if (unit === leadLoser) {
               stats[unit].leadLosses++;
             } else {
@@ -354,6 +383,9 @@ const SeasonTracker = () => {
         const sweepLead = week[`lead${week.round1Winner}`];
         
         sweepTeam.forEach(unit => {
+          // Skip non-token units
+          if (!stats[unit]) return;
+          
           if (unit === sweepLead) {
             stats[unit].points += pointSystem.bonus2_0Lead;
           } else {
@@ -405,6 +437,7 @@ const SeasonTracker = () => {
     // Previous week stats (if exists)
     let previousStats = {};
     let previousElo = {};
+    let previousEloRanks = {};
     if (previousWeekIdx >= 0) {
       // Simplified: just get previous week's calculated points
       const prevWeeks = weeks.slice(0, previousWeekIdx + 1);
@@ -476,9 +509,18 @@ const SeasonTracker = () => {
       previousStats = tempStats;
       const prevEloData = calculateEloRatings(previousWeekIdx);
       previousElo = prevEloData.eloRatings;
+      
+      // Calculate previous Elo ranks
+      const prevEloStandings = Object.entries(previousElo)
+        .map(([unit, elo]) => ({ unit, elo }))
+        .sort((a, b) => b.elo - a.elo);
+      
+      prevEloStandings.forEach((stat, index) => {
+        previousEloRanks[stat.unit] = index + 1;
+      });
     }
 
-    // Calculate previous ranks
+    // Calculate previous ranks (by points)
     const previousRanks = {};
     if (previousWeekIdx >= 0) {
       const prevStandings = Object.entries(previousStats)
@@ -498,6 +540,7 @@ const SeasonTracker = () => {
         const eloDelta = currentEloValue - previousEloValue;
         
         const previousRank = previousRanks[unit] || null;
+        const previousEloRank = previousEloRanks[unit] || null;
 
         return {
           unit,
@@ -505,14 +548,28 @@ const SeasonTracker = () => {
           elo: currentEloValue,
           eloDelta,
           previousRank,
+          previousEloRank,
           rounds: roundsPlayed[unit] || 0
         };
       })
-      .sort((a, b) => b.points - a.points);
+      .sort((a, b) => rankByElo ? b.elo - a.elo : b.points - a.points);
 
     standings.forEach((stat, index) => {
       stat.currentRank = index + 1;
-      stat.rankDelta = stat.previousRank ? stat.previousRank - stat.currentRank : null;
+      
+      // Check if current week is a playoff week
+      const currentWeek = currentWeekIdx >= 0 ? weeks[currentWeekIdx] : null;
+      const isCurrentWeekPlayoff = currentWeek?.isPlayoffs || false;
+      
+      // If ranking by points and current week is playoffs, don't show rank delta
+      // (because points don't change during playoffs)
+      if (!rankByElo && isCurrentWeekPlayoff) {
+        stat.rankDelta = null;
+      } else {
+        stat.rankDelta = rankByElo
+          ? (stat.previousEloRank ? stat.previousEloRank - stat.currentRank : null)
+          : (stat.previousRank ? stat.previousRank - stat.currentRank : null);
+      }
     });
 
     return standings;
@@ -1204,6 +1261,7 @@ const SeasonTracker = () => {
   const exportData = () => {
     const data = {
       units,
+      nonTokenUnits,
       weeks,
       teamNames,
       pointSystem,
@@ -1364,6 +1422,7 @@ const SeasonTracker = () => {
         });
         
         setUnits(data.units || []);
+        setNonTokenUnits(data.nonTokenUnits || data.non_token_units || []);
         setWeeks(importedWeeks);
         setTeamNames(importedTeamNames);
         setPointSystem(importedPointSystem);
@@ -2223,40 +2282,58 @@ const SeasonTracker = () => {
                 </button>
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {units.map((unit) => (
-                  <div
-                    key={unit}
-                    className="flex justify-between items-center p-3 bg-slate-600 rounded-lg"
-                  >
-                    <span className="text-white font-medium">{unit}</span>
-                    <div className="flex gap-2">
-                      {selectedWeek && (
-                        <>
-                          <button
-                            onClick={() => moveUnitToTeam(unit, 'A')}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
-                            title={`Add to ${teamNames.A}`}
-                          >
-                            → A
-                          </button>
-                          <button
-                            onClick={() => moveUnitToTeam(unit, 'B')}
-                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
-                            title={`Add to ${teamNames.B}`}
-                          >
-                            → B
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => removeUnit(unit)}
-                        className="p-1 hover:bg-red-600 rounded transition"
-                      >
-                        <Trash2 className="w-4 h-4 text-white" />
-                      </button>
+                {units.map((unit) => {
+                  const isNonToken = nonTokenUnits.includes(unit);
+                  return (
+                    <div
+                      key={unit}
+                      className="flex justify-between items-center p-3 bg-slate-600 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleNonTokenStatus(unit)}
+                          className={`px-2 py-1 rounded text-xs font-bold transition ${
+                            isNonToken
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                          }`}
+                          title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
+                        >
+                          {isNonToken ? '*' : '○'}
+                        </button>
+                        <span className={`font-medium ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                          {unit}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {selectedWeek && (
+                          <>
+                            <button
+                              onClick={() => moveUnitToTeam(unit, 'A')}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                              title={`Add to ${teamNames.A}`}
+                            >
+                              → A
+                            </button>
+                            <button
+                              onClick={() => moveUnitToTeam(unit, 'B')}
+                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                              title={`Add to ${teamNames.B}`}
+                            >
+                              → B
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => removeUnit(unit)}
+                          className="p-1 hover:bg-red-600 rounded transition"
+                        >
+                          <Trash2 className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -2267,16 +2344,26 @@ const SeasonTracker = () => {
                   <Award className="w-6 h-6" />
                   Standings
                 </h2>
-                {divisions && divisions.length > 0 && (
+                <div className="flex gap-2">
                   <button
-                    onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
-                    title={showGroupedStandings ? "Show All" : "Group by Division"}
+                    onClick={() => setRankByElo(!rankByElo)}
+                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm transition flex items-center gap-1"
+                    title={rankByElo ? "Rank by Points" : "Rank by Elo"}
                   >
-                    {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                    {showGroupedStandings ? "Grouped" : "All"}
+                    <TrendingUp className="w-3 h-3" />
+                    {rankByElo ? "Elo" : "Points"}
                   </button>
-                )}
+                  {divisions && divisions.length > 0 && (
+                    <button
+                      onClick={() => setShowGroupedStandings(!showGroupedStandings)}
+                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
+                      title={showGroupedStandings ? "Show All" : "Group by Division"}
+                    >
+                      {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                      {showGroupedStandings ? "Grouped" : "All"}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {showGroupedStandings && divisions && divisions.length > 0 ? (
@@ -2288,16 +2375,18 @@ const SeasonTracker = () => {
                         {group.name}
                       </h3>
                       <div className="space-y-2">
-                        {group.units.map((stat) => (
-                          <div
-                            key={stat.unit}
-                            className="bg-slate-600 rounded-lg p-3"
-                          >
-                            <div className="flex justify-between items-center mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-amber-400 font-bold text-lg">
-                                  #{stat.divisionRank || stat.currentRank}
-                                </span>
+                        {group.units.map((stat) => {
+                          const isNonToken = nonTokenUnits.includes(stat.unit);
+                          return (
+                            <div
+                              key={stat.unit}
+                              className="bg-slate-600 rounded-lg p-3"
+                            >
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-amber-400 font-bold text-lg">
+                                    #{stat.divisionRank || stat.currentRank}
+                                  </span>
                                 {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                   <span className={`text-xs font-semibold ${
                                     stat.rankDelta > 0 ? 'text-green-400' :
@@ -2309,13 +2398,19 @@ const SeasonTracker = () => {
                                      '−'}
                                   </span>
                                 )}
-                                <span className="text-white font-semibold">
-                                  {stat.unit}
+                                <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                  {isNonToken ? '*' : ''}{stat.unit}
                                 </span>
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-1 text-xs">
-                                  <TrendingUp className="w-3 h-3 text-cyan-400" />
+                                  {stat.eloDelta > 0 ? (
+                                    <TrendingUp className="w-3 h-3 text-blue-400" />
+                                  ) : stat.eloDelta < 0 ? (
+                                    <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                  ) : (
+                                    <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
+                                  )}
                                   <span className="text-cyan-400 font-semibold">
                                     {Math.round(stat.elo)}
                                   </span>
@@ -2364,22 +2459,25 @@ const SeasonTracker = () => {
                               </div>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))
                 ) : (
                   // Ungrouped view - all units with delta indicators
-                  getStandingsWithChanges().map((stat, index) => (
-                    <div
-                      key={stat.unit}
-                      className="bg-slate-600 rounded-lg p-3"
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-amber-400 font-bold text-lg">
-                            #{index + 1}
-                          </span>
+                  getStandingsWithChanges().map((stat, index) => {
+                    const isNonToken = nonTokenUnits.includes(stat.unit);
+                    return (
+                      <div
+                        key={stat.unit}
+                        className="bg-slate-600 rounded-lg p-3"
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-amber-400 font-bold text-lg">
+                              #{index + 1}
+                            </span>
                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                             <span className={`text-xs font-semibold ${
                               stat.rankDelta > 0 ? 'text-green-400' :
@@ -2391,13 +2489,19 @@ const SeasonTracker = () => {
                                '−'}
                             </span>
                           )}
-                          <span className="text-white font-semibold">
-                            {stat.unit}
+                          <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                            {isNonToken ? '*' : ''}{stat.unit}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1 text-xs">
-                            <TrendingUp className="w-3 h-3 text-cyan-400" />
+                            {stat.eloDelta > 0 ? (
+                              <TrendingUp className="w-3 h-3 text-blue-400" />
+                            ) : stat.eloDelta < 0 ? (
+                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                            ) : (
+                              <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
+                            )}
                             <span className="text-cyan-400 font-semibold">
                               {Math.round(stat.elo)}
                             </span>
@@ -2446,7 +2550,8 @@ const SeasonTracker = () => {
                         </div>
                       )}
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -3330,7 +3435,7 @@ const SeasonTracker = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {tableData.slice(0, 10).map((row, idx) => (
+                                {tableData.map((row, idx) => (
                                   <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-slate-700' : 'bg-slate-600'}`}>
                                     <td className="text-white py-2 px-2">{row.unit}</td>
                                     <td className="text-green-400 text-center py-2 px-2">{row.inflicted}</td>
@@ -3345,11 +3450,6 @@ const SeasonTracker = () => {
                               </tbody>
                             </table>
                           </div>
-                          {tableData.length > 10 && (
-                            <p className="text-slate-400 text-xs text-center mt-2">
-                              Showing top 10 of {tableData.length} units
-                            </p>
-                          )}
                         </div>
                       );
                     })()}
