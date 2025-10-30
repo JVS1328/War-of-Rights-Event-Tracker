@@ -611,8 +611,11 @@ const WarOfRightsLogAnalyzer = () => {
             presenceSeconds += (effectiveLeave - effectiveJoin);
           }
         });
-      } else {
-        // If no session data, assume they were present the whole round
+      }
+      
+      // If no session data OR calculated presence is 0 but player has deaths,
+      // assume they were present the whole round (they were already on server when round started)
+      if (presenceSeconds === 0 && deathCount > 0) {
         presenceSeconds = roundDuration;
       }
       
