@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
-  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords
+  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2
 } from 'lucide-react';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
@@ -125,6 +125,7 @@ const SeasonTracker = () => {
   const [newUnitName, setNewUnitName] = useState('');
   const [editingWeek, setEditingWeek] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
+  const [enlargedSection, setEnlargedSection] = useState(null);
   
   // Casualty input state
   const [casualtyInputData, setCasualtyInputData] = useState({});
@@ -1459,6 +1460,10 @@ const SeasonTracker = () => {
     }));
   };
 
+  const toggleEnlarge = (section) => {
+    setEnlargedSection(enlargedSection === section ? null : section);
+  };
+
   // Compute teammate and opponent stats
   const computeStats = () => {
     const teammate = {};
@@ -2190,13 +2195,22 @@ const SeasonTracker = () => {
                   <Calendar className="w-6 h-6" />
                   Weeks ({weeks.length})
                 </h2>
-                <button
-                  onClick={addWeek}
-                  className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-                  title="Add Week"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => toggleEnlarge('weeks')}
+                    className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    title="Enlarge View"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={addWeek}
+                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                    title="Add Week"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {weeks.map((week) => (
@@ -2261,10 +2275,19 @@ const SeasonTracker = () => {
 
             {/* Middle Column - Units */}
             <div className="bg-slate-700 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                <Users className="w-6 h-6" />
-                Units ({units.length})
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                  <Users className="w-6 h-6" />
+                  Units ({units.length})
+                </h2>
+                <button
+                  onClick={() => toggleEnlarge('units')}
+                  className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                  title="Enlarge View"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              </div>
               <div className="mb-4 flex gap-2">
                 <input
                   type="text"
@@ -2334,7 +2357,7 @@ const SeasonTracker = () => {
                     </div>
                   );
                 })}
-              </div>
+             </div>
             </div>
 
             {/* Right Column - Standings */}
@@ -2345,6 +2368,13 @@ const SeasonTracker = () => {
                   Standings
                 </h2>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => toggleEnlarge('standings')}
+                    className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    title="Enlarge View"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => setRankByElo(!rankByElo)}
                     className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm transition flex items-center gap-1"
@@ -2552,8 +2582,8 @@ const SeasonTracker = () => {
                     </div>
                     );
                   })
-                )}
-              </div>
+               )}
+             </div>
             </div>
           </div>
 
@@ -2591,19 +2621,21 @@ const SeasonTracker = () => {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3">
-                    <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
-                    <select
-                      value={selectedWeek.leadA || ''}
-                      onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
-                    >
-                      <option value="">Select lead...</option>
-                      {selectedWeek.teamA.map((unit) => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {!selectedWeek.isPlayoffs && (
+                    <div className="mt-3">
+                      <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
+                      <select
+                        value={selectedWeek.leadA || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                      >
+                        <option value="">Select lead...</option>
+                        {selectedWeek.teamA.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Team B */}
@@ -2632,19 +2664,21 @@ const SeasonTracker = () => {
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3">
-                    <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
-                    <select
-                      value={selectedWeek.leadB || ''}
-                      onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
-                    >
-                      <option value="">Select lead...</option>
-                      {selectedWeek.teamB.map((unit) => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {!selectedWeek.isPlayoffs && (
+                    <div className="mt-3">
+                      <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
+                      <select
+                        value={selectedWeek.leadB || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                      >
+                        <option value="">Select lead...</option>
+                        {selectedWeek.teamB.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3740,6 +3774,322 @@ const SeasonTracker = () => {
                       Close
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Enlarged Section Modal */}
+          {enlargedSection && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      {enlargedSection === 'weeks' && (
+                        <>
+                          <Calendar className="w-6 h-6" />
+                          Weeks ({weeks.length})
+                        </>
+                      )}
+                      {enlargedSection === 'units' && (
+                        <>
+                          <Users className="w-6 h-6" />
+                          Units ({units.length})
+                        </>
+                      )}
+                      {enlargedSection === 'standings' && (
+                        <>
+                          <Award className="w-6 h-6" />
+                          Standings
+                        </>
+                      )}
+                    </h2>
+                    <button
+                      onClick={() => setEnlargedSection(null)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  {/* Weeks Enlarged View */}
+                  {enlargedSection === 'weeks' && (
+                    <div>
+                      <div className="mb-4 flex justify-end">
+                        <button
+                          onClick={addWeek}
+                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Week
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {weeks.map((week) => (
+                          <div
+                            key={week.id}
+                            className={`p-4 rounded-lg transition cursor-pointer ${
+                              selectedWeek?.id === week.id
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              {editingWeek === week.id ? (
+                                <input
+                                  type="text"
+                                  defaultValue={week.name}
+                                  onBlur={(e) => renameWeek(week.id, e.target.value)}
+                                  onKeyPress={(e) => {
+                                    if (e.key === 'Enter') {
+                                      renameWeek(week.id, e.target.value);
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 outline-none"
+                                  autoFocus
+                                />
+                              ) : (
+                                <div
+                                  onClick={() => setSelectedWeek(week)}
+                                  className="flex-1"
+                                >
+                                  <div className="font-semibold">{week.name}</div>
+                                  <div className="text-sm opacity-75">
+                                    {week.teamA.length + week.teamB.length} units assigned
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingWeek(week.id);
+                                  }}
+                                  className="p-1 hover:bg-slate-700 rounded transition"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeWeek(week.id);
+                                  }}
+                                  className="p-1 hover:bg-red-600 rounded transition"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Units Enlarged View */}
+                  {enlargedSection === 'units' && (
+                    <div>
+                      <div className="mb-4 flex gap-2">
+                        <input
+                          type="text"
+                          value={newUnitName}
+                          onChange={(e) => setNewUnitName(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && addUnit()}
+                          placeholder="Unit name..."
+                          className="flex-1 px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                        />
+                        <button
+                          onClick={addUnit}
+                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Unit
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {units.map((unit) => {
+                          const isNonToken = nonTokenUnits.includes(unit);
+                          return (
+                            <div
+                              key={unit}
+                              className="flex justify-between items-center p-3 bg-slate-600 rounded-lg"
+                            >
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => toggleNonTokenStatus(unit)}
+                                  className={`px-2 py-1 rounded text-xs font-bold transition ${
+                                    isNonToken
+                                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                      : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                                  }`}
+                                  title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
+                                >
+                                  {isNonToken ? '*' : '○'}
+                                </button>
+                                <span className={`font-medium ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                  {unit}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                {selectedWeek && (
+                                  <>
+                                    <button
+                                      onClick={() => moveUnitToTeam(unit, 'A')}
+                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                                      title={`Add to ${teamNames.A}`}
+                                    >
+                                      → A
+                                    </button>
+                                    <button
+                                      onClick={() => moveUnitToTeam(unit, 'B')}
+                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                                      title={`Add to ${teamNames.B}`}
+                                    >
+                                      → B
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => removeUnit(unit)}
+                                  className="p-1 hover:bg-red-600 rounded transition"
+                                >
+                                  <Trash2 className="w-4 h-4 text-white" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Standings Enlarged View */}
+                  {enlargedSection === 'standings' && (
+                    <div>
+                      <div className="mb-4 flex gap-2 justify-end">
+                        <button
+                          onClick={() => setRankByElo(!rankByElo)}
+                          className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition flex items-center gap-1"
+                          title={rankByElo ? "Rank by Points" : "Rank by Elo"}
+                        >
+                          <TrendingUp className="w-4 h-4" />
+                          {rankByElo ? "Elo" : "Points"}
+                        </button>
+                        {divisions && divisions.length > 0 && (
+                          <button
+                            onClick={() => setShowGroupedStandings(!showGroupedStandings)}
+                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-1"
+                            title={showGroupedStandings ? "Show All" : "Group by Division"}
+                          >
+                            {showGroupedStandings ? <Users className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                            {showGroupedStandings ? "Grouped" : "All"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {showGroupedStandings && divisions && divisions.length > 0 ? (
+                          getGroupedStandings().map((group) => (
+                            <div key={group.name} className="bg-slate-700 rounded-lg p-4">
+                              <h3 className="text-sm font-bold text-amber-300 mb-3 px-2 flex items-center gap-2">
+                                <Shield className="w-4 h-4" />
+                                {group.name}
+                              </h3>
+                              <div className="space-y-2">
+                                {group.units.map((stat) => {
+                                  const isNonToken = nonTokenUnits.includes(stat.unit);
+                                  return (
+                                    <div
+                                      key={stat.unit}
+                                      className="bg-slate-600 rounded-lg p-3"
+                                    >
+                                      <div className="flex justify-between items-center mb-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-amber-400 font-bold text-lg">
+                                            #{stat.divisionRank || stat.currentRank}
+                                          </span>
+                                          {stat.rankDelta !== null && stat.rankDelta !== undefined && (
+                                            <span className={`text-xs font-semibold ${
+                                              stat.rankDelta > 0 ? 'text-green-400' :
+                                              stat.rankDelta < 0 ? 'text-red-400' :
+                                              'text-slate-400'
+                                            }`}>
+                                              {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
+                                               stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
+                                               '−'}
+                                            </span>
+                                          )}
+                                          <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                            {isNonToken ? '*' : ''}{stat.unit}
+                                          </span>
+                                        </div>
+                                        <span className="text-green-400 font-bold text-xl">
+                                          {stat.points}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                                        <div>L-Wins: {stat.leadWins}</div>
+                                        <div>L-Loss: {stat.leadLosses}</div>
+                                        <div>A-Wins: {stat.assistWins}</div>
+                                        <div>A-Loss: {stat.assistLosses}</div>
+                                        <div className="col-span-2 text-cyan-300">
+                                          Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          getStandingsWithChanges().map((stat, index) => {
+                            const isNonToken = nonTokenUnits.includes(stat.unit);
+                            return (
+                              <div
+                                key={stat.unit}
+                                className="bg-slate-600 rounded-lg p-3"
+                              >
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-amber-400 font-bold text-lg">
+                                      #{index + 1}
+                                    </span>
+                                    {stat.rankDelta !== null && stat.rankDelta !== undefined && (
+                                      <span className={`text-xs font-semibold ${
+                                        stat.rankDelta > 0 ? 'text-green-400' :
+                                        stat.rankDelta < 0 ? 'text-red-400' :
+                                        'text-slate-400'
+                                      }`}>
+                                        {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
+                                         stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
+                                         '−'}
+                                      </span>
+                                    )}
+                                    <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                      {isNonToken ? '*' : ''}{stat.unit}
+                                    </span>
+                                  </div>
+                                  <span className="text-green-400 font-bold text-xl">
+                                    {stat.points}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                                  <div>L-Wins: {stat.leadWins}</div>
+                                  <div>L-Loss: {stat.leadLosses}</div>
+                                  <div>A-Wins: {stat.assistWins}</div>
+                                  <div>A-Loss: {stat.assistLosses}</div>
+                                  <div className="col-span-2 text-cyan-300">
+                                    Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
