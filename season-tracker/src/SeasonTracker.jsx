@@ -119,6 +119,7 @@ const SeasonTracker = () => {
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
+  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
   const [showNonTokenElo, setShowNonTokenElo] = useState(true);
   const [rankByElo, setRankByElo] = useState(false);
@@ -136,6 +137,8 @@ const SeasonTracker = () => {
   const [balancerOpposingPairs, setBalancerOpposingPairs] = useState([]);
   const [balancerResults, setBalancerResults] = useState(null);
   const [balancerStatus, setBalancerStatus] = useState('');
+  const [draggedUnit, setDraggedUnit] = useState(null);
+  const [previewTeams, setPreviewTeams] = useState(null);
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -1041,7 +1044,19 @@ const SeasonTracker = () => {
 
       if (result) {
         const { teamA, teamB, score, minA, maxA, minB, maxB } = result;
-        setBalancerResults({ teamA, teamB, score, minA, maxA, minB, maxB });
+        const stats = calculatePreviewStats(teamA, teamB);
+        setBalancerResults({
+          teamA,
+          teamB,
+          score,
+          minA,
+          maxA,
+          minB,
+          maxB,
+          avgHistoryA: stats.avgHistoryA,
+          avgHistoryB: stats.avgHistoryB,
+          combinedAvgHistory: stats.combinedAvgHistory
+        });
         setBalancerStatus(`Best solution found! Avg. Diff: ${score.toFixed(1)}`);
       } else {
         setBalancerStatus('Failed to find a valid balance.');
@@ -1912,6 +1927,123 @@ const SeasonTracker = () => {
   const getUnassignedUnits = () => {
     const assignedUnits = new Set(divisions.flatMap(d => d.units));
     return units.filter(u => !assignedUnits.has(u));
+  };
+
+  // Calculate teammate composition heatmap
+  const calculateTeammateHeatmap = () => {
+    const { teammate } = computeStats();
+    const heatmapData = [];
+    
+    // Get all units that have played
+    const activeUnits = units.filter(unit => {
+      return weeks.some(week => 
+        week.teamA.includes(unit) || week.teamB.includes(unit)
+      );
+    }).sort();
+
+    // Build heatmap matrix
+    activeUnits.forEach(unit1 => {
+      activeUnits.forEach(unit2 => {
+        if (unit1 !== unit2) {
+          const count = teammate[unit1]?.[unit2] || 0;
+          if (count > 0) {
+            heatmapData.push({ unit1, unit2, count });
+          }
+        }
+      });
+    });
+
+    return { heatmapData, activeUnits };
+  };
+
+  // Calculate live preview stats for balancer
+  const calculatePreviewStats = (teamA, teamB) => {
+    const minA = teamA.reduce((sum, u) => sum + (balancerUnitCounts[u]?.min || 0), 0);
+    const maxA = teamA.reduce((sum, u) => sum + (balancerUnitCounts[u]?.max || 0), 0);
+    const minB = teamB.reduce((sum, u) => sum + (balancerUnitCounts[u]?.min || 0), 0);
+    const maxB = teamB.reduce((sum, u) => sum + (balancerUnitCounts[u]?.max || 0), 0);
+    
+    const avgA = (minA + maxA) / 2;
+    const avgB = (minB + maxB) / 2;
+    const avgDiff = Math.abs(avgA - avgB);
+    const minDiff = Math.abs(minA - minB);
+    
+    // Calculate average teammate history for each team
+    const { teammate } = computeStats();
+    
+    const calculateTeamAvgHistory = (team) => {
+      if (team.length < 2) return 0;
+      
+      let totalHistory = 0;
+      let pairCount = 0;
+      
+      for (let i = 0; i < team.length; i++) {
+        for (let j = i + 1; j < team.length; j++) {
+          const u1 = team[i];
+          const u2 = team[j];
+          const count = teammate[u1]?.[u2] || 0;
+          totalHistory += count;
+          pairCount++;
+        }
+      }
+      
+      return pairCount > 0 ? totalHistory / pairCount : 0;
+    };
+    
+    const avgHistoryA = calculateTeamAvgHistory(teamA);
+    const avgHistoryB = calculateTeamAvgHistory(teamB);
+    const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
+    
+    return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory };
+  };
+
+  // Drag and drop handlers for balancer
+  const handleDragStart = (unit, sourceTeam) => {
+    setDraggedUnit({ unit, sourceTeam });
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (targetTeam) => {
+    if (!draggedUnit || !balancerResults) return;
+    
+    const { unit, sourceTeam } = draggedUnit;
+    
+    // Don't do anything if dropping on same team
+    if (sourceTeam === targetTeam) {
+      setDraggedUnit(null);
+      return;
+    }
+
+    // Create new team arrays
+    const newTeamA = sourceTeam === 'A' 
+      ? balancerResults.teamA.filter(u => u !== unit)
+      : [...balancerResults.teamA, unit];
+    
+    const newTeamB = sourceTeam === 'B'
+      ? balancerResults.teamB.filter(u => u !== unit)
+      : [...balancerResults.teamB, unit];
+
+    // Calculate new stats
+    const newStats = calculatePreviewStats(newTeamA, newTeamB);
+    
+    // Update balancer results with new teams and stats
+    setBalancerResults({
+      teamA: newTeamA,
+      teamB: newTeamB,
+      score: newStats.avgDiff,
+      minA: newStats.minA,
+      maxA: newStats.maxA,
+      minB: newStats.minB,
+      maxB: newStats.maxB,
+      avgHistoryA: newStats.avgHistoryA,
+      avgHistoryB: newStats.avgHistoryB,
+      combinedAvgHistory: newStats.combinedAvgHistory
+    });
+
+    setDraggedUnit(null);
   };
 
   return (
@@ -3036,15 +3168,47 @@ const SeasonTracker = () => {
                               </div>
                             ))}
                           </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              id="opposing-unit-1"
+                              className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            >
+                              <option value="">Select first unit...</option>
+                              {units.map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))}
+                            </select>
+                            <select
+                              id="opposing-unit-2"
+                              className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            >
+                              <option value="">Select second unit...</option>
+                              {units.map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))}
+                            </select>
+                          </div>
                           <button
                             onClick={() => {
-                              const unit1 = prompt('Enter first unit name:');
-                              if (!unit1 || !units.includes(unit1)) return;
-                              const unit2 = prompt('Enter second unit name:');
-                              if (!unit2 || !units.includes(unit2) || unit1 === unit2) return;
+                              const select1 = document.getElementById('opposing-unit-1');
+                              const select2 = document.getElementById('opposing-unit-2');
+                              const unit1 = select1.value;
+                              const unit2 = select2.value;
+                              
+                              if (!unit1 || !unit2) {
+                                alert('Please select both units');
+                                return;
+                              }
+                              if (unit1 === unit2) {
+                                alert('Please select different units');
+                                return;
+                              }
+                              
                               setBalancerOpposingPairs([...balancerOpposingPairs, [unit1, unit2]]);
+                              select1.value = '';
+                              select2.value = '';
                             }}
-                            className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                            className="w-full mt-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
                           >
                             Add Opposing Pair
                           </button>
@@ -3058,24 +3222,63 @@ const SeasonTracker = () => {
                         <h3 className="text-xl font-bold text-green-400 mb-2">
                           Best Balance Found!
                         </h3>
-                        <p className="text-slate-300">
-                          Average Player Difference: {balancerResults.score.toFixed(1)}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Avg Difference</div>
+                            <div className="text-lg font-bold text-amber-400">
+                              {balancerResults.score.toFixed(1)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Min Difference</div>
+                            <div className="text-lg font-bold text-cyan-400">
+                              {Math.abs(balancerResults.minA - balancerResults.minB).toFixed(0)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Max Difference</div>
+                            <div className="text-lg font-bold text-purple-400">
+                              {Math.abs(balancerResults.maxA - balancerResults.maxB).toFixed(0)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Avg Teammate History</div>
+                            <div className="text-lg font-bold text-green-400">
+                              {balancerResults.combinedAvgHistory?.toFixed(2) || '0.00'}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-slate-400 text-sm mt-3">
+                          💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         {/* Team A Results */}
-                        <div className="bg-slate-700 rounded-lg p-4">
+                        <div
+                          className="bg-slate-700 rounded-lg p-4"
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop('A')}
+                        >
                           <h4 className="text-lg font-semibold text-blue-400 mb-3">
                             Team A ({balancerResults.teamA.length} units)
                           </h4>
-                          <p className="text-slate-300 text-sm mb-3">
-                            Players: {balancerResults.minA}-{balancerResults.maxA}
-                          </p>
+                          <div className="text-slate-300 text-sm mb-3 space-y-1">
+                            <p>Players: {balancerResults.minA}-{balancerResults.maxA} (avg: {((balancerResults.minA + balancerResults.maxA) / 2).toFixed(1)})</p>
+                            <p className="text-xs">
+                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{balancerResults.avgHistoryA?.toFixed(2) || '0.00'}</span>
+                            </p>
+                          </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
                               {balancerResults.teamA.sort().map(unit => (
-                                <div key={unit} className="text-white text-sm py-1">
+                                <div
+                                  key={unit}
+                                  draggable
+                                  onDragStart={() => handleDragStart(unit, 'A')}
+                                  className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center gap-2"
+                                >
+                                  <Swords className="w-3 h-3 text-slate-400" />
                                   {unit}
                                 </div>
                               ))}
@@ -3084,17 +3287,30 @@ const SeasonTracker = () => {
                         </div>
 
                         {/* Team B Results */}
-                        <div className="bg-slate-700 rounded-lg p-4">
+                        <div
+                          className="bg-slate-700 rounded-lg p-4"
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop('B')}
+                        >
                           <h4 className="text-lg font-semibold text-red-400 mb-3">
                             Team B ({balancerResults.teamB.length} units)
                           </h4>
-                          <p className="text-slate-300 text-sm mb-3">
-                            Players: {balancerResults.minB}-{balancerResults.maxB}
-                          </p>
+                          <div className="text-slate-300 text-sm mb-3 space-y-1">
+                            <p>Players: {balancerResults.minB}-{balancerResults.maxB} (avg: {((balancerResults.minB + balancerResults.maxB) / 2).toFixed(1)})</p>
+                            <p className="text-xs">
+                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{balancerResults.avgHistoryB?.toFixed(2) || '0.00'}</span>
+                            </p>
+                          </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
                               {balancerResults.teamB.sort().map(unit => (
-                                <div key={unit} className="text-white text-sm py-1">
+                                <div
+                                  key={unit}
+                                  draggable
+                                  onDragStart={() => handleDragStart(unit, 'B')}
+                                  className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center gap-2"
+                                >
+                                  <Swords className="w-3 h-3 text-slate-400" />
                                   {unit}
                                 </div>
                               ))}
@@ -3491,10 +3707,20 @@ const SeasonTracker = () => {
 
                   {/* Unit Interactions */}
                   <div className="bg-slate-700 rounded-lg p-4">
-                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
-                      <Users className="w-5 h-5" />
-                      Unit Interactions
-                    </h3>
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2">
+                        <Users className="w-5 h-5" />
+                        Unit Interactions
+                      </h3>
+                      <button
+                        onClick={() => setShowHeatmapModal(true)}
+                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition flex items-center gap-1"
+                        title="View Teammate Composition Heatmap"
+                      >
+                        <Swords className="w-4 h-4" />
+                        Heatmap
+                      </button>
+                    </div>
                     <div className="space-y-3">
                       {(() => {
                         const { teammate, opponent } = computeStats();
@@ -3769,6 +3995,159 @@ const SeasonTracker = () => {
                   <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
                     <button
                       onClick={() => setShowMapBiasModal(false)}
+                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Teammate Composition Heatmap Modal */}
+          {showHeatmapModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Swords className="w-6 h-6" />
+                      Teammate Composition Heatmap
+                    </h2>
+                    <button
+                      onClick={() => setShowHeatmapModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="mb-4 bg-slate-700 rounded-lg p-4">
+                    <p className="text-sm text-slate-300">
+                      This heatmap shows how often units have played together as teammates. 
+                      Higher numbers indicate units that frequently team up, which helps evaluate balancer effectiveness.
+                    </p>
+                  </div>
+
+                  {(() => {
+                    const { heatmapData, activeUnits } = calculateTeammateHeatmap();
+                    
+                    if (activeUnits.length === 0) {
+                      return (
+                        <div className="text-center text-slate-400 py-12">
+                          <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                          <p>No teammate data available yet</p>
+                        </div>
+                      );
+                    }
+
+                    // Find max count for color scaling
+                    const maxCount = Math.max(...heatmapData.map(d => d.count), 1);
+
+                    // Helper to get color intensity
+                    const getHeatColor = (count) => {
+                      if (count === 0) return 'bg-slate-700';
+                      const intensity = Math.min(count / maxCount, 1);
+                      if (intensity < 0.2) return 'bg-blue-900';
+                      if (intensity < 0.4) return 'bg-blue-700';
+                      if (intensity < 0.6) return 'bg-purple-700';
+                      if (intensity < 0.8) return 'bg-orange-600';
+                      return 'bg-red-600';
+                    };
+
+                    return (
+                      <div className="bg-slate-700 rounded-lg p-4">
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr>
+                                <th className="p-2 text-xs font-semibold text-slate-400 sticky left-0 bg-slate-700 z-10"></th>
+                                {activeUnits.map(unit => (
+                                  <th key={unit} className="p-2 text-xs font-semibold text-slate-300 min-w-[60px]">
+                                    <div className="transform -rotate-45 origin-left whitespace-nowrap">
+                                      {unit}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activeUnits.map(unit1 => (
+                                <tr key={unit1}>
+                                  <td className="p-2 text-xs font-semibold text-slate-300 sticky left-0 bg-slate-700 z-10 whitespace-nowrap">
+                                    {unit1}
+                                  </td>
+                                  {activeUnits.map(unit2 => {
+                                    if (unit1 === unit2) {
+                                      return (
+                                        <td key={unit2} className="p-1">
+                                          <div className="w-full h-8 bg-slate-800 rounded flex items-center justify-center">
+                                            <span className="text-xs text-slate-600">-</span>
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    
+                                    const data = heatmapData.find(d => 
+                                      (d.unit1 === unit1 && d.unit2 === unit2) ||
+                                      (d.unit1 === unit2 && d.unit2 === unit1)
+                                    );
+                                    const count = data?.count || 0;
+                                    
+                                    return (
+                                      <td key={unit2} className="p-1">
+                                        <div 
+                                          className={`w-full h-8 ${getHeatColor(count)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
+                                          title={`${unit1} & ${unit2}: ${count} weeks together`}
+                                        >
+                                          <span className="text-xs font-semibold text-white">
+                                            {count > 0 ? count : ''}
+                                          </span>
+                                        </div>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Legend */}
+                        <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
+                          <span className="text-sm text-slate-300">Frequency:</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-slate-700 rounded"></div>
+                            <span className="text-xs text-slate-400">0</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-blue-900 rounded"></div>
+                            <span className="text-xs text-slate-400">Low</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-blue-700 rounded"></div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-purple-700 rounded"></div>
+                            <span className="text-xs text-slate-400">Med</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-orange-600 rounded"></div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-4 bg-red-600 rounded"></div>
+                            <span className="text-xs text-slate-400">High</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Bottom Buttons */}
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                    <button
+                      onClick={() => setShowHeatmapModal(false)}
                       className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
                     >
                       Close
