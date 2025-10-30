@@ -3524,8 +3524,14 @@ const SeasonTracker = () => {
 
           {/* Statistics Modal */}
           {showStatsModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setShowStatsModal(false)}
+            >
+              <div
+                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="p-6">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
@@ -4007,8 +4013,14 @@ const SeasonTracker = () => {
 
           {/* Teammate Composition Heatmap Modal */}
           {showHeatmapModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setShowHeatmapModal(false)}
+            >
+              <div
+                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="p-6">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
@@ -4062,10 +4074,10 @@ const SeasonTracker = () => {
                           <table className="w-full border-collapse">
                             <thead>
                               <tr>
-                                <th className="p-2 text-xs font-semibold text-slate-400 sticky left-0 bg-slate-700 z-10"></th>
+                                <th className="p-2 text-xs font-semibold text-slate-400 sticky left-0 bg-slate-700 z-10 h-24"></th>
                                 {activeUnits.map(unit => (
-                                  <th key={unit} className="p-2 text-xs font-semibold text-slate-300 min-w-[60px]">
-                                    <div className="transform -rotate-45 origin-left whitespace-nowrap">
+                                  <th key={unit} className="p-2 text-xs font-semibold text-slate-300 min-w-[60px] h-24 align-bottom">
+                                    <div className="transform -rotate-45 origin-bottom-left whitespace-nowrap translate-y-2">
                                       {unit}
                                     </div>
                                   </th>
