@@ -38,6 +38,31 @@ const MAPS = {
 
 const ALL_MAPS = Object.values(MAPS).flat().sort();
 
+// Default map bias values (from tracker.py lines 2933-2954)
+const getDefaultMapBiases = () => ({
+  // ANTIETAM
+  "East Woods Skirmish": 2, "Hooker's Push": 2.5, "Hagerstown Turnpike": 1,
+  "Miller's Cornfield": 1.5, "East Woods": 2.5, "Nicodemus Hill": 2.5,
+  "Bloody Lane": 1.5, "Pry Ford": 2, "Pry Grist Mill": 1, "Pry House": 1.5,
+  "West Woods": 1.5, "Dunker Church": 1.5, "Burnside's Bridge": 2.5,
+  "Cooke's Countercharge": 1.5, "Otto and Sherrick Farms": 1,
+  "Roulette Lane": 1.5, "Piper Farm": 2, "Hill's Counterattack": 1,
+  // HARPERS FERRY
+  "Maryland Heights": 1.5, "River Crossing": 2.5, "Downtown": 1,
+  "School House Ridge": 1, "Bolivar Heights Camp": 1.5, "High Street": 1,
+  "Shenandoah Street": 1.5, "Harpers Ferry Graveyard": 1, "Washington Street": 1,
+  "Bolivar Heights Redoubt": 2,
+  // SOUTH MOUNTAIN
+  "Garland's Stand": 2.5, "Cox's Push": 2.5, "Hatch's Attack": 2,
+  "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defense": 2,
+  // DRILL CAMP
+  "Alexander Farm": 2, "Crossroads": 0, "Smith Field": 1,
+  "Crecy's Cornfield": 1.5, "Crossley Creek": 1, "Larsen Homestead": 1.5,
+  "South Woodlot": 1.5, "Flemming's Meadow": 2, "Wagon Road": 2,
+  "Union Camp": 1.5, "Pat's Turnpike": 1.5, "Stefan's Lot": 1,
+  "Confederate Encampment": 2
+});
+
 const SeasonTracker = () => {
   // Load initial state from localStorage
   const loadFromStorage = () => {
@@ -85,10 +110,15 @@ const SeasonTracker = () => {
   });
   const [unitPlayerCounts, setUnitPlayerCounts] = useState(savedState?.unitPlayerCounts || {});
   const [manualAdjustments, setManualAdjustments] = useState(savedState?.manualAdjustments || {});
+  const [divisions, setDivisions] = useState(savedState?.divisions || []);
+  const [mapBiases, setMapBiases] = useState(savedState?.mapBiases || getDefaultMapBiases());
   const [showSettings, setShowSettings] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
+  const [showDivisionModal, setShowDivisionModal] = useState(false);
+  const [showMapBiasModal, setShowMapBiasModal] = useState(false);
+  const [showGroupedStandings, setShowGroupedStandings] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   const [editingWeek, setEditingWeek] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
@@ -114,7 +144,9 @@ const SeasonTracker = () => {
       manualAdjustments,
       eloSystem,
       eloBiasPercentages,
-      unitPlayerCounts
+      unitPlayerCounts,
+      divisions,
+      mapBiases
     };
 
     try {
@@ -122,7 +154,7 @@ const SeasonTracker = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts]);
+  }, [units, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases]);
 
   // Unit Management
   const addUnit = () => {
@@ -235,8 +267,8 @@ const SeasonTracker = () => {
     updateWeek(selectedWeek.id, updates);
   };
 
-  // Calculate Points
-  const calculatePoints = () => {
+  // Calculate Points up to a specific week
+  const calculatePointsUpToWeek = (maxWeekIdx = null) => {
     const stats = {};
     
     units.forEach(unit => {
@@ -249,7 +281,9 @@ const SeasonTracker = () => {
       };
     });
 
-    weeks.forEach(week => {
+    const weeksToProcess = maxWeekIdx !== null ? weeks.slice(0, maxWeekIdx + 1) : weeks;
+
+    weeksToProcess.forEach(week => {
       if (!week.round1Winner && !week.round2Winner) return;
       
       const isPlayoffs = week.isPlayoffs || false;
@@ -339,6 +373,11 @@ const SeasonTracker = () => {
     return stats;
   };
 
+  // Calculate Points (for entire season)
+  const calculatePoints = () => {
+    return calculatePointsUpToWeek(null);
+  };
+
   // Get standings with Elo
   const getStandings = () => {
     const stats = calculatePoints();
@@ -352,6 +391,166 @@ const SeasonTracker = () => {
         rounds: roundsPlayed[unit] || 0
       }))
       .sort((a, b) => b.points - a.points);
+  };
+
+  // Get standings with week-over-week changes
+  const getStandingsWithChanges = () => {
+    const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+    const previousWeekIdx = currentWeekIdx - 1;
+
+    // Current week stats - calculate up to current week only
+    const currentStats = calculatePointsUpToWeek(currentWeekIdx);
+    const { eloRatings: currentElo, roundsPlayed } = calculateEloRatings(currentWeekIdx);
+    
+    // Previous week stats (if exists)
+    let previousStats = {};
+    let previousElo = {};
+    if (previousWeekIdx >= 0) {
+      // Simplified: just get previous week's calculated points
+      const prevWeeks = weeks.slice(0, previousWeekIdx + 1);
+      const tempStats = {};
+      
+      units.forEach(unit => {
+        tempStats[unit] = { points: 0 };
+      });
+
+      prevWeeks.forEach(week => {
+        if (!week.round1Winner && !week.round2Winner) return;
+        const isPlayoffs = week.isPlayoffs || false;
+
+        [1, 2].forEach(roundNum => {
+          const winner = week[`round${roundNum}Winner`];
+          if (!winner) return;
+
+          const winningTeam = week[`team${winner}`];
+          const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
+          
+          let leadWinner, leadLoser;
+          if (isPlayoffs) {
+            leadWinner = week[`lead${winner}_r${roundNum}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
+          } else {
+            leadWinner = week[`lead${winner}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
+          }
+
+          if (!isPlayoffs) {
+            winningTeam.forEach(unit => {
+              if (unit === leadWinner) {
+                tempStats[unit].points += pointSystem.winLead;
+              } else {
+                tempStats[unit].points += pointSystem.winAssist;
+              }
+            });
+
+            losingTeam.forEach(unit => {
+              if (unit === leadLoser) {
+                tempStats[unit].points += pointSystem.lossLead;
+              } else {
+                tempStats[unit].points += pointSystem.lossAssist;
+              }
+            });
+          }
+        });
+
+        if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
+          const sweepTeam = week[`team${week.round1Winner}`];
+          const sweepLead = week[`lead${week.round1Winner}`];
+          
+          sweepTeam.forEach(unit => {
+            if (unit === sweepLead) {
+              tempStats[unit].points += pointSystem.bonus2_0Lead;
+            } else {
+              tempStats[unit].points += pointSystem.bonus2_0Assist;
+            }
+          });
+        }
+      });
+
+      Object.entries(manualAdjustments).forEach(([unit, adjustment]) => {
+        if (tempStats[unit]) {
+          tempStats[unit].points += adjustment;
+        }
+      });
+
+      previousStats = tempStats;
+      const prevEloData = calculateEloRatings(previousWeekIdx);
+      previousElo = prevEloData.eloRatings;
+    }
+
+    // Calculate previous ranks
+    const previousRanks = {};
+    if (previousWeekIdx >= 0) {
+      const prevStandings = Object.entries(previousStats)
+        .map(([unit, data]) => ({ unit, points: data.points }))
+        .sort((a, b) => b.points - a.points);
+      
+      prevStandings.forEach((stat, index) => {
+        previousRanks[stat.unit] = index + 1;
+      });
+    }
+
+    // Build current standings with changes
+    const standings = Object.entries(currentStats)
+      .map(([unit, data]) => {
+        const currentEloValue = currentElo[unit] || eloSystem.initialElo;
+        const previousEloValue = previousElo[unit] || eloSystem.initialElo;
+        const eloDelta = currentEloValue - previousEloValue;
+        
+        const previousRank = previousRanks[unit] || null;
+
+        return {
+          unit,
+          ...data,
+          elo: currentEloValue,
+          eloDelta,
+          previousRank,
+          rounds: roundsPlayed[unit] || 0
+        };
+      })
+      .sort((a, b) => b.points - a.points);
+
+    standings.forEach((stat, index) => {
+      stat.currentRank = index + 1;
+      stat.rankDelta = stat.previousRank ? stat.previousRank - stat.currentRank : null;
+    });
+
+    return standings;
+  };
+
+  // Get grouped standings by division
+  const getGroupedStandings = () => {
+    const allStandings = getStandingsWithChanges();
+    
+    if (!divisions || divisions.length === 0) {
+      return [{ name: 'All Units', units: allStandings }];
+    }
+
+    const grouped = divisions.map(division => {
+      const divisionUnits = new Set(division.units);
+      const divisionStandings = allStandings
+        .filter(stat => divisionUnits.has(stat.unit))
+        .map((stat, index) => ({ ...stat, divisionRank: index + 1 }));
+      
+      return {
+        name: division.name,
+        units: divisionStandings
+      };
+    });
+
+    const assignedUnits = new Set(divisions.flatMap(d => d.units));
+    const unassignedStandings = allStandings
+      .filter(stat => !assignedUnits.has(stat.unit))
+      .map((stat, index) => ({ ...stat, divisionRank: index + 1 }));
+    
+    if (unassignedStandings.length > 0) {
+      grouped.push({
+        name: 'Unassigned',
+        units: unassignedStandings
+      });
+    }
+
+    return grouped;
   };
 
   // Calculate Map Statistics
@@ -1009,6 +1208,11 @@ const SeasonTracker = () => {
       teamNames,
       pointSystem,
       manualAdjustments,
+      eloSystem,
+      eloBiasPercentages,
+      unitPlayerCounts,
+      divisions,
+      mapBiases,
       exportDate: new Date().toISOString()
     };
     
@@ -1167,6 +1371,19 @@ const SeasonTracker = () => {
         setEloSystem(importedEloSystem);
         setEloBiasPercentages(importedEloBiasPercentages);
         setUnitPlayerCounts(importedUnitPlayerCounts);
+        
+        // Handle divisions
+        const importedDivisions = data.divisions || [];
+        setDivisions(importedDivisions);
+        
+        // Handle map biases - convert string values to numbers
+        let importedMapBiases = getDefaultMapBiases();
+        const rawMapBiases = data.mapBiases || data.map_biases || {};
+        Object.entries(rawMapBiases).forEach(([mapName, biasValue]) => {
+          importedMapBiases[mapName] = parseFloat(biasValue) || 0;
+        });
+        setMapBiases(importedMapBiases);
+        
         setSelectedWeek(null);
         alert('Data imported successfully!');
       } catch (error) {
@@ -1579,6 +1796,60 @@ const SeasonTracker = () => {
     reader.readAsText(file);
   };
 
+  // Division Management Functions
+  const addDivision = () => {
+    const name = prompt('Enter division name:');
+    if (!name || !name.trim()) return;
+    if (divisions.some(d => d.name === name.trim())) {
+      alert('A division with this name already exists!');
+      return;
+    }
+    setDivisions([...divisions, { name: name.trim(), units: [] }]);
+  };
+
+  const renameDivision = (oldName, newName) => {
+    if (!newName || !newName.trim()) return;
+    if (divisions.some(d => d.name === newName.trim() && d.name !== oldName)) {
+      alert('A division with this name already exists!');
+      return;
+    }
+    setDivisions(divisions.map(d =>
+      d.name === oldName ? { ...d, name: newName.trim() } : d
+    ));
+  };
+
+  const deleteDivision = (divisionName) => {
+    if (!confirm(`Delete division "${divisionName}"?`)) return;
+    setDivisions(divisions.filter(d => d.name !== divisionName));
+  };
+
+  const addUnitToDivision = (divisionName, unitName) => {
+    setDivisions(divisions.map(d => {
+      if (d.name === divisionName) {
+        if (!d.units.includes(unitName)) {
+          return { ...d, units: [...d.units, unitName] };
+        }
+        return d;
+      }
+      // Remove from other divisions
+      return { ...d, units: d.units.filter(u => u !== unitName) };
+    }));
+  };
+
+  const removeUnitFromDivision = (divisionName, unitName) => {
+    setDivisions(divisions.map(d =>
+      d.name === divisionName
+        ? { ...d, units: d.units.filter(u => u !== unitName) }
+        : d
+    ));
+  };
+
+  // Get units not assigned to any division
+  const getUnassignedUnits = () => {
+    const assignedUnits = new Set(divisions.flatMap(d => d.units));
+    return units.filter(u => !assignedUnits.has(u));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -1789,7 +2060,7 @@ const SeasonTracker = () => {
               </div>
 
               {/* Elo Bias Percentages */}
-              <div>
+              <div className="mb-6">
                 <h3 className="text-xl font-semibold text-amber-300 mb-3">Map Bias Elo Multipliers (%)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
@@ -1829,6 +2100,24 @@ const SeasonTracker = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Division and Map Bias Management Buttons */}
+              <div className="mt-6 flex gap-4">
+                <button
+                  onClick={() => setShowDivisionModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                >
+                  <Users className="w-4 h-4" />
+                  Manage Divisions
+                </button>
+                <button
+                  onClick={() => setShowMapBiasModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition"
+                >
+                  <Map className="w-4 h-4" />
+                  Configure Map Biases
+                </button>
               </div>
             </div>
           )}
@@ -1973,70 +2262,192 @@ const SeasonTracker = () => {
 
             {/* Right Column - Standings */}
             <div className="bg-slate-700 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                <Award className="w-6 h-6" />
-                Standings
-              </h2>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {getStandings().map((stat, index) => (
-                  <div
-                    key={stat.unit}
-                    className="bg-slate-600 rounded-lg p-3"
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                  <Award className="w-6 h-6" />
+                  Standings
+                </h2>
+                {divisions && divisions.length > 0 && (
+                  <button
+                    onClick={() => setShowGroupedStandings(!showGroupedStandings)}
+                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
+                    title={showGroupedStandings ? "Show All" : "Group by Division"}
                   >
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-amber-400 font-bold text-lg">
-                          #{index + 1}
-                        </span>
-                        <span className="text-white font-semibold">
-                          {stat.unit}
-                        </span>
+                    {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                    {showGroupedStandings ? "Grouped" : "All"}
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {showGroupedStandings && divisions && divisions.length > 0 ? (
+                  // Grouped view by division
+                  getGroupedStandings().map((group) => (
+                    <div key={group.name} className="mb-4">
+                      <h3 className="text-sm font-bold text-amber-300 mb-2 px-2 flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        {group.name}
+                      </h3>
+                      <div className="space-y-2">
+                        {group.units.map((stat) => (
+                          <div
+                            key={stat.unit}
+                            className="bg-slate-600 rounded-lg p-3"
+                          >
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-amber-400 font-bold text-lg">
+                                  #{stat.divisionRank || stat.currentRank}
+                                </span>
+                                {stat.rankDelta !== null && stat.rankDelta !== undefined && (
+                                  <span className={`text-xs font-semibold ${
+                                    stat.rankDelta > 0 ? 'text-green-400' :
+                                    stat.rankDelta < 0 ? 'text-red-400' :
+                                    'text-slate-400'
+                                  }`}>
+                                    {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
+                                     stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
+                                     '−'}
+                                  </span>
+                                )}
+                                <span className="text-white font-semibold">
+                                  {stat.unit}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1 text-xs">
+                                  <TrendingUp className="w-3 h-3 text-cyan-400" />
+                                  <span className="text-cyan-400 font-semibold">
+                                    {Math.round(stat.elo)}
+                                  </span>
+                                  {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
+                                    <span className={`ml-1 ${
+                                      stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                    }`}>
+                                      ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    const current = manualAdjustments[stat.unit] || 0;
+                                    const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
+                                    if (adjustment !== null) {
+                                      const newAdj = parseInt(adjustment) || 0;
+                                      setManualAdjustments({
+                                        ...manualAdjustments,
+                                        [stat.unit]: newAdj
+                                      });
+                                    }
+                                  }}
+                                  className="p-1 hover:bg-slate-700 rounded transition"
+                                  title="Adjust points"
+                                >
+                                  <Edit2 className="w-3 h-3 text-slate-400" />
+                                </button>
+                                <span className="text-green-400 font-bold text-xl">
+                                  {stat.points}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                              <div>L-Wins: {stat.leadWins}</div>
+                              <div>L-Loss: {stat.leadLosses}</div>
+                              <div>A-Wins: {stat.assistWins}</div>
+                              <div>A-Loss: {stat.assistLosses}</div>
+                              <div className="col-span-2 text-cyan-300">
+                                Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
+                              </div>
+                            </div>
+                            {manualAdjustments[stat.unit] && (
+                              <div className="mt-1 text-xs text-amber-400">
+                                Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1 text-xs">
-                          <TrendingUp className="w-3 h-3 text-cyan-400" />
-                          <span className="text-cyan-400 font-semibold">
-                            {Math.round(stat.elo)}
+                    </div>
+                  ))
+                ) : (
+                  // Ungrouped view - all units with delta indicators
+                  getStandingsWithChanges().map((stat, index) => (
+                    <div
+                      key={stat.unit}
+                      className="bg-slate-600 rounded-lg p-3"
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400 font-bold text-lg">
+                            #{index + 1}
+                          </span>
+                          {stat.rankDelta !== null && stat.rankDelta !== undefined && (
+                            <span className={`text-xs font-semibold ${
+                              stat.rankDelta > 0 ? 'text-green-400' :
+                              stat.rankDelta < 0 ? 'text-red-400' :
+                              'text-slate-400'
+                            }`}>
+                              {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
+                               stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
+                               '−'}
+                            </span>
+                          )}
+                          <span className="text-white font-semibold">
+                            {stat.unit}
                           </span>
                         </div>
-                        <button
-                          onClick={() => {
-                            const current = manualAdjustments[stat.unit] || 0;
-                            const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
-                            if (adjustment !== null) {
-                              const newAdj = parseInt(adjustment) || 0;
-                              setManualAdjustments({
-                                ...manualAdjustments,
-                                [stat.unit]: newAdj
-                              });
-                            }
-                          }}
-                          className="p-1 hover:bg-slate-700 rounded transition"
-                          title="Adjust points"
-                        >
-                          <Edit2 className="w-3 h-3 text-slate-400" />
-                        </button>
-                        <span className="text-green-400 font-bold text-xl">
-                          {stat.points}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1 text-xs">
+                            <TrendingUp className="w-3 h-3 text-cyan-400" />
+                            <span className="text-cyan-400 font-semibold">
+                              {Math.round(stat.elo)}
+                            </span>
+                            {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
+                              <span className={`ml-1 ${
+                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              const current = manualAdjustments[stat.unit] || 0;
+                              const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
+                              if (adjustment !== null) {
+                                const newAdj = parseInt(adjustment) || 0;
+                                setManualAdjustments({
+                                  ...manualAdjustments,
+                                  [stat.unit]: newAdj
+                                });
+                              }
+                            }}
+                            className="p-1 hover:bg-slate-700 rounded transition"
+                            title="Adjust points"
+                          >
+                            <Edit2 className="w-3 h-3 text-slate-400" />
+                          </button>
+                          <span className="text-green-400 font-bold text-xl">
+                            {stat.points}
+                          </span>
+                        </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                        <div>L-Wins: {stat.leadWins}</div>
+                        <div>L-Loss: {stat.leadLosses}</div>
+                        <div>A-Wins: {stat.assistWins}</div>
+                        <div>A-Loss: {stat.assistLosses}</div>
+                        <div className="col-span-2 text-cyan-300">
+                          Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
+                        </div>
+                      </div>
+                      {manualAdjustments[stat.unit] && (
+                        <div className="mt-1 text-xs text-amber-400">
+                          Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
-                      <div>L-Wins: {stat.leadWins}</div>
-                      <div>L-Loss: {stat.leadLosses}</div>
-                      <div>A-Wins: {stat.assistWins}</div>
-                      <div>A-Loss: {stat.assistLosses}</div>
-                      <div className="col-span-2 text-cyan-300">
-                        Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
-                      </div>
-                    </div>
-                    {manualAdjustments[stat.unit] && (
-                      <div className="mt-1 text-xs text-amber-400">
-                        Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -3024,6 +3435,210 @@ const SeasonTracker = () => {
                         );
                       })()}
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Division Management Modal */}
+          {showDivisionModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Users className="w-6 h-6" />
+                      Division Management
+                    </h2>
+                    <button
+                      onClick={() => setShowDivisionModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left: Unassigned Units */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-amber-400 mb-3">Unassigned Units</h3>
+                      <div className="bg-slate-600 rounded p-3 max-h-96 overflow-y-auto">
+                        {getUnassignedUnits().length > 0 ? (
+                          <div className="space-y-1">
+                            {getUnassignedUnits().map(unit => (
+                              <div key={unit} className="text-white text-sm py-1">
+                                {unit}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-slate-400 text-sm">All units assigned to divisions</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Divisions */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-lg font-semibold text-amber-400">Divisions</h3>
+                        <button
+                          onClick={addDivision}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {divisions.map((division) => (
+                          <div key={division.name} className="bg-slate-600 rounded-lg p-3">
+                            <div className="flex justify-between items-center mb-2">
+                              <input
+                                type="text"
+                                value={division.name}
+                                onChange={(e) => renameDivision(division.name, e.target.value)}
+                                className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm font-semibold"
+                              />
+                              <button
+                                onClick={() => deleteDivision(division.name)}
+                                className="ml-2 p-1 hover:bg-red-600 rounded transition"
+                              >
+                                <Trash2 className="w-4 h-4 text-white" />
+                              </button>
+                            </div>
+                            <div className="space-y-1">
+                              {division.units.map(unit => (
+                                <div key={unit} className="flex justify-between items-center text-xs">
+                                  <span className="text-white">{unit}</span>
+                                  <button
+                                    onClick={() => removeUnitFromDivision(division.name, unit)}
+                                    className="p-1 hover:bg-red-600 rounded transition"
+                                  >
+                                    <X className="w-3 h-3 text-white" />
+                                  </button>
+                                </div>
+                              ))}
+                              {division.units.length === 0 && (
+                                <p className="text-slate-400 text-xs">No units in this division</p>
+                              )}
+                            </div>
+                            <select
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  addUnitToDivision(division.name, e.target.value);
+                                  e.target.value = '';
+                                }
+                              }}
+                              className="w-full mt-2 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-xs"
+                            >
+                              <option value="">Add unit...</option>
+                              {getUnassignedUnits().map(unit => (
+                                <option key={unit} value={unit}>{unit}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                        {divisions.length === 0 && (
+                          <p className="text-slate-400 text-sm text-center py-4">No divisions created yet</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Buttons */}
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                    <button
+                      onClick={() => setShowDivisionModal(false)}
+                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Map Bias Configuration Modal */}
+          {showMapBiasModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Map className="w-6 h-6" />
+                      Configure Map Biases
+                    </h2>
+                    <button
+                      onClick={() => setShowMapBiasModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="mb-4 bg-slate-700 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-amber-300 mb-2">Bias Scale:</h3>
+                    <div className="text-xs text-slate-300 space-y-1">
+                      <div><strong>0</strong> = Balanced</div>
+                      <div><strong>1</strong> = Light Attacker Bias</div>
+                      <div><strong>1.5</strong> = Heavy Attacker Bias</div>
+                      <div><strong>2</strong> = Light Defender Bias</div>
+                      <div><strong>2.5</strong> = Heavy Defender Bias</div>
+                    </div>
+                  </div>
+
+                  {/* Map Bias Inputs by Category */}
+                  {Object.entries(MAPS).map(([category, mapList]) => (
+                    <div key={category} className="mb-4">
+                      <button
+                        onClick={() => toggleSection(category)}
+                        className="w-full flex items-center justify-between bg-slate-700 rounded-lg p-3 hover:bg-slate-600 transition"
+                      >
+                        <h3 className="text-lg font-semibold text-amber-400">
+                          {category.replace(/_/g, ' ').toUpperCase()}
+                        </h3>
+                        {expandedSections[category] ? (
+                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-slate-400" />
+                        )}
+                      </button>
+                      
+                      {expandedSections[category] && (
+                        <div className="mt-2 bg-slate-700 rounded-lg p-4 space-y-3">
+                          {mapList.map(mapName => (
+                            <div key={mapName} className="grid grid-cols-2 gap-4 items-center">
+                              <label className="text-white text-sm">{mapName}</label>
+                              <select
+                                value={mapBiases[mapName] || 0}
+                                onChange={(e) => setMapBiases({
+                                  ...mapBiases,
+                                  [mapName]: parseFloat(e.target.value)
+                                })}
+                                className="px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none text-sm"
+                              >
+                                <option value="0">Balanced</option>
+                                <option value="1">Light Attacker</option>
+                                <option value="1.5">Heavy Attacker</option>
+                                <option value="2">Light Defender</option>
+                                <option value="2.5">Heavy Defender</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Bottom Buttons */}
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                    <button
+                      onClick={() => setShowMapBiasModal(false)}
+                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               </div>
