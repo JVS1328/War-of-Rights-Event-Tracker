@@ -901,19 +901,28 @@ const SeasonTracker = () => {
           leadB = week.leadB;
         }
 
-        // Calculate expected outcome with map bias
+        // Calculate expected outcome
         let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
 
         // Apply map bias if map is selected
         const mapName = week[`round${roundNum}Map`];
         if (mapName) {
+          const mapBiasLevel = mapBiases[mapName] ?? 0;
+          
+          // Build bias multiplier map from percentages
+          const biasPercentMap = {
+            0: 1.00,
+            1: 1.0 + (eloBiasPercentages.lightAttacker / 100.0),
+            1.5: 1.0 + (eloBiasPercentages.heavyAttacker / 100.0),
+            2: 1.0 - (eloBiasPercentages.lightDefender / 100.0),
+            2.5: 1.0 - (eloBiasPercentages.heavyDefender / 100.0)
+          };
+          const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
+
           const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
           const flipped = week[`round${roundNum}Flipped`] || false;
           const usaSide = flipped ? 'B' : 'A';
           const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
-
-          // Map bias multipliers (simplified - could be made configurable)
-          const biasMultiplier = 1.0; // Default balanced
           
           if (attackerSide === 'A') {
             expectedA *= biasMultiplier;
