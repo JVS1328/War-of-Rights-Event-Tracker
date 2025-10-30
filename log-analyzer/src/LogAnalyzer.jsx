@@ -421,12 +421,26 @@ const WarOfRightsLogAnalyzer = () => {
       if (line.includes('has joined the server') && currentRound) {
         const match = line.match(/<(\d{2}:\d{2}:\d{2})>\s+Player\s+(.+?)\s+has joined the server/);
         if (match) {
-          const time = match[1];
+          const joinTime = match[1];
           const playerName = match[2].trim();
-          if (!currentRound.playerSessions[playerName]) {
-            currentRound.playerSessions[playerName] = [];
+          
+          // Only track joins that occur at or after round start
+          let shouldTrackJoin = true;
+          if (currentRound.startTime && currentRound.startTime !== 'Unknown') {
+            const joinSeconds = joinTime.split(':').map(Number);
+            const startSeconds = currentRound.startTime.split(':').map(Number);
+            const joinTimeInSeconds = joinSeconds[0] * 3600 + joinSeconds[1] * 60 + joinSeconds[2];
+            const startTimeInSeconds = startSeconds[0] * 3600 + startSeconds[1] * 60 + startSeconds[2];
+            
+            shouldTrackJoin = joinTimeInSeconds >= startTimeInSeconds;
           }
-          currentRound.playerSessions[playerName].push({ join: time, leave: null });
+          
+          if (shouldTrackJoin) {
+            if (!currentRound.playerSessions[playerName]) {
+              currentRound.playerSessions[playerName] = [];
+            }
+            currentRound.playerSessions[playerName].push({ join: joinTime, leave: null });
+          }
         }
       }
 
@@ -434,13 +448,30 @@ const WarOfRightsLogAnalyzer = () => {
       if (line.includes('has left the server') && currentRound) {
         const match = line.match(/<(\d{2}:\d{2}:\d{2})>\s+Player\s+(.+?)\s+has left the server/);
         if (match) {
-          const time = match[1];
+          const leaveTime = match[1];
           const playerName = match[2].trim();
+          
+          // Check if leave is within round bounds
+          let shouldTrackLeave = true;
+          let cappedLeaveTime = leaveTime;
+          
+          if (currentRound.endTime && currentRound.endTime !== 'Unknown') {
+            const leaveSeconds = leaveTime.split(':').map(Number);
+            const endSeconds = currentRound.endTime.split(':').map(Number);
+            const leaveTimeInSeconds = leaveSeconds[0] * 3600 + leaveSeconds[1] * 60 + leaveSeconds[2];
+            const endTimeInSeconds = endSeconds[0] * 3600 + endSeconds[1] * 60 + endSeconds[2];
+            
+            // Cap leave time to round end if it's after
+            if (leaveTimeInSeconds > endTimeInSeconds) {
+              cappedLeaveTime = currentRound.endTime;
+            }
+          }
+          
           if (currentRound.playerSessions[playerName]) {
             const sessions = currentRound.playerSessions[playerName];
             const lastSession = sessions[sessions.length - 1];
             if (lastSession && !lastSession.leave) {
-              lastSession.leave = time;
+              lastSession.leave = cappedLeaveTime;
             }
           }
         }
@@ -448,11 +479,33 @@ const WarOfRightsLogAnalyzer = () => {
 
       // Detect respawns (casualties)
       if (line.includes('[CPlayer::ClDoRespawn]') && currentRound) {
-        const match = line.match(/\[CPlayer::ClDoRespawn\]\s+"([^"]+)"\s+beginning respawning/);
-        if (match) {
-          currentRound.kills.push({
-            player: match[1].trim()
-          });
+        const timeMatch = line.match(/<(\d{2}:\d{2}:\d{2})>/);
+        const playerMatch = line.match(/\[CPlayer::ClDoRespawn\]\s+"([^"]+)"\s+beginning respawning/);
+        
+        if (playerMatch && timeMatch) {
+          const deathTime = timeMatch[1];
+          
+          // Only add death if it's within round bounds
+          // If round hasn't ended yet (endTime is null), add it
+          // If round has ended, only add if death occurred before or at round end
+          let shouldAddDeath = true;
+          
+          if (currentRound.endTime && currentRound.endTime !== 'Unknown') {
+            const deathSeconds = deathTime.split(':').map(Number);
+            const endSeconds = currentRound.endTime.split(':').map(Number);
+            const deathTimeInSeconds = deathSeconds[0] * 3600 + deathSeconds[1] * 60 + deathSeconds[2];
+            const endTimeInSeconds = endSeconds[0] * 3600 + endSeconds[1] * 60 + endSeconds[2];
+            
+            // Only add if death occurred at or before round end
+            shouldAddDeath = deathTimeInSeconds <= endTimeInSeconds;
+          }
+          
+          if (shouldAddDeath) {
+            currentRound.kills.push({
+              player: playerMatch[1].trim(),
+              time: deathTime
+            });
+          }
         }
       }
     });
@@ -529,23 +582,9 @@ const WarOfRightsLogAnalyzer = () => {
       playerSessionCounts[playerName] = sessions.length;
     });
 
-    // Count respawns (deaths) per regiment, skipping first respawn per player and first respawn after each reconnect
-    round.kills.forEach((death, index) => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      // Initialize tracking for this player
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-      
-      // Skip if we haven't skipped enough respawns yet (one per session)
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
-
+    // First pass: Initialize all players (including those with only initial spawns)
+    round.kills.forEach((death) => {
       let regiment = assignments[death.player] || extractRegimentTag(death.player);
-      // Normalize to merge duplicates
       regiment = normalizeRegimentTag(regiment);
 
       if (!regimentCasualties[regiment]) {
@@ -557,13 +596,31 @@ const WarOfRightsLogAnalyzer = () => {
         };
       }
 
-      regimentCasualties[regiment].casualties++;
-      regimentCasualties[regiment].deaths.push(death.player);
-      
-      // Track individual player deaths
+      // Initialize player with 0 deaths if not exists
       if (!regimentCasualties[regiment].players[death.player]) {
         regimentCasualties[regiment].players[death.player] = 0;
       }
+    });
+
+    // Second pass: Count actual deaths (skipping initial spawns)
+    round.kills.forEach((death, index) => {
+      const sessionCount = playerSessionCounts[death.player] || 1;
+      
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+      
+      // Skip initial spawns (one per session)
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
+        return;
+      }
+
+      let regiment = assignments[death.player] || extractRegimentTag(death.player);
+      regiment = normalizeRegimentTag(regiment);
+
+      regimentCasualties[regiment].casualties++;
+      regimentCasualties[regiment].deaths.push(death.player);
       regimentCasualties[regiment].players[death.player]++;
     });
 
@@ -627,29 +684,36 @@ const WarOfRightsLogAnalyzer = () => {
     // Get unique players and their death counts
     const playerData = Object.entries(regiment.players).map(([playerName, deathCount]) => {
       let presenceSeconds = 0;
-      let hasSessionData = false;
+      let hasValidSessionData = false;
 
       // Calculate actual presence from join/leave sessions
+      // Sessions are already filtered to round boundaries during parsing
       const sessions = selectedRound.playerSessions[playerName];
       if (sessions && sessions.length > 0) {
-        hasSessionData = true;
         sessions.forEach(session => {
           const joinTime = timeToSeconds(session.join);
           const leaveTime = session.leave ? timeToSeconds(session.leave) : roundEndSeconds;
           
-          // Clamp to round boundaries
+          // Skip sessions that occur entirely after the round ends
+          // (can happen in the last round when players join for a round that never starts)
+          if (joinTime > roundEndSeconds) {
+            return;
+          }
+          
+          // Sessions should already be within bounds, but clamp just to be safe
           const effectiveJoin = Math.max(joinTime, roundStartSeconds);
           const effectiveLeave = Math.min(leaveTime, roundEndSeconds);
           
           if (effectiveLeave > effectiveJoin) {
+            hasValidSessionData = true;
             presenceSeconds += (effectiveLeave - effectiveJoin);
           }
         });
       }
       
-      // Only assume full presence if there's NO session data at all AND player has deaths
-      // (player was already on server when round started, before logging began)
-      if (!hasSessionData && deathCount > 0) {
+      // If NO valid session data exists (no joins/leaves recorded within round), assume 100% presence
+      // Player was there before round started or logging didn't capture their session
+      if (!hasValidSessionData) {
         presenceSeconds = roundDuration;
       }
       
