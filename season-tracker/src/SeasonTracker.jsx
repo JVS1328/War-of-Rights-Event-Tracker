@@ -3711,6 +3711,86 @@ const SeasonTracker = () => {
                     })()}
                   </div>
 
+                  {/* Teammate Impact Index (TII) */}
+                  <div className="bg-slate-700 rounded-lg p-4 mb-4">
+                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5" />
+                      Teammate Impact Index (TII)
+                    </h3>
+                    {(() => {
+                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                      const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
+                      
+                      // Filter to only units that have played
+                      const tableData = Object.entries(impactStats)
+                        .map(([unit, data]) => ({
+                          unit,
+                          ...data,
+                          totalGames: data.leadGames + data.assistGames
+                        }))
+                        .filter(row => row.totalGames > 0)
+                        .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
+                      
+                      if (tableData.length === 0) {
+                        return <p className="text-slate-400 text-center py-4">No TII data available yet</p>;
+                      }
+                      
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-slate-300 border-b border-slate-500">
+                                <th className="text-left py-2 px-2">Unit (Avg Players)</th>
+                                <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
+                                <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
+                                <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
+                                <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
+                                <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tableData.map((row, idx) => {
+                                const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                                return (
+                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-slate-600' : 'bg-slate-700'}`}>
+                                    <td className="text-white py-2 px-2">
+                                      {row.unit} ({row.avgPlayers.toFixed(1)})
+                                    </td>
+                                    <td className="text-amber-400 text-center py-2 px-2 font-semibold">
+                                      {row.adjustedTiiScore.toFixed(3)}
+                                    </td>
+                                    <td className="text-cyan-400 text-center py-2 px-2">
+                                      {row.impactScore.toFixed(3)}
+                                    </td>
+                                    <td className="text-green-400 text-center py-2 px-2">
+                                      {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
+                                    </td>
+                                    <td className="text-blue-400 text-center py-2 px-2">
+                                      {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
+                                    </td>
+                                    <td className={`text-center py-2 px-2 ${delta < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      {(delta * 100).toFixed(1)}%
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
+                            <p className="font-semibold text-amber-300 mb-2">📊 Metric Explanations:</p>
+                            <ul className="space-y-1 ml-4">
+                              <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
+                              <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
+                              <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
+                              <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
+                              <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
+                            </ul>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
                   {/* Unit Interactions */}
                   <div className="bg-slate-700 rounded-lg p-4">
                     <div className="flex justify-between items-center mb-3">
