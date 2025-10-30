@@ -1273,6 +1273,50 @@ const SeasonTracker = () => {
     setBalancerResults(null);
   };
 
+  // New Season function
+  const newSeason = () => {
+    if (!confirm('Start a new season? This will clear all current data (units, weeks, standings, etc.). Make sure to export your current season first!')) {
+      return;
+    }
+
+    // Reset all state to defaults
+    setUnits([]);
+    setNonTokenUnits([]);
+    setWeeks([]);
+    setSelectedWeek(null);
+    setTeamNames({ A: 'USA', B: 'CSA' });
+    setPointSystem({
+      winLead: 4,
+      winAssist: 2,
+      lossLead: 0,
+      lossAssist: 1,
+      bonus2_0Lead: 0,
+      bonus2_0Assist: 1
+    });
+    setEloSystem({
+      initialElo: 1500,
+      kFactorStandard: 96,
+      kFactorProvisional: 128,
+      provisionalRounds: 10,
+      sweepBonusMultiplier: 1.25,
+      leadMultiplier: 2.0,
+      sizeInfluence: 1.0,
+      playoffMultiplier: 1.25
+    });
+    setEloBiasPercentages({
+      lightAttacker: 15,
+      heavyAttacker: 30,
+      lightDefender: 15,
+      heavyDefender: 30
+    });
+    setUnitPlayerCounts({});
+    setManualAdjustments({});
+    setDivisions([]);
+    setMapBiases(getDefaultMapBiases());
+    
+    alert('New season started! All data has been cleared.');
+  };
+
   // Export/Import
   const exportData = () => {
     const data = {
@@ -2060,6 +2104,14 @@ const SeasonTracker = () => {
               <p className="text-slate-400">Track regiment performance across the season</p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={newSeason}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition"
+                title="Start New Season"
+              >
+                <Plus className="w-4 h-4" />
+                New Season
+              </button>
               <button
                 onClick={exportData}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
