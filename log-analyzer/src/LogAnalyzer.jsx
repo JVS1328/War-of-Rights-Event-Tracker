@@ -1458,7 +1458,7 @@ const WarOfRightsLogAnalyzer = () => {
                               <div>
                                 <span className="text-slate-400">Players:</span>
                                 <span className="text-blue-400 font-semibold ml-2">
-                                  {new Set(regiment.deaths).size}
+                                  {Object.keys(regiment.players).length}
                                 </span>
                               </div>
                             </div>
