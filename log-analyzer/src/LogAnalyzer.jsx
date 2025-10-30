@@ -395,7 +395,8 @@ const WarOfRightsLogAnalyzer = () => {
           duration: null,
           kills: [],
           teamkills: [],
-          playerSessions: {}
+          playerSessions: {},
+          adjustedCasualties: 0 // Track adjusted casualties (excluding initial spawns)
         };
       }
 
@@ -460,6 +461,37 @@ const WarOfRightsLogAnalyzer = () => {
     if (currentRound) {
       parsedRounds.push(currentRound);
     }
+
+    // Calculate adjusted casualties for each round (excluding initial spawns)
+    parsedRounds.forEach(round => {
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
+      
+      // Count sessions for each player
+      Object.entries(round.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
+      
+      // Count adjusted casualties
+      let adjustedCount = 0;
+      round.kills.forEach(death => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        
+        if (!playerRespawnSkipCount[death.player]) {
+          playerRespawnSkipCount[death.player] = 0;
+        }
+        
+        // Skip if we haven't skipped enough respawns yet (one per session)
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        
+        adjustedCount++;
+      });
+      
+      round.adjustedCasualties = adjustedCount;
+    });
 
     // Reset all state when loading a new log file
     setRounds(parsedRounds);
@@ -595,10 +627,12 @@ const WarOfRightsLogAnalyzer = () => {
     // Get unique players and their death counts
     const playerData = Object.entries(regiment.players).map(([playerName, deathCount]) => {
       let presenceSeconds = 0;
+      let hasSessionData = false;
 
       // Calculate actual presence from join/leave sessions
       const sessions = selectedRound.playerSessions[playerName];
       if (sessions && sessions.length > 0) {
+        hasSessionData = true;
         sessions.forEach(session => {
           const joinTime = timeToSeconds(session.join);
           const leaveTime = session.leave ? timeToSeconds(session.leave) : roundEndSeconds;
@@ -613,9 +647,9 @@ const WarOfRightsLogAnalyzer = () => {
         });
       }
       
-      // If no session data OR calculated presence is 0 but player has deaths,
-      // assume they were present the whole round (they were already on server when round started)
-      if (presenceSeconds === 0 && deathCount > 0) {
+      // Only assume full presence if there's NO session data at all AND player has deaths
+      // (player was already on server when round started, before logging began)
+      if (!hasSessionData && deathCount > 0) {
         presenceSeconds = roundDuration;
       }
       
@@ -1289,7 +1323,7 @@ const WarOfRightsLogAnalyzer = () => {
                         </div>
                       )}
                       <div className="text-sm opacity-75">
-                        {round.kills.length} casualties
+                        {round.adjustedCasualties} casualties
                       </div>
                       <div className="text-sm opacity-75">
                         {new Set(round.kills.map(k => k.player)).size} players
