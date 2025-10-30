@@ -139,6 +139,7 @@ const SeasonTracker = () => {
   const [balancerStatus, setBalancerStatus] = useState('');
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
+  const [draggedMainUnit, setDraggedMainUnit] = useState(null);
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -2099,6 +2100,61 @@ const SeasonTracker = () => {
     setDraggedUnit(null);
   };
 
+  // Main drag and drop handlers for Units list and team rosters
+  const handleMainDragStart = (unit, sourceTeam) => {
+    setDraggedMainUnit({ unit, sourceTeam });
+  };
+
+  const handleMainDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleMainDrop = (targetTeam) => {
+    if (!draggedMainUnit || !selectedWeek) {
+      setDraggedMainUnit(null);
+      return;
+    }
+    
+    const { unit, sourceTeam } = draggedMainUnit;
+    
+    // If dropping on the same team, do nothing
+    if (sourceTeam === targetTeam) {
+      setDraggedMainUnit(null);
+      return;
+    }
+    
+    // Move unit to target team
+    if (targetTeam === 'A' || targetTeam === 'B') {
+      moveUnitToTeam(unit, targetTeam);
+    }
+    
+    setDraggedMainUnit(null);
+  };
+
+  const handleMainDropToUnassigned = () => {
+    if (!draggedMainUnit || !selectedWeek) {
+      setDraggedMainUnit(null);
+      return;
+    }
+    
+    const { unit, sourceTeam } = draggedMainUnit;
+    
+    // Remove from team if it was in one
+    if (sourceTeam === 'A' || sourceTeam === 'B') {
+      removeUnitFromTeam(unit, sourceTeam);
+    }
+    
+    setDraggedMainUnit(null);
+  };
+
+  // Get units available for the selected week (not assigned to either team)
+  const getAvailableUnitsForWeek = () => {
+    if (!selectedWeek) return units;
+    
+    const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
+    return units.filter(u => !assignedUnits.has(u));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -2467,11 +2523,15 @@ const SeasonTracker = () => {
             </div>
 
             {/* Middle Column - Units */}
-            <div className="bg-slate-700 rounded-lg p-6">
+            <div
+              className="bg-slate-700 rounded-lg p-6"
+              onDragOver={handleMainDragOver}
+              onDrop={handleMainDropToUnassigned}
+            >
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
                   <Users className="w-6 h-6" />
-                  Units ({units.length})
+                  {selectedWeek ? `Available Units (${getAvailableUnitsForWeek().length})` : `Units (${units.length})`}
                 </h2>
                 <button
                   onClick={() => toggleEnlarge('units')}
@@ -2497,13 +2557,22 @@ const SeasonTracker = () => {
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
+              {selectedWeek && getAvailableUnitsForWeek().length > 0 && (
+                <div className="mb-2 text-xs text-slate-400 bg-slate-600 rounded p-2">
+                  💡 Drag units to teams or use A/B buttons
+                </div>
+              )}
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {units.map((unit) => {
+                {(selectedWeek ? getAvailableUnitsForWeek() : units).map((unit) => {
                   const isNonToken = nonTokenUnits.includes(unit);
                   return (
                     <div
                       key={unit}
-                      className="flex justify-between items-center p-3 bg-slate-600 rounded-lg"
+                      draggable={selectedWeek ? true : false}
+                      onDragStart={() => selectedWeek && handleMainDragStart(unit, null)}
+                      className={`flex justify-between items-center p-3 bg-slate-600 rounded-lg ${
+                        selectedWeek ? 'cursor-move hover:bg-slate-500' : ''
+                      } transition`}
                     >
                       <div className="flex items-center gap-2">
                         <button
@@ -2789,7 +2858,11 @@ const SeasonTracker = () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {/* Team A */}
-                <div className="bg-slate-600 rounded-lg p-4">
+                <div
+                  className="bg-slate-600 rounded-lg p-4 min-h-[200px]"
+                  onDragOver={handleMainDragOver}
+                  onDrop={() => handleMainDrop('A')}
+                >
                   <div className="mb-3">
                     <input
                       type="text"
@@ -2798,21 +2871,51 @@ const SeasonTracker = () => {
                       className="w-full px-3 py-2 bg-slate-800 text-white text-center font-bold text-lg rounded border border-slate-500 focus:border-amber-500 outline-none"
                     />
                   </div>
+                  {selectedWeek.teamA.length === 0 && (
+                    <div className="text-center text-slate-400 py-8 border-2 border-dashed border-slate-500 rounded">
+                      Drop units here or use → A button
+                    </div>
+                  )}
                   <div className="space-y-2">
-                    {selectedWeek.teamA.map((unit) => (
-                      <div
-                        key={unit}
-                        className="flex justify-between items-center p-2 bg-slate-700 rounded"
-                      >
-                        <span className="text-white">{unit}</span>
-                        <button
-                          onClick={() => removeUnitFromTeam(unit, 'A')}
-                          className="p-1 hover:bg-red-600 rounded transition"
+                    {selectedWeek.teamA.map((unit) => {
+                      // Calculate Elo and TII up to the week BEFORE this one
+                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+                      const previousWeekIdx = currentWeekIdx - 1;
+                      
+                      // Get Elo from previous week (or initial if first week)
+                      const { eloRatings } = previousWeekIdx >= 0
+                        ? calculateEloRatings(previousWeekIdx)
+                        : { eloRatings: {} };
+                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
+                      
+                      // Get TII from previous week (or 0 if first week)
+                      const { impactStats } = previousWeekIdx >= 0
+                        ? calculateTeammateImpact(previousWeekIdx)
+                        : { impactStats: {} };
+                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
+                      
+                      return (
+                        <div
+                          key={unit}
+                          draggable
+                          onDragStart={() => handleMainDragStart(unit, 'A')}
+                          className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
                         >
-                          <X className="w-4 h-4 text-white" />
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex flex-col">
+                            <span className="text-white font-medium">{unit}</span>
+                            <span className="text-xs text-slate-400">
+                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => removeUnitFromTeam(unit, 'A')}
+                            className="p-1 hover:bg-red-600 rounded transition"
+                          >
+                            <X className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                   {!selectedWeek.isPlayoffs && (
                     <div className="mt-3">
@@ -2832,7 +2935,11 @@ const SeasonTracker = () => {
                 </div>
 
                 {/* Team B */}
-                <div className="bg-slate-600 rounded-lg p-4">
+                <div
+                  className="bg-slate-600 rounded-lg p-4 min-h-[200px]"
+                  onDragOver={handleMainDragOver}
+                  onDrop={() => handleMainDrop('B')}
+                >
                   <div className="mb-3">
                     <input
                       type="text"
@@ -2841,21 +2948,51 @@ const SeasonTracker = () => {
                       className="w-full px-3 py-2 bg-slate-800 text-white text-center font-bold text-lg rounded border border-slate-500 focus:border-amber-500 outline-none"
                     />
                   </div>
+                  {selectedWeek.teamB.length === 0 && (
+                    <div className="text-center text-slate-400 py-8 border-2 border-dashed border-slate-500 rounded">
+                      Drop units here or use → B button
+                    </div>
+                  )}
                   <div className="space-y-2">
-                    {selectedWeek.teamB.map((unit) => (
-                      <div
-                        key={unit}
-                        className="flex justify-between items-center p-2 bg-slate-700 rounded"
-                      >
-                        <span className="text-white">{unit}</span>
-                        <button
-                          onClick={() => removeUnitFromTeam(unit, 'B')}
-                          className="p-1 hover:bg-red-600 rounded transition"
+                    {selectedWeek.teamB.map((unit) => {
+                      // Calculate Elo and TII up to the week BEFORE this one
+                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+                      const previousWeekIdx = currentWeekIdx - 1;
+                      
+                      // Get Elo from previous week (or initial if first week)
+                      const { eloRatings } = previousWeekIdx >= 0
+                        ? calculateEloRatings(previousWeekIdx)
+                        : { eloRatings: {} };
+                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
+                      
+                      // Get TII from previous week (or 0 if first week)
+                      const { impactStats } = previousWeekIdx >= 0
+                        ? calculateTeammateImpact(previousWeekIdx)
+                        : { impactStats: {} };
+                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
+                      
+                      return (
+                        <div
+                          key={unit}
+                          draggable
+                          onDragStart={() => handleMainDragStart(unit, 'B')}
+                          className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
                         >
-                          <X className="w-4 h-4 text-white" />
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex flex-col">
+                            <span className="text-white font-medium">{unit}</span>
+                            <span className="text-xs text-slate-400">
+                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => removeUnitFromTeam(unit, 'B')}
+                            className="p-1 hover:bg-red-600 rounded transition"
+                          >
+                            <X className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                   {!selectedWeek.isPlayoffs && (
                     <div className="mt-3">
