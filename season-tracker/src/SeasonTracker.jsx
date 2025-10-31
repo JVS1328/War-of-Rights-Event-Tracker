@@ -4315,8 +4315,8 @@ const SeasonTracker = () => {
 
                   <div className="mb-4 bg-slate-700 rounded-lg p-4">
                     <p className="text-sm text-slate-300">
-                      This heatmap shows how often units have played together as teammates. 
-                      Higher numbers indicate units that frequently team up, which helps evaluate balancer effectiveness.
+                      This heatmap shows how often units have played together as teammates as a percentage of the maximum pairing frequency.
+                      100% (bright red) represents the most frequent pairing, helping normalize new additions into the data.
                     </p>
                   </div>
 
@@ -4332,31 +4332,42 @@ const SeasonTracker = () => {
                       );
                     }
 
-                    // Find max count for color scaling
+                    // Find max count for percentage-based color scaling
                     const maxCount = Math.max(...heatmapData.map(d => d.count), 1);
 
-                    // Helper to get color intensity
+                    // Helper to get color intensity based on percentage of max
                     const getHeatColor = (count) => {
                       if (count === 0) return 'bg-slate-700';
-                      const intensity = Math.min(count / maxCount, 1);
-                      if (intensity < 0.2) return 'bg-blue-900';
-                      if (intensity < 0.4) return 'bg-blue-700';
-                      if (intensity < 0.6) return 'bg-purple-700';
-                      if (intensity < 0.8) return 'bg-orange-600';
+                      const percentage = (count / maxCount) * 100;
+                      if (percentage < 20) return 'bg-blue-900';
+                      if (percentage < 40) return 'bg-blue-700';
+                      if (percentage < 60) return 'bg-purple-700';
+                      if (percentage < 80) return 'bg-orange-600';
                       return 'bg-red-600';
                     };
 
+                    // Helper to get percentage display
+                    const getPercentage = (count) => {
+                      if (count === 0) return '';
+                      return Math.round((count / maxCount) * 100);
+                    };
+
+                    // Calculate dynamic cell size based on number of units
+                    const unitCount = activeUnits.length;
+                    const cellSize = Math.max(24, Math.min(48, Math.floor(800 / unitCount)));
+                    const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
+                    
                     return (
                       <div className="bg-slate-700 rounded-lg p-4">
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse">
+                        <div className="w-full">
+                          <table className="w-full border-collapse table-fixed">
                             <thead>
-                              <tr>
-                                <th className="p-2 text-xs font-semibold text-slate-400 sticky left-0 bg-slate-700 z-10 h-24"></th>
+                              <tr style={{ height: '80px' }}>
+                                <th className="p-1 text-xs font-semibold text-slate-400 bg-slate-700 z-10" style={{ width: '120px' }}></th>
                                 {activeUnits.map(unit => (
-                                  <th key={unit} className="p-2 text-xs font-semibold text-slate-300 min-w-[60px] h-24 align-bottom">
-                                    <div className="transform -rotate-45 origin-bottom-left whitespace-nowrap translate-y-2">
-                                      {unit}
+                                  <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-slate-300 relative`} style={{ height: '80px' }}>
+                                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/6 -rotate-45 origin-bottom-left whitespace-nowrap" style={{ maxWidth: `${cellSize * 2}px` }} title={unit}>
+                                      <span className="truncate block">{unit}</span>
                                     </div>
                                   </th>
                                 ))}
@@ -4365,34 +4376,36 @@ const SeasonTracker = () => {
                             <tbody>
                               {activeUnits.map(unit1 => (
                                 <tr key={unit1}>
-                                  <td className="p-2 text-xs font-semibold text-slate-300 sticky left-0 bg-slate-700 z-10 whitespace-nowrap">
+                                  <td className={`p-1 ${fontSize} font-semibold text-slate-300 bg-slate-700 z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
                                     {unit1}
                                   </td>
                                   {activeUnits.map(unit2 => {
                                     if (unit1 === unit2) {
                                       return (
-                                        <td key={unit2} className="p-1">
-                                          <div className="w-full h-8 bg-slate-800 rounded flex items-center justify-center">
-                                            <span className="text-xs text-slate-600">-</span>
+                                        <td key={unit2} className="p-0.5">
+                                          <div className="w-full bg-slate-800 rounded flex items-center justify-center" style={{ height: `${cellSize}px` }}>
+                                            <span className={`${fontSize} text-slate-600`}>-</span>
                                           </div>
                                         </td>
                                       );
                                     }
                                     
-                                    const data = heatmapData.find(d => 
+                                    const data = heatmapData.find(d =>
                                       (d.unit1 === unit1 && d.unit2 === unit2) ||
                                       (d.unit1 === unit2 && d.unit2 === unit1)
                                     );
                                     const count = data?.count || 0;
+                                    const percentage = getPercentage(count);
                                     
                                     return (
-                                      <td key={unit2} className="p-1">
-                                        <div 
-                                          className={`w-full h-8 ${getHeatColor(count)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
-                                          title={`${unit1} & ${unit2}: ${count} weeks together`}
+                                      <td key={unit2} className="p-0.5">
+                                        <div
+                                          className={`w-full ${getHeatColor(count)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
+                                          style={{ height: `${cellSize}px` }}
+                                          title={`${unit1} & ${unit2}: ${count} weeks together (${percentage}% of max)`}
                                         >
-                                          <span className="text-xs font-semibold text-white">
-                                            {count > 0 ? count : ''}
+                                          <span className={`${fontSize} font-semibold text-white`}>
+                                            {count > 0 ? `${percentage}%` : ''}
                                           </span>
                                         </div>
                                       </td>
@@ -4406,28 +4419,30 @@ const SeasonTracker = () => {
 
                         {/* Legend */}
                         <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
-                          <span className="text-sm text-slate-300">Frequency:</span>
+                          <span className="text-sm text-slate-300">Percentage of Max Pairing:</span>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-slate-700 rounded"></div>
-                            <span className="text-xs text-slate-400">0</span>
+                            <span className="text-xs text-slate-400">0%</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-blue-900 rounded"></div>
-                            <span className="text-xs text-slate-400">Low</span>
+                            <span className="text-xs text-slate-400">1-20%</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-blue-700 rounded"></div>
+                            <span className="text-xs text-slate-400">21-40%</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-purple-700 rounded"></div>
-                            <span className="text-xs text-slate-400">Med</span>
+                            <span className="text-xs text-slate-400">41-60%</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-orange-600 rounded"></div>
+                            <span className="text-xs text-slate-400">61-80%</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-red-600 rounded"></div>
-                            <span className="text-xs text-slate-400">High</span>
+                            <span className="text-xs text-slate-400">81-100%</span>
                           </div>
                         </div>
                       </div>
