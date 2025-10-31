@@ -7,6 +7,7 @@
     "51st AL",
     "59th NY",
     "5th MN",
+    "7th OH",
     "7th TX",
     "AVC",
     "CB",
@@ -18,15 +19,17 @@
     "SR",
     "TKO"
   ],
-  "non_token_units": [
+  "nonTokenUnits": [
     "23rd NYV",
     "5th MN",
-    "SR"
+    "SR",
+    "7th OH"
   ],
-  "season": [
+  "weeks": [
     {
+      "id": 1761868775597,
       "name": "06/11/25 - W1",
-      "A": [
+      "teamA": [
         "10th US",
         "12th VA",
         "59th NY",
@@ -35,7 +38,7 @@
         "SR",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "51st AL",
         "7th TX",
@@ -45,97 +48,102 @@
         "JD",
         "MSG"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "59th NY",
-      "lead_B": "10th TN",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1381,
-      "r1_casualties_B": 1275,
-      "r2_casualties_A": 1317,
-      "r2_casualties_B": 991,
-      "round1_map": "Colquitt's Defense",
-      "round2_map": "Wagon Road",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Colquitt's Defense",
+      "round2Map": "Wagon Road",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "59th NY",
+      "leadB": "10th TN",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1381,
+      "r1CasualtiesB": 1275,
+      "r2CasualtiesA": 1317,
+      "r2CasualtiesB": 991,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "15",
-          "max": "18"
+          "min": 15,
+          "max": 18
         },
         "10th US": {
-          "min": "23",
-          "max": "27"
+          "min": 23,
+          "max": 27
         },
         "12th VA": {
-          "min": "23",
-          "max": "29"
+          "min": 23,
+          "max": 29
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "7",
-          "max": "10"
+          "min": 7,
+          "max": 10
         },
         "59th NY": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "23",
-          "max": "28"
+          "min": 23,
+          "max": 28
         },
         "AVC": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "13",
-          "max": "17"
+          "min": 13,
+          "max": 17
         },
         "FSB": {
-          "min": "20",
-          "max": "23"
+          "min": 20,
+          "max": 23
         },
         "II Corps": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "JD": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "MSG": {
-          "min": "8",
-          "max": "12"
+          "min": 8,
+          "max": 12
         },
         "SR": {
-          "min": "2",
-          "max": "2"
+          "min": 2,
+          "max": 2
         },
         "TKO": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775598,
       "name": "06/18/25 - W2",
-      "A": [
+      "teamA": [
         "10th TN",
         "10th US",
         "59th NY",
@@ -144,7 +152,7 @@
         "JD",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "12th VA",
         "51st AL",
         "7th TX",
@@ -154,97 +162,102 @@
         "MSG",
         "SR"
       ],
-      "round1_winner": "B",
-      "round2_winner": "A",
-      "lead_A": "10th US",
-      "lead_B": "12th VA",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1594,
-      "r1_casualties_B": 1273,
-      "r2_casualties_A": 918,
-      "r2_casualties_B": 903,
-      "round1_map": "East Woods Skirmish",
-      "round2_map": "Hooker's Push",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "A",
+      "round1Map": "East Woods Skirmish",
+      "round2Map": "Hooker's Push",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "10th US",
+      "leadB": "12th VA",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1594,
+      "r1CasualtiesB": 1273,
+      "r2CasualtiesA": 918,
+      "r2CasualtiesB": 903,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "10th US": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "12th VA": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "8",
-          "max": "10"
+          "min": 8,
+          "max": 10
         },
         "59th NY": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "AVC": {
-          "min": "12",
-          "max": "15"
+          "min": 12,
+          "max": 15
         },
         "CB": {
-          "min": "50",
-          "max": "55"
+          "min": 50,
+          "max": 55
         },
         "CQB": {
-          "min": "14",
-          "max": "18"
+          "min": 14,
+          "max": 18
         },
         "FSB": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "II Corps": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "JD": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "MSG": {
-          "min": "6",
-          "max": "10"
+          "min": 6,
+          "max": 10
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "14",
-          "max": "16"
+          "min": 14,
+          "max": 16
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775599,
       "name": "06/25/25 - W3",
-      "A": [
+      "teamA": [
         "10th TN",
         "10th US",
         "51st AL",
@@ -253,7 +266,7 @@
         "JD",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "12th VA",
         "59th NY",
         "7th TX",
@@ -262,97 +275,102 @@
         "II Corps",
         "MSG"
       ],
-      "round1_winner": "B",
-      "round2_winner": "A",
-      "lead_A": "AVC",
-      "lead_B": "FSB",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1396,
-      "r1_casualties_B": 1560,
-      "r2_casualties_A": 633,
-      "r2_casualties_B": 814,
-      "round1_map": "Cooke's Countercharge",
-      "round2_map": "Maryland Heights",
-      "round1_flipped": false,
-      "round2_flipped": true,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "A",
+      "round1Map": "Cooke's Countercharge",
+      "round2Map": "Maryland Heights",
+      "round1Flipped": false,
+      "round2Flipped": true,
+      "leadA": "AVC",
+      "leadB": "FSB",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1396,
+      "r1CasualtiesB": 1560,
+      "r2CasualtiesA": 633,
+      "r2CasualtiesB": 814,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "10th US": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "12th VA": {
-          "min": "31",
-          "max": "36"
+          "min": 31,
+          "max": 36
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "8",
-          "max": "10"
+          "min": 8,
+          "max": 10
         },
         "59th NY": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "23",
-          "max": "28"
+          "min": 23,
+          "max": 28
         },
         "AVC": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "CB": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "CQB": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "FSB": {
-          "min": "16",
-          "max": "18"
+          "min": 16,
+          "max": 18
         },
         "II Corps": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "JD": {
-          "min": "32",
-          "max": "37"
+          "min": 32,
+          "max": 37
         },
         "MSG": {
-          "min": "6",
-          "max": "10"
+          "min": 6,
+          "max": 10
         },
         "SR": {
-          "min": "2",
-          "max": "2"
+          "min": 2,
+          "max": 2
         },
         "TKO": {
-          "min": "10",
-          "max": "12"
+          "min": 10,
+          "max": 12
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775600,
       "name": "07/09/25 - W4",
-      "A": [
+      "teamA": [
         "10th TN",
         "12th VA",
         "59th NY",
@@ -361,7 +379,7 @@
         "JD",
         "MSG"
       ],
-      "B": [
+      "teamB": [
         "10th US",
         "51st AL",
         "7th TX",
@@ -371,97 +389,102 @@
         "SR",
         "TKO"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "MSG",
-      "lead_B": "TKO",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1338,
-      "r1_casualties_B": 1041,
-      "r2_casualties_A": 1421,
-      "r2_casualties_B": 2006,
-      "round1_map": "Otto & Sherrick Farm",
-      "round2_map": "Roulette Lane",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Otto & Sherrick Farm",
+      "round2Map": "Roulette Lane",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "MSG",
+      "leadB": "TKO",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1338,
+      "r1CasualtiesB": 1041,
+      "r2CasualtiesA": 1421,
+      "r2CasualtiesB": 2006,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "10th US": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "12th VA": {
-          "min": "22",
-          "max": "27"
+          "min": 22,
+          "max": 27
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "59th NY": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "AVC": {
-          "min": "8",
-          "max": "14"
+          "min": 8,
+          "max": 14
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "FSB": {
-          "min": "15",
-          "max": "19"
+          "min": 15,
+          "max": 19
         },
         "II Corps": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "JD": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "MSG": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "SR": {
-          "min": "2",
-          "max": "4"
+          "min": 2,
+          "max": 4
         },
         "TKO": {
-          "min": "17",
-          "max": "18"
+          "min": 17,
+          "max": 18
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775601,
       "name": "07/16/25 - W5",
-      "A": [
+      "teamA": [
         "51st AL",
         "59th NY",
         "AVC",
@@ -470,7 +493,7 @@
         "II Corps",
         "SR"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "10th US",
         "12th VA",
@@ -480,97 +503,102 @@
         "MSG",
         "TKO"
       ],
-      "round1_winner": "B",
-      "round2_winner": "A",
-      "lead_A": "CB",
-      "lead_B": "JD",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 2015,
-      "r1_casualties_B": 1531,
-      "r2_casualties_A": 1651,
-      "r2_casualties_B": 1747,
-      "round1_map": "Confederate Encampment",
-      "round2_map": "Hill's Counterattack",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "A",
+      "round1Map": "Confederate Encampment",
+      "round2Map": "Hill's Counterattack",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "CB",
+      "leadB": "JD",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 2015,
+      "r1CasualtiesB": 1531,
+      "r2CasualtiesA": 1651,
+      "r2CasualtiesB": 1747,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "17",
-          "max": "19"
+          "min": 17,
+          "max": 19
         },
         "10th US": {
-          "min": "22",
-          "max": "26"
+          "min": 22,
+          "max": 26
         },
         "12th VA": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "12",
-          "max": "17"
+          "min": 12,
+          "max": 17
         },
         "59th NY": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "AVC": {
-          "min": "8",
-          "max": "12"
+          "min": 8,
+          "max": 12
         },
         "CB": {
-          "min": "50",
-          "max": "55"
+          "min": 50,
+          "max": 55
         },
         "CQB": {
-          "min": "12",
-          "max": "15"
+          "min": 12,
+          "max": 15
         },
         "FSB": {
-          "min": "14",
-          "max": "19"
+          "min": 14,
+          "max": 19
         },
         "II Corps": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "JD": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "MSG": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "SR": {
-          "min": "2",
-          "max": "2"
+          "min": 2,
+          "max": 2
         },
         "TKO": {
-          "min": "13",
-          "max": "15"
+          "min": 13,
+          "max": 15
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775602,
       "name": "07/23/25 - W6",
-      "A": [
+      "teamA": [
         "12th VA",
         "51st AL",
         "59th NY",
@@ -579,7 +607,7 @@
         "JD",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "10th US",
         "AVC",
@@ -589,97 +617,102 @@
         "MSG",
         "SR"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "51st AL",
-      "lead_B": "II Corps",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1394,
-      "r1_casualties_B": 1898,
-      "r2_casualties_A": 922,
-      "r2_casualties_B": 1277,
-      "round1_map": "Colquitt's Defense",
-      "round2_map": "Flemming's Meadow",
-      "round1_flipped": true,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Colquitt's Defense",
+      "round2Map": "Flemming's Meadow",
+      "round1Flipped": true,
+      "round2Flipped": false,
+      "leadA": "51st AL",
+      "leadB": "II Corps",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1394,
+      "r1CasualtiesB": 1898,
+      "r2CasualtiesA": 922,
+      "r2CasualtiesB": 1277,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "17",
-          "max": "19"
+          "min": 17,
+          "max": 19
         },
         "10th US": {
-          "min": "24",
-          "max": "28"
+          "min": 24,
+          "max": 28
         },
         "12th VA": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "18",
-          "max": "23"
+          "min": 18,
+          "max": 23
         },
         "59th NY": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "AVC": {
-          "min": "9",
-          "max": "13"
+          "min": 9,
+          "max": 13
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "FSB": {
-          "min": "16",
-          "max": "18"
+          "min": 16,
+          "max": 18
         },
         "II Corps": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "JD": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "MSG": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "SR": {
-          "min": "2",
-          "max": "2"
+          "min": 2,
+          "max": 2
         },
         "TKO": {
-          "min": "20",
-          "max": "21"
+          "min": 20,
+          "max": 21
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775603,
       "name": "07/30/25 - W7",
-      "A": [
+      "teamA": [
         "10th US",
         "12th VA",
         "59th NY",
@@ -689,7 +722,7 @@
         "JD",
         "SR"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "51st AL",
         "CB",
@@ -698,97 +731,102 @@
         "MSG",
         "TKO"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "CQB",
-      "lead_B": "10th TN",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 885,
-      "r1_casualties_B": 1713,
-      "r2_casualties_A": 947,
-      "r2_casualties_B": 1472,
-      "round1_map": "Stefan's Lot",
-      "round2_map": "Alexander Farm",
-      "round1_flipped": false,
-      "round2_flipped": true,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Stefan's Lot",
+      "round2Map": "Alexander Farm",
+      "round1Flipped": false,
+      "round2Flipped": true,
+      "leadA": "CQB",
+      "leadB": "10th TN",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 885,
+      "r1CasualtiesB": 1713,
+      "r2CasualtiesA": 947,
+      "r2CasualtiesB": 1472,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "10th US": {
-          "min": "19",
-          "max": "20"
+          "min": 19,
+          "max": 20
         },
         "12th VA": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "59th NY": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "AVC": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "FSB": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "II Corps": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "JD": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "MSG": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "SR": {
-          "min": "3",
-          "max": "4"
+          "min": 3,
+          "max": 4
         },
         "TKO": {
-          "min": "20",
-          "max": "24"
+          "min": 20,
+          "max": 24
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775604,
       "name": "08/06/25 - W8",
-      "A": [
+      "teamA": [
         "10th TN",
         "10th US",
         "59th NY",
@@ -798,7 +836,7 @@
         "SR",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "12th VA",
         "51st AL",
         "CB",
@@ -807,97 +845,102 @@
         "JD",
         "MSG"
       ],
-      "round1_winner": "B",
-      "round2_winner": "B",
-      "lead_A": "59th NY",
-      "lead_B": "FSB",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1406,
-      "r1_casualties_B": 1340,
-      "r2_casualties_A": 1883,
-      "r2_casualties_B": 1214,
-      "round1_map": "Nicodemus Hill",
-      "round2_map": "Garland's Stand",
-      "round1_flipped": true,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "B",
+      "round1Map": "Nicodemus Hill",
+      "round2Map": "Garland's Stand",
+      "round1Flipped": true,
+      "round2Flipped": false,
+      "leadA": "59th NY",
+      "leadB": "FSB",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1406,
+      "r1CasualtiesB": 1340,
+      "r2CasualtiesA": 1883,
+      "r2CasualtiesB": 1214,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "14",
-          "max": "19"
+          "min": 14,
+          "max": 19
         },
         "10th US": {
-          "min": "18",
-          "max": "21"
+          "min": 18,
+          "max": 21
         },
         "12th VA": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "17",
-          "max": "23"
+          "min": 17,
+          "max": 23
         },
         "59th NY": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "AVC": {
-          "min": "5",
-          "max": "8"
+          "min": 5,
+          "max": 8
         },
         "CB": {
-          "min": "50",
-          "max": "55"
+          "min": 50,
+          "max": 55
         },
         "CQB": {
-          "min": "14",
-          "max": "16"
+          "min": 14,
+          "max": 16
         },
         "FSB": {
-          "min": "16",
-          "max": "21"
+          "min": 16,
+          "max": 21
         },
         "II Corps": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "JD": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "MSG": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "SR": {
-          "min": "2",
-          "max": "2"
+          "min": 2,
+          "max": 2
         },
         "TKO": {
-          "min": "19",
-          "max": "21"
+          "min": 19,
+          "max": 21
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775605,
       "name": "08/13/25 - W9",
-      "A": [
+      "teamA": [
         "10th US",
         "51st AL",
         "AVC",
@@ -907,7 +950,7 @@
         "MSG",
         "SR"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "12th VA",
         "59th NY",
@@ -916,97 +959,102 @@
         "II Corps",
         "TKO"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "CB",
-      "lead_B": "7th TX",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1397,
-      "r1_casualties_B": 1319,
-      "r2_casualties_A": 1735,
-      "r2_casualties_B": 1743,
-      "round1_map": "Crossroads",
-      "round2_map": "Shenandoah Street",
-      "round1_flipped": false,
-      "round2_flipped": true,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Crossroads",
+      "round2Map": "Shenandoah Street",
+      "round1Flipped": false,
+      "round2Flipped": true,
+      "leadA": "CB",
+      "leadB": "7th TX",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1397,
+      "r1CasualtiesB": 1319,
+      "r2CasualtiesA": 1735,
+      "r2CasualtiesB": 1743,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "12",
-          "max": "15"
+          "min": 12,
+          "max": 15
         },
         "10th US": {
-          "min": "20",
-          "max": "24"
+          "min": 20,
+          "max": 24
         },
         "12th VA": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "23",
-          "max": "28"
+          "min": 23,
+          "max": 28
         },
         "59th NY": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "AVC": {
-          "min": "10",
-          "max": "13"
+          "min": 10,
+          "max": 13
         },
         "CB": {
-          "min": "60",
-          "max": "65"
+          "min": 60,
+          "max": 65
         },
         "CQB": {
-          "min": "17",
-          "max": "22"
+          "min": 17,
+          "max": 22
         },
         "FSB": {
-          "min": "16",
-          "max": "18"
+          "min": 16,
+          "max": 18
         },
         "II Corps": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "JD": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "MSG": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "SR": {
-          "min": "3",
-          "max": "4"
+          "min": 3,
+          "max": 4
         },
         "TKO": {
-          "min": "18",
-          "max": "19"
+          "min": 18,
+          "max": 19
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775606,
       "name": "08/20/25 - W10",
-      "A": [
+      "teamA": [
         "12th VA",
         "AVC",
         "CQB",
@@ -1016,7 +1064,7 @@
         "SR",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "10th US",
         "51st AL",
@@ -1025,97 +1073,102 @@
         "CB",
         "MSG"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": "12th VA",
-      "lead_B": "MSG",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1719,
-      "r1_casualties_B": 1725,
-      "r2_casualties_A": 1556,
-      "r2_casualties_B": 1979,
-      "round1_map": "Wagon Road",
-      "round2_map": "Piper Farm",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Wagon Road",
+      "round2Map": "Piper Farm",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "12th VA",
+      "leadB": "MSG",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1719,
+      "r1CasualtiesB": 1725,
+      "r2CasualtiesA": 1556,
+      "r2CasualtiesB": 1979,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "19",
-          "max": "23"
+          "min": 19,
+          "max": 23
         },
         "10th US": {
-          "min": "26",
-          "max": "30"
+          "min": 26,
+          "max": 30
         },
         "12th VA": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "11",
-          "max": "16"
+          "min": 11,
+          "max": 16
         },
         "59th NY": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "AVC": {
-          "min": "9",
-          "max": "12"
+          "min": 9,
+          "max": 12
         },
         "CB": {
-          "min": "50",
-          "max": "55"
+          "min": 50,
+          "max": 55
         },
         "CQB": {
-          "min": "12",
-          "max": "17"
+          "min": 12,
+          "max": 17
         },
         "FSB": {
-          "min": "18",
-          "max": "22"
+          "min": 18,
+          "max": 22
         },
         "II Corps": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "JD": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "MSG": {
-          "min": "16",
-          "max": "21"
+          "min": 16,
+          "max": 21
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "21",
-          "max": "22"
+          "min": 21,
+          "max": 22
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775607,
       "name": "08/27/25 - W11",
-      "A": [
+      "teamA": [
         "10th US",
         "59th NY",
         "AVC",
@@ -1124,7 +1177,7 @@
         "JD",
         "MSG"
       ],
-      "B": [
+      "teamB": [
         "10th TN",
         "12th VA",
         "51st AL",
@@ -1133,97 +1186,102 @@
         "SR",
         "TKO"
       ],
-      "round1_winner": "A",
-      "round2_winner": "B",
-      "lead_A": "AVC",
-      "lead_B": "CQB",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 0,
-      "r1_casualties_B": 0,
-      "r2_casualties_A": 0,
-      "r2_casualties_B": 0,
-      "round1_map": "Colquitt's Defense",
-      "round2_map": "Roulette Lane",
-      "round1_flipped": true,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "B",
+      "round1Map": "Colquitt's Defense",
+      "round2Map": "Roulette Lane",
+      "round1Flipped": true,
+      "round2Flipped": false,
+      "leadA": "AVC",
+      "leadB": "CQB",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 0,
+      "r1CasualtiesB": 0,
+      "r2CasualtiesA": 0,
+      "r2CasualtiesB": 0,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "18",
-          "max": "21"
+          "min": 18,
+          "max": 21
         },
         "10th US": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "12th VA": {
-          "min": "33",
-          "max": "38"
+          "min": 33,
+          "max": 38
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "16",
-          "max": "21"
+          "min": 16,
+          "max": 21
         },
         "59th NY": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "5th MN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "10",
-          "max": "12"
+          "min": 10,
+          "max": 12
         },
         "CB": {
-          "min": "50",
-          "max": "55"
+          "min": 50,
+          "max": 55
         },
         "CQB": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "FSB": {
-          "min": "24",
-          "max": "29"
+          "min": 24,
+          "max": 29
         },
         "II Corps": {
-          "min": "38",
-          "max": "42"
+          "min": 38,
+          "max": 42
         },
         "JD": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "MSG": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "SR": {
-          "min": "3",
-          "max": "4"
+          "min": 3,
+          "max": 4
         },
         "TKO": {
-          "min": "17",
-          "max": "19"
+          "min": 17,
+          "max": 19
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775608,
       "name": "09/03/25 - W12",
-      "A": [
+      "teamA": [
         "10th TN",
         "5th MN",
         "AVC",
@@ -1233,7 +1291,7 @@
         "JD",
         "TKO"
       ],
-      "B": [
+      "teamB": [
         "10th US",
         "12th VA",
         "51st AL",
@@ -1242,97 +1300,102 @@
         "MSG",
         "SR"
       ],
-      "round1_winner": "B",
-      "round2_winner": "A",
-      "lead_A": "TKO",
-      "lead_B": "II Corps",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 964,
-      "r1_casualties_B": 1489,
-      "r2_casualties_A": 1167,
-      "r2_casualties_B": 1676,
-      "round1_map": "Hooker's Push",
-      "round2_map": "Burnside Bridge",
-      "round1_flipped": false,
-      "round2_flipped": true,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "A",
+      "round1Map": "Hooker's Push",
+      "round2Map": "Burnside Bridge",
+      "round1Flipped": false,
+      "round2Flipped": true,
+      "leadA": "TKO",
+      "leadB": "II Corps",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 964,
+      "r1CasualtiesB": 1489,
+      "r2CasualtiesA": 1167,
+      "r2CasualtiesB": 1676,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "10th US": {
-          "min": "28",
-          "max": "34"
+          "min": 28,
+          "max": 34
         },
         "12th VA": {
-          "min": "31",
-          "max": "36"
+          "min": 31,
+          "max": 36
         },
         "23rd NYV": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "51st AL": {
-          "min": "14",
-          "max": "19"
+          "min": 14,
+          "max": 19
         },
         "59th NY": {
-          "min": "33",
-          "max": "38"
+          "min": 33,
+          "max": 38
         },
         "5th MN": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "7",
-          "max": "12"
+          "min": 7,
+          "max": 12
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "9",
-          "max": "12"
+          "min": 9,
+          "max": 12
         },
         "FSB": {
-          "min": "12",
-          "max": "17"
+          "min": 12,
+          "max": 17
         },
         "II Corps": {
-          "min": "40",
-          "max": "45"
+          "min": 40,
+          "max": 45
         },
         "JD": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "MSG": {
-          "min": "4",
-          "max": "6"
+          "min": 4,
+          "max": 6
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "19",
-          "max": "23"
+          "min": 19,
+          "max": 23
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775609,
       "name": "09/10/25 - W13",
-      "A": [
+      "teamA": [
         "10th TN",
         "10th US",
         "12th VA",
@@ -1343,7 +1406,7 @@
         "FSB",
         "MSG"
       ],
-      "B": [
+      "teamB": [
         "59th NY",
         "AVC",
         "CB",
@@ -1352,97 +1415,102 @@
         "SR",
         "TKO"
       ],
-      "round1_winner": "B",
-      "round2_winner": "A",
-      "lead_A": "10th US",
-      "lead_B": "JD",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1588,
-      "r1_casualties_B": 1201,
-      "r2_casualties_A": 1175,
-      "r2_casualties_B": 1483,
-      "round1_map": "Pat's Turnpike",
-      "round2_map": "Stefan's Lot",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "A",
+      "round1Map": "Pat's Turnpike",
+      "round2Map": "Stefan's Lot",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": "10th US",
+      "leadB": "JD",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1588,
+      "r1CasualtiesB": 1201,
+      "r2CasualtiesA": 1175,
+      "r2CasualtiesB": 1483,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "8",
-          "max": "13"
+          "min": 8,
+          "max": 13
         },
         "10th US": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "12th VA": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "23rd NYV": {
-          "min": "7",
-          "max": "10"
+          "min": 7,
+          "max": 10
         },
         "51st AL": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "59th NY": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "5th MN": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "9",
-          "max": "12"
+          "min": 9,
+          "max": 12
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "FSB": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "II Corps": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "JD": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "MSG": {
-          "min": "5",
-          "max": "8"
+          "min": 5,
+          "max": 8
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "17",
-          "max": "18"
+          "min": 17,
+          "max": 18
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775610,
       "name": "09/17/25 - W14",
-      "A": [
+      "teamA": [
         "10th US",
         "23rd NYV",
         "AVC",
@@ -1452,7 +1520,7 @@
         "II Corps",
         "SR"
       ],
-      "B": [
+      "teamB": [
         "12th VA",
         "51st AL",
         "59th NY",
@@ -1461,97 +1529,102 @@
         "MSG",
         "TKO"
       ],
-      "round1_winner": "A",
-      "round2_winner": "A",
-      "lead_A": null,
-      "lead_B": "51st AL",
-      "playoffs": false,
-      "lead_A_r1": null,
-      "lead_B_r1": null,
-      "lead_A_r2": null,
-      "lead_B_r2": null,
-      "r1_casualties_A": 1176,
-      "r1_casualties_B": 1403,
-      "r2_casualties_A": 1276,
-      "r2_casualties_B": 1355,
-      "round1_map": "Reno's Fall",
-      "round2_map": "Smith Field",
-      "round1_flipped": true,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Reno's Fall",
+      "round2Map": "Smith Field",
+      "round1Flipped": true,
+      "round2Flipped": false,
+      "leadA": null,
+      "leadB": "51st AL",
+      "isPlayoffs": false,
+      "leadA_r1": null,
+      "leadB_r1": null,
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1176,
+      "r1CasualtiesB": 1403,
+      "r2CasualtiesA": 1276,
+      "r2CasualtiesB": 1355,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "10th US": {
-          "min": "21",
-          "max": "26"
+          "min": 21,
+          "max": 26
         },
         "12th VA": {
-          "min": "35",
-          "max": "40"
+          "min": 35,
+          "max": 40
         },
         "23rd NYV": {
-          "min": "10",
-          "max": "15"
+          "min": 10,
+          "max": 15
         },
         "51st AL": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "59th NY": {
-          "min": "33",
-          "max": "38"
+          "min": 33,
+          "max": 38
         },
         "5th MN": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "9",
-          "max": "10"
+          "min": 9,
+          "max": 10
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "15",
-          "max": "20"
+          "min": 15,
+          "max": 20
         },
         "FSB": {
-          "min": "19",
-          "max": "23"
+          "min": 19,
+          "max": 23
         },
         "II Corps": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "JD": {
-          "min": "27",
-          "max": "32"
+          "min": 27,
+          "max": 32
         },
         "MSG": {
-          "min": "4",
-          "max": "7"
+          "min": 4,
+          "max": 7
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "18",
-          "max": "19"
+          "min": 18,
+          "max": 19
         }
+      },
+      "weeklyCasualties": {
+        "USA": {},
+        "CSA": {}
       }
     },
     {
+      "id": 1761868775611,
       "name": "10/08/25 - PR1",
-      "A": [
+      "teamA": [
         "10th US",
         "23rd NYV",
         "59th NY",
@@ -1560,7 +1633,7 @@
         "FSB",
         "JD"
       ],
-      "B": [
+      "teamB": [
         "12th VA",
         "51st AL",
         "CB",
@@ -1570,97 +1643,142 @@
         "SR",
         "TKO"
       ],
-      "round1_winner": "B",
-      "round2_winner": "B",
-      "lead_A": null,
-      "lead_B": null,
-      "playoffs": true,
-      "lead_A_r1": "FSB",
-      "lead_B_r1": "51st AL",
-      "lead_A_r2": "JD",
-      "lead_B_r2": "MSG",
-      "r1_casualties_A": 1126,
-      "r1_casualties_B": 814,
-      "r2_casualties_A": 1913,
-      "r2_casualties_B": 1110,
-      "round1_map": "Harper's Graveyard",
-      "round2_map": "Otto & Sherrick Farm",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "B",
+      "round1Map": "Harper's Graveyard",
+      "round2Map": "Otto & Sherrick Farm",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": null,
+      "leadB": null,
+      "isPlayoffs": true,
+      "leadA_r1": "FSB",
+      "leadB_r1": "51st AL",
+      "leadA_r2": "JD",
+      "leadB_r2": "MSG",
+      "r1CasualtiesA": 904,
+      "r1CasualtiesB": 714,
+      "r2CasualtiesA": 1516,
+      "r2CasualtiesB": 985,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "10th US": {
-          "min": "21",
-          "max": "25"
+          "min": 21,
+          "max": 25
         },
         "12th VA": {
-          "min": "40",
-          "max": "44"
+          "min": 40,
+          "max": 44
         },
         "23rd NYV": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "51st AL": {
-          "min": "14",
-          "max": "19"
+          "min": 14,
+          "max": 19
         },
         "59th NY": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "5th MN": {
-          "min": "20",
-          "max": "25"
+          "min": 20,
+          "max": 25
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "8",
-          "max": "10"
+          "min": 8,
+          "max": 10
         },
         "CB": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "CQB": {
-          "min": "14",
-          "max": "19"
+          "min": 14,
+          "max": 19
         },
         "FSB": {
-          "min": "19",
-          "max": "23"
+          "min": 19,
+          "max": 23
         },
         "II Corps": {
-          "min": "25",
-          "max": "30"
+          "min": 25,
+          "max": 30
         },
         "JD": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "MSG": {
-          "min": "7",
-          "max": "10"
+          "min": 7,
+          "max": 10
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "18",
-          "max": "21"
+          "min": 18,
+          "max": 21
+        }
+      },
+      "weeklyCasualties": {
+        "Team A": {
+          "r1": {
+            "10th US": 182,
+            "23rd NYV": 28,
+            "59th NY": 127,
+            "5th MN": 80,
+            "AVC": 32,
+            "FSB": 142,
+            "JD": 313
+          },
+          "r2": {
+            "10th US": 309,
+            "23rd NYV": 33,
+            "59th NY": 268,
+            "5th MN": 198,
+            "AVC": 44,
+            "FSB": 147,
+            "JD": 517
+          }
+        },
+        "Team B": {
+          "r1": {
+            "12th VA": 124,
+            "51st AL": 70,
+            "CB": 198,
+            "CQB": 68,
+            "II Corps": 91,
+            "MSG": 41,
+            "SR": 1,
+            "TKO": 121
+          },
+          "r2": {
+            "12th VA": 245,
+            "51st AL": 101,
+            "CB": 406,
+            "CQB": 47,
+            "II Corps": 44,
+            "MSG": 56,
+            "SR": 3,
+            "TKO": 83
+          }
         }
       }
     },
     {
+      "id": 1761868775612,
       "name": "10/15/25 - PR2",
-      "A": [
+      "teamA": [
         "10th US",
         "12th VA",
         "23rd NYV",
@@ -1670,7 +1788,7 @@
         "JD",
         "SR"
       ],
-      "B": [
+      "teamB": [
         "59th NY",
         "AVC",
         "CB",
@@ -1679,97 +1797,142 @@
         "MSG",
         "TKO"
       ],
-      "round1_winner": "B",
-      "round2_winner": "B",
-      "lead_A": null,
-      "lead_B": null,
-      "playoffs": true,
-      "lead_A_r1": "10th US",
-      "lead_B_r1": "CB",
-      "lead_A_r2": "12th VA",
-      "lead_B_r2": "AVC",
-      "r1_casualties_A": 1733,
-      "r1_casualties_B": 1140,
-      "r2_casualties_A": 1943,
-      "r2_casualties_B": 876,
-      "round1_map": "Confederate Encampment",
-      "round2_map": "Colquitt's Defense",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {
+      "round1Winner": "B",
+      "round2Winner": "B",
+      "round1Map": "Confederate Encampment",
+      "round2Map": "Colquitt's Defense",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": null,
+      "leadB": null,
+      "isPlayoffs": true,
+      "leadA_r1": "10th US",
+      "leadB_r1": "CB",
+      "leadA_r2": "12th VA",
+      "leadB_r2": "AVC",
+      "r1CasualtiesA": 1707,
+      "r1CasualtiesB": 879,
+      "r2CasualtiesA": 1822,
+      "r2CasualtiesB": 688,
+      "unitPlayerCounts": {
         "10th TN": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "10th US": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "12th VA": {
-          "min": "45",
-          "max": "50"
+          "min": 45,
+          "max": 50
         },
         "23rd NYV": {
-          "min": "5",
-          "max": "10"
+          "min": 5,
+          "max": 10
         },
         "51st AL": {
-          "min": "17",
-          "max": "22"
+          "min": 17,
+          "max": 22
         },
         "59th NY": {
-          "min": "32",
-          "max": "35"
+          "min": 32,
+          "max": 35
         },
         "5th MN": {
-          "min": "27",
-          "max": "33"
+          "min": 27,
+          "max": 33
         },
         "7th TX": {
-          "min": "0",
-          "max": "0"
+          "min": 0,
+          "max": 0
         },
         "AVC": {
-          "min": "9",
-          "max": "12"
+          "min": 9,
+          "max": 12
         },
         "CB": {
-          "min": "60",
-          "max": "65"
+          "min": 60,
+          "max": 65
         },
         "CQB": {
-          "min": "12",
-          "max": "16"
+          "min": 12,
+          "max": 16
         },
         "FSB": {
-          "min": "12",
-          "max": "17"
+          "min": 12,
+          "max": 17
         },
         "II Corps": {
-          "min": "30",
-          "max": "35"
+          "min": 30,
+          "max": 35
         },
         "JD": {
-          "min": "28",
-          "max": "32"
+          "min": 28,
+          "max": 32
         },
         "MSG": {
-          "min": "4",
-          "max": "6"
+          "min": 4,
+          "max": 6
         },
         "SR": {
-          "min": "2",
-          "max": "3"
+          "min": 2,
+          "max": 3
         },
         "TKO": {
-          "min": "18",
-          "max": "20"
+          "min": 18,
+          "max": 20
+        }
+      },
+      "weeklyCasualties": {
+        "Team A": {
+          "r1": {
+            "10th US": 325,
+            "12th VA": 467,
+            "23rd NYV": 49,
+            "51st AL": 151,
+            "5th MN": 239,
+            "CQB": 147,
+            "JD": 322,
+            "SR": 7
+          },
+          "r2": {
+            "10th US": 311,
+            "12th VA": 496,
+            "23rd NYV": 78,
+            "51st AL": 202,
+            "5th MN": 233,
+            "CQB": 164,
+            "JD": 332,
+            "SR": 6
+          }
+        },
+        "Team B": {
+          "r1": {
+            "59th NY": 143,
+            "AVC": 78,
+            "CB": 294,
+            "FSB": 101,
+            "II Corps": 133,
+            "MSG": 24,
+            "TKO": 106
+          },
+          "r2": {
+            "59th NY": 103,
+            "AVC": 48,
+            "CB": 220,
+            "FSB": 80,
+            "II Corps": 136,
+            "MSG": 12,
+            "TKO": 89
+          }
         }
       }
     },
     {
+      "id": 1761868775613,
       "name": "10/22/25 - PR3",
-      "A": [
+      "teamA": [
         "10th US",
         "12th VA",
         "51st AL",
@@ -1778,7 +1941,7 @@
         "FSB",
         "II Corps"
       ],
-      "B": [
+      "teamB": [
         "23rd NYV",
         "CB",
         "CQB",
@@ -1787,111 +1950,396 @@
         "SR",
         "TKO"
       ],
-      "round1_winner": "B",
-      "round2_winner": "B",
-      "lead_A": null,
-      "lead_B": null,
-      "playoffs": true,
-      "lead_A_r1": "51st AL",
-      "lead_B_r1": "MSG",
-      "lead_A_r2": "AVC",
-      "lead_B_r2": "CB",
-      "r1_casualties_A": 1492,
-      "r1_casualties_B": 1617,
-      "r2_casualties_A": 1220,
-      "r2_casualties_B": 1254,
-      "round1_map": "Cooke's Countercharge",
-      "round2_map": "Roulette Lane",
-      "round1_flipped": false,
-      "round2_flipped": false,
-      "unit_player_counts": {}
+      "round1Winner": "B",
+      "round2Winner": "B",
+      "round1Map": "Cooke's Countercharge",
+      "round2Map": "Roulette Lane",
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": null,
+      "leadB": null,
+      "isPlayoffs": true,
+      "leadA_r1": "51st AL",
+      "leadB_r1": "MSG",
+      "leadA_r2": "AVC",
+      "leadB_r2": "CB",
+      "r1CasualtiesA": 1510,
+      "r1CasualtiesB": 1692,
+      "r2CasualtiesA": 991,
+      "r2CasualtiesB": 1213,
+      "unitPlayerCounts": {
+        "10th TN": {
+          "min": 0,
+          "max": 0
+        },
+        "10th US": {
+          "min": 26,
+          "max": 30
+        },
+        "12th VA": {
+          "min": 27,
+          "max": 45
+        },
+        "23rd NYV": {
+          "min": 10,
+          "max": 10
+        },
+        "51st AL": {
+          "min": 5,
+          "max": 5
+        },
+        "59th NY": {
+          "min": 65,
+          "max": 65
+        },
+        "5th MN": {
+          "min": 27,
+          "max": 33
+        },
+        "7th TX": {
+          "min": 0,
+          "max": 0
+        },
+        "AVC": {
+          "min": 12,
+          "max": 12
+        },
+        "CB": {
+          "min": 60,
+          "max": 63
+        },
+        "CQB": {
+          "min": 17,
+          "max": 17
+        },
+        "FSB": {
+          "min": 12,
+          "max": 19
+        },
+        "II Corps": {
+          "min": 30,
+          "max": 39
+        },
+        "JD": {
+          "min": 20,
+          "max": 20
+        },
+        "MSG": {
+          "min": 32,
+          "max": 32
+        },
+        "SR": {
+          "min": 2,
+          "max": 3
+        },
+        "TKO": {
+          "min": 17,
+          "max": 17
+        }
+      },
+      "weeklyCasualties": {
+        "Team A": {
+          "r1": {
+            "10th US": 214,
+            "12th VA": 88,
+            "51st AL": 273,
+            "59th NY": 480,
+            "AVC": 83,
+            "FSB": 188,
+            "II Corps": 184
+          },
+          "r2": {
+            "10th US": 174,
+            "12th VA": 54,
+            "51st AL": 106,
+            "59th NY": 289,
+            "AVC": 71,
+            "FSB": 76,
+            "II Corps": 221
+          }
+        },
+        "Team B": {
+          "r1": {
+            "23rd NYV": 80,
+            "CB": 658,
+            "CQB": 100,
+            "JD": 298,
+            "MSG": 416,
+            "SR": 15,
+            "TKO": 125
+          },
+          "r2": {
+            "23rd NYV": 84,
+            "CB": 449,
+            "CQB": 95,
+            "JD": 223,
+            "MSG": 242,
+            "SR": 16,
+            "TKO": 104
+          }
+        }
+      }
+    },
+    {
+      "id": 1761868786417,
+      "name": "10/29/25 - FINALS",
+      "teamA": [
+        "23rd NYV",
+        "51st AL",
+        "59th NY",
+        "AVC",
+        "CQB",
+        "JD",
+        "MSG",
+        "TKO"
+      ],
+      "teamB": [
+        "10th US",
+        "12th VA",
+        "CB",
+        "FSB",
+        "II Corps",
+        "7th OH",
+        "SR"
+      ],
+      "round1Winner": "A",
+      "round2Winner": "A",
+      "round1Map": "Smith Field",
+      "round2Map": null,
+      "round1Flipped": false,
+      "round2Flipped": false,
+      "leadA": null,
+      "leadB": null,
+      "isPlayoffs": true,
+      "leadA_r1": "MSG",
+      "leadB_r1": "CB",
+      "leadA_r2": null,
+      "leadB_r2": null,
+      "r1CasualtiesA": 1430,
+      "r1CasualtiesB": 1322,
+      "r2CasualtiesA": 0,
+      "r2CasualtiesB": 0,
+      "unitPlayerCounts": {
+        "10th TN": {
+          "min": 0,
+          "max": 0
+        },
+        "10th US": {
+          "min": 26,
+          "max": 30
+        },
+        "12th VA": {
+          "min": 27,
+          "max": 45
+        },
+        "23rd NYV": {
+          "min": 10,
+          "max": 10
+        },
+        "51st AL": {
+          "min": 5,
+          "max": 5
+        },
+        "59th NY": {
+          "min": 65,
+          "max": 65
+        },
+        "5th MN": {
+          "min": 27,
+          "max": 33
+        },
+        "7th TX": {
+          "min": 0,
+          "max": 0
+        },
+        "AVC": {
+          "min": 12,
+          "max": 12
+        },
+        "CB": {
+          "min": 60,
+          "max": 63
+        },
+        "CQB": {
+          "min": 17,
+          "max": 17
+        },
+        "FSB": {
+          "min": 12,
+          "max": 19
+        },
+        "II Corps": {
+          "min": 30,
+          "max": 39
+        },
+        "JD": {
+          "min": 20,
+          "max": 20
+        },
+        "MSG": {
+          "min": 32,
+          "max": 32
+        },
+        "SR": {
+          "min": 2,
+          "max": 3
+        },
+        "TKO": {
+          "min": 17,
+          "max": 17
+        },
+        "7th OH": {
+          "min": 0,
+          "max": 8
+        }
+      },
+      "weeklyCasualties": {
+        "Team A": {
+          "r1": {
+            "23rd NYV": 51,
+            "51st AL": 50,
+            "59th NY": 407,
+            "AVC": 123,
+            "CQB": 153,
+            "JD": 124,
+            "MSG": 355,
+            "TKO": 167
+          },
+          "r2": {
+            "23rd NYV": 0,
+            "51st AL": 0,
+            "59th NY": 0,
+            "AVC": 0,
+            "CQB": 0,
+            "JD": 0,
+            "MSG": 0,
+            "TKO": 0
+          }
+        },
+        "Team B": {
+          "r1": {
+            "10th US": 178,
+            "12th VA": 154,
+            "CB": 534,
+            "FSB": 122,
+            "II Corps": 222,
+            "7th OH": 78,
+            "SR": 34
+          },
+          "r2": {
+            "10th US": 0,
+            "12th VA": 0,
+            "CB": 0,
+            "FSB": 0,
+            "II Corps": 0,
+            "7th OH": 0,
+            "SR": 0
+          }
+        }
+      }
     }
   ],
-  "team_names": {
+  "teamNames": {
     "A": "Team A",
     "B": "Team B"
   },
-  "point_system_values": {
-    "win_lead": "4",
-    "win_assist": "2",
-    "loss_lead": "0",
-    "loss_assist": "1",
-    "bonus_2_0_lead": "0",
-    "bonus_2_0_assist": "1"
+  "pointSystem": {
+    "winLead": 4,
+    "winAssist": 2,
+    "lossLead": 0,
+    "lossAssist": 1,
+    "bonus2_0Lead": 0,
+    "bonus2_0Assist": 1
   },
-  "unit_player_counts": {
-    "10th TN": {
-      "min": "0",
-      "max": "0"
-    },
-    "10th US": {
-      "min": "28",
-      "max": "34"
-    },
-    "12th VA": {
-      "min": "15",
-      "max": "20"
-    },
-    "51st AL": {
-      "min": "18",
-      "max": "23"
-    },
-    "59th NY": {
-      "min": "40",
-      "max": "45"
-    },
-    "7th TX": {
-      "min": "0",
-      "max": "0"
-    },
-    "AVC": {
-      "min": "9",
-      "max": "14"
-    },
-    "CB": {
-      "min": "60",
-      "max": "65"
-    },
-    "CQB": {
-      "min": "8",
-      "max": "13"
-    },
-    "FSB": {
-      "min": "14",
-      "max": "19"
-    },
-    "II Corps": {
-      "min": "25",
-      "max": "30"
-    },
-    "JD": {
-      "min": "23",
-      "max": "28"
-    },
-    "MSG": {
-      "min": "35",
-      "max": "40"
-    },
-    "SR": {
-      "min": "3",
-      "max": "3"
-    },
-    "TKO": {
-      "min": "13",
-      "max": "18"
-    },
-    "5th MN": {
-      "min": "0",
-      "max": "0"
-    },
-    "23rd NYV": {
-      "min": "7",
-      "max": "10"
-    }
-  },
-  "manual_point_adjustments": {
+  "manualAdjustments": {
     "MSG": 1,
     "TKO": 1
+  },
+  "eloSystem": {
+    "initialElo": 1500,
+    "kFactorStandard": 96,
+    "kFactorProvisional": 128,
+    "provisionalRounds": 10,
+    "sweepBonusMultiplier": 1.25,
+    "leadMultiplier": 3,
+    "sizeInfluence": 1.1,
+    "playoffMultiplier": 1.25
+  },
+  "eloBiasPercentages": {
+    "lightAttacker": 10,
+    "heavyAttacker": 25,
+    "lightDefender": 10,
+    "heavyDefender": 25
+  },
+  "unitPlayerCounts": {
+    "10th TN": {
+      "min": 0,
+      "max": 0
+    },
+    "10th US": {
+      "min": 21,
+      "max": 25
+    },
+    "12th VA": {
+      "min": 40,
+      "max": 44
+    },
+    "51st AL": {
+      "min": 14,
+      "max": 19
+    },
+    "59th NY": {
+      "min": 45,
+      "max": 50
+    },
+    "7th TX": {
+      "min": 0,
+      "max": 0
+    },
+    "AVC": {
+      "min": 8,
+      "max": 10
+    },
+    "CB": {
+      "min": 45,
+      "max": 50
+    },
+    "CQB": {
+      "min": 14,
+      "max": 19
+    },
+    "FSB": {
+      "min": 19,
+      "max": 23
+    },
+    "II Corps": {
+      "min": 25,
+      "max": 30
+    },
+    "JD": {
+      "min": 45,
+      "max": 50
+    },
+    "MSG": {
+      "min": 7,
+      "max": 10
+    },
+    "SR": {
+      "min": 2,
+      "max": 3
+    },
+    "TKO": {
+      "min": 18,
+      "max": 21
+    },
+    "5th MN": {
+      "min": 20,
+      "max": 25
+    },
+    "23rd NYV": {
+      "min": 5,
+      "max": 10
+    }
   },
   "divisions": [
     {
@@ -1919,69 +2367,58 @@
       ]
     }
   ],
-  "elo_system_values": {
-    "initial_elo": "1500",
-    "k_factor_standard": "96",
-    "k_factor_provisional": "128",
-    "provisional_rounds": "10",
-    "sweep_bonus_multiplier": "1.25",
-    "lead_multiplier": "3.0",
-    "size_influence": "1.1",
-    "playoff_multiplier": "1.25"
+  "mapBiases": {
+    "East Woods Skirmish": 2,
+    "Hooker's Push": 2.5,
+    "Hagerstown Turnpike": 1,
+    "Miller's Cornfield": 1.5,
+    "East Woods": 2.5,
+    "Nicodemus Hill": 2.5,
+    "Bloody Lane": 1.5,
+    "Pry Ford": 2,
+    "Pry Grist Mill": 1,
+    "Pry House": 1.5,
+    "West Woods": 1.5,
+    "Dunker Church": 1.5,
+    "Burnside's Bridge": 2.5,
+    "Cooke's Countercharge": 1.5,
+    "Otto and Sherrick Farms": 1,
+    "Roulette Lane": 1.5,
+    "Piper Farm": 2,
+    "Hill's Counterattack": 1,
+    "Maryland Heights": 1.5,
+    "River Crossing": 2.5,
+    "Downtown": 1,
+    "School House Ridge": 1,
+    "Bolivar Heights Camp": 1.5,
+    "High Street": 1,
+    "Shenandoah Street": 1.5,
+    "Harpers Ferry Graveyard": 1,
+    "Washington Street": 1,
+    "Bolivar Heights Redoubt": 2,
+    "Garland's Stand": 2.5,
+    "Cox's Push": 2.5,
+    "Hatch's Attack": 2,
+    "Anderson's Counterattack": 1,
+    "Reno's Fall": 1.5,
+    "Colquitt's Defense": 2,
+    "Alexander Farm": 2,
+    "Crossroads": 0,
+    "Smith Field": 1,
+    "Crecy's Cornfield": 1.5,
+    "Crossley Creek": 1,
+    "Larsen Homestead": 1.5,
+    "South Woodlot": 1.5,
+    "Flemming's Meadow": 2,
+    "Wagon Road": 2,
+    "Union Camp": 1.5,
+    "Pat's Turnpike": 1.5,
+    "Stefan's Lot": 1,
+    "Confederate Encampment": 2,
+    "Burnside Bridge": 2.5,
+    "Hagertown Turnpike": 0,
+    "Harper's Graveyard": 0,
+    "Otto & Sherrick Farm": 0
   },
-  "elo_bias_percentages": {
-    "light_attacker": "10",
-    "heavy_attacker": "25",
-    "light_defender": "10",
-    "heavy_defender": "25"
-  },
-  "map_biases": {
-    "Alexander Farm": "2",
-    "Anderson's Counterattack": "1",
-    "Bloody Lane": "1.5",
-    "Bolivar Heights Camp": "1.5",
-    "Bolivar Heights Redoubt": "2",
-    "Burnside Bridge": "2.5",
-    "Colquitt's Defense": "2",
-    "Confederate Encampment": "2",
-    "Cooke's Countercharge": "1.5",
-    "Cox's Push": "2.5",
-    "Crecy's Cornfield": "1.5",
-    "Crossley Creek": "1",
-    "Crossroads": "0",
-    "Downtown": "1",
-    "Dunker Church": "1.5",
-    "East Woods": "2.5",
-    "East Woods Skirmish": "2",
-    "Flemming's Meadow": "2",
-    "Garland's Stand": "2.5",
-    "Hagertown Turnpike": "0",
-    "Harper's Graveyard": "0",
-    "Hatch's Attack": "2",
-    "High Street": "1",
-    "Hill's Counterattack": "1",
-    "Hooker's Push": "2.5",
-    "Larsen Homestead": "1.5",
-    "Maryland Heights": "1.5",
-    "Miller's Cornfield": "1.5",
-    "Nicodemus Hill": "2.5",
-    "Otto & Sherrick Farm": "0",
-    "Pat's Turnpike": "1.5",
-    "Piper Farm": "2",
-    "Pry Ford": "2",
-    "Pry Grist Mill": "1",
-    "Pry House": "1.5",
-    "Reno's Fall": "1.5",
-    "River Crossing": "2.5",
-    "Roulette Lane": "1.5",
-    "School House Ridge": "1",
-    "Shenandoah Street": "1.5",
-    "Smith Field": "1",
-    "South Woodlot": "1.5",
-    "Stefan's Lot": "1",
-    "Union Camp": "1.5",
-    "Wagon Road": "2",
-    "Washington Street": "1",
-    "West Woods": "1.5"
-  }
+  "exportDate": "2025-10-31T00:49:40.999Z"
 }
