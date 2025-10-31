@@ -1990,24 +1990,40 @@ const SeasonTracker = () => {
     
     // Get all units that have played
     const activeUnits = units.filter(unit => {
-      return weeks.some(week => 
+      return weeks.some(week =>
         week.teamA.includes(unit) || week.teamB.includes(unit)
       );
     }).sort();
 
-    // Build heatmap matrix
+    // Calculate weeks where each unit was active
+    const unitActiveWeeks = {};
+    activeUnits.forEach(unit => {
+      unitActiveWeeks[unit] = weeks.filter(week =>
+        week.teamA.includes(unit) || week.teamB.includes(unit)
+      ).length;
+    });
+
+    // Build heatmap matrix with relative percentages
     activeUnits.forEach(unit1 => {
       activeUnits.forEach(unit2 => {
         if (unit1 !== unit2) {
           const count = teammate[unit1]?.[unit2] || 0;
-          if (count > 0) {
-            heatmapData.push({ unit1, unit2, count });
+          // Calculate the minimum weeks both units were active
+          const bothActiveWeeks = Math.min(unitActiveWeeks[unit1] || 0, unitActiveWeeks[unit2] || 0);
+          
+          if (count > 0 || bothActiveWeeks > 0) {
+            heatmapData.push({
+              unit1,
+              unit2,
+              count,
+              bothActiveWeeks
+            });
           }
         }
       });
     });
 
-    return { heatmapData, activeUnits };
+    return { heatmapData, activeUnits, unitActiveWeeks };
   };
 
   // Calculate live preview stats for balancer
@@ -4315,13 +4331,13 @@ const SeasonTracker = () => {
 
                   <div className="mb-4 bg-slate-700 rounded-lg p-4">
                     <p className="text-sm text-slate-300">
-                      This heatmap shows how often units have played together as teammates as a percentage of the maximum pairing frequency.
-                      100% (bright red) represents the most frequent pairing, helping normalize new additions into the data.
+                      This heatmap shows how often units have played together as teammates as a percentage of weeks both units were in attendance.
+                      For example, 50% means they played together in half of the weeks they were both present for in the season.
                     </p>
                   </div>
 
                   {(() => {
-                    const { heatmapData, activeUnits } = calculateTeammateHeatmap();
+                    const { heatmapData, activeUnits, unitActiveWeeks } = calculateTeammateHeatmap();
                     
                     if (activeUnits.length === 0) {
                       return (
@@ -4332,13 +4348,10 @@ const SeasonTracker = () => {
                       );
                     }
 
-                    // Find max count for percentage-based color scaling
-                    const maxCount = Math.max(...heatmapData.map(d => d.count), 1);
-
-                    // Helper to get color intensity based on percentage of max
-                    const getHeatColor = (count) => {
-                      if (count === 0) return 'bg-slate-700';
-                      const percentage = (count / maxCount) * 100;
+                    // Helper to get color intensity based on percentage of weeks both units were active
+                    const getHeatColor = (count, bothActiveWeeks) => {
+                      if (count === 0 || bothActiveWeeks === 0) return 'bg-slate-700';
+                      const percentage = (count / bothActiveWeeks) * 100;
                       if (percentage < 20) return 'bg-blue-900';
                       if (percentage < 40) return 'bg-blue-700';
                       if (percentage < 60) return 'bg-purple-700';
@@ -4347,9 +4360,9 @@ const SeasonTracker = () => {
                     };
 
                     // Helper to get percentage display
-                    const getPercentage = (count) => {
-                      if (count === 0) return '';
-                      return Math.round((count / maxCount) * 100);
+                    const getPercentage = (count, bothActiveWeeks) => {
+                      if (count === 0 || bothActiveWeeks === 0) return '';
+                      return Math.round((count / bothActiveWeeks) * 100);
                     };
 
                     // Calculate dynamic cell size based on number of units
@@ -4395,14 +4408,15 @@ const SeasonTracker = () => {
                                       (d.unit1 === unit2 && d.unit2 === unit1)
                                     );
                                     const count = data?.count || 0;
-                                    const percentage = getPercentage(count);
+                                    const bothActiveWeeks = data?.bothActiveWeeks || 0;
+                                    const percentage = getPercentage(count, bothActiveWeeks);
                                     
                                     return (
                                       <td key={unit2} className="p-0.5">
                                         <div
-                                          className={`w-full ${getHeatColor(count)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
+                                          className={`w-full ${getHeatColor(count, bothActiveWeeks)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
                                           style={{ height: `${cellSize}px` }}
-                                          title={`${unit1} & ${unit2}: ${count} weeks together (${percentage}% of max)`}
+                                          title={`${unit1} & ${unit2}: ${count} weeks together (${percentage}% of ${bothActiveWeeks} weeks both active)`}
                                         >
                                           <span className={`${fontSize} font-semibold text-white`}>
                                             {count > 0 ? `${percentage}%` : ''}
@@ -4419,7 +4433,7 @@ const SeasonTracker = () => {
 
                         {/* Legend */}
                         <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
-                          <span className="text-sm text-slate-300">Percentage of Max Pairing:</span>
+                          <span className="text-sm text-slate-300">Percentage of Weeks Both Units Active:</span>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-4 bg-slate-700 rounded"></div>
                             <span className="text-xs text-slate-400">0%</span>
