@@ -4349,19 +4349,35 @@ const SeasonTracker = () => {
                     }
 
                     // Helper to get color intensity based on percentage of weeks both units were active
+                    // Creates a smooth gradient from blue (0%) -> purple -> orange -> red (100%)
                     const getHeatColor = (count, bothActiveWeeks) => {
-                      if (count === 0 || bothActiveWeeks === 0) return 'bg-slate-700';
+                      if (bothActiveWeeks === 0) return 'bg-slate-700';
                       const percentage = (count / bothActiveWeeks) * 100;
-                      if (percentage < 20) return 'bg-blue-900';
-                      if (percentage < 40) return 'bg-blue-700';
-                      if (percentage < 60) return 'bg-purple-700';
-                      if (percentage < 80) return 'bg-orange-600';
-                      return 'bg-red-600';
+                      
+                      // Calculate RGB values for smooth gradient
+                      // 0% = sky blue (135, 206, 235), 100% = red (220, 38, 38)
+                      let r, g, b;
+                      
+                      if (percentage <= 50) {
+                        // Sky Blue to purple (0-50%)
+                        const t = percentage / 50;
+                        r = Math.round(135 + (147 - 135) * t);    // 135 -> 147
+                        g = Math.round(206 - (206 - 51) * t);   // 206 -> 51
+                        b = Math.round(235 - (235 - 235) * t);  // 235 -> 235
+                      } else {
+                        // Purple to red (50-100%)
+                        const t = (percentage - 50) / 50;
+                        r = Math.round(147 + (220 - 147) * t);  // 147 -> 220
+                        g = Math.round(51 - (51 - 38) * t);     // 51 -> 38
+                        b = Math.round(235 - (235 - 38) * t);   // 235 -> 38
+                      }
+                      
+                      return `rgb(${r}, ${g}, ${b})`;
                     };
 
                     // Helper to get percentage display
                     const getPercentage = (count, bothActiveWeeks) => {
-                      if (count === 0 || bothActiveWeeks === 0) return '';
+                      if (bothActiveWeeks === 0) return '';
                       return Math.round((count / bothActiveWeeks) * 100);
                     };
 
@@ -4411,15 +4427,21 @@ const SeasonTracker = () => {
                                     const bothActiveWeeks = data?.bothActiveWeeks || 0;
                                     const percentage = getPercentage(count, bothActiveWeeks);
                                     
+                                    const bgColor = getHeatColor(count, bothActiveWeeks);
+                                    const isSlateGray = bgColor === 'bg-slate-700';
+                                    
                                     return (
                                       <td key={unit2} className="p-0.5">
                                         <div
-                                          className={`w-full ${getHeatColor(count, bothActiveWeeks)} rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition`}
-                                          style={{ height: `${cellSize}px` }}
+                                          className={`w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition ${isSlateGray ? bgColor : ''}`}
+                                          style={{
+                                            height: `${cellSize}px`,
+                                            backgroundColor: isSlateGray ? undefined : bgColor
+                                          }}
                                           title={`${unit1} & ${unit2}: ${count} weeks together (${percentage}% of ${bothActiveWeeks} weeks both active)`}
                                         >
                                           <span className={`${fontSize} font-semibold text-white`}>
-                                            {count > 0 ? `${percentage}%` : ''}
+                                            {percentage !== '' ? `${percentage}%` : ''}
                                           </span>
                                         </div>
                                       </td>
@@ -4432,31 +4454,35 @@ const SeasonTracker = () => {
                         </div>
 
                         {/* Legend */}
-                        <div className="mt-6 flex items-center justify-center gap-4 flex-wrap">
-                          <span className="text-sm text-slate-300">Percentage of Weeks Both Units Active:</span>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-slate-700 rounded"></div>
+                        <div className="mt-6">
+                          <div className="text-sm text-slate-300 text-center mb-2">
+                            Percentage of Weeks Both Units Active
+                          </div>
+                          <div className="flex items-center justify-center gap-3">
                             <span className="text-xs text-slate-400">0%</span>
+                            <div className="relative w-64 h-6 rounded overflow-hidden">
+                              <div
+                                className="absolute inset-0"
+                                style={{
+                                  background: 'linear-gradient(to right, rgb(135, 206, 235) 0%, rgb(147, 51, 235) 50%, rgb(220, 38, 38) 100%)'
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs text-slate-400">100%</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-blue-900 rounded"></div>
-                            <span className="text-xs text-slate-400">1-20%</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-blue-700 rounded"></div>
-                            <span className="text-xs text-slate-400">21-40%</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-purple-700 rounded"></div>
-                            <span className="text-xs text-slate-400">41-60%</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-orange-600 rounded"></div>
-                            <span className="text-xs text-slate-400">61-80%</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-4 bg-red-600 rounded"></div>
-                            <span className="text-xs text-slate-400">81-100%</span>
+                          <div className="flex items-center justify-center gap-8 mt-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(135, 206, 235)' }}></div>
+                              <span className="text-xs text-slate-400">Low</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(147, 51, 235)' }}></div>
+                              <span className="text-xs text-slate-400">Mid</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(220, 38, 38)' }}></div>
+                              <span className="text-xs text-slate-400">High</span>
+                            </div>
                           </div>
                         </div>
                       </div>
