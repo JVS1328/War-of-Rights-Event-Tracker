@@ -1,6 +1,6 @@
 # War of Rights - Event Tracker
 
-This project provides a Python-based GUI application, `tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League.
+This project provides a Python-based GUI application, `tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League. 
 
 ## Description
 
