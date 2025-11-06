@@ -146,6 +146,20 @@ const SeasonTracker = () => {
   const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
+  
+  // Playoff configuration state
+  const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || {
+    enabled: false,
+    useDivisions: false,
+    teamsPerDivision: 2,
+    wildcardTeams: 0,
+    roundFormats: {
+      wildcard: 1,
+      divisional: 1,
+      conference: 2,
+      finals: 2
+    }
+  });
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -161,7 +175,8 @@ const SeasonTracker = () => {
       eloBiasPercentages,
       unitPlayerCounts,
       divisions,
-      mapBiases
+      mapBiases,
+      playoffConfig
     };
 
     try {
@@ -169,7 +184,7 @@ const SeasonTracker = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases]);
+  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, playoffConfig]);
 
   // Unit Management
   const addUnit = () => {
@@ -2468,6 +2483,293 @@ const SeasonTracker = () => {
     };
   };
 
+  // Generate playoff bracket based on current standings
+  const generatePlayoffBracket = (weekIndex = null) => {
+    if (!playoffConfig.enabled) return null;
+    
+    const currentWeekIdx = weekIndex !== null ? weekIndex : (selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1);
+    
+    // Get standings up to the specified week
+    const currentStats = calculatePointsUpToWeek(currentWeekIdx);
+    const { eloRatings, roundsPlayed } = calculateEloRatings(currentWeekIdx);
+    
+    const standings = Object.entries(currentStats)
+      .map(([unit, data]) => ({
+        unit,
+        ...data,
+        elo: eloRatings[unit] || eloSystem.initialElo,
+        rounds: roundsPlayed[unit] || 0
+      }))
+      .sort((a, b) => b.points - a.points);
+    
+    // Filter to only token units
+    const tokenStandings = standings.filter(s => !nonTokenUnits.includes(s.unit));
+    
+    let playoffTeams = [];
+    let conferenceNames = [];
+    
+    if (playoffConfig.useDivisions && divisions.length > 0) {
+      // Helper: Extract conference name from division name
+      const getConferenceName = (divisionName) => {
+        // Find common word in division names (e.g., "Smoke" from "Smoke North" and "Smoke South")
+        const words = divisionName.split(/\s+/);
+        // Return first word as conference identifier
+        return words[0] || divisionName;
+      };
+      
+      // Group divisions into conferences
+      const conferences = {};
+      divisions.forEach(division => {
+        const confName = getConferenceName(division.name);
+        if (!conferences[confName]) {
+          conferences[confName] = [];
+        }
+        conferences[confName].push(division);
+      });
+      
+      // Store conference names for later use
+      conferenceNames = Object.keys(conferences);
+      
+      // Build conference standings
+      const conferenceTeams = {};
+      Object.entries(conferences).forEach(([confName, confDivisions]) => {
+        conferenceTeams[confName] = [];
+        
+        // Get division winners from this conference
+        confDivisions.forEach(division => {
+          const divUnits = new Set(division.units);
+          const divisionStandings = tokenStandings
+            .filter(s => divUnits.has(s.unit))
+            .slice(0, playoffConfig.teamsPerDivision);
+          
+          divisionStandings.forEach(team => {
+            conferenceTeams[confName].push({ ...team, division: division.name });
+          });
+        });
+        
+        // Sort conference teams by points
+        conferenceTeams[confName].sort((a, b) => b.points - a.points);
+        
+        // Add wildcards for this conference
+        if (playoffConfig.wildcardTeams > 0) {
+          const divisionQualifiers = new Set(conferenceTeams[confName].map(t => t.unit));
+          
+          // Get all units in this conference's divisions
+          const confUnits = new Set(confDivisions.flatMap(d => d.units));
+          
+          // Find wildcards from this conference only
+          const confWildcards = tokenStandings
+            .filter(s => confUnits.has(s.unit) && !divisionQualifiers.has(s.unit))
+            .slice(0, playoffConfig.wildcardTeams);
+          
+          confWildcards.forEach(team => {
+            // Find which division this unit belongs to
+            const unitDivision = confDivisions.find(d => d.units.includes(team.unit));
+            conferenceTeams[confName].push({ ...team, division: unitDivision?.name, isWildcard: true });
+          });
+        }
+        
+        // Re-sort after adding wildcards and assign conference seeds
+        conferenceTeams[confName].sort((a, b) => b.points - a.points);
+        conferenceTeams[confName].forEach((team, idx) => {
+          team.conferenceSeed = idx + 1;
+          team.conference = confName;
+        });
+      });
+      
+      // Combine all conference teams
+      Object.values(conferenceTeams).forEach(confTeams => {
+        playoffTeams.push(...confTeams);
+      });
+      
+      // Assign global seeds (for display purposes)
+      playoffTeams.sort((a, b) => b.points - a.points);
+      playoffTeams.forEach((team, idx) => {
+        team.seed = idx + 1;
+      });
+    } else {
+      // Simple top-N playoffs
+      const totalTeams = playoffConfig.wildcardTeams || 4;
+      playoffTeams = tokenStandings.slice(0, totalTeams);
+      
+      // Seed teams by rank
+      playoffTeams.forEach((team, idx) => {
+        team.seed = idx + 1;
+      });
+    }
+    
+    // Generate bracket matchups
+    const bracket = {
+      teams: playoffTeams,
+      rounds: [],
+      conferenceNames
+    };
+    
+    // Determine bracket structure
+    const teamCount = playoffTeams.length;
+    const hasConferences = playoffConfig.useDivisions && conferenceNames.length > 0;
+    
+    if (teamCount >= 8 && hasConferences) {
+      // Conference-based playoffs with 8+ teams
+      // Separate teams by conference
+      const confTeamsByConf = {};
+      conferenceNames.forEach(conf => {
+        confTeamsByConf[conf] = playoffTeams.filter(t => t.conference === conf);
+      });
+      
+      // Wildcard round - within each conference (lower seeds play, top seeds get bye)
+      const wildcardMatchups = [];
+      conferenceNames.forEach(confName => {
+        const confTeams = confTeamsByConf[confName];
+        if (confTeams.length >= 6) {
+          // 6+ teams: #1 and #2 get byes, #3 vs #6, #4 vs #5
+          wildcardMatchups.push(
+            { seed1: confTeams[2].conferenceSeed, seed2: confTeams[5].conferenceSeed, team1: confTeams[2], team2: confTeams[5], conference: confName },
+            { seed1: confTeams[3].conferenceSeed, seed2: confTeams[4].conferenceSeed, team1: confTeams[3], team2: confTeams[4], conference: confName }
+          );
+        } else if (confTeams.length === 5) {
+          // 5 teams: #1 gets bye, #2 vs #5, #3 vs #4
+          wildcardMatchups.push(
+            { seed1: confTeams[1].conferenceSeed, seed2: confTeams[4].conferenceSeed, team1: confTeams[1], team2: confTeams[4], conference: confName },
+            { seed1: confTeams[2].conferenceSeed, seed2: confTeams[3].conferenceSeed, team1: confTeams[2], team2: confTeams[3], conference: confName }
+          );
+        }
+        // With exactly 4 teams, no wildcard round needed (go straight to divisional)
+      });
+      
+      if (wildcardMatchups.length > 0) {
+        bracket.rounds.push({
+          name: 'Wildcard',
+          roundsPerMatch: playoffConfig.roundFormats.wildcard,
+          matchups: wildcardMatchups
+        });
+      }
+      
+      // Divisional round - within each conference
+      const divisionalMatchups = [];
+      conferenceNames.forEach(confName => {
+        const confTeams = confTeamsByConf[confName];
+        if (confTeams.length >= 6) {
+          // 6+ teams with wildcards: #1 vs lower wildcard winner, #2 vs higher wildcard winner
+          divisionalMatchups.push(
+            { seed1: 1, seed2: 'WC2', team1: confTeams[0], label: `Winner of #${confTeams[2].conferenceSeed} vs #${confTeams[5].conferenceSeed}`, conference: confName },
+            { seed1: 2, seed2: 'WC1', team1: confTeams[1], label: `Winner of #${confTeams[3].conferenceSeed} vs #${confTeams[4].conferenceSeed}`, conference: confName }
+          );
+        } else if (confTeams.length === 5) {
+          // 5 teams: #1 (bye) vs winner of (#2 vs #5), winner of (#3 vs #4) advances
+          divisionalMatchups.push(
+            { seed1: 1, seed2: 'WC1', team1: confTeams[0], label: `Winner of #${confTeams[1].conferenceSeed} vs #${confTeams[4].conferenceSeed}`, conference: confName },
+            { seed1: 'WC2', seed2: 'WC2', label: `Winner of #${confTeams[2].conferenceSeed} vs #${confTeams[3].conferenceSeed}`, conference: confName }
+          );
+        } else if (confTeams.length >= 4) {
+          // 4 teams without wildcards: #1 vs #4, #2 vs #3
+          divisionalMatchups.push(
+            { seed1: confTeams[0].conferenceSeed, seed2: confTeams[3].conferenceSeed, team1: confTeams[0], team2: confTeams[3], conference: confName },
+            { seed1: confTeams[1].conferenceSeed, seed2: confTeams[2].conferenceSeed, team1: confTeams[1], team2: confTeams[2], conference: confName }
+          );
+        }
+      });
+      
+      if (divisionalMatchups.length > 0) {
+        bracket.rounds.push({
+          name: 'Divisional',
+          roundsPerMatch: playoffConfig.roundFormats.divisional,
+          matchups: divisionalMatchups
+        });
+      }
+      
+      // Conference Finals - within each conference
+      const conferenceMatchups = [];
+      conferenceNames.forEach(confName => {
+        conferenceMatchups.push({
+          seed1: 'W1',
+          seed2: 'W2',
+          label: `${confName} Conference Final`,
+          conference: confName
+        });
+      });
+      
+      bracket.rounds.push({
+        name: 'Conference Finals',
+        roundsPerMatch: playoffConfig.roundFormats.conference,
+        matchups: conferenceMatchups
+      });
+      
+      // Championship - winners from each conference
+      if (conferenceNames.length >= 2) {
+        bracket.rounds.push({
+          name: 'Championship',
+          roundsPerMatch: playoffConfig.roundFormats.finals,
+          matchups: [
+            {
+              seed1: 'W1',
+              seed2: 'W2',
+              label: `Winner of ${conferenceNames[0]} vs Winner of ${conferenceNames[1]}`,
+              conference: 'Championship'
+            }
+          ]
+        });
+      }
+    } else if (teamCount >= 8) {
+      // Non-conference 8+ team playoffs
+      // Wildcard round: #3 vs #6, #4 vs #5 (#1 and #2 get byes)
+      bracket.rounds.push({
+        name: 'Wildcard',
+        roundsPerMatch: playoffConfig.roundFormats.wildcard,
+        matchups: [
+          { seed1: 3, seed2: 6, team1: playoffTeams[2], team2: playoffTeams[5] },
+          { seed1: 4, seed2: 5, team1: playoffTeams[3], team2: playoffTeams[4] }
+        ]
+      });
+      
+      // Divisional round: #1 vs lower wildcard winner, #2 vs higher wildcard winner
+      bracket.rounds.push({
+        name: 'Divisional',
+        roundsPerMatch: playoffConfig.roundFormats.divisional,
+        matchups: [
+          { seed1: 1, seed2: 'WC2', team1: playoffTeams[0], label: 'Winner of #3 vs #6' },
+          { seed1: 2, seed2: 'WC1', team1: playoffTeams[1], label: 'Winner of #4 vs #5' }
+        ]
+      });
+      
+      bracket.rounds.push({
+        name: 'Conference Finals',
+        roundsPerMatch: playoffConfig.roundFormats.conference,
+        matchups: [
+          { seed1: 'W1', seed2: 'W2', label: 'Winner of Divisional Games' }
+        ]
+      });
+      
+      bracket.rounds.push({
+        name: 'Championship',
+        roundsPerMatch: playoffConfig.roundFormats.finals,
+        matchups: [
+          { seed1: 'W1', seed2: 'W2', label: 'Conference Winners' }
+        ]
+      });
+    } else if (teamCount >= 4) {
+      // 4-team playoffs
+      bracket.rounds.push({
+        name: 'Semifinals',
+        roundsPerMatch: playoffConfig.roundFormats.conference,
+        matchups: [
+          { seed1: 1, seed2: 4, team1: playoffTeams[0], team2: playoffTeams[3] },
+          { seed1: 2, seed2: 3, team1: playoffTeams[1], team2: playoffTeams[2] }
+        ]
+      });
+      
+      bracket.rounds.push({
+        name: 'Finals',
+        roundsPerMatch: playoffConfig.roundFormats.finals,
+        matchups: [
+          { seed1: 'W1', seed2: 'W2', label: 'Winner 1 vs Winner 2' }
+        ]
+      });
+    }
+    
+    return bracket;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -4304,6 +4606,288 @@ const SeasonTracker = () => {
                               <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
                               <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
                             </ul>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Playoffs Section */}
+                  <div className="bg-slate-700 rounded-lg p-4">
+                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                      <Trophy className="w-5 h-5" />
+                      Playoffs
+                    </h3>
+                    
+                    {/* Playoff Configuration */}
+                    <div className="bg-slate-600 rounded-lg p-4 mb-4">
+                      <h4 className="font-semibold text-white mb-3">Playoff Format Settings</h4>
+                      
+                      <div className="space-y-3">
+                        {/* Enable Playoffs */}
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={playoffConfig.enabled}
+                            onChange={(e) => setPlayoffConfig({ ...playoffConfig, enabled: e.target.checked })}
+                            className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                          />
+                          <Star className="w-4 h-4" />
+                          <span className="font-semibold">Enable Playoff Tracking</span>
+                        </label>
+                        
+                        {playoffConfig.enabled && (
+                          <>
+                            {/* Use Divisions */}
+                            {divisions && divisions.length > 0 && (
+                              <label className="flex items-center gap-2 text-slate-300 cursor-pointer ml-6">
+                                <input
+                                  type="checkbox"
+                                  checked={playoffConfig.useDivisions}
+                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, useDivisions: e.target.checked })}
+                                  className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                                />
+                                <Shield className="w-4 h-4" />
+                                <span className="text-sm">Use Division-based Playoffs</span>
+                              </label>
+                            )}
+                            
+                            {/* Teams per Division */}
+                            {playoffConfig.useDivisions && (
+                              <div className="ml-6">
+                                <label className="block text-sm text-slate-300 mb-1">Top Teams per Division</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="4"
+                                  value={playoffConfig.teamsPerDivision}
+                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, teamsPerDivision: parseInt(e.target.value) || 1 })}
+                                  className="w-24 px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                />
+                              </div>
+                            )}
+                            
+                            {/* Wildcard Teams */}
+                            <div className="ml-6">
+                              <label className="block text-sm text-slate-300 mb-1">
+                                {playoffConfig.useDivisions ? 'Wildcard Teams' : 'Total Playoff Teams'}
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="8"
+                                value={playoffConfig.wildcardTeams}
+                                onChange={(e) => setPlayoffConfig({ ...playoffConfig, wildcardTeams: parseInt(e.target.value) || 0 })}
+                                className="w-24 px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                              />
+                            </div>
+                            
+                            {/* Round Formats */}
+                            <div className="ml-6 bg-slate-700 rounded p-3">
+                              <h5 className="text-sm font-semibold text-amber-300 mb-2">Rounds per Playoff Stage</h5>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">Wildcard</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="3"
+                                    value={playoffConfig.roundFormats.wildcard}
+                                    onChange={(e) => setPlayoffConfig({
+                                      ...playoffConfig,
+                                      roundFormats: { ...playoffConfig.roundFormats, wildcard: parseInt(e.target.value) || 1 }
+                                    })}
+                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">Divisional</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="3"
+                                    value={playoffConfig.roundFormats.divisional}
+                                    onChange={(e) => setPlayoffConfig({
+                                      ...playoffConfig,
+                                      roundFormats: { ...playoffConfig.roundFormats, divisional: parseInt(e.target.value) || 1 }
+                                    })}
+                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">Conference</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="3"
+                                    value={playoffConfig.roundFormats.conference}
+                                    onChange={(e) => setPlayoffConfig({
+                                      ...playoffConfig,
+                                      roundFormats: { ...playoffConfig.roundFormats, conference: parseInt(e.target.value) || 2 }
+                                    })}
+                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-300 mb-1">Finals</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="3"
+                                    value={playoffConfig.roundFormats.finals}
+                                    onChange={(e) => setPlayoffConfig({
+                                      ...playoffConfig,
+                                      roundFormats: { ...playoffConfig.roundFormats, finals: parseInt(e.target.value) || 2 }
+                                    })}
+                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Playoff Picture */}
+                    {playoffConfig.enabled && (() => {
+                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                      const bracket = generatePlayoffBracket(currentWeekIdx);
+                      
+                      if (!bracket || bracket.teams.length === 0) {
+                        return (
+                          <div className="bg-slate-600 rounded-lg p-4 text-center">
+                            <p className="text-slate-400 text-sm">
+                              Not enough teams for playoffs. Configure playoff settings above.
+                            </p>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="bg-slate-600 rounded-lg p-4">
+                          <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+                            <Target className="w-4 h-4" />
+                            Playoff Picture
+                            {selectedWeek && (
+                              <span className="text-xs text-slate-400 font-normal">
+                                (as of {selectedWeek.name})
+                              </span>
+                            )}
+                          </h4>
+                          
+                          {/* Seeding */}
+                          <div className="mb-4 bg-slate-700 rounded p-3">
+                            <h5 className="text-sm font-semibold text-amber-300 mb-2">Playoff Seeds</h5>
+                            {playoffConfig.useDivisions && bracket.teams.some(t => t.conference) ? (
+                              // Conference-based seeding display
+                              (() => {
+                                const conferences = {};
+                                bracket.teams.forEach(team => {
+                                  const conf = team.conference || 'Unknown';
+                                  if (!conferences[conf]) conferences[conf] = [];
+                                  conferences[conf].push(team);
+                                });
+                                
+                                return (
+                                  <div className="space-y-3">
+                                    {Object.entries(conferences).map(([confName, confTeams]) => (
+                                      <div key={confName} className="bg-slate-600 rounded p-2">
+                                        <h6 className="text-xs font-bold text-cyan-300 mb-2">{confName} Conference</h6>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          {confTeams.map((team) => (
+                                            <div key={team.unit} className="flex items-center gap-2 text-sm">
+                                              <span className="text-amber-400 font-bold">#{team.conferenceSeed}</span>
+                                              <span className="text-white">{team.unit}</span>
+                                              <span className="text-slate-400 text-xs">
+                                                ({team.points} pts{team.isWildcard ? ', WC' : ''})
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              // Simple seeding display
+                              <div className="grid grid-cols-2 gap-2">
+                                {bracket.teams.map((team) => (
+                                  <div key={team.unit} className="flex items-center gap-2 text-sm">
+                                    <span className="text-amber-400 font-bold">#{team.seed}</span>
+                                    <span className="text-white">{team.unit}</span>
+                                    <span className="text-slate-400 text-xs">({team.points} pts)</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Bracket Rounds */}
+                          <div className="space-y-3">
+                            {bracket.rounds.map((round, roundIdx) => (
+                              <div key={roundIdx} className="bg-slate-700 rounded p-3">
+                                <h5 className="text-sm font-semibold text-amber-300 mb-2 flex items-center gap-2">
+                                  <Swords className="w-4 h-4" />
+                                  {round.name}
+                                  <span className="text-xs text-slate-400 font-normal">
+                                    ({round.roundsPerMatch} round{round.roundsPerMatch > 1 ? 's' : ''} per match)
+                                  </span>
+                                </h5>
+                                <div className="space-y-2">
+                                  {round.matchups.map((matchup, matchIdx) => {
+                                    // Show conference name if present
+                                    const confLabel = matchup.conference && matchup.conference !== 'Championship'
+                                      ? `[${matchup.conference}] `
+                                      : '';
+                                    
+                                    return (
+                                      <div key={matchIdx} className="bg-slate-600 rounded p-2">
+                                        {confLabel && (
+                                          <div className="text-xs text-cyan-400 font-semibold mb-1">{confLabel}</div>
+                                        )}
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2 flex-1">
+                                            {matchup.team1 ? (
+                                              <>
+                                                <span className="text-amber-400 font-bold text-xs">#{matchup.seed1}</span>
+                                                <span className="text-white text-sm">{matchup.team1.unit}</span>
+                                                {matchup.team1.isWildcard && (
+                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
+                                                )}
+                                              </>
+                                            ) : matchup.label ? (
+                                              <span className="text-slate-400 text-sm italic">{matchup.label}</span>
+                                            ) : (
+                                              <span className="text-slate-400 text-sm italic">Seed #{matchup.seed1}</span>
+                                            )}
+                                          </div>
+                                          <span className="text-slate-400 text-xs font-bold mx-2">VS</span>
+                                          <div className="flex items-center gap-2 flex-1 justify-end">
+                                            {matchup.team2 ? (
+                                              <>
+                                                {matchup.team2.isWildcard && (
+                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
+                                                )}
+                                                <span className="text-white text-sm">{matchup.team2.unit}</span>
+                                                <span className="text-amber-400 font-bold text-xs">#{matchup.seed2}</span>
+                                              </>
+                                            ) : matchup.label && !matchup.team1 ? (
+                                              <span className="text-slate-400 text-sm italic">{matchup.label}</span>
+                                            ) : (
+                                              <span className="text-slate-400 text-sm italic">
+                                                {matchup.seed2 === 'WC1' || matchup.seed2 === 'WC2' ? 'Wildcard Winner' : `Seed #${matchup.seed2}`}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       );
