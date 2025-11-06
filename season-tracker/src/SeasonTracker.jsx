@@ -145,6 +145,7 @@ const SeasonTracker = () => {
   // Simulation state
   const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
+  const [simScheduleOnly, setSimScheduleOnly] = useState(false);
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -2255,14 +2256,14 @@ const SeasonTracker = () => {
       return {
         id: Date.now() + i,
         name: `Week ${weeks.length + 1 + i}`,
-        teamA: weekData.teamA,
-        teamB: weekData.teamB,
-        round1Winner: weekData.round1Winner,
-        round2Winner: weekData.round2Winner,
-        round1Map: weekData.round1Map,
-        round2Map: weekData.round2Map,
-        round1Flipped: weekData.round1Flipped,
-        round2Flipped: weekData.round2Flipped,
+        teamA: simScheduleOnly ? [weekData.leadA] : weekData.teamA,
+        teamB: simScheduleOnly ? [weekData.leadB] : weekData.teamB,
+        round1Winner: simScheduleOnly ? null : weekData.round1Winner,
+        round2Winner: simScheduleOnly ? null : weekData.round2Winner,
+        round1Map: simScheduleOnly ? null : weekData.round1Map,
+        round2Map: simScheduleOnly ? null : weekData.round2Map,
+        round1Flipped: simScheduleOnly ? false : weekData.round1Flipped,
+        round2Flipped: simScheduleOnly ? false : weekData.round2Flipped,
         leadA: weekData.leadA,
         leadB: weekData.leadB,
         isPlayoffs: false,
@@ -4809,8 +4810,14 @@ const SeasonTracker = () => {
 
           {/* Simulation Modal */}
           {showSimulateModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full">
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setShowSimulateModal(false)}
+            >
+              <div
+                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="p-6">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
@@ -4829,14 +4836,23 @@ const SeasonTracker = () => {
                     {/* Info Box */}
                     <div className="bg-slate-700 rounded-lg p-4">
                       <p className="text-sm text-slate-300 mb-2">
-                        This will simulate a season by generating weeks with randomized:
+                        This will simulate a season by generating weeks with {simScheduleOnly ? 'scheduled leads' : 'randomized'}:
                       </p>
-                      <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
-                        <li>Team assignments (leads and supporting units)</li>
-                        <li>Map selections for both rounds</li>
-                        <li>Round results (50/50 chance per team)</li>
-                        <li>No repeat lead matchups</li>
-                      </ul>
+                      {!simScheduleOnly ? (
+                        <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
+                          <li>Team assignments (leads and supporting units)</li>
+                          <li>Map selections for both rounds</li>
+                          <li>Round results (50/50 chance per team)</li>
+                          <li>No repeat lead matchups</li>
+                        </ul>
+                      ) : (
+                        <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
+                          <li>Week creation with assigned leads only</li>
+                          <li>Teams remain unassigned (empty)</li>
+                          <li>No maps or outcomes generated</li>
+                          <li>No repeat lead matchups</li>
+                        </ul>
+                      )}
                       <p className="text-sm text-amber-400 mt-3">
                         💡 Simulated weeks will be added to your existing weeks.
                       </p>
@@ -4846,6 +4862,25 @@ const SeasonTracker = () => {
                     <div className="bg-slate-700 rounded-lg p-4 space-y-4">
                       <h3 className="text-lg font-semibold text-amber-400 mb-3">Simulation Settings</h3>
                       
+                      {/* Schedule Only Toggle */}
+                      <div className="bg-slate-600 rounded-lg p-3">
+                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={simScheduleOnly}
+                            onChange={(e) => setSimScheduleOnly(e.target.checked)}
+                            className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                          />
+                          <Calendar className="w-4 h-4" />
+                          <span className="font-semibold">Schedule Only</span>
+                        </label>
+                        <p className="text-xs text-slate-400 mt-2 ml-6">
+                          {simScheduleOnly
+                            ? "Generate weeks with leads assigned but no teams, maps, or outcomes"
+                            : "Generate complete weeks with teams, maps, and simulated outcomes"}
+                        </p>
+                      </div>
+
                       {/* Lead Nights Per Unit */}
                       <div>
                         <label className="block text-sm text-slate-300 mb-2">
@@ -4913,8 +4948,8 @@ const SeasonTracker = () => {
                       onClick={simulateSeason}
                       className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition flex items-center gap-2"
                     >
-                      <Zap className="w-4 h-4" />
-                      Simulate Season
+                      {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                      {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
                     </button>
                   </div>
                 </div>
