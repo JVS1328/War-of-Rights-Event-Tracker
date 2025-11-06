@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
-  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2
+  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap
 } from 'lucide-react';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
@@ -120,6 +120,7 @@ const SeasonTracker = () => {
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
   const [showNonTokenElo, setShowNonTokenElo] = useState(true);
   const [rankByElo, setRankByElo] = useState(false);
@@ -140,6 +141,10 @@ const SeasonTracker = () => {
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
   const [draggedMainUnit, setDraggedMainUnit] = useState(null);
+  
+  // Simulation state
+  const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
+  const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -2171,6 +2176,297 @@ const SeasonTracker = () => {
     return units.filter(u => !assignedUnits.has(u));
   };
 
+  // Simulation Functions
+  const simulateSeason = () => {
+    if (units.length === 0) {
+      alert('Please add units before simulating a season.');
+      return;
+    }
+
+    const tokenUnits = units.filter(u => !nonTokenUnits.includes(u));
+    if (tokenUnits.length === 0) {
+      alert('Please add at least one token unit before simulating.');
+      return;
+    }
+
+    if (simLeadNightsPerUnit <= 0) {
+      alert('Invalid simulation settings. Lead nights per unit must be greater than 0.');
+      return;
+    }
+
+    // Get division mapping
+    const unitToDivision = {};
+    divisions.forEach(division => {
+      division.units.forEach(unit => {
+        unitToDivision[unit] = division.name;
+      });
+    });
+
+    // Try multiple simulation attempts to find the best valid schedule
+    const MAX_ATTEMPTS = 100;
+    let bestSchedule = null;
+    let bestScore = -1;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const schedule = tryGenerateSchedule(tokenUnits, unitToDivision);
+      
+      if (schedule) {
+        // Score based on how many units got their full allocation
+        const unitsWithFullAllocation = tokenUnits.filter(u => schedule.unitLeadCounts[u] === simLeadNightsPerUnit).length;
+        const score = unitsWithFullAllocation;
+        
+        if (score > bestScore) {
+          bestScore = score;
+          bestSchedule = schedule;
+        }
+        
+        // If we found a perfect schedule, use it
+        if (score === tokenUnits.length) {
+          break;
+        }
+      }
+    }
+
+    if (!bestSchedule || bestSchedule.weeks.length === 0) {
+      alert('Could not generate a valid schedule. Try adjusting your settings (fewer lead nights per unit or division requirements).');
+      return;
+    }
+
+    // Check if any units didn't get their full allocation
+    const unitsShort = tokenUnits.filter(u => bestSchedule.unitLeadCounts[u] < simLeadNightsPerUnit);
+    if (unitsShort.length > 0) {
+      const shortList = unitsShort.map(u => `${u} (${bestSchedule.unitLeadCounts[u]}/${simLeadNightsPerUnit})`).join(', ');
+      if (!confirm(`Warning: Some units didn't get their full lead night allocation:\n${shortList}\n\nDo you want to use this schedule anyway?`)) {
+        return;
+      }
+    }
+
+    // Convert schedule to weeks
+    const simulatedWeeks = bestSchedule.weeks.map((weekData, i) => {
+      // Inherit unit player counts from last week or use global defaults
+      let inheritedUnitPlayerCounts = {};
+      if (weeks.length > 0) {
+        const lastWeek = weeks[weeks.length - 1];
+        inheritedUnitPlayerCounts = lastWeek.unitPlayerCounts ? { ...lastWeek.unitPlayerCounts } : { ...unitPlayerCounts };
+      } else {
+        inheritedUnitPlayerCounts = { ...unitPlayerCounts };
+      }
+
+      return {
+        id: Date.now() + i,
+        name: `Week ${weeks.length + 1 + i}`,
+        teamA: weekData.teamA,
+        teamB: weekData.teamB,
+        round1Winner: weekData.round1Winner,
+        round2Winner: weekData.round2Winner,
+        round1Map: weekData.round1Map,
+        round2Map: weekData.round2Map,
+        round1Flipped: weekData.round1Flipped,
+        round2Flipped: weekData.round2Flipped,
+        leadA: weekData.leadA,
+        leadB: weekData.leadB,
+        isPlayoffs: false,
+        leadA_r1: null,
+        leadB_r1: null,
+        leadA_r2: null,
+        leadB_r2: null,
+        r1CasualtiesA: 0,
+        r1CasualtiesB: 0,
+        r2CasualtiesA: 0,
+        r2CasualtiesB: 0,
+        unitPlayerCounts: inheritedUnitPlayerCounts,
+        weeklyCasualties: {
+          [teamNames.A]: { r1: {}, r2: {} },
+          [teamNames.B]: { r1: {}, r2: {} }
+        }
+      };
+    });
+
+    // Add simulated weeks to existing weeks
+    setWeeks([...weeks, ...simulatedWeeks]);
+    setShowSimulateModal(false);
+    
+    alert(`Successfully simulated ${simulatedWeeks.length} weeks!`);
+  };
+
+  // Helper function to try generating a valid schedule
+  const tryGenerateSchedule = (tokenUnits, unitToDivision) => {
+    const leadMatchups = new Set();
+    const unitLeadCounts = {};
+    const unitDivisionLeadCounts = {};
+    
+    tokenUnits.forEach(unit => {
+      unitLeadCounts[unit] = 0;
+      unitDivisionLeadCounts[unit] = 0;
+    });
+
+    const generatedWeeks = [];
+    const maxWeeks = tokenUnits.length * simLeadNightsPerUnit;
+    
+    // Try to generate weeks until we can't find valid matchups
+    for (let i = 0; i < maxWeeks * 2; i++) { // Allow extra iterations to find matchups
+      // Find units that still need lead nights (respecting hard limit)
+      const unitsNeedingLeads = tokenUnits.filter(u => unitLeadCounts[u] < simLeadNightsPerUnit);
+      
+      if (unitsNeedingLeads.length === 0) break;
+      if (unitsNeedingLeads.length === 1) {
+        // Can't make a matchup with only one unit
+        break;
+      }
+
+      // Prioritize units with fewer lead nights
+      unitsNeedingLeads.sort((a, b) => unitLeadCounts[a] - unitLeadCounts[b]);
+      
+      // Try to find a valid matchup
+      let leadA = null;
+      let leadB = null;
+      let foundMatch = false;
+
+      // Try different lead A candidates
+      for (let aIdx = 0; aIdx < Math.min(unitsNeedingLeads.length, 5); aIdx++) {
+        const candidateA = unitsNeedingLeads[aIdx];
+        
+        // Find valid opponents for this candidate
+        const validOpponents = unitsNeedingLeads.filter(u => {
+          if (u === candidateA) return false;
+          
+          // Check if matchup already exists
+          const matchup1 = `${candidateA}-vs-${u}`;
+          const matchup2 = `${u}-vs-${candidateA}`;
+          if (leadMatchups.has(matchup1) || leadMatchups.has(matchup2)) return false;
+          
+          // Check division requirements
+          if (simLeadNightsInDivision > 0) {
+            const aDivision = unitToDivision[candidateA];
+            const uDivision = unitToDivision[u];
+            
+            // If both units have divisions and they're the same
+            if (aDivision && uDivision && aDivision === uDivision) {
+              // Prioritize division matchups if either unit needs them
+              if (unitDivisionLeadCounts[candidateA] < simLeadNightsInDivision ||
+                  unitDivisionLeadCounts[u] < simLeadNightsInDivision) {
+                return true;
+              }
+            }
+            
+            // If we need division matchups but this isn't one, only allow if both quotas are met
+            if (aDivision && uDivision && aDivision !== uDivision) {
+              return unitDivisionLeadCounts[candidateA] >= simLeadNightsInDivision &&
+                     unitDivisionLeadCounts[u] >= simLeadNightsInDivision;
+            }
+          }
+          
+          return true;
+        });
+
+        if (validOpponents.length > 0) {
+          leadA = candidateA;
+          // Prefer opponents who also need more lead nights
+          validOpponents.sort((a, b) => unitLeadCounts[a] - unitLeadCounts[b]);
+          leadB = validOpponents[0];
+          foundMatch = true;
+          break;
+        }
+      }
+
+      if (!foundMatch) {
+        // Try allowing repeat matchups if we're stuck
+        for (let aIdx = 0; aIdx < Math.min(unitsNeedingLeads.length, 5); aIdx++) {
+          const candidateA = unitsNeedingLeads[aIdx];
+          
+          const validOpponents = unitsNeedingLeads.filter(u => {
+            if (u === candidateA) return false;
+            
+            // Check division requirements (still enforce these)
+            if (simLeadNightsInDivision > 0) {
+              const aDivision = unitToDivision[candidateA];
+              const uDivision = unitToDivision[u];
+              
+              if (aDivision && uDivision && aDivision === uDivision) {
+                if (unitDivisionLeadCounts[candidateA] < simLeadNightsInDivision ||
+                    unitDivisionLeadCounts[u] < simLeadNightsInDivision) {
+                  return true;
+                }
+              }
+              
+              if (aDivision && uDivision && aDivision !== uDivision) {
+                return unitDivisionLeadCounts[candidateA] >= simLeadNightsInDivision &&
+                       unitDivisionLeadCounts[u] >= simLeadNightsInDivision;
+              }
+            }
+            
+            return true;
+          });
+
+          if (validOpponents.length > 0) {
+            leadA = candidateA;
+            validOpponents.sort((a, b) => unitLeadCounts[a] - unitLeadCounts[b]);
+            leadB = validOpponents[0];
+            foundMatch = true;
+            break;
+          }
+        }
+      }
+
+      if (!foundMatch) {
+        // Can't find any valid matchup, stop here
+        break;
+      }
+
+      // Record the matchup
+      leadMatchups.add(`${leadA}-vs-${leadB}`);
+      unitLeadCounts[leadA]++;
+      unitLeadCounts[leadB]++;
+      
+      // Track division matchups
+      const leadADivision = unitToDivision[leadA];
+      const leadBDivision = unitToDivision[leadB];
+      if (leadADivision && leadBDivision && leadADivision === leadBDivision) {
+        unitDivisionLeadCounts[leadA]++;
+        unitDivisionLeadCounts[leadB]++;
+      }
+
+      // Randomly assign remaining units to teams
+      const remainingUnits = units.filter(u => u !== leadA && u !== leadB);
+      const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
+      const midpoint = Math.floor(shuffled.length / 2);
+      
+      const teamA = [leadA, ...shuffled.slice(0, midpoint)];
+      const teamB = [leadB, ...shuffled.slice(midpoint)];
+
+      // Randomly select maps
+      const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+      const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+      
+      // Randomly determine flipped state
+      const round1Flipped = Math.random() < 0.5;
+      const round2Flipped = Math.random() < 0.5;
+
+      // Simulate round results (50/50 chance for each team)
+      const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
+      const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
+
+      generatedWeeks.push({
+        teamA,
+        teamB,
+        round1Winner,
+        round2Winner,
+        round1Map,
+        round2Map,
+        round1Flipped,
+        round2Flipped,
+        leadA,
+        leadB
+      });
+    }
+
+    return {
+      weeks: generatedWeeks,
+      unitLeadCounts,
+      unitDivisionLeadCounts
+    };
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -2232,6 +2528,14 @@ const SeasonTracker = () => {
               >
                 <Settings className="w-4 h-4" />
                 Settings
+              </button>
+              <button
+                onClick={() => setShowSimulateModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition"
+                title="Simulate Season"
+              >
+                <Zap className="w-4 h-4" />
+                Simulate
               </button>
             </div>
           </div>
@@ -4496,6 +4800,121 @@ const SeasonTracker = () => {
                       className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
                     >
                       Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Simulation Modal */}
+          {showSimulateModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Zap className="w-6 h-6" />
+                      Simulate Season
+                    </h2>
+                    <button
+                      onClick={() => setShowSimulateModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Info Box */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <p className="text-sm text-slate-300 mb-2">
+                        This will simulate a season by generating weeks with randomized:
+                      </p>
+                      <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
+                        <li>Team assignments (leads and supporting units)</li>
+                        <li>Map selections for both rounds</li>
+                        <li>Round results (50/50 chance per team)</li>
+                        <li>No repeat lead matchups</li>
+                      </ul>
+                      <p className="text-sm text-amber-400 mt-3">
+                        💡 Simulated weeks will be added to your existing weeks.
+                      </p>
+                    </div>
+
+                    {/* Settings */}
+                    <div className="bg-slate-700 rounded-lg p-4 space-y-4">
+                      <h3 className="text-lg font-semibold text-amber-400 mb-3">Simulation Settings</h3>
+                      
+                      {/* Lead Nights Per Unit */}
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-2">
+                          # of Lead Nights per Token Unit
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={simLeadNightsPerUnit}
+                          onChange={(e) => setSimLeadNightsPerUnit(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">
+                          Each token unit will lead this many weeks. Total weeks = {units.filter(u => !nonTokenUnits.includes(u)).length} units × {simLeadNightsPerUnit} = {units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks
+                        </p>
+                      </div>
+
+                      {/* Division Lead Nights */}
+                      {divisions && divisions.length > 0 && (
+                        <div>
+                          <label className="block text-sm text-slate-300 mb-2">
+                            # of Lead Nights within Division
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={simLeadNightsPerUnit}
+                            value={simLeadNightsInDivision}
+                            onChange={(e) => setSimLeadNightsInDivision(Math.min(parseInt(e.target.value) || 0, simLeadNightsPerUnit))}
+                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                          />
+                          <p className="text-xs text-slate-400 mt-1">
+                            {simLeadNightsInDivision === 0 
+                              ? "0 = Any matchup is fine (no division requirement)" 
+                              : `Each unit must lead ${simLeadNightsInDivision} week(s) against opponents in their division`}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Unit Summary */}
+                      <div className="bg-slate-600 rounded p-3">
+                        <h4 className="text-sm font-semibold text-white mb-2">Current Units</h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                          <div>Token Units: {units.filter(u => !nonTokenUnits.includes(u)).length}</div>
+                          <div>Non-Token Units: {nonTokenUnits.length}</div>
+                          <div className="col-span-2">Total Units: {units.length}</div>
+                          {divisions && divisions.length > 0 && (
+                            <div className="col-span-2">Divisions: {divisions.length}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Buttons */}
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                    <button
+                      onClick={() => setShowSimulateModal(false)}
+                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={simulateSeason}
+                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition flex items-center gap-2"
+                    >
+                      <Zap className="w-4 h-4" />
+                      Simulate Season
                     </button>
                   </div>
                 </div>
