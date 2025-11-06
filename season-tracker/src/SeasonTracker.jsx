@@ -7,6 +7,20 @@ import {
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
+// Default playoff configuration factory
+const getDefaultPlayoffConfig = () => ({
+  enabled: false,
+  useDivisions: false,
+  teamsPerDivision: 2,
+  wildcardTeams: 0,
+  roundFormats: {
+    wildcard: 1,
+    divisional: 1,
+    conference: 2,
+    finals: 2
+  }
+});
+
 // Map data from maps.py
 const MAPS = {
   antietam: [
@@ -148,18 +162,7 @@ const SeasonTracker = () => {
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   
   // Playoff configuration state
-  const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || {
-    enabled: false,
-    useDivisions: false,
-    teamsPerDivision: 2,
-    wildcardTeams: 0,
-    roundFormats: {
-      wildcard: 1,
-      divisional: 1,
-      conference: 2,
-      finals: 2
-    }
-  });
+  const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -1344,6 +1347,7 @@ const SeasonTracker = () => {
     setManualAdjustments({});
     setDivisions([]);
     setMapBiases(getDefaultMapBiases());
+    setPlayoffConfig(getDefaultPlayoffConfig());
     
     alert('New season started! All data has been cleared.');
   };
@@ -1362,6 +1366,7 @@ const SeasonTracker = () => {
       unitPlayerCounts,
       divisions,
       mapBiases,
+      playoffConfig,
       exportDate: new Date().toISOString()
     };
     
@@ -1533,6 +1538,10 @@ const SeasonTracker = () => {
           importedMapBiases[mapName] = parseFloat(biasValue) || 0;
         });
         setMapBiases(importedMapBiases);
+        
+        // Handle playoff configuration - always use default if not present
+        const importedPlayoffConfig = data.playoffConfig || getDefaultPlayoffConfig();
+        setPlayoffConfig(importedPlayoffConfig);
         
         setSelectedWeek(null);
         alert('Data imported successfully!');
