@@ -79,7 +79,42 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       setTerritories(existingCampaign.customMap.territories);
       const allStates = new Set();
       existingCampaign.customMap.territories.forEach(t => {
-        t.states.forEach(s => allStates.add(s));
+        if (t.states) {
+          t.states.forEach(s => allStates.add(s));
+        }
+      });
+      setSelectedStates(allStates);
+    } else if (existingCampaign?.territories) {
+      // Load existing campaign territories
+      // Map each territory to find its state abbreviation from the SVG path
+      const loadedTerritories = existingCampaign.territories.map(t => {
+        // Find matching state by comparing SVG paths or by ID
+        const matchingState = usaStates.find(s =>
+          s.abbreviation === t.id?.toUpperCase() ||
+          s.name === t.name ||
+          s.svgPath === t.svgPath
+        );
+        
+        return {
+          id: t.id || `territory-${Date.now()}-${Math.random()}`,
+          name: t.name,
+          victoryPoints: t.victoryPoints || t.pointValue || 1,
+          owner: t.owner,
+          initialOwner: t.owner,
+          maps: t.maps || [],
+          states: matchingState ? [matchingState.abbreviation] : (t.states || []),
+          svgPath: t.svgPath || '',
+          center: t.center || { x: 0, y: 0 }
+        };
+      });
+      setTerritories(loadedTerritories);
+      
+      // Select all states that are part of territories
+      const allStates = new Set();
+      loadedTerritories.forEach(t => {
+        if (t.states && t.states.length > 0) {
+          t.states.forEach(s => allStates.add(s));
+        }
       });
       setSelectedStates(allStates);
     }
@@ -168,15 +203,21 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       return;
     }
 
-    const customMap = {
-      territories: territories.map(t => ({
-        ...t,
-        svgPath: combineStatePaths(t.states),
-        center: calculateGroupCenter(t.states)
-      }))
-    };
+    // Return modified territories with updated SVG paths and centers
+    const modifiedTerritories = territories.map(t => {
+      // Only update SVG path and center if states array exists and has items
+      if (t.states && t.states.length > 0) {
+        return {
+          ...t,
+          svgPath: combineStatePaths(t.states),
+          center: calculateGroupCenter(t.states)
+        };
+      }
+      // Otherwise preserve existing SVG path and center
+      return { ...t };
+    });
 
-    onSave(customMap);
+    onSave(modifiedTerritories);
   };
 
   const handleDragStart = (e, territoryId) => {
@@ -234,11 +275,26 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   const isSelected = selectedStates.has(state.abbreviation);
                   const isHovered = hoveredState === state.abbreviation;
                   
+                  // Find territory that owns this state to determine color
+                  const owningTerritory = territories.find(t =>
+                    t.states && t.states.includes(state.abbreviation)
+                  );
+                  const owner = owningTerritory?.owner || owningTerritory?.initialOwner;
+                  
+                  // Determine fill color based on owner
+                  let fillColor = '#64748b'; // Default gray
+                  if (isSelected) {
+                    if (owner === 'USA') fillColor = '#3b82f6'; // Blue
+                    else if (owner === 'CSA') fillColor = '#ef4444'; // Red
+                    else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                    else fillColor = '#fbbf24'; // Amber (unassigned)
+                  }
+                  
                   return (
                     <path
                       key={state.abbreviation}
                       d={state.svgPath}
-                      fill={isSelected ? '#fbbf24' : '#64748b'}
+                      fill={fillColor}
                       fillOpacity={isSelected ? 0.6 : 0.3}
                       stroke="#ffffff"
                       strokeWidth="1"
@@ -311,7 +367,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           placeholder="Territory Name"
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                          States: {territory.states.join(', ')}
+                          States: {territory.states ? territory.states.join(', ') : 'N/A'}
                         </p>
                       </div>
                       <button
@@ -337,12 +393,18 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       />
                     </div>
 
-                    {/* Initial Owner */}
+                    {/* Current Owner */}
                     <div className="mb-3">
-                      <label className="text-xs text-slate-400 block mb-1">Initial Owner</label>
+                      <label className="text-xs text-slate-400 block mb-1">Current Owner</label>
                       <select
-                        value={territory.initialOwner}
-                        onChange={(e) => handleTerritoryUpdate(territory.id, 'initialOwner', e.target.value)}
+                        value={territory.owner || territory.initialOwner}
+                        onChange={(e) => {
+                          handleTerritoryUpdate(territory.id, 'owner', e.target.value);
+                          // Also update initialOwner if it exists
+                          if (territory.initialOwner !== undefined) {
+                            handleTerritoryUpdate(territory.id, 'initialOwner', e.target.value);
+                          }
+                        }}
                         className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm"
                       >
                         <option value="USA">USA</option>
@@ -376,16 +438,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       </p>
                     </div>
 
-                    {/* Capital Status */}
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={territory.isCapital}
-                        onChange={(e) => handleTerritoryUpdate(territory.id, 'isCapital', e.target.checked)}
-                        className="rounded"
-                      />
-                      <span className="text-slate-300">Capital Territory</span>
-                    </label>
                   </div>
                 ))
               )}

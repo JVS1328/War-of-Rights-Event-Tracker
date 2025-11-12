@@ -142,11 +142,30 @@ const CampaignTracker = () => {
     setShowVictory(null);
   };
 
-  const handleMapEditorSave = (customMap) => {
-    const fresh = createDefaultCampaign(customMap);
-    setCampaign(fresh);
+  const handleMapEditorSave = (modifiedTerritories) => {
+    if (!campaign) return;
+
+    // Calculate new VP totals based on modified territories
+    let vpUSA = 0;
+    let vpCSA = 0;
+    
+    modifiedTerritories.forEach(territory => {
+      if (territory.owner === 'USA') {
+        vpUSA += territory.victoryPoints;
+      } else if (territory.owner === 'CSA') {
+        vpCSA += territory.victoryPoints;
+      }
+    });
+
+    // Update campaign with modified territories while preserving battle history
+    setCampaign({
+      ...campaign,
+      territories: modifiedTerritories,
+      victoryPointsUSA: vpUSA,
+      victoryPointsCSA: vpCSA
+    });
+    
     setSelectedTerritory(null);
-    setShowVictory(null);
     setShowMapEditor(false);
   };
 
@@ -160,7 +179,7 @@ const CampaignTracker = () => {
   };
 
   const editCampaignMap = () => {
-    if (!confirm('Edit campaign map? This will reset all battle data and territory ownership. Make sure to export first!')) {
+    if (!confirm('Edit campaign map? You can modify territories, VP values, and ownership. Battle history will be preserved.')) {
       return;
     }
     setShowMapEditor(true);
