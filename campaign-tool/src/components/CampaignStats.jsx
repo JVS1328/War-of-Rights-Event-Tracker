@@ -11,12 +11,37 @@ const CampaignStats = ({ campaign }) => {
     .filter(t => t.owner === 'CSA')
     .reduce((sum, t) => sum + (t.pointValue || t.victoryPoints || 0), 0);
 
+  // Calculate casualty totals from battle history
+  const calculateCasualties = () => {
+    const totals = {
+      usa: 0,
+      csa: 0,
+      total: 0
+    };
+
+    campaign.battles.forEach(battle => {
+      const usaCas = battle.casualties?.USA || 0;
+      const csaCas = battle.casualties?.CSA || 0;
+      totals.usa += usaCas;
+      totals.csa += csaCas;
+      totals.total += usaCas + csaCas;
+    });
+
+    return totals;
+  };
+
+  const casualties = calculateCasualties();
+
   const formatDate = (isoString) => {
     return new Date(isoString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const formatNumber = (num) => {
+    return num.toLocaleString('en-US');
   };
 
   return (
@@ -99,6 +124,25 @@ const CampaignStats = ({ campaign }) => {
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Battles Fought:</span>
             <span className="text-white font-semibold">{campaign.battles.length}</span>
+          </div>
+          
+          {/* Casualty Statistics */}
+          <div className="pt-3 mt-3 border-t border-slate-700">
+            <div className="text-sm text-slate-400 mb-2 font-semibold">Campaign Casualties</div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-blue-400">USA Casualties:</span>
+                <span className="text-white font-semibold">{formatNumber(casualties.usa)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-red-400">CSA Casualties:</span>
+                <span className="text-white font-semibold">{formatNumber(casualties.csa)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-300">Total Casualties:</span>
+                <span className="text-white font-bold">{formatNumber(casualties.total)}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

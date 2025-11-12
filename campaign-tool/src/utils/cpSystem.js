@@ -45,7 +45,7 @@ export const VP_MULTIPLIERS = {
 /**
  * Default starting CP for both sides
  */
-export const DEFAULT_STARTING_CP = 200;
+export const DEFAULT_STARTING_CP = 500;
 
 // ============================================================================
 // CP COST CALCULATION FUNCTIONS
