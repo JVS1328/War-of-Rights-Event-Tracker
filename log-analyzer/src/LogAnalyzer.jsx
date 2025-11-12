@@ -1300,6 +1300,82 @@ const WarOfRightsLogAnalyzer = () => {
     document.body.removeChild(link);
   };
 
+  const exportCasualtyList = () => {
+    if (!selectedRound) return;
+
+    const assignments = playerAssignments || {};
+    const regimentData = {};
+    const playerRespawnSkipCount = {};
+    const playerSessionCounts = {};
+
+    // Count sessions for each player
+    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+      playerSessionCounts[playerName] = sessions.length;
+    });
+
+    // Collect all casualties by regiment
+    selectedRound.kills.forEach(death => {
+      const sessionCount = playerSessionCounts[death.player] || 1;
+
+      if (!playerRespawnSkipCount[death.player]) {
+        playerRespawnSkipCount[death.player] = 0;
+      }
+
+      // Skip initial spawns
+      if (playerRespawnSkipCount[death.player] < sessionCount) {
+        playerRespawnSkipCount[death.player]++;
+        return;
+      }
+
+      const regiment = normalizeRegimentTag(
+        assignments[death.player] || extractRegimentTag(death.player)
+      );
+
+      if (!regimentData[regiment]) {
+        regimentData[regiment] = {};
+      }
+
+      if (!regimentData[regiment][death.player]) {
+        regimentData[regiment][death.player] = 0;
+      }
+      regimentData[regiment][death.player]++;
+    });
+
+    // Build text content
+    let textContent = `Casualty List - Round ${selectedRound.id}\n`;
+    textContent += `Generated: ${new Date().toLocaleString()}\n`;
+    textContent += `${'='.repeat(50)}\n\n`;
+
+    // Sort regiments alphabetically
+    const sortedRegiments = Object.keys(regimentData).sort();
+
+    sortedRegiments.forEach(regiment => {
+      textContent += `${regiment}\n`;
+
+      // Sort players by death count (descending)
+      const players = Object.entries(regimentData[regiment])
+        .sort((a, b) => b[1] - a[1]);
+
+      players.forEach(([playerName, deathCount]) => {
+        textContent += `- ${playerName} (${deathCount} ${deathCount === 1 ? 'time' : 'times'} died)\n`;
+      });
+
+      textContent += '\n';
+    });
+
+    // Create and download file
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', `round_${selectedRound.id}_casualty_list.txt`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -1933,10 +2009,20 @@ const WarOfRightsLogAnalyzer = () => {
 
                 {/* Top Individual Deaths */}
                 <div className="bg-slate-700 rounded-lg p-6">
-                  <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                    <Award className="w-6 h-6" />
-                    Top 10 Individual Deaths
-                  </h2>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Award className="w-6 h-6" />
+                      Top 10 Individual Deaths
+                    </h2>
+                    <button
+                      onClick={exportCasualtyList}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                      title="Export Casualty List"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Casualty List
+                    </button>
+                  </div>
                   <div className="space-y-2">
                     {getTopIndividualDeaths().map((player, index) => (
                       <div key={player.name} className="bg-slate-600 rounded-lg p-3">
