@@ -8,6 +8,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [hoveredState, setHoveredState] = useState(null);
   const [editingTerritory, setEditingTerritory] = useState(null);
   const [draggedTerritory, setDraggedTerritory] = useState(null);
+  const [multiSelectStates, setMultiSelectStates] = useState(new Set());
 
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
@@ -120,34 +121,151 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     }
   }, [existingCampaign]);
 
-  const handleStateClick = (stateAbbr) => {
-    const newSelected = new Set(selectedStates);
-    
-    if (newSelected.has(stateAbbr)) {
-      // Remove state from selection and any territories
-      newSelected.delete(stateAbbr);
-      setTerritories(territories.filter(t => !t.states.includes(stateAbbr)));
-    } else {
-      // Add state to selection
-      newSelected.add(stateAbbr);
+  const handleStateClick = (stateAbbr, ctrlKey = false) => {
+    if (ctrlKey) {
+      // Find territory containing this state
+      const territory = territories.find(t => t.states && t.states.includes(stateAbbr));
       
-      // Create a new territory for this state
+      if (territory && territory.states.length > 1) {
+        // Ctrl+Click on merged territory: Split it
+        splitTerritory(territory);
+        setMultiSelectStates(new Set());
+      } else if (!territory) {
+        // Ctrl+Click on non-selected state: Select it first, then add to multi-select
+        const newSelected = new Set(selectedStates);
+        newSelected.add(stateAbbr);
+        
+        const state = usaStates.find(s => s.abbreviation === stateAbbr);
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: state.name,
+          states: [stateAbbr],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          svgPath: state.svgPath,
+          center: state.center
+        };
+        setTerritories([...territories, newTerritory]);
+        setSelectedStates(newSelected);
+        
+        // Add to multi-select
+        const newMultiSelect = new Set(multiSelectStates);
+        newMultiSelect.add(stateAbbr);
+        setMultiSelectStates(newMultiSelect);
+        
+        // If we have 2+ states selected, merge them (but keep multi-select active)
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedStates(newMultiSelect);
+          // Don't clear multi-select - keep it for adding more states
+        }
+      } else {
+        // Ctrl+Click on single state territory: Add to multi-select for merging
+        const newMultiSelect = new Set(multiSelectStates);
+        
+        if (newMultiSelect.has(stateAbbr)) {
+          // Already selected, remove it
+          newMultiSelect.delete(stateAbbr);
+        } else {
+          // Add to multi-select
+          newMultiSelect.add(stateAbbr);
+        }
+        
+        setMultiSelectStates(newMultiSelect);
+        
+        // If we have 2+ states selected, merge them (but keep multi-select active)
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedStates(newMultiSelect);
+          // Don't clear multi-select - keep it for adding more states
+        }
+      }
+    } else {
+      // Normal click: toggle state selection
+      const newSelected = new Set(selectedStates);
+      
+      if (newSelected.has(stateAbbr)) {
+        // Remove state from selection and any territories
+        newSelected.delete(stateAbbr);
+        setTerritories(territories.filter(t => !t.states.includes(stateAbbr)));
+      } else {
+        // Add state to selection
+        newSelected.add(stateAbbr);
+        
+        // Create a new territory for this state
+        const state = usaStates.find(s => s.abbreviation === stateAbbr);
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: state.name,
+          states: [stateAbbr],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          svgPath: state.svgPath,
+          center: state.center
+        };
+        setTerritories([...territories, newTerritory]);
+      }
+      
+      setSelectedStates(newSelected);
+      setMultiSelectStates(new Set()); // Clear multi-select on normal click
+    }
+  };
+
+  const mergeSelectedStates = (statesToMerge) => {
+    const stateArray = Array.from(statesToMerge);
+    
+    // Find all territories that contain these states
+    const affectedTerritories = territories.filter(t =>
+      t.states && t.states.some(s => stateArray.includes(s))
+    );
+    
+    if (affectedTerritories.length === 0) return;
+    
+    // Collect all states from affected territories
+    const allStates = [...new Set(affectedTerritories.flatMap(t => t.states))];
+    
+    // Create merged territory
+    const mergedName = affectedTerritories.map(t => t.name).join(' & ');
+    const mergedTerritory = {
+      id: `territory-${Date.now()}`,
+      name: mergedName,
+      states: allStates,
+      victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
+      maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+      owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      svgPath: combineStatePaths(allStates),
+      center: calculateGroupCenter(allStates)
+    };
+    
+    // Remove old territories and add merged one
+    const remainingTerritories = territories.filter(t => !affectedTerritories.includes(t));
+    setTerritories([...remainingTerritories, mergedTerritory]);
+  };
+
+  const splitTerritory = (territory) => {
+    // Remove the merged territory
+    const remainingTerritories = territories.filter(t => t.id !== territory.id);
+    
+    // Create individual territories for each state
+    const newTerritories = territory.states.map(stateAbbr => {
       const state = usaStates.find(s => s.abbreviation === stateAbbr);
-      const newTerritory = {
-        id: `territory-${Date.now()}`,
+      return {
+        id: `territory-${Date.now()}-${stateAbbr}`,
         name: state.name,
         states: [stateAbbr],
         victoryPoints: 1,
         maps: [],
-        initialOwner: 'Contested',
-        isCapital: false,
+        owner: territory.owner || territory.initialOwner,
+        initialOwner: territory.owner || territory.initialOwner,
         svgPath: state.svgPath,
         center: state.center
       };
-      setTerritories([...territories, newTerritory]);
-    }
+    });
     
-    setSelectedStates(newSelected);
+    setTerritories([...remainingTerritories, ...newTerritories]);
   };
 
   const handleTerritoryUpdate = (territoryId, field, value) => {
@@ -274,6 +392,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 {usaStates.map(state => {
                   const isSelected = selectedStates.has(state.abbreviation);
                   const isHovered = hoveredState === state.abbreviation;
+                  const isMultiSelected = multiSelectStates.has(state.abbreviation);
                   
                   // Find territory that owns this state to determine color
                   const owningTerritory = territories.find(t =>
@@ -290,19 +409,23 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                     else fillColor = '#fbbf24'; // Amber (unassigned)
                   }
                   
+                  // Highlight multi-selected states with black border
+                  const strokeColor = isMultiSelected ? '#000000' : '#ffffff';
+                  const strokeWidth = isMultiSelected ? '3' : '1';
+                  
                   return (
                     <path
                       key={state.abbreviation}
                       d={state.svgPath}
                       fill={fillColor}
                       fillOpacity={isSelected ? 0.6 : 0.3}
-                      stroke="#ffffff"
-                      strokeWidth="1"
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth}
                       className="cursor-pointer transition-all duration-200"
                       style={{
                         filter: isHovered ? 'brightness(1.3)' : 'none'
                       }}
-                      onClick={() => handleStateClick(state.abbreviation)}
+                      onClick={(e) => handleStateClick(state.abbreviation, e.ctrlKey || e.metaKey)}
                       onMouseEnter={() => setHoveredState(state.abbreviation)}
                       onMouseLeave={() => setHoveredState(null)}
                     />
@@ -316,10 +439,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               <p className="font-semibold text-amber-400 mb-2">Instructions:</p>
               <ul className="space-y-1 list-disc list-inside">
                 <li>Click states to select/deselect them for your campaign</li>
-                <li>Selected states appear in amber and create territories automatically</li>
+                <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
+                <li>Ctrl+Click on a merged territory to split it back into individual states</li>
+                <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
                 <li>Configure each territory in the right panel</li>
-                <li>Drag territories to reorder them</li>
-                <li>Create at least 2 territories before saving</li>
               </ul>
             </div>
           </div>
