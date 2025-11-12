@@ -57,8 +57,7 @@ const CampaignTracker = () => {
     if (!campaign) return;
 
     const battle = {
-      ...battleData,
-      victoryPointsAwarded: 0 // Will be calculated in processBattleResult
+      ...battleData
     };
 
     // Process battle result and update campaign
@@ -216,13 +215,9 @@ const CampaignTracker = () => {
     setCampaign({
       ...campaign,
       name: newSettings.name,
-      victoryPointTarget: newSettings.victoryPointTarget,
       settings: {
-        victoryPointsPerTerritory: newSettings.victoryPointsPerTerritory,
-        victoryPointsPerBattle: newSettings.victoryPointsPerBattle,
         allowTerritoryRecapture: newSettings.allowTerritoryRecapture,
         requireAdjacentAttack: newSettings.requireAdjacentAttack,
-        capitalBonusMultiplier: newSettings.capitalBonusMultiplier,
         casualtyTracking: newSettings.casualtyTracking
       }
     });

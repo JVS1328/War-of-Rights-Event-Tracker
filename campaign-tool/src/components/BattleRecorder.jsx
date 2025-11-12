@@ -16,13 +16,17 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   
   // CP cost estimation
   const [estimatedCPCost, setEstimatedCPCost] = useState({ attacker: 0, defender: 0 });
+  const [maxCPCost, setMaxCPCost] = useState({ attacker: 0, defender: 0 });
   const [cpWarning, setCpWarning] = useState('');
+  const [cpBlockingError, setCpBlockingError] = useState('');
 
   // Calculate estimated CP cost whenever relevant fields change
   useEffect(() => {
     if (!selectedTerritory || !campaign?.cpSystemEnabled) {
       setEstimatedCPCost({ attacker: 0, defender: 0 });
+      setMaxCPCost({ attacker: 0, defender: 0 });
       setCpWarning('');
+      setCpBlockingError('');
       return;
     }
 
@@ -38,9 +42,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     const attackerCasualties = parseInt(casualties[attacker]) || 0;
     const defenderCasualties = parseInt(casualties[defender === 'USA' ? 'USA' : 'CSA']) || 0;
 
-    // Calculate CP costs using the new system
+    const territoryPointValue = territory.pointValue || territory.victoryPoints || 10;
+
+    // Calculate maximum possible CP costs
+    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender);
+    setMaxCPCost({ attacker: maxCosts.attackerMax, defender: maxCosts.defenderMax });
+
+    // Calculate estimated CP costs using the new system
     const cpResult = calculateBattleCPCost({
-      territoryPointValue: territory.pointValue || territory.victoryPoints || 10,
+      territoryPointValue,
       territoryOwner: territory.owner,
       attacker: attacker,
       winner: winner || attacker, // Default to attacker if no winner selected yet
@@ -55,12 +65,21 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     const defenderCP = defender === 'USA' ? campaign.combatPowerUSA :
                        defender === 'CSA' ? campaign.combatPowerCSA : 0;
 
-    if (attackerCP < cpResult.attackerLoss) {
-      setCpWarning(`Insufficient CP for ${attacker}! Required: ${cpResult.attackerLoss}, Available: ${attackerCP}`);
-    } else if (defender !== 'NEUTRAL' && defenderCP < cpResult.defenderLoss) {
-      setCpWarning(`Insufficient CP for ${defender}! Required: ${cpResult.defenderLoss}, Available: ${defenderCP}`);
-    } else {
+    // BLOCKING ERROR: Check if attacker can afford maximum possible CP loss
+    if (attackerCP < maxCosts.attackerMax) {
+      setCpBlockingError(`Attack impossible! ${attacker} needs ${maxCosts.attackerMax} CP to attack this territory but only has ${attackerCP} CP available.`);
       setCpWarning('');
+    } else {
+      setCpBlockingError('');
+      
+      // Non-blocking warnings for estimated costs
+      if (attackerCP < cpResult.attackerLoss) {
+        setCpWarning(`Warning: Estimated CP cost (${cpResult.attackerLoss}) exceeds available CP (${attackerCP})`);
+      } else if (defender !== 'NEUTRAL' && defenderCP < cpResult.defenderLoss) {
+        setCpWarning(`Warning: ${defender} has insufficient CP. Required: ${cpResult.defenderLoss}, Available: ${defenderCP}`);
+      } else {
+        setCpWarning('');
+      }
     }
   }, [selectedTerritory, attacker, winner, casualties, territories, campaign]);
 
@@ -70,7 +89,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       return;
     }
 
-    // Check CP availability if CP system is enabled
+    // HARD BLOCK: Prevent battle if attacker cannot afford maximum possible CP loss
+    if (campaign?.cpSystemEnabled && cpBlockingError) {
+      alert(cpBlockingError);
+      return;
+    }
+
+    // Non-blocking warning for estimated costs
     if (campaign?.cpSystemEnabled && cpWarning) {
       if (!confirm(`${cpWarning}\n\nProceed anyway? (Battle will use available CP)`)) {
         return;
@@ -309,27 +334,19 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                         </span>
                       </div>
                       <div className="text-xs text-slate-400">
-                        Base: 75 × VP multiplier × (casualties / total casualties)
+                        Estimated cost based on casualties
+                      </div>
+                      <div className="text-xs text-amber-400 mt-1">
+                        Maximum possible loss: {maxCPCost.attacker} CP
                       </div>
                     </div>
                     
                     {(() => {
                       const territory = territories.find(t => t.id === selectedTerritory);
-                      const defender = attacker === 'USA' ?
-                        (territory.owner === 'CSA' ? 'CSA' : 'NEUTRAL') :
-                        (territory.owner === 'USA' ? 'USA' : 'NEUTRAL');
-                      
-                      if (defender === 'NEUTRAL') {
-                        return (
-                          <div className="bg-slate-800 rounded p-3">
-                            <div className="text-slate-400 text-sm">
-                              No defender CP cost (neutral territory)
-                            </div>
-                          </div>
-                        );
-                      }
+                      const defender = attacker === 'USA' ? 'CSA' : 'USA';
                       
                       const defenderWon = winner !== attacker;
+                      const isNeutral = territory.owner === 'NEUTRAL';
                       const isFriendly = territory.owner === defender;
                       
                       return (
@@ -347,7 +364,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                           <div className="text-xs text-slate-400">
                             {defenderWon
                               ? 'Base: 25 × VP multiplier × (casualties / total casualties)'
-                              : `Max loss: ${isFriendly ? '25' : '50'} CP (${isFriendly ? 'friendly' : 'neutral'} territory)`
+                              : `Max loss: ${isFriendly ? '25' : '50'} CP (${isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory)`
                             }
                           </div>
                         </div>
@@ -356,10 +373,22 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   </div>
                 </div>
 
-                {cpWarning && (
-                  <div className="mt-3 p-3 bg-red-900/30 border border-red-500 rounded flex items-start gap-2">
+                {/* Blocking Error - Attack Impossible */}
+                {cpBlockingError && (
+                  <div className="mt-3 p-3 bg-red-900/50 border-2 border-red-500 rounded flex items-start gap-2">
                     <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                    <span className="text-red-300 text-sm">{cpWarning}</span>
+                    <div className="flex-1">
+                      <div className="text-red-300 font-bold text-sm mb-1">ATTACK BLOCKED</div>
+                      <span className="text-red-300 text-sm">{cpBlockingError}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Non-blocking Warning */}
+                {!cpBlockingError && cpWarning && (
+                  <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-500 rounded flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-yellow-300 text-sm">{cpWarning}</span>
                   </div>
                 )}
               </div>
@@ -384,15 +413,21 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
           <div className="flex gap-3 mt-6">
             <button
               onClick={handleSubmit}
-              disabled={campaign?.cpSystemEnabled && cpWarning && !confirm}
+              disabled={campaign?.cpSystemEnabled && cpBlockingError}
               className={`flex-1 px-4 py-3 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2 ${
-                campaign?.cpSystemEnabled && cpWarning
+                campaign?.cpSystemEnabled && cpBlockingError
+                  ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                  : campaign?.cpSystemEnabled && cpWarning
                   ? 'bg-orange-600 hover:bg-orange-700'
                   : 'bg-green-600 hover:bg-green-700'
               }`}
             >
               <Save className="w-4 h-4" />
-              {campaign?.cpSystemEnabled && cpWarning ? 'Record Battle (Warning)' : 'Record Battle'}
+              {campaign?.cpSystemEnabled && cpBlockingError
+                ? 'Attack Blocked - Insufficient CP'
+                : campaign?.cpSystemEnabled && cpWarning
+                ? 'Record Battle (Warning)'
+                : 'Record Battle'}
             </button>
             <button
               onClick={onClose}

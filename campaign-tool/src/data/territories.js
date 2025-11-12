@@ -92,7 +92,6 @@ export const INITIAL_TERRITORIES = [
     mapName: 'Drill Camp',
     owner: 'CSA',
     victoryPoints: 30,
-    isCapital: true,
     coordinates: {
       type: 'polygon',
       data: 'M 280,360 L 400,360 L 400,440 L 280,440 Z'
@@ -106,7 +105,6 @@ export const INITIAL_TERRITORIES = [
     mapName: 'Drill Camp',
     owner: 'USA',
     victoryPoints: 30,
-    isCapital: true,
     coordinates: {
       type: 'polygon',
       data: 'M 340,240 L 400,240 L 400,280 L 340,280 Z'

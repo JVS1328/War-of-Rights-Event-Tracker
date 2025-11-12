@@ -19,24 +19,23 @@ function addSvgPath(territory, stateAbbr) {
 }
 
 /**
- * Create default Civil War campaign with 21 territories
+ * Create default Civil War campaign with 20 territories
  * Based on CP System Specification
  */
 function createCivilWarTerritories() {
   // Territory definitions with strategic groupings
   const territories = [
     // === USA STARTING TERRITORIES (50 VP total) ===
-    // Capital (15pt)
+    // Capital region (15pt)
     addSvgPath({
-      id: 'washington-dc',
-      name: 'Washington D.C.',
+      id: 'maryland',
+      name: 'Maryland',
       owner: 'USA',
       pointValue: 15,
       victoryPoints: 15,
-      isCapital: true,
-      adjacentTerritories: ['maryland', 'virginia'],
+      adjacentTerritories: ['pennsylvania', 'virginia', 'west-virginia', 'delaware'],
       captureHistory: []
-    }, 'MD'), // Use Maryland's shape for DC area
+    }, 'MD'),
     // Major territories (10pt each = 20pt)
     addSvgPath({
       id: 'pennsylvania',
@@ -44,7 +43,6 @@ function createCivilWarTerritories() {
       owner: 'USA',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['ohio', 'maryland', 'new-york'],
       captureHistory: []
     }, 'PA'),
@@ -54,7 +52,6 @@ function createCivilWarTerritories() {
       owner: 'USA',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['pennsylvania', 'indiana', 'kentucky', 'west-virginia'],
       captureHistory: []
     }, 'OH'),
@@ -65,7 +62,6 @@ function createCivilWarTerritories() {
       owner: 'USA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['pennsylvania', 'new-england'],
       captureHistory: []
     }, 'NY'),
@@ -75,7 +71,6 @@ function createCivilWarTerritories() {
       owner: 'USA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['indiana', 'missouri', 'iowa'],
       captureHistory: []
     }, 'IL'),
@@ -85,7 +80,6 @@ function createCivilWarTerritories() {
       owner: 'USA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['indiana', 'ohio', 'wisconsin'],
       captureHistory: []
     }, 'MI'),
@@ -94,12 +88,11 @@ function createCivilWarTerritories() {
     // Capital (15pt)
     addSvgPath({
       id: 'virginia',
-      name: 'Virginia (Richmond)',
+      name: 'Virginia',
       owner: 'CSA',
       pointValue: 15,
       victoryPoints: 15,
-      isCapital: true,
-      adjacentTerritories: ['washington-dc', 'maryland', 'west-virginia', 'north-carolina'],
+      adjacentTerritories: ['maryland', 'west-virginia', 'north-carolina'],
       captureHistory: []
     }, 'VA'),
     // Major territories (10pt each = 20pt)
@@ -109,7 +102,6 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['north-carolina', 'georgia'],
       captureHistory: []
     }, 'SC'),
@@ -119,7 +111,6 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['south-carolina', 'alabama', 'tennessee', 'north-carolina'],
       captureHistory: []
     }, 'GA'),
@@ -130,7 +121,6 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['georgia', 'mississippi', 'tennessee'],
       captureHistory: []
     }, 'AL'),
@@ -140,7 +130,6 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['alabama', 'louisiana', 'tennessee', 'arkansas'],
       captureHistory: []
     }, 'MS'),
@@ -150,7 +139,6 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['mississippi', 'arkansas', 'texas'],
       captureHistory: []
     }, 'LA'),
@@ -160,30 +148,18 @@ function createCivilWarTerritories() {
       owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['louisiana', 'arkansas'],
       captureHistory: []
     }, 'TX'),
 
-    // === NEUTRAL BORDER STATES (55 VP total) ===
-    // Major border states (10pt each = 40pt)
-    addSvgPath({
-      id: 'maryland',
-      name: 'Maryland',
-      owner: 'NEUTRAL',
-      pointValue: 10,
-      victoryPoints: 10,
-      isCapital: false,
-      adjacentTerritories: ['washington-dc', 'pennsylvania', 'virginia', 'west-virginia', 'delaware'],
-      captureHistory: []
-    }, 'MD'),
+    // === NEUTRAL BORDER STATES (45 VP total) ===
+    // Major border states (10pt each = 30pt)
     addSvgPath({
       id: 'kentucky',
       name: 'Kentucky',
       owner: 'NEUTRAL',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['ohio', 'west-virginia', 'virginia', 'tennessee', 'missouri', 'indiana'],
       captureHistory: []
     }, 'KY'),
@@ -193,7 +169,6 @@ function createCivilWarTerritories() {
       owner: 'NEUTRAL',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['illinois', 'kentucky', 'tennessee', 'arkansas', 'kansas'],
       captureHistory: []
     }, 'MO'),
@@ -203,7 +178,6 @@ function createCivilWarTerritories() {
       owner: 'NEUTRAL',
       pointValue: 10,
       victoryPoints: 10,
-      isCapital: false,
       adjacentTerritories: ['kentucky', 'virginia', 'north-carolina', 'georgia', 'alabama', 'mississippi', 'arkansas', 'missouri'],
       captureHistory: []
     }, 'TN'),
@@ -211,10 +185,9 @@ function createCivilWarTerritories() {
     addSvgPath({
       id: 'delaware',
       name: 'Delaware',
-      owner: 'NEUTRAL',
+      owner: 'USA',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['maryland', 'pennsylvania'],
       captureHistory: []
     }, 'DE'),
@@ -224,7 +197,6 @@ function createCivilWarTerritories() {
       owner: 'NEUTRAL',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['ohio', 'pennsylvania', 'maryland', 'virginia', 'kentucky'],
       captureHistory: []
     }, 'WV'),
@@ -234,7 +206,6 @@ function createCivilWarTerritories() {
       owner: 'NEUTRAL',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['virginia', 'tennessee', 'georgia', 'south-carolina'],
       captureHistory: []
     }, 'NC'),
@@ -244,7 +215,6 @@ function createCivilWarTerritories() {
       owner: 'NEUTRAL',
       pointValue: 5,
       victoryPoints: 5,
-      isCapital: false,
       adjacentTerritories: ['missouri', 'tennessee', 'mississippi', 'louisiana', 'texas'],
       captureHistory: []
     }, 'AR')
@@ -282,7 +252,6 @@ export const createDefaultCampaign = (customMap = null) => {
     currentTurn: 1,
     victoryPointsUSA: initialVP.usa, // Calculate from territories
     victoryPointsCSA: initialVP.csa, // Calculate from territories
-    victoryPointTarget: 100, // DEPRECATED but kept
     territories,
     battles: [],
     customMap: customMap || null,
@@ -297,12 +266,9 @@ export const createDefaultCampaign = (customMap = null) => {
     
     // Settings with both old and new fields
     settings: {
-      // Old settings (deprecated but kept)
-      victoryPointsPerTerritory: 10,
-      victoryPointsPerBattle: 5,
+      // Core settings
       allowTerritoryRecapture: true,
       requireAdjacentAttack: false,
-      capitalBonusMultiplier: 2,
       casualtyTracking: true,
       
       // New CP system settings
@@ -324,12 +290,9 @@ export const createDefaultCampaign = (customMap = null) => {
  * Default settings factory (backward compatible)
  */
 export const getDefaultSettings = () => ({
-  // Old settings
-  victoryPointsPerTerritory: 10,
-  victoryPointsPerBattle: 5,
+  // Core settings
   allowTerritoryRecapture: true,
   requireAdjacentAttack: false,
-  capitalBonusMultiplier: 2,
   casualtyTracking: true,
   
   // New CP settings

@@ -5,7 +5,7 @@ import {
 
 /**
  * Process battle result and update campaign state
- * Handles both legacy VP system and new CP system
+ * Handles territory ownership changes and CP system
  *
  * @param {Object} campaign - Current campaign state
  * @param {Object} battle - Battle data to process
@@ -17,7 +17,6 @@ export const processBattleResult = (campaign, battle) => {
 
   // Store previous owner for CP calculations
   const previousOwner = territory.owner;
-  const defenseSuccessful = battle.winner !== battle.attacker;
   
   // Determine defender (could be NEUTRAL)
   const defender = battle.attacker === 'USA' ?
@@ -63,37 +62,38 @@ export const processBattleResult = (campaign, battle) => {
     }
   }
 
+  // Calculate VP gained from territory capture (if ownership changed)
+  const territoryVP = territory.victoryPoints || territory.pointValue || 0;
+  const vpGained = (previousOwner !== battle.winner) ? territoryVP : 0;
+
   // Update territory ownership
   territory.owner = battle.winner;
 
-  // === LEGACY VP SYSTEM (backward compatibility) ===
-  let vpAwarded = campaign.settings.victoryPointsPerBattle;
-  
-  // Add territory VP value if territory changed hands
-  if (previousOwner !== battle.winner) {
-    vpAwarded += territory.victoryPoints || territory.pointValue || 0;
-  }
-  
-  // Capital bonus
-  if (territory.isCapital) {
-    vpAwarded = Math.floor(vpAwarded * campaign.settings.capitalBonusMultiplier);
-  }
-
-  // Update battle record with both VP and CP data
-  battle.victoryPointsAwarded = vpAwarded;
+  // Update battle record with VP gained and CP data
+  battle.victoryPointsAwarded = vpGained;
   battle.cpCostAttacker = cpCostAttacker;
   battle.cpCostDefender = cpCostDefender;
   battle.defender = defender;
 
   // Create updated campaign
   const updatedCampaign = { ...campaign };
+
+  // === UPDATE VP BASED ON TERRITORY OWNERSHIP ===
+  // Recalculate VP totals from all territories
+  let usaVP = 0;
+  let csaVP = 0;
   
-  // Update legacy VPs
-  if (battle.winner === 'USA') {
-    updatedCampaign.victoryPointsUSA += vpAwarded;
-  } else {
-    updatedCampaign.victoryPointsCSA += vpAwarded;
-  }
+  campaign.territories.forEach(t => {
+    const vp = t.victoryPoints || t.pointValue || 0;
+    if (t.owner === 'USA') {
+      usaVP += vp;
+    } else if (t.owner === 'CSA') {
+      csaVP += vp;
+    }
+  });
+
+  updatedCampaign.victoryPointsUSA = usaVP;
+  updatedCampaign.victoryPointsCSA = csaVP;
 
   // === DEDUCT CP (if enabled) ===
   if (campaign.cpSystemEnabled) {
@@ -180,12 +180,13 @@ export const calculateVictoryPoints = (campaign) => {
   let usaVP = 0;
   let csaVP = 0;
 
-  // VP from battles
-  campaign.battles.forEach(battle => {
-    if (battle.winner === 'USA') {
-      usaVP += battle.victoryPointsAwarded || 0;
-    } else {
-      csaVP += battle.victoryPointsAwarded || 0;
+  // VP from territory ownership only
+  campaign.territories.forEach(territory => {
+    const vp = territory.victoryPoints || territory.pointValue || 0;
+    if (territory.owner === 'USA') {
+      usaVP += vp;
+    } else if (territory.owner === 'CSA') {
+      csaVP += vp;
     }
   });
 

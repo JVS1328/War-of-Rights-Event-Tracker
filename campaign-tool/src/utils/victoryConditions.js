@@ -1,13 +1,13 @@
 /**
  * Victory Condition Checking Logic
- * 
- * Supports both legacy VP system and new CP system
+ *
+ * Supports both legacy system and new CP system
  * Priority order (CP system):
  * 1. CP Depletion (≤0 CP)
  * 2. Total Territorial Control (100% of territories)
  * 3. Date-based Victory (December 1865 - VP comparison)
- * 
- * Legacy system checks VP targets and territorial dominance
+ *
+ * Legacy system checks only total territorial control (100% of territories)
  */
 
 import { isCampaignOver } from './dateSystem';
@@ -38,17 +38,9 @@ export const checkVictoryConditions = (campaign) => {
       if (result) return result;
     }
   } else {
-    // Legacy VP system checks
-    const checks = [
-      checkVictoryPoints,
-      checkTerritorialControl,
-      checkCapitalControl
-    ];
-
-    for (const check of checks) {
-      const result = check(campaign);
-      if (result) return result;
-    }
+    // Legacy system - only total territorial control (100%)
+    const result = checkTotalTerritorialControl(campaign);
+    if (result) return result;
   }
 
   return null;
@@ -208,101 +200,6 @@ const calculateTerritoryVP = (territories) => {
   return { usa: usaVP, csa: csaVP };
 };
 
-// ============================================================================
-// LEGACY VP SYSTEM VICTORY CONDITIONS (Backward Compatibility)
-// ============================================================================
-
-/**
- * Legacy: Check if either side reached VP target
- * 
- * @param {Object} campaign - Campaign state
- * @returns {Object|null} Victory result or null
- */
-const checkVictoryPoints = (campaign) => {
-  if (campaign.victoryPointsUSA >= campaign.victoryPointTarget) {
-    return {
-      winner: 'USA',
-      type: 'Victory Points',
-      description: `USA reached ${campaign.victoryPointTarget} victory points`,
-      vpUSA: campaign.victoryPointsUSA,
-      vpCSA: campaign.victoryPointsCSA
-    };
-  }
-  if (campaign.victoryPointsCSA >= campaign.victoryPointTarget) {
-    return {
-      winner: 'CSA',
-      type: 'Victory Points',
-      description: `CSA reached ${campaign.victoryPointTarget} victory points`,
-      vpUSA: campaign.victoryPointsUSA,
-      vpCSA: campaign.victoryPointsCSA
-    };
-  }
-  return null;
-};
-
-/**
- * Legacy: Check for territorial dominance (75% control)
- * 
- * @param {Object} campaign - Campaign state
- * @returns {Object|null} Victory result or null
- */
-const checkTerritorialControl = (campaign) => {
-  const usaTerritories = campaign.territories.filter(t => t.owner === 'USA');
-  const csaTerritories = campaign.territories.filter(t => t.owner === 'CSA');
-  const total = campaign.territories.length;
-
-  if (usaTerritories.length / total >= 0.75) {
-    return {
-      winner: 'USA',
-      type: 'Territorial Dominance',
-      description: `USA controls ${usaTerritories.length}/${total} territories`,
-      territoriesUSA: usaTerritories.length,
-      territoriesCSA: csaTerritories.length
-    };
-  }
-  if (csaTerritories.length / total >= 0.75) {
-    return {
-      winner: 'CSA',
-      type: 'Territorial Dominance',
-      description: `CSA controls ${csaTerritories.length}/${total} territories`,
-      territoriesUSA: usaTerritories.length,
-      territoriesCSA: csaTerritories.length
-    };
-  }
-  return null;
-};
-
-/**
- * Legacy: Check for control of all capitals
- * 
- * @param {Object} campaign - Campaign state
- * @returns {Object|null} Victory result or null
- */
-const checkCapitalControl = (campaign) => {
-  const capitals = campaign.territories.filter(t => t.isCapital);
-  const usaCapitals = capitals.filter(t => t.owner === 'USA');
-  const csaCapitals = capitals.filter(t => t.owner === 'CSA');
-
-  if (usaCapitals.length === capitals.length) {
-    return {
-      winner: 'USA',
-      type: 'Capital Control',
-      description: 'USA controls all capital territories',
-      capitalsUSA: usaCapitals.length,
-      capitalsCSA: csaCapitals.length
-    };
-  }
-  if (csaCapitals.length === capitals.length) {
-    return {
-      winner: 'CSA',
-      type: 'Capital Control',
-      description: 'CSA controls all capital territories',
-      capitalsUSA: usaCapitals.length,
-      capitalsCSA: csaCapitals.length
-    };
-  }
-  return null;
-};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -336,10 +233,6 @@ export const getCampaignStatus = (campaign) => {
     status.cpUSA = campaign.combatPowerUSA;
     status.cpCSA = campaign.combatPowerCSA;
     status.campaignDate = campaign.campaignDate?.displayString || 'Unknown';
-  } else {
-    status.vpUSA = campaign.victoryPointsUSA;
-    status.vpCSA = campaign.victoryPointsCSA;
-    status.vpTarget = campaign.victoryPointTarget;
   }
 
   return status;

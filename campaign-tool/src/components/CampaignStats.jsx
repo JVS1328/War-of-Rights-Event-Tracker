@@ -1,12 +1,9 @@
-import { Trophy, Calendar, Target, Zap } from 'lucide-react';
+import { Trophy, Calendar, Zap } from 'lucide-react';
 
 const CampaignStats = ({ campaign }) => {
   if (!campaign) return null;
 
-  const usaProgress = (campaign.victoryPointsUSA / campaign.victoryPointTarget) * 100;
-  const csaProgress = (campaign.victoryPointsCSA / campaign.victoryPointTarget) * 100;
-  
-  // Calculate current VP from territories
+  // Calculate VP from owned territories
   const usaTerritoryVP = campaign.territories
     .filter(t => t.owner === 'USA')
     .reduce((sum, t) => sum + (t.pointValue || t.victoryPoints || 0), 0);
@@ -33,11 +30,11 @@ const CampaignStats = ({ campaign }) => {
         
         {/* USA */}
         <div className="mb-4">
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex justify-between items-center">
             <span className="text-blue-400 font-semibold">USA</span>
             <div className="flex items-center gap-3">
               <span className="text-white text-2xl font-bold">
-                {campaign.victoryPointsUSA} VP
+                {usaTerritoryVP} VP
               </span>
               {campaign.cpSystemEnabled && (
                 <span className="text-blue-300 text-lg font-semibold flex items-center gap-1">
@@ -47,25 +44,20 @@ const CampaignStats = ({ campaign }) => {
               )}
             </div>
           </div>
-          <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, usaProgress)}%` }}
-            />
-          </div>
-          <div className="text-xs text-slate-400 mt-1">
-            {usaProgress.toFixed(1)}% of target
-            {campaign.cpSystemEnabled && ` • Territory VP: ${usaTerritoryVP} (+${usaTerritoryVP} CP/turn)`}
-          </div>
+          {campaign.cpSystemEnabled && (
+            <div className="text-xs text-slate-400 mt-1">
+              +{usaTerritoryVP} CP per turn from territories
+            </div>
+          )}
         </div>
 
         {/* CSA */}
         <div>
-          <div className="flex justify-between items-center mb-2">
+          <div className="flex justify-between items-center">
             <span className="text-red-400 font-semibold">CSA</span>
             <div className="flex items-center gap-3">
               <span className="text-white text-2xl font-bold">
-                {campaign.victoryPointsCSA} VP
+                {csaTerritoryVP} VP
               </span>
               {campaign.cpSystemEnabled && (
                 <span className="text-red-300 text-lg font-semibold flex items-center gap-1">
@@ -75,27 +67,11 @@ const CampaignStats = ({ campaign }) => {
               )}
             </div>
           </div>
-          <div className="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-red-500 to-red-600 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(100, csaProgress)}%` }}
-            />
-          </div>
-          <div className="text-xs text-slate-400 mt-1">
-            {csaProgress.toFixed(1)}% of target
-            {campaign.cpSystemEnabled && ` • Territory VP: ${csaTerritoryVP} (+${csaTerritoryVP} CP/turn)`}
-          </div>
-        </div>
-
-        {/* Victory Target */}
-        <div className="mt-4 pt-4 border-t border-slate-700">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-slate-400">Victory Target:</span>
-            <span className="text-amber-400 font-bold flex items-center gap-1">
-              <Target className="w-4 h-4" />
-              {campaign.victoryPointTarget} VP
-            </span>
-          </div>
+          {campaign.cpSystemEnabled && (
+            <div className="text-xs text-slate-400 mt-1">
+              +{csaTerritoryVP} CP per turn from territories
+            </div>
+          )}
         </div>
       </div>
 
