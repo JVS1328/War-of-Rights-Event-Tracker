@@ -521,7 +521,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           return {
             ...t,
             svgPath: combineCountyPaths(countyObjects),
-            center: calculateCountyGroupCenter(countyObjects)
+            center: calculateCountyGroupCenter(countyObjects),
+            // Store individual county paths for rendering each county separately on the map
+            countyPaths: countyObjects.map(c => ({
+              id: c.id,
+              name: c.name,
+              svgPath: c.svgPath
+            }))
           };
         }
         // Otherwise preserve existing SVG path and center
