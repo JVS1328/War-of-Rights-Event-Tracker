@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Map } from 'lucide-react';
+import { usaStates } from '../data/usaStates';
 
 const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
@@ -99,11 +100,82 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
-            // Support both default territories (coordinates.data) and custom territories (svgPath)
-            const pathData = territory.svgPath || territory.coordinates?.data;
             const labelX = territory.center?.x || territory.labelPosition?.x;
             const labelY = territory.center?.y || territory.labelPosition?.y;
-            
+
+            // For grouped state-based territories, render each state individually
+            if (territory.states && territory.states.length > 0) {
+              return (
+                <g key={territory.id}>
+                  {territory.states.map(stateAbbr => {
+                    const state = usaStates.find(s => s.abbreviation === stateAbbr);
+                    if (!state) return null;
+
+                    return (
+                      <path
+                        key={`${territory.id}-${stateAbbr}`}
+                        d={state.svgPath}
+                        fill={getTerritoryColor(territory)}
+                        stroke={getTerritoryStroke(territory)}
+                        strokeWidth={getStrokeWidth(territory)}
+                        className="cursor-pointer hover:opacity-80 transition-all"
+                        onClick={() => onTerritoryClick(territory)}
+                        onMouseEnter={() => setHoveredTerritory(territory)}
+                        onMouseLeave={() => setHoveredTerritory(null)}
+                      />
+                    );
+                  })}
+                  {/* Capital indicator */}
+                  {territory.isCapital && (
+                    <circle
+                      cx={labelX}
+                      cy={labelY}
+                      r="5"
+                      fill="#fbbf24"
+                      stroke="#1e293b"
+                      strokeWidth="2"
+                      className="pointer-events-none"
+                    />
+                  )}
+                </g>
+              );
+            }
+
+            // For grouped county-based territories, render each county individually
+            if (territory.countyPaths && territory.countyPaths.length > 0) {
+              return (
+                <g key={territory.id}>
+                  {territory.countyPaths.map(county => (
+                    <path
+                      key={`${territory.id}-${county.id}`}
+                      d={county.svgPath}
+                      fill={getTerritoryColor(territory)}
+                      stroke={getTerritoryStroke(territory)}
+                      strokeWidth={getStrokeWidth(territory)}
+                      className="cursor-pointer hover:opacity-80 transition-all"
+                      onClick={() => onTerritoryClick(territory)}
+                      onMouseEnter={() => setHoveredTerritory(territory)}
+                      onMouseLeave={() => setHoveredTerritory(null)}
+                    />
+                  ))}
+                  {/* Capital indicator */}
+                  {territory.isCapital && (
+                    <circle
+                      cx={labelX}
+                      cy={labelY}
+                      r="5"
+                      fill="#fbbf24"
+                      stroke="#1e293b"
+                      strokeWidth="2"
+                      className="pointer-events-none"
+                    />
+                  )}
+                </g>
+              );
+            }
+
+            // For other territories (legacy), use combined svgPath
+            const pathData = territory.svgPath || territory.coordinates?.data;
             return (
               <g key={territory.id}>
                 <path
