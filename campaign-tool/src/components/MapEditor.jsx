@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, RotateCcw, Plus, Trash2, GripVertical, MapPin } from 'lucide-react';
+import { X, Save, RotateCcw, Plus, Trash2, GripVertical, MapPin, Map } from 'lucide-react';
 import { usaStates, getStatesByAbbrs, calculateGroupCenter, combineStatePaths } from '../data/usaStates';
+import { getCountiesForStates, calculateCountyGroupCenter, combineCountyPaths, getAvailableStates, getCountyCount } from '../data/countyData';
 
 const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [selectedStates, setSelectedStates] = useState(new Set());
@@ -9,6 +10,11 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [editingTerritory, setEditingTerritory] = useState(null);
   const [draggedTerritory, setDraggedTerritory] = useState(null);
   const [multiSelectStates, setMultiSelectStates] = useState(new Set());
+  const [mapMode, setMapMode] = useState('states'); // 'states' or 'counties'
+  const [showStateSelector, setShowStateSelector] = useState(false);
+  const [selectedStatesForCounties, setSelectedStatesForCounties] = useState(new Set());
+  const [countyData, setCountyData] = useState(null);
+  const [isCountyMode, setIsCountyMode] = useState(false);
 
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
@@ -362,6 +368,61 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setDraggedTerritory(null);
   };
 
+  const handleMapModeToggle = () => {
+    const newMode = mapMode === 'states' ? 'counties' : 'states';
+    setMapMode(newMode);
+
+    if (newMode === 'counties') {
+      // Show state selector modal
+      setShowStateSelector(true);
+    } else {
+      // Switch back to states mode
+      setIsCountyMode(false);
+      setCountyData(null);
+      setSelectedStatesForCounties(new Set());
+    }
+  };
+
+  const handleStateSelectionConfirm = async () => {
+    if (selectedStatesForCounties.size === 0) {
+      alert('Please select at least one state.');
+      return;
+    }
+
+    try {
+      // Load county data for selected states
+      const stateAbbrs = Array.from(selectedStatesForCounties);
+      const countyDataForStates = await getCountiesForStates(stateAbbrs);
+
+      setCountyData(countyDataForStates);
+      setIsCountyMode(true);
+      setShowStateSelector(false);
+
+      // Clear existing territories and reset selection
+      setTerritories([]);
+      setSelectedStates(new Set());
+    } catch (error) {
+      console.error('Error loading county data:', error);
+      alert('Failed to load county data. Please try again.');
+    }
+  };
+
+  const handleStateSelectionCancel = () => {
+    setShowStateSelector(false);
+    setMapMode('states'); // Reset back to states mode
+    setSelectedStatesForCounties(new Set());
+  };
+
+  const toggleStateForCounties = (stateAbbr) => {
+    const newSelection = new Set(selectedStatesForCounties);
+    if (newSelection.has(stateAbbr)) {
+      newSelection.delete(stateAbbr);
+    } else {
+      newSelection.add(stateAbbr);
+    }
+    setSelectedStatesForCounties(newSelection);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -384,12 +445,40 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           <div className="flex-1 p-4 overflow-auto">
             <div className="bg-slate-800 rounded-lg p-4 h-full flex items-center justify-center">
               <svg
-                viewBox="0 0 1000 589"
+                viewBox={isCountyMode ? "0 0 542.4278 333.99197" : "0 0 1000 589"}
                 className="w-full h-full"
                 style={{ maxHeight: '100%', maxWidth: '100%' }}
               >
-                {/* Render all states */}
-                {usaStates.map(state => {
+                {/* Render counties or states based on mode */}
+                {isCountyMode && countyData ? (
+                  <>
+                    {/* Render county paths */}
+                    {countyData.counties.map(county => (
+                      <path
+                        key={county.id}
+                        d={county.svgPath}
+                        fill="#64748b"
+                        fillOpacity={0.5}
+                        stroke="#ffffff"
+                        strokeWidth="0.1"
+                        className="cursor-pointer transition-all duration-200 hover:brightness-125"
+                      />
+                    ))}
+                    {/* Render state borders on top */}
+                    {countyData.stateBorders.map((border, idx) => (
+                      <path
+                        key={`border-${idx}`}
+                        d={border.svgPath}
+                        fill="none"
+                        stroke="#ff0000"
+                        strokeWidth="0.5"
+                        className="pointer-events-none"
+                      />
+                    ))}
+                  </>
+                ) : (
+                  /* Render all states */
+                  usaStates.map(state => {
                   const isSelected = selectedStates.has(state.abbreviation);
                   const isHovered = hoveredState === state.abbreviation;
                   const isMultiSelected = multiSelectStates.has(state.abbreviation);
@@ -430,20 +519,31 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       onMouseLeave={() => setHoveredState(null)}
                     />
                   );
-                })}
+                  })
+                )}
               </svg>
             </div>
             
             {/* Instructions */}
             <div className="mt-4 p-3 bg-slate-800 rounded-lg text-sm text-slate-300">
               <p className="font-semibold text-amber-400 mb-2">Instructions:</p>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>Click states to select/deselect them for your campaign</li>
-                <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
-                <li>Ctrl+Click on a merged territory to split it back into individual states</li>
-                <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
-                <li>Configure each territory in the right panel</li>
-              </ul>
+              {isCountyMode ? (
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>Counties from selected states are displayed</li>
+                  <li>State boundaries are shown in red</li>
+                  <li>You can now create territories by grouping counties</li>
+                  <li>Configure territories in the right panel</li>
+                  <li>Switch back to States mode to use state-based maps</li>
+                </ul>
+              ) : (
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>Click states to select/deselect them for your campaign</li>
+                  <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
+                  <li>Ctrl+Click on a merged territory to split it back into individual states</li>
+                  <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li>Configure each territory in the right panel</li>
+                </ul>
+              )}
             </div>
           </div>
 
@@ -568,6 +668,27 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
             {/* Action Buttons */}
             <div className="p-4 border-t border-slate-700 space-y-2">
+              {/* Map Mode Toggle */}
+              <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
+                <label className="text-xs text-slate-400 block mb-2">Map Display Mode</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleMapModeToggle}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors font-semibold ${
+                      mapMode === 'states'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    }`}
+                  >
+                    <Map className="w-4 h-4" />
+                    {mapMode === 'states' ? 'States' : 'Counties'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-2 text-center">
+                  {mapMode === 'states' ? 'Click to switch to county view' : 'Click to switch to state view'}
+                </p>
+              </div>
+
               <button
                 onClick={handleReset}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
@@ -587,6 +708,81 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           </div>
         </div>
       </div>
+
+      {/* State Selection Modal for County Mode */}
+      {showStateSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-xl font-bold text-amber-400">Select States for County Map</h3>
+              <button
+                onClick={handleStateSelectionCancel}
+                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4">
+              <p className="text-slate-300 mb-4">
+                Select one or more states to load their county boundaries. Counties from selected states will be merged into a single editable map.
+              </p>
+
+              {/* State Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {usaStates.map(state => (
+                  <button
+                    key={state.abbreviation}
+                    onClick={() => toggleStateForCounties(state.abbreviation)}
+                    className={`p-3 rounded-lg text-left transition-colors ${
+                      selectedStatesForCounties.has(state.abbreviation)
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-sm">{state.abbreviation}</div>
+                    <div className="text-xs opacity-75">{state.name}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Selection Summary */}
+              {selectedStatesForCounties.size > 0 && (
+                <div className="mt-4 p-3 bg-slate-700 rounded-lg">
+                  <p className="text-sm text-slate-300">
+                    <span className="font-semibold text-amber-400">
+                      {selectedStatesForCounties.size}
+                    </span>{' '}
+                    {selectedStatesForCounties.size === 1 ? 'state' : 'states'} selected:{' '}
+                    <span className="text-blue-400">
+                      {Array.from(selectedStatesForCounties).join(', ')}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-700 flex gap-2">
+              <button
+                onClick={handleStateSelectionCancel}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStateSelectionConfirm}
+                disabled={selectedStatesForCounties.size === 0}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+              >
+                Load Counties ({selectedStatesForCounties.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
