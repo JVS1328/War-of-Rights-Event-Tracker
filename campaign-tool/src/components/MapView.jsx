@@ -4,10 +4,18 @@ import { Map } from 'lucide-react';
 const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
 
+  // Zoom and pan state
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
   const getTerritoryColor = (territory) => {
     if (territory.owner === 'USA') return '#3b82f6'; // Blue
     if (territory.owner === 'CSA') return '#ef4444'; // Red
-    return '#64748b'; // Gray (neutral)
+    if (territory.owner === 'NEUTRAL') return '#f59e0b'; // Orange
+    return '#64748b'; // Gray (unassigned)
   };
 
   const getTerritoryStroke = (territory) => {
@@ -20,6 +28,38 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
     if (selectedTerritory?.id === territory.id) return '4';
     if (hoveredTerritory?.id === territory.id) return '3';
     return '2';
+  };
+
+  // Zoom and pan handlers
+  const handleWheel = (e) => {
+    // Only zoom if shift is held
+    if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
+      setZoom(newZoom);
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    // Pan with middle mouse button or shift + left click
+    const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
+    if (shouldPan) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isPanning) {
+      setPanX(e.clientX - panStart.x);
+      setPanY(e.clientY - panStart.y);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
   };
 
   return (
@@ -39,16 +79,26 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
             <span className="text-slate-300">CSA</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-slate-500 rounded"></div>
+            <div className="w-4 h-4 bg-orange-500 rounded"></div>
             <span className="text-slate-300">Neutral</span>
           </div>
         </div>
       </div>
       
       <div className="relative bg-slate-900 rounded-lg p-4">
-        <svg viewBox="0 0 1000 589" className="w-full h-full">
-          {/* Territory polygons */}
-          {territories.map(territory => {
+        <svg
+          viewBox="0 0 1000 589"
+          className="w-full h-full"
+          style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+            {/* Territory polygons */}
+            {territories.map(territory => {
             // Support both default territories (coordinates.data) and custom territories (svgPath)
             const pathData = territory.svgPath || territory.coordinates?.data;
             const labelX = territory.center?.x || territory.labelPosition?.x;
@@ -81,6 +131,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
               </g>
             );
           })}
+          </g>
         </svg>
         
         {/* Tooltip */}

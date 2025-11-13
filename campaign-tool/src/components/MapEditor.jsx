@@ -151,7 +151,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
         // Ctrl+Click on non-selected state: Select it first, then add to multi-select
         const newSelected = new Set(selectedStates);
         newSelected.add(stateAbbr);
-        
+
         const state = usaStates.find(s => s.abbreviation === stateAbbr);
         const newTerritory = {
           id: `territory-${Date.now()}`,
@@ -159,8 +159,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           states: [stateAbbr],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           svgPath: state.svgPath,
           center: state.center
         };
@@ -217,8 +217,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           states: [stateAbbr],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           svgPath: state.svgPath,
           center: state.center
         };
@@ -356,8 +356,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           counties: [county.id],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           isCountyBased: true
         };
         setTerritories([...territories, newTerritory]);
@@ -409,8 +409,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           counties: [county.id],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           isCountyBased: true
         };
         setTerritories([...territories, newTerritory]);
@@ -673,7 +673,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           if (isSelected) {
                             if (owner === 'USA') fillColor = '#3b82f6'; // Blue
                             else if (owner === 'CSA') fillColor = '#ef4444'; // Red
-                            else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                            else if (owner === 'NEUTRAL') fillColor = '#f59e0b'; // Orange
                             else fillColor = '#fbbf24'; // Amber (unassigned)
                           }
 
@@ -724,7 +724,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   if (isSelected) {
                     if (owner === 'USA') fillColor = '#3b82f6'; // Blue
                     else if (owner === 'CSA') fillColor = '#ef4444'; // Red
-                    else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                    else if (owner === 'NEUTRAL') fillColor = '#f59e0b'; // Orange
                     else fillColor = '#fbbf24'; // Amber (unassigned)
                   }
                   
@@ -872,7 +872,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       >
                         <option value="USA">USA</option>
                         <option value="CSA">CSA</option>
-                        <option value="Contested">Contested</option>
+                        <option value="NEUTRAL">Neutral</option>
                       </select>
                     </div>
 
