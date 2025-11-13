@@ -15,6 +15,9 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [selectedStatesForCounties, setSelectedStatesForCounties] = useState(new Set());
   const [countyData, setCountyData] = useState(null);
   const [isCountyMode, setIsCountyMode] = useState(false);
+  // County-specific state
+  const [selectedCounties, setSelectedCounties] = useState(new Set());
+  const [hoveredCounty, setHoveredCounty] = useState(null);
 
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
@@ -317,8 +320,38 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
   const handleReset = () => {
     setSelectedStates(new Set());
+    setSelectedCounties(new Set());
     setTerritories([]);
     setEditingTerritory(null);
+  };
+
+  const handleCountyClick = (county) => {
+    const newSelected = new Set(selectedCounties);
+
+    if (newSelected.has(county.id)) {
+      // Deselect county
+      newSelected.delete(county.id);
+      // Remove from territories
+      setTerritories(territories.filter(t => !t.counties || !t.counties.includes(county.id)));
+    } else {
+      // Select county
+      newSelected.add(county.id);
+
+      // Create a new territory for this county
+      const newTerritory = {
+        id: `territory-${Date.now()}`,
+        name: county.name,
+        counties: [county.id],
+        victoryPoints: 1,
+        maps: [],
+        owner: 'Contested',
+        initialOwner: 'Contested',
+        isCountyBased: true
+      };
+      setTerritories([...territories, newTerritory]);
+    }
+
+    setSelectedCounties(newSelected);
   };
 
   const handleSave = () => {
@@ -454,17 +487,57 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <>
                     {/* Render county paths */}
                     {countyData.counties.length > 0 ? (
-                      countyData.counties.map(county => (
-                        <path
-                          key={county.id}
-                          d={county.svgPath}
-                          fill="#64748b"
-                          fillOpacity={0.5}
-                          stroke="#ffffff"
-                          strokeWidth="1"
-                          className="cursor-pointer transition-all duration-200 hover:brightness-125"
-                        />
-                      ))
+                      <>
+                        {countyData.counties.map(county => {
+                          const isSelected = selectedCounties.has(county.id);
+                          const isHovered = hoveredCounty === county.id;
+
+                          // Find territory that owns this county
+                          const owningTerritory = territories.find(t =>
+                            t.counties && t.counties.includes(county.id)
+                          );
+                          const owner = owningTerritory?.owner || owningTerritory?.initialOwner;
+
+                          // Determine fill color based on owner/selection
+                          let fillColor = '#64748b'; // Default gray
+                          if (isSelected) {
+                            if (owner === 'USA') fillColor = '#3b82f6'; // Blue
+                            else if (owner === 'CSA') fillColor = '#ef4444'; // Red
+                            else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                            else fillColor = '#fbbf24'; // Amber (unassigned)
+                          }
+
+                          return (
+                            <path
+                              key={county.id}
+                              d={county.svgPath}
+                              fill={fillColor}
+                              fillOpacity={isSelected ? 0.6 : 0.3}
+                              stroke="#ffffff"
+                              strokeWidth={isHovered ? "2" : "0.5"}
+                              className="cursor-pointer transition-all duration-200"
+                              style={{
+                                filter: isHovered ? 'brightness(1.3)' : 'none'
+                              }}
+                              onClick={() => handleCountyClick(county)}
+                              onMouseEnter={() => setHoveredCounty(county.id)}
+                              onMouseLeave={() => setHoveredCounty(null)}
+                            />
+                          );
+                        })}
+                        {/* Render state borders on top */}
+                        {countyData.stateBorders && countyData.stateBorders.map((border, idx) => (
+                          <path
+                            key={`border-${idx}`}
+                            d={border.svgPath}
+                            fill="none"
+                            stroke="#ef4444"
+                            strokeWidth="2"
+                            className="pointer-events-none"
+                            opacity="0.7"
+                          />
+                        ))}
+                      </>
                     ) : (
                       <text x="500" y="300" textAnchor="middle" fill="#fff" fontSize="20">
                         No county data available for selected states
@@ -524,11 +597,11 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               <p className="font-semibold text-amber-400 mb-2">Instructions:</p>
               {isCountyMode ? (
                 <ul className="space-y-1 list-disc list-inside">
-                  <li>Counties from selected states are displayed</li>
+                  <li>Click counties to select/deselect them</li>
                   <li>State boundaries are shown in red</li>
-                  <li>You can now create territories by grouping counties</li>
+                  <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li>Each county becomes a territory automatically</li>
                   <li>Configure territories in the right panel</li>
-                  <li>Switch back to States mode to use state-based maps</li>
                 </ul>
               ) : (
                 <ul className="space-y-1 list-disc list-inside">
@@ -585,7 +658,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           placeholder="Territory Name"
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                          States: {territory.states ? territory.states.join(', ') : 'N/A'}
+                          {territory.isCountyBased
+                            ? `County: ${territory.counties?.length || 0} selected`
+                            : `States: ${territory.states ? territory.states.join(', ') : 'N/A'}`
+                          }
                         </p>
                       </div>
                       <button

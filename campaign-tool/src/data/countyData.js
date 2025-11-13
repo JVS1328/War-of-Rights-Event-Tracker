@@ -185,6 +185,7 @@ export const getCountiesForStates = async (stateAbbrs) => {
   const allCountyData = await parseCountyData();
   const selectedCounties = [];
   const allCoordinates = [];
+  const stateBordersByState = {};
 
   // Collect all counties and coordinates from selected states
   stateAbbrs.forEach(abbr => {
@@ -192,6 +193,8 @@ export const getCountiesForStates = async (stateAbbrs) => {
     if (stateData) {
       selectedCounties.push(...stateData.counties);
       allCoordinates.push(...stateData.coordinates);
+      // Group counties by state for border calculation
+      stateBordersByState[abbr] = stateData.counties;
     }
   });
 
@@ -199,6 +202,7 @@ export const getCountiesForStates = async (stateAbbrs) => {
     console.warn('No counties found for states:', stateAbbrs);
     return {
       counties: [],
+      stateBorders: [],
       viewBox: '0 0 1000 600',
       bounds: null
     };
@@ -216,8 +220,17 @@ export const getCountiesForStates = async (stateAbbrs) => {
     svgPath: coordinatesToPath(county.coordinates, bounds, 1000, 600)
   }));
 
+  // Create state borders by combining all county paths for each state
+  const stateBorders = Object.entries(stateBordersByState).map(([stateAbbr, counties]) => ({
+    stateAbbr,
+    svgPath: counties.map(c =>
+      coordinatesToPath(c.coordinates, bounds, 1000, 600)
+    ).join(' ')
+  }));
+
   return {
     counties: countiesWithPaths,
+    stateBorders,
     viewBox: '0 0 1000 600',
     bounds
   };
