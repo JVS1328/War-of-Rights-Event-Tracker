@@ -20,6 +20,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [hoveredCounty, setHoveredCounty] = useState(null);
   const [multiSelectCounties, setMultiSelectCounties] = useState(new Set());
 
+  // Zoom and pan state
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
     'Antietam': [
@@ -324,6 +331,9 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setSelectedCounties(new Set());
     setTerritories([]);
     setEditingTerritory(null);
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
   };
 
   const handleCountyClick = (county, ctrlKey = false) => {
@@ -564,6 +574,35 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setSelectedStatesForCounties(newSelection);
   };
 
+  // Zoom and pan handlers
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
+    setZoom(newZoom);
+  };
+
+  const handleMouseDown = (e) => {
+    // Pan with middle mouse button or spacebar + left click
+    const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
+    if (shouldPan) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isPanning) {
+      setPanX(e.clientX - panStart.x);
+      setPanY(e.clientY - panStart.y);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -588,10 +627,20 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               <svg
                 viewBox={isCountyMode && countyData ? countyData.viewBox : "0 0 1000 589"}
                 className="w-full h-full"
-                style={{ maxHeight: '100%', maxWidth: '100%' }}
+                style={{
+                  maxHeight: '100%',
+                  maxWidth: '100%',
+                  cursor: isPanning ? 'grabbing' : 'default'
+                }}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
               >
-                {/* Render counties or states based on mode */}
-                {isCountyMode && countyData ? (
+                <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+                  {/* Render counties or states based on mode */}
+                  {isCountyMode && countyData ? (
                   <>
                     {/* Render county paths */}
                     {countyData.counties.length > 0 ? (
@@ -690,6 +739,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   );
                   })
                 )}
+                </g>
               </svg>
             </div>
             
@@ -702,6 +752,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
                   <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li><strong>Scroll wheel</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
                   <li>Configure territories in the right panel</li>
                 </ul>
               ) : (
@@ -710,6 +761,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual states</li>
                   <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li><strong>Scroll wheel</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
                   <li>Configure each territory in the right panel</li>
                 </ul>
               )}
