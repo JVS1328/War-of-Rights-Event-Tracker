@@ -1,6 +1,21 @@
 # War of Rights - Event Tracker
 
-This project provides a Python-based GUI application, `tracker.py`, designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League. 
+A comprehensive suite of tools for managing and tracking **War of Rights** competitive events, including season tracking, log analysis, and campaign management. This repository contains both Python-based and React-based applications for the Smoke & Steel League and other organized events.
+
+## Tools Overview
+
+This repository includes four distinct tools:
+
+1. **[Season Tracker (Python)](#python-season-tracker)** - Original Tkinter GUI application for comprehensive season management
+2. **[Season Tracker (React)](#react-season-tracker)** - Modern web-based season tracking with real-time standings
+3. **[Log Analyzer](#log-analyzer)** - Web-based tool for parsing and analyzing War of Rights combat logs
+4. **[Campaign Tool](#campaign-tool)** - Interactive campaign tracker with USA territory map and turn-based gameplay
+
+---
+
+## Python Season Tracker
+
+The original `tracker.py` application is a Python-based GUI tool designed to manage and track seasons for **War of Rights events**, specifically for the Smoke & Steel League. 
 
 ## Description
 
@@ -101,9 +116,261 @@ The score consists of four components, prioritized in the following order:
 
 After finding the best possible solution, the algorithm checks if it satisfies the **Max Player Difference** constraint. If it does, the result is displayed; otherwise, it will inform the user why a valid balance could not be found with the given constraints.
 
-## File Structure
+## File Structure (Python Tracker)
 
 *   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
 *   `tracker.py`: The main Python application script.
 *   `season_data.json` (optional, created by the script): Stores the season tracking data.
 *   `README.md`: This file.
+
+---
+
+## React Season Tracker
+
+A modern React-based web application for tracking regiment performance across a War of Rights competitive season. This tool provides a streamlined, browser-based alternative to the Python tracker with real-time data updates and a clean interface.
+
+### Features
+
+- **Week Management**: Create and manage weekly matches
+- **Unit/Regiment Tracking**: Add and organize participating units
+- **Team Rosters**: Assign units to teams for each week
+- **Configurable Point System**: Customize point allocations for wins, losses, and bonuses
+- **Real-Time Standings**: Automatically calculated standings based on performance
+- **Data Persistence**: Automatic saving to browser localStorage
+- **Import/Export**: Save and load season data as JSON files
+
+### Getting Started
+
+#### Prerequisites
+
+- Node.js (v18 or higher recommended)
+- npm or yarn
+
+#### Installation & Running
+
+1. Navigate to the season-tracker directory:
+```bash
+cd season-tracker
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. Open your browser to the URL shown (typically http://localhost:5173)
+
+#### Building for Production
+
+```bash
+npm run build
+```
+
+The built files will be in the `dist` directory and can be deployed to any static hosting service.
+
+### Point System Configuration
+
+Configure point allocations in Settings:
+- **Win Lead Points**: Points for leading unit on winning team
+- **Win Assist Points**: Points for non-lead units on winning team
+- **Loss Lead Points**: Points for leading unit on losing team
+- **Loss Assist Points**: Points for non-lead units on losing team
+- **2-0 Bonus Lead**: Bonus points for lead unit on 2-0 sweep
+- **2-0 Bonus Assist**: Bonus points for assist units on 2-0 sweep
+
+### Technology Stack
+
+- **React 19**: UI framework
+- **Vite**: Build tool and dev server
+- **Tailwind CSS 4**: Styling
+- **Lucide React**: Icons
+
+See [`season-tracker/README.md`](season-tracker/README.md) for detailed documentation.
+
+---
+
+## Log Analyzer
+
+A React-based web application for parsing and analyzing War of Rights combat log files. Extract detailed statistics about regiment performance, individual player metrics, and combat effectiveness.
+
+### Features
+
+- **Log File Parsing**: Upload and parse War of Rights log files
+- **Regiment Statistics**: Track kills, deaths, K/D ratios, and combat time per regiment
+- **Player Assignment**: Assign players to regiments for accurate tracking
+- **Multi-Round Analysis**: Compare performance across multiple rounds
+- **Time-Based Filtering**: Analyze specific time periods within rounds
+- **Smart Regiment Matching**: Intelligent player-to-regiment assignment suggestions
+- **Data Persistence**: Automatic saving to browser localStorage
+- **Export Functionality**: Export analyzed data for external use
+
+### Getting Started
+
+#### Prerequisites
+
+- Node.js (v18 or higher recommended)
+- npm or yarn
+
+#### Installation & Running
+
+1. Navigate to the log-analyzer directory:
+```bash
+cd log-analyzer
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. Open your browser to the URL shown (typically http://localhost:5173)
+
+#### Usage
+
+1. **Upload Log File**: Click "Upload Log File" and select a War of Rights log file
+2. **Assign Players**: Use the player assignment editor to map players to regiments
+3. **View Statistics**: Analyze regiment performance, K/D ratios, and combat metrics
+4. **Compare Rounds**: Upload multiple rounds to compare performance over time
+
+#### Building for Production
+
+```bash
+npm run build
+```
+
+### Technology Stack
+
+- **React 19**: UI framework
+- **Vite**: Build tool and dev server
+- **Tailwind CSS 4**: Styling
+- **Lucide React**: Icons
+
+---
+
+## Campaign Tool
+
+A React-based campaign tracking tool that adapts the RS2: Vietnam territory control system for War of Rights. Features an interactive USA map with territory management, battle recording, and turn-based campaign progression.
+
+### Features
+
+- **Interactive Map Visualization**: Display USA territories with clear boundaries and ownership
+- **Territory Management**: Track ownership (USA vs CSA) for each territory
+- **Command Point (CP) System**: Manage resources for attacking and defending territories
+- **Battle Recording**: Log battles with map selection, winner designation, and casualty tracking
+- **Campaign Progression**: Turn-based system where battles determine territory control
+- **Victory Conditions**: Multiple win conditions including VP targets, territorial dominance, and capital control
+- **Map Editor**: Create and modify custom campaign maps
+- **Data Persistence**: Automatic saving to browser localStorage
+- **Import/Export**: Save and load campaign data as JSON files
+
+### Getting Started
+
+#### Prerequisites
+
+- Node.js (v18 or higher recommended)
+- npm or yarn
+
+#### Installation & Running
+
+1. Navigate to the campaign-tool directory:
+```bash
+cd campaign-tool
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. Open your browser to the URL shown (typically http://localhost:5173)
+
+#### Basic Workflow
+
+1. **Create Campaign**: Start a new campaign with custom settings or use Map Editor to design custom territories
+2. **Record Battles**: Select a map, record the winner and casualties
+3. **Track Territory**: Territories change ownership based on battle results and CP expenditure
+4. **Monitor Victory Points**: Track VP accumulation for both sides
+5. **Advance Turns**: Progress through the campaign turn by turn
+6. **Export/Import**: Save campaign progress for later
+
+#### Victory Conditions
+
+- **Victory Points**: First side to reach the VP target wins
+- **Territorial Dominance**: Control 75% of all territories
+- **Capital Control**: Capture all capital territories
+
+#### Campaign Settings
+
+- **Victory Point Target**: Points needed to win (default: 100)
+- **VP Per Territory**: Points awarded for territory capture
+- **VP Per Battle**: Points awarded for battle victory
+- **Capital Bonus Multiplier**: VP multiplier for capital territories
+- **Adjacent Attack Requirement**: Restrict attacks to adjacent territories
+- **Casualty Tracking**: Enable/disable casualty recording
+
+#### Building for Production
+
+```bash
+npm run build
+```
+
+### Technology Stack
+
+- **React 19**: UI framework
+- **Vite**: Build tool and dev server
+- **Tailwind CSS 4**: Styling with dark theme (slate-900/800 background, amber-400 accents)
+- **Lucide React**: Icons
+
+See [`campaign-tool/README.md`](campaign-tool/README.md) and [`campaign-tool/TECHNICAL_SPECIFICATION.md`](campaign-tool/TECHNICAL_SPECIFICATION.md) for detailed documentation.
+
+---
+
+## Repository Structure
+
+```
+War-of-Rights-Event-Tracker/
+├── tracker.py              # Python season tracker (original)
+├── season_data.json        # Python tracker data file
+├── season-tracker/         # React season tracker
+│   ├── src/
+│   ├── package.json
+│   └── README.md
+├── log-analyzer/           # React log analysis tool
+│   ├── src/
+│   ├── package.json
+│   └── README.md
+├── campaign-tool/          # React campaign tracker
+│   ├── src/
+│   ├── package.json
+│   ├── README.md
+│   ├── TECHNICAL_SPECIFICATION.md
+│   └── CP_SYSTEM_SPECIFICATION.md
+└── README.md               # This file
+```
+
+## Design Philosophy
+
+All React-based tools follow consistent design principles:
+- **KISS** (Keep It Simple, Stupid)
+- **DRY** (Don't Repeat Yourself)
+- **SOLID** principles
+- **YAGNI** (You Aren't Gonna Need It)
+
+## License
+
+This project is part of the War of Rights Event Tracker suite developed for the Smoke & Steel League and other organized War of Rights events.
