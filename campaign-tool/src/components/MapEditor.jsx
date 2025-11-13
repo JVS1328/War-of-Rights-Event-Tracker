@@ -445,7 +445,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           <div className="flex-1 p-4 overflow-auto">
             <div className="bg-slate-800 rounded-lg p-4 h-full flex items-center justify-center">
               <svg
-                viewBox={isCountyMode ? "0 0 542.4278 333.99197" : "0 0 1000 589"}
+                viewBox={isCountyMode && countyData ? countyData.viewBox : "0 0 1000 589"}
                 className="w-full h-full"
                 style={{ maxHeight: '100%', maxWidth: '100%' }}
               >
@@ -453,28 +453,23 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 {isCountyMode && countyData ? (
                   <>
                     {/* Render county paths */}
-                    {countyData.counties.map(county => (
-                      <path
-                        key={county.id}
-                        d={county.svgPath}
-                        fill="#64748b"
-                        fillOpacity={0.5}
-                        stroke="#ffffff"
-                        strokeWidth="0.1"
-                        className="cursor-pointer transition-all duration-200 hover:brightness-125"
-                      />
-                    ))}
-                    {/* Render state borders on top */}
-                    {countyData.stateBorders.map((border, idx) => (
-                      <path
-                        key={`border-${idx}`}
-                        d={border.svgPath}
-                        fill="none"
-                        stroke="#ff0000"
-                        strokeWidth="0.5"
-                        className="pointer-events-none"
-                      />
-                    ))}
+                    {countyData.counties.length > 0 ? (
+                      countyData.counties.map(county => (
+                        <path
+                          key={county.id}
+                          d={county.svgPath}
+                          fill="#64748b"
+                          fillOpacity={0.5}
+                          stroke="#ffffff"
+                          strokeWidth="1"
+                          className="cursor-pointer transition-all duration-200 hover:brightness-125"
+                        />
+                      ))
+                    ) : (
+                      <text x="500" y="300" textAnchor="middle" fill="#fff" fontSize="20">
+                        No county data available for selected states
+                      </text>
+                    )}
                   </>
                 ) : (
                   /* Render all states */

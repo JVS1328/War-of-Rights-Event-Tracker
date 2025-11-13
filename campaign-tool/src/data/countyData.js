@@ -1,99 +1,230 @@
-// County data parser for US counties SVG
-// Parses the us_counties.svg file to extract county paths by state
+// County data parser using GeoJSON
+// Fetches US county boundaries from a GeoJSON source and converts to SVG paths
 
-// Cache for parsed SVG data
-let svgCache = null;
+// Cache for parsed data
+let geoJsonCache = null;
 let parseCache = null;
 
-/**
- * Fetch and parse the SVG file
- * @returns {Promise<Document>} Parsed SVG document
- */
-const fetchSVG = async () => {
-  if (svgCache) return svgCache;
-
-  const response = await fetch('/us_counties.svg');
-  const svgText = await response.text();
-  const parser = new DOMParser();
-  svgCache = parser.parseFromString(svgText, 'image/svg+xml');
-  return svgCache;
+// State FIPS code to abbreviation mapping
+const stateFipsToAbbr = {
+  '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT',
+  '10': 'DE', '11': 'DC', '12': 'FL', '13': 'GA', '15': 'HI', '16': 'ID', '17': 'IL',
+  '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY', '22': 'LA', '23': 'ME', '24': 'MD',
+  '25': 'MA', '26': 'MI', '27': 'MN', '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE',
+  '32': 'NV', '33': 'NH', '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND',
+  '39': 'OH', '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD',
+  '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV',
+  '55': 'WI', '56': 'WY'
 };
 
 /**
- * Parse county data from the SVG file
+ * Fetch GeoJSON data for US counties
+ * Using a public CDN source for county boundaries
+ * @returns {Promise<Object>} GeoJSON FeatureCollection
+ */
+const fetchGeoJSON = async () => {
+  if (geoJsonCache) return geoJsonCache;
+
+  try {
+    // Using a reliable public source for US county GeoJSON (simplified for performance)
+    // This is a 5m (1:5,000,000) resolution version which is good for overview maps
+    const response = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json');
+    const topoJson = await response.json();
+
+    // Convert TopoJSON to GeoJSON
+    // We'll need to use topojson-client library, but for now we'll use a simpler GeoJSON source
+    geoJsonCache = topoJson;
+    return topoJson;
+  } catch (error) {
+    console.error('Error fetching county GeoJSON:', error);
+    // Fallback to alternative source
+    const response = await fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json');
+    const geoJson = await response.json();
+    geoJsonCache = geoJson;
+    return geoJson;
+  }
+};
+
+/**
+ * Convert GeoJSON coordinates to SVG path string
+ * Uses a simple Mercator-like projection scaled to fit viewBox
+ * @param {Array} coordinates - GeoJSON coordinates array
+ * @param {Object} bounds - Bounding box {minLon, maxLon, minLat, maxLat}
+ * @param {number} width - SVG viewBox width
+ * @param {number} height - SVG viewBox height
+ * @returns {string} SVG path string
+ */
+const coordinatesToPath = (coordinates, bounds, width = 1000, height = 600) => {
+  const { minLon, maxLon, minLat, maxLat } = bounds;
+
+  // Project lon/lat to x/y with padding
+  const padding = 20;
+  const scaleX = (width - padding * 2) / (maxLon - minLon);
+  const scaleY = (height - padding * 2) / (maxLat - minLat);
+
+  const project = ([lon, lat]) => {
+    const x = padding + (lon - minLon) * scaleX;
+    // Invert Y because SVG coordinates start from top
+    const y = height - (padding + (lat - minLat) * scaleY);
+    return [x, y];
+  };
+
+  const pathParts = [];
+
+  // Handle MultiPolygon or Polygon
+  const polygons = coordinates[0][0] instanceof Array && coordinates[0][0][0] instanceof Array
+    ? coordinates  // MultiPolygon
+    : [coordinates];  // Polygon
+
+  polygons.forEach(polygon => {
+    polygon.forEach((ring, ringIndex) => {
+      ring.forEach((coord, i) => {
+        const [x, y] = project(coord);
+        if (i === 0) {
+          pathParts.push(`M ${x.toFixed(2)} ${y.toFixed(2)}`);
+        } else {
+          pathParts.push(`L ${x.toFixed(2)} ${y.toFixed(2)}`);
+        }
+      });
+      pathParts.push('Z');
+    });
+  });
+
+  return pathParts.join(' ');
+};
+
+/**
+ * Calculate bounding box for an array of coordinates
+ * @param {Array} allCoordinates - Array of all county coordinates
+ * @returns {Object} Bounding box {minLon, maxLon, minLat, maxLat}
+ */
+const calculateBounds = (allCoordinates) => {
+  let minLon = Infinity, maxLon = -Infinity;
+  let minLat = Infinity, maxLat = -Infinity;
+
+  allCoordinates.forEach(coords => {
+    const polygons = coords[0][0] instanceof Array && coords[0][0][0] instanceof Array
+      ? coords  // MultiPolygon
+      : [coords];  // Polygon
+
+    polygons.forEach(polygon => {
+      polygon.forEach(ring => {
+        ring.forEach(([lon, lat]) => {
+          minLon = Math.min(minLon, lon);
+          maxLon = Math.max(maxLon, lon);
+          minLat = Math.min(minLat, lat);
+          maxLat = Math.max(maxLat, lat);
+        });
+      });
+    });
+  });
+
+  return { minLon, maxLon, minLat, maxLat };
+};
+
+/**
+ * Parse county data from GeoJSON
  * @returns {Promise<Object>} Map of state abbreviations to their counties
  */
 export const parseCountyData = async () => {
   if (parseCache) return parseCache;
 
-  const svgDoc = await fetchSVG();
-
-  const countyPaths = svgDoc.querySelectorAll('path.county');
+  const geoJson = await fetchGeoJSON();
   const countiesByState = {};
 
-  console.log('Parsing counties, found:', countyPaths.length, 'county paths');
+  console.log('Parsing GeoJSON county data...');
 
-  // Parse county paths
-  countyPaths.forEach(path => {
-    const id = path.getAttribute('id');
-    const d = path.getAttribute('d');
+  // Handle both plain GeoJSON and TopoJSON formats
+  const features = geoJson.features || [];
 
-    if (id && d) {
-      // ID format: StateAbbr_County_Name (e.g., "CA_Los_Angeles")
-      const parts = id.split('_');
-      if (parts.length >= 2) {
-        const stateAbbr = parts[0].toUpperCase();
-        const countyName = parts.slice(1).join(' ').replace(/-/g, ' ');
+  features.forEach(feature => {
+    const props = feature.properties || {};
 
-        if (!countiesByState[stateAbbr]) {
-          countiesByState[stateAbbr] = {
-            counties: [],
-            stateBorder: null
-          };
-        }
+    // Try to extract state and county info from various property formats
+    let stateFips = props.STATE || props.STATEFP || props.state;
+    const countyName = props.NAME || props.name || props.NAMELSAD || 'Unknown County';
+    const countyFips = props.id || props.GEOID || props.fips;
 
-        countiesByState[stateAbbr].counties.push({
-          id,
-          name: countyName,
-          svgPath: d,
-          stateAbbr
-        });
+    // Convert FIPS to state abbreviation
+    if (stateFips && stateFips.length === 2) {
+      stateFips = stateFips.padStart(2, '0');
+    } else if (countyFips && countyFips.length === 5) {
+      stateFips = countyFips.substring(0, 2);
+    }
+
+    const stateAbbr = stateFipsToAbbr[stateFips];
+
+    if (stateAbbr && feature.geometry) {
+      if (!countiesByState[stateAbbr]) {
+        countiesByState[stateAbbr] = {
+          counties: [],
+          coordinates: []
+        };
       }
+
+      countiesByState[stateAbbr].counties.push({
+        id: `${stateAbbr}_${countyName.replace(/\s+/g, '_')}`,
+        name: countyName,
+        stateAbbr,
+        fips: countyFips,
+        coordinates: feature.geometry.coordinates
+      });
+
+      countiesByState[stateAbbr].coordinates.push(feature.geometry.coordinates);
     }
   });
 
-  console.log('Parsed counties by state:', Object.keys(countiesByState).length, 'states');
+  console.log('Parsed counties for states:', Object.keys(countiesByState).length);
 
   parseCache = countiesByState;
   return countiesByState;
 };
 
 /**
- * Get counties for specific states
+ * Get counties for specific states and convert to SVG paths
  * @param {Array<string>} stateAbbrs - Array of state abbreviations (e.g., ['CA', 'NV'])
- * @returns {Promise<Object>} Combined county and border data for selected states
+ * @returns {Promise<Object>} Combined county data with SVG paths
  */
 export const getCountiesForStates = async (stateAbbrs) => {
   const allCountyData = await parseCountyData();
-  const result = {
-    counties: [],
-    stateBorders: []
-  };
+  const selectedCounties = [];
+  const allCoordinates = [];
 
+  // Collect all counties and coordinates from selected states
   stateAbbrs.forEach(abbr => {
     const stateData = allCountyData[abbr.toUpperCase()];
     if (stateData) {
-      result.counties.push(...stateData.counties);
-      if (stateData.stateBorder) {
-        result.stateBorders.push({
-          stateAbbr: abbr,
-          svgPath: stateData.stateBorder
-        });
-      }
+      selectedCounties.push(...stateData.counties);
+      allCoordinates.push(...stateData.coordinates);
     }
   });
 
-  return result;
+  if (selectedCounties.length === 0) {
+    console.warn('No counties found for states:', stateAbbrs);
+    return {
+      counties: [],
+      viewBox: '0 0 1000 600',
+      bounds: null
+    };
+  }
+
+  // Calculate bounding box for all selected counties
+  const bounds = calculateBounds(allCoordinates);
+
+  console.log('Converting', selectedCounties.length, 'counties to SVG paths');
+  console.log('Bounds:', bounds);
+
+  // Convert each county's coordinates to SVG path
+  const countiesWithPaths = selectedCounties.map(county => ({
+    ...county,
+    svgPath: coordinatesToPath(county.coordinates, bounds, 1000, 600)
+  }));
+
+  return {
+    counties: countiesWithPaths,
+    viewBox: '0 0 1000 600',
+    bounds
+  };
 };
 
 /**
