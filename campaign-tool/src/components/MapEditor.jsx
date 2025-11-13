@@ -27,6 +27,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
+  // Drag selection state
+  const [isDraggingSelect, setIsDraggingSelect] = useState(false);
+  const [isDraggingMerge, setIsDraggingMerge] = useState(false);
+  const [draggedItems, setDraggedItems] = useState(new Set());
+  const [justDragged, setJustDragged] = useState(false);
+
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
     'Antietam': [
@@ -139,6 +145,9 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   }, [existingCampaign]);
 
   const handleStateClick = (stateAbbr, ctrlKey = false) => {
+    // Ignore clicks right after a drag
+    if (justDragged) return;
+
     if (ctrlKey) {
       // Find territory containing this state
       const territory = territories.find(t => t.states && t.states.includes(stateAbbr));
@@ -151,7 +160,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
         // Ctrl+Click on non-selected state: Select it first, then add to multi-select
         const newSelected = new Set(selectedStates);
         newSelected.add(stateAbbr);
-        
+
         const state = usaStates.find(s => s.abbreviation === stateAbbr);
         const newTerritory = {
           id: `territory-${Date.now()}`,
@@ -159,8 +168,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           states: [stateAbbr],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           svgPath: state.svgPath,
           center: state.center
         };
@@ -217,8 +226,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           states: [stateAbbr],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           svgPath: state.svgPath,
           center: state.center
         };
@@ -337,6 +346,9 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   };
 
   const handleCountyClick = (county, ctrlKey = false) => {
+    // Ignore clicks right after a drag
+    if (justDragged) return;
+
     if (ctrlKey) {
       // Find territory containing this county
       const territory = territories.find(t => t.counties && t.counties.includes(county.id));
@@ -356,8 +368,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           counties: [county.id],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           isCountyBased: true
         };
         setTerritories([...territories, newTerritory]);
@@ -409,8 +421,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           counties: [county.id],
           victoryPoints: 1,
           maps: [],
-          owner: 'Contested',
-          initialOwner: 'Contested',
+          owner: 'NEUTRAL',
+          initialOwner: 'NEUTRAL',
           isCountyBased: true
         };
         setTerritories([...territories, newTerritory]);
@@ -595,12 +607,25 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   };
 
   const handleMouseDown = (e) => {
-    // Pan with middle mouse button or spacebar + left click
+    // Pan with middle mouse button or shift + left click
     const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
     if (shouldPan) {
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+      return;
+    }
+
+    // Start drag selection with left click
+    if (e.button === 0) {
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+drag for merging
+        setIsDraggingMerge(true);
+      } else {
+        // Normal drag for selecting
+        setIsDraggingSelect(true);
+      }
+      setDraggedItems(new Set());
     }
   };
 
@@ -609,10 +634,117 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       setPanX(e.clientX - panStart.x);
       setPanY(e.clientY - panStart.y);
     }
+    // Drag selection is handled in individual state/county mouseEnter handlers
   };
 
   const handleMouseUp = () => {
     setIsPanning(false);
+
+    // Finalize drag selection or merge
+    if ((isDraggingSelect || isDraggingMerge) && draggedItems.size > 0) {
+      finalizeDragSelection();
+      setJustDragged(true);
+      // Clear the flag after a short delay to allow click events to be ignored
+      setTimeout(() => setJustDragged(false), 100);
+    }
+    setIsDraggingSelect(false);
+    setIsDraggingMerge(false);
+    setDraggedItems(new Set());
+  };
+
+  const finalizeDragSelection = () => {
+    const itemsArray = Array.from(draggedItems);
+
+    if (isCountyMode) {
+      // Handle county drag selection - batch updates
+      const newCounties = [];
+      const newTerritories = [];
+
+      itemsArray.forEach(countyId => {
+        const county = countyData.counties.find(c => c.id === countyId);
+        if (county && !selectedCounties.has(countyId)) {
+          newCounties.push(countyId);
+
+          // Create territory
+          const newTerritory = {
+            id: `territory-${Date.now()}-${Math.random()}-${countyId}`,
+            name: county.name,
+            counties: [countyId],
+            victoryPoints: 1,
+            maps: [],
+            owner: 'NEUTRAL',
+            initialOwner: 'NEUTRAL',
+            isCountyBased: true
+          };
+          newTerritories.push(newTerritory);
+        }
+      });
+
+      // Batch update selected counties and territories
+      if (newCounties.length > 0) {
+        setSelectedCounties(prev => {
+          const updated = new Set(prev);
+          newCounties.forEach(id => updated.add(id));
+          return updated;
+        });
+        setTerritories(prev => [...prev, ...newTerritories]);
+      }
+
+      // If merge-drag, merge all dragged counties
+      if (isDraggingMerge && itemsArray.length > 1) {
+        setTimeout(() => {
+          const newMultiSelect = new Set(itemsArray);
+          setMultiSelectCounties(newMultiSelect);
+          mergeSelectedCounties(newMultiSelect);
+        }, 50);
+      }
+    } else {
+      // Handle state drag selection - batch updates
+      const newStates = [];
+      const newTerritories = [];
+
+      itemsArray.forEach(stateAbbr => {
+        if (!selectedStates.has(stateAbbr)) {
+          newStates.push(stateAbbr);
+
+          // Create territory
+          const state = usaStates.find(s => s.abbreviation === stateAbbr);
+          if (state) {
+            const newTerritory = {
+              id: `territory-${Date.now()}-${Math.random()}-${stateAbbr}`,
+              name: state.name,
+              states: [stateAbbr],
+              victoryPoints: 1,
+              maps: [],
+              owner: 'NEUTRAL',
+              initialOwner: 'NEUTRAL',
+              svgPath: state.svgPath,
+              center: state.center
+            };
+            newTerritories.push(newTerritory);
+          }
+        }
+      });
+
+      // Batch update selected states and territories
+      if (newStates.length > 0) {
+        setSelectedStates(prev => {
+          const updated = new Set(prev);
+          newStates.forEach(abbr => updated.add(abbr));
+          return updated;
+        });
+        setTerritories(prev => [...prev, ...newTerritories]);
+      }
+
+      // If merge-drag, merge all dragged states
+      if (isDraggingMerge && itemsArray.length > 1) {
+        setTimeout(() => {
+          const newMultiSelect = new Set(itemsArray);
+          setMultiSelectStates(newMultiSelect);
+          mergeSelectedStates(newMultiSelect);
+        }, 50);
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -642,7 +774,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 style={{
                   maxHeight: '100%',
                   maxWidth: '100%',
-                  cursor: isPanning ? 'grabbing' : 'default'
+                  cursor: isPanning ? 'grabbing' : (isDraggingSelect || isDraggingMerge) ? 'crosshair' : 'default'
                 }}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
@@ -673,7 +805,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           if (isSelected) {
                             if (owner === 'USA') fillColor = '#3b82f6'; // Blue
                             else if (owner === 'CSA') fillColor = '#ef4444'; // Red
-                            else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                            else if (owner === 'NEUTRAL') fillColor = '#f59e0b'; // Orange
                             else fillColor = '#fbbf24'; // Amber (unassigned)
                           }
 
@@ -694,7 +826,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                 filter: isHovered ? 'brightness(1.3)' : 'none'
                               }}
                               onClick={(e) => handleCountyClick(county, e.ctrlKey || e.metaKey)}
-                              onMouseEnter={() => setHoveredCounty(county.id)}
+                              onMouseEnter={() => {
+                                setHoveredCounty(county.id);
+                                // Add to drag selection if dragging
+                                if (isDraggingSelect || isDraggingMerge) {
+                                  setDraggedItems(prev => new Set([...prev, county.id]));
+                                }
+                              }}
                               onMouseLeave={() => setHoveredCounty(null)}
                             />
                           );
@@ -724,7 +862,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   if (isSelected) {
                     if (owner === 'USA') fillColor = '#3b82f6'; // Blue
                     else if (owner === 'CSA') fillColor = '#ef4444'; // Red
-                    else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                    else if (owner === 'NEUTRAL') fillColor = '#f59e0b'; // Orange
                     else fillColor = '#fbbf24'; // Amber (unassigned)
                   }
                   
@@ -745,7 +883,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         filter: isHovered ? 'brightness(1.3)' : 'none'
                       }}
                       onClick={(e) => handleStateClick(state.abbreviation, e.ctrlKey || e.metaKey)}
-                      onMouseEnter={() => setHoveredState(state.abbreviation)}
+                      onMouseEnter={() => {
+                        setHoveredState(state.abbreviation);
+                        // Add to drag selection if dragging
+                        if (isDraggingSelect || isDraggingMerge) {
+                          setDraggedItems(prev => new Set([...prev, state.abbreviation]));
+                        }
+                      }}
                       onMouseLeave={() => setHoveredState(null)}
                     />
                   );
@@ -761,6 +905,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               {isCountyMode ? (
                 <ul className="space-y-1 list-disc list-inside">
                   <li>Click counties to select/deselect them</li>
+                  <li><strong>Click+Drag</strong> to select multiple counties at once</li>
+                  <li><strong>Ctrl+Click+Drag</strong> to select and merge counties into one territory</li>
                   <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
                   <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
@@ -770,6 +916,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               ) : (
                 <ul className="space-y-1 list-disc list-inside">
                   <li>Click states to select/deselect them for your campaign</li>
+                  <li><strong>Click+Drag</strong> to select multiple states at once</li>
+                  <li><strong>Ctrl+Click+Drag</strong> to select and merge states into one territory</li>
                   <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual states</li>
                   <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
@@ -848,7 +996,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       <input
                         type="range"
                         min="1"
-                        max="5"
+                        max="20"
                         value={territory.victoryPoints}
                         onChange={(e) => handleTerritoryUpdate(territory.id, 'victoryPoints', parseInt(e.target.value))}
                         className="w-full"
@@ -872,7 +1020,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       >
                         <option value="USA">USA</option>
                         <option value="CSA">CSA</option>
-                        <option value="Contested">Contested</option>
+                        <option value="NEUTRAL">Neutral</option>
                       </select>
                     </div>
 
