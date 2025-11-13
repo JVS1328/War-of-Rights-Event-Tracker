@@ -175,7 +175,7 @@ function createCivilWarTerritories() {
     addSvgPath({
       id: 'tennessee',
       name: 'Tennessee',
-      owner: 'NEUTRAL',
+      owner: 'CSA',
       pointValue: 10,
       victoryPoints: 10,
       adjacentTerritories: ['kentucky', 'virginia', 'north-carolina', 'georgia', 'alabama', 'mississippi', 'arkansas', 'missouri'],
@@ -203,7 +203,7 @@ function createCivilWarTerritories() {
     addSvgPath({
       id: 'north-carolina',
       name: 'North Carolina',
-      owner: 'NEUTRAL',
+      owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
       adjacentTerritories: ['virginia', 'tennessee', 'georgia', 'south-carolina'],
@@ -212,7 +212,7 @@ function createCivilWarTerritories() {
     addSvgPath({
       id: 'arkansas',
       name: 'Arkansas',
-      owner: 'NEUTRAL',
+      owner: 'CSA',
       pointValue: 5,
       victoryPoints: 5,
       adjacentTerritories: ['missouri', 'tennessee', 'mississippi', 'louisiana', 'texas'],
