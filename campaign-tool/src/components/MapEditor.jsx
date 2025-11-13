@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, RotateCcw, Plus, Trash2, GripVertical, MapPin } from 'lucide-react';
+import { X, Save, RotateCcw, Plus, Trash2, GripVertical, MapPin, Map } from 'lucide-react';
 import { usaStates, getStatesByAbbrs, calculateGroupCenter, combineStatePaths } from '../data/usaStates';
+import { getCountiesForStates, calculateCountyGroupCenter, combineCountyPaths, getAvailableStates, getCountyCount } from '../data/countyData';
 
 const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [selectedStates, setSelectedStates] = useState(new Set());
@@ -9,6 +10,22 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [editingTerritory, setEditingTerritory] = useState(null);
   const [draggedTerritory, setDraggedTerritory] = useState(null);
   const [multiSelectStates, setMultiSelectStates] = useState(new Set());
+  const [mapMode, setMapMode] = useState('states'); // 'states' or 'counties'
+  const [showStateSelector, setShowStateSelector] = useState(false);
+  const [selectedStatesForCounties, setSelectedStatesForCounties] = useState(new Set());
+  const [countyData, setCountyData] = useState(null);
+  const [isCountyMode, setIsCountyMode] = useState(false);
+  // County-specific state
+  const [selectedCounties, setSelectedCounties] = useState(new Set());
+  const [hoveredCounty, setHoveredCounty] = useState(null);
+  const [multiSelectCounties, setMultiSelectCounties] = useState(new Set());
+
+  // Zoom and pan state
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
@@ -311,8 +328,148 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
   const handleReset = () => {
     setSelectedStates(new Set());
+    setSelectedCounties(new Set());
     setTerritories([]);
     setEditingTerritory(null);
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  };
+
+  const handleCountyClick = (county, ctrlKey = false) => {
+    if (ctrlKey) {
+      // Find territory containing this county
+      const territory = territories.find(t => t.counties && t.counties.includes(county.id));
+
+      if (territory && territory.counties.length > 1) {
+        // Ctrl+Click on merged territory: Split it
+        splitCountyTerritory(territory);
+        setMultiSelectCounties(new Set());
+      } else if (!territory) {
+        // Ctrl+Click on non-selected county: Select it first, then add to multi-select
+        const newSelected = new Set(selectedCounties);
+        newSelected.add(county.id);
+
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: county.name,
+          counties: [county.id],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          isCountyBased: true
+        };
+        setTerritories([...territories, newTerritory]);
+        setSelectedCounties(newSelected);
+
+        // Add to multi-select
+        const newMultiSelect = new Set(multiSelectCounties);
+        newMultiSelect.add(county.id);
+        setMultiSelectCounties(newMultiSelect);
+
+        // If we have 2+ counties selected, merge them
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedCounties(newMultiSelect);
+        }
+      } else {
+        // Ctrl+Click on single county territory: Add to multi-select for merging
+        const newMultiSelect = new Set(multiSelectCounties);
+
+        if (newMultiSelect.has(county.id)) {
+          newMultiSelect.delete(county.id);
+        } else {
+          newMultiSelect.add(county.id);
+        }
+
+        setMultiSelectCounties(newMultiSelect);
+
+        // If we have 2+ counties selected, merge them
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedCounties(newMultiSelect);
+        }
+      }
+    } else {
+      // Normal click: toggle county selection
+      const newSelected = new Set(selectedCounties);
+
+      if (newSelected.has(county.id)) {
+        // Deselect county
+        newSelected.delete(county.id);
+        // Remove from territories
+        setTerritories(territories.filter(t => !t.counties || !t.counties.includes(county.id)));
+      } else {
+        // Select county
+        newSelected.add(county.id);
+
+        // Create a new territory for this county
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: county.name,
+          counties: [county.id],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          isCountyBased: true
+        };
+        setTerritories([...territories, newTerritory]);
+      }
+
+      setSelectedCounties(newSelected);
+      setMultiSelectCounties(new Set()); // Clear multi-select on normal click
+    }
+  };
+
+  const mergeSelectedCounties = (countiesToMerge) => {
+    const countyArray = Array.from(countiesToMerge);
+
+    // Find all territories that contain these counties
+    const affectedTerritories = territories.filter(t =>
+      t.counties && t.counties.some(c => countyArray.includes(c))
+    );
+
+    if (affectedTerritories.length === 0) return;
+
+    // Collect all counties from affected territories
+    const allCounties = [...new Set(affectedTerritories.flatMap(t => t.counties))];
+
+    // Create merged territory
+    const mergedName = affectedTerritories.map(t => t.name).join(' & ');
+    const mergedTerritory = {
+      id: `territory-${Date.now()}`,
+      name: mergedName,
+      counties: allCounties,
+      victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
+      maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+      owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      isCountyBased: true
+    };
+
+    // Remove old territories and add merged one
+    const remainingTerritories = territories.filter(t => !affectedTerritories.includes(t));
+    setTerritories([...remainingTerritories, mergedTerritory]);
+  };
+
+  const splitCountyTerritory = (territory) => {
+    // Remove the merged territory
+    const remainingTerritories = territories.filter(t => t.id !== territory.id);
+
+    // Create individual territories for each county
+    const countyObjects = countyData.counties.filter(c => territory.counties.includes(c.id));
+    const newTerritories = countyObjects.map(county => ({
+      id: `territory-${Date.now()}-${county.id}`,
+      name: county.name,
+      counties: [county.id],
+      victoryPoints: 1,
+      maps: [],
+      owner: territory.owner || territory.initialOwner,
+      initialOwner: territory.owner || territory.initialOwner,
+      isCountyBased: true
+    }));
+
+    setTerritories([...remainingTerritories, ...newTerritories]);
   };
 
   const handleSave = () => {
@@ -323,12 +480,21 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
     // Return modified territories with updated SVG paths and centers
     const modifiedTerritories = territories.map(t => {
-      // Only update SVG path and center if states array exists and has items
+      // Update SVG path and center for state-based territories
       if (t.states && t.states.length > 0) {
         return {
           ...t,
           svgPath: combineStatePaths(t.states),
           center: calculateGroupCenter(t.states)
+        };
+      }
+      // Update SVG path and center for county-based territories
+      if (t.counties && t.counties.length > 0 && countyData) {
+        const countyObjects = countyData.counties.filter(c => t.counties.includes(c.id));
+        return {
+          ...t,
+          svgPath: combineCountyPaths(countyObjects),
+          center: calculateCountyGroupCenter(countyObjects)
         };
       }
       // Otherwise preserve existing SVG path and center
@@ -362,6 +528,93 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setDraggedTerritory(null);
   };
 
+  const handleMapModeToggle = () => {
+    const newMode = mapMode === 'states' ? 'counties' : 'states';
+    setMapMode(newMode);
+
+    if (newMode === 'counties') {
+      // Show state selector modal
+      setShowStateSelector(true);
+    } else {
+      // Switch back to states mode
+      setIsCountyMode(false);
+      setCountyData(null);
+      setSelectedStatesForCounties(new Set());
+    }
+  };
+
+  const handleStateSelectionConfirm = async () => {
+    if (selectedStatesForCounties.size === 0) {
+      alert('Please select at least one state.');
+      return;
+    }
+
+    try {
+      // Load county data for selected states
+      const stateAbbrs = Array.from(selectedStatesForCounties);
+      const countyDataForStates = await getCountiesForStates(stateAbbrs);
+
+      setCountyData(countyDataForStates);
+      setIsCountyMode(true);
+      setShowStateSelector(false);
+
+      // Clear existing territories and reset selection
+      setTerritories([]);
+      setSelectedStates(new Set());
+    } catch (error) {
+      console.error('Error loading county data:', error);
+      alert('Failed to load county data. Please try again.');
+    }
+  };
+
+  const handleStateSelectionCancel = () => {
+    setShowStateSelector(false);
+    setMapMode('states'); // Reset back to states mode
+    setSelectedStatesForCounties(new Set());
+  };
+
+  const toggleStateForCounties = (stateAbbr) => {
+    const newSelection = new Set(selectedStatesForCounties);
+    if (newSelection.has(stateAbbr)) {
+      newSelection.delete(stateAbbr);
+    } else {
+      newSelection.add(stateAbbr);
+    }
+    setSelectedStatesForCounties(newSelection);
+  };
+
+  // Zoom and pan handlers
+  const handleWheel = (e) => {
+    // Only zoom if shift is held
+    if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
+      setZoom(newZoom);
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    // Pan with middle mouse button or spacebar + left click
+    const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
+    if (shouldPan) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isPanning) {
+      setPanX(e.clientX - panStart.x);
+      setPanY(e.clientY - panStart.y);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -384,12 +637,78 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           <div className="flex-1 p-4 overflow-auto">
             <div className="bg-slate-800 rounded-lg p-4 h-full flex items-center justify-center">
               <svg
-                viewBox="0 0 1000 589"
+                viewBox={isCountyMode && countyData ? countyData.viewBox : "0 0 1000 589"}
                 className="w-full h-full"
-                style={{ maxHeight: '100%', maxWidth: '100%' }}
+                style={{
+                  maxHeight: '100%',
+                  maxWidth: '100%',
+                  cursor: isPanning ? 'grabbing' : 'default'
+                }}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
               >
-                {/* Render all states */}
-                {usaStates.map(state => {
+                <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+                  {/* Render counties or states based on mode */}
+                  {isCountyMode && countyData ? (
+                  <>
+                    {/* Render county paths */}
+                    {countyData.counties.length > 0 ? (
+                      <>
+                        {countyData.counties.map(county => {
+                          const isSelected = selectedCounties.has(county.id);
+                          const isHovered = hoveredCounty === county.id;
+                          const isMultiSelected = multiSelectCounties.has(county.id);
+
+                          // Find territory that owns this county
+                          const owningTerritory = territories.find(t =>
+                            t.counties && t.counties.includes(county.id)
+                          );
+                          const owner = owningTerritory?.owner || owningTerritory?.initialOwner;
+
+                          // Determine fill color based on owner/selection
+                          let fillColor = '#64748b'; // Default gray
+                          if (isSelected) {
+                            if (owner === 'USA') fillColor = '#3b82f6'; // Blue
+                            else if (owner === 'CSA') fillColor = '#ef4444'; // Red
+                            else if (owner === 'NEUTRAL' || owner === 'Contested') fillColor = '#f59e0b'; // Orange
+                            else fillColor = '#fbbf24'; // Amber (unassigned)
+                          }
+
+                          // Highlight multi-selected counties with black border
+                          const strokeColor = isMultiSelected ? '#000000' : '#94a3b8';
+                          const strokeWidth = isMultiSelected ? '3' : '0.2';
+
+                          return (
+                            <path
+                              key={county.id}
+                              d={county.svgPath}
+                              fill={fillColor}
+                              fillOpacity={isSelected ? 0.6 : 0.3}
+                              stroke={strokeColor}
+                              strokeWidth={strokeWidth}
+                              className="cursor-pointer transition-all duration-200"
+                              style={{
+                                filter: isHovered ? 'brightness(1.3)' : 'none'
+                              }}
+                              onClick={(e) => handleCountyClick(county, e.ctrlKey || e.metaKey)}
+                              onMouseEnter={() => setHoveredCounty(county.id)}
+                              onMouseLeave={() => setHoveredCounty(null)}
+                            />
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <text x="500" y="300" textAnchor="middle" fill="#fff" fontSize="20">
+                        No county data available for selected states
+                      </text>
+                    )}
+                  </>
+                ) : (
+                  /* Render all states */
+                  usaStates.map(state => {
                   const isSelected = selectedStates.has(state.abbreviation);
                   const isHovered = hoveredState === state.abbreviation;
                   const isMultiSelected = multiSelectStates.has(state.abbreviation);
@@ -430,20 +749,34 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       onMouseLeave={() => setHoveredState(null)}
                     />
                   );
-                })}
+                  })
+                )}
+                </g>
               </svg>
             </div>
             
             {/* Instructions */}
             <div className="mt-4 p-3 bg-slate-800 rounded-lg text-sm text-slate-300">
               <p className="font-semibold text-amber-400 mb-2">Instructions:</p>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>Click states to select/deselect them for your campaign</li>
-                <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
-                <li>Ctrl+Click on a merged territory to split it back into individual states</li>
-                <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
-                <li>Configure each territory in the right panel</li>
-              </ul>
+              {isCountyMode ? (
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>Click counties to select/deselect them</li>
+                  <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
+                  <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
+                  <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li><strong>Shift+Scroll</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
+                  <li>Configure territories in the right panel</li>
+                </ul>
+              ) : (
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>Click states to select/deselect them for your campaign</li>
+                  <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
+                  <li>Ctrl+Click on a merged territory to split it back into individual states</li>
+                  <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
+                  <li><strong>Shift+Scroll</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
+                  <li>Configure each territory in the right panel</li>
+                </ul>
+              )}
             </div>
           </div>
 
@@ -454,7 +787,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 Territories ({territories.length})
               </h3>
               <p className="text-sm text-slate-400">
-                {selectedStates.size} states selected
+                {isCountyMode
+                  ? `${selectedCounties.size} counties selected (${Array.from(selectedStatesForCounties).join(', ')})`
+                  : `${selectedStates.size} states selected`
+                }
               </p>
             </div>
 
@@ -490,7 +826,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           placeholder="Territory Name"
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                          States: {territory.states ? territory.states.join(', ') : 'N/A'}
+                          {territory.isCountyBased
+                            ? `County: ${territory.counties?.length || 0} selected`
+                            : `States: ${territory.states ? territory.states.join(', ') : 'N/A'}`
+                          }
                         </p>
                       </div>
                       <button
@@ -522,11 +861,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       <select
                         value={territory.owner || territory.initialOwner}
                         onChange={(e) => {
-                          handleTerritoryUpdate(territory.id, 'owner', e.target.value);
-                          // Also update initialOwner if it exists
-                          if (territory.initialOwner !== undefined) {
-                            handleTerritoryUpdate(territory.id, 'initialOwner', e.target.value);
-                          }
+                          // Update both owner and initialOwner in one operation
+                          setTerritories(territories.map(t =>
+                            t.id === territory.id
+                              ? { ...t, owner: e.target.value, initialOwner: e.target.value }
+                              : t
+                          ));
                         }}
                         className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm"
                       >
@@ -568,6 +908,27 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
             {/* Action Buttons */}
             <div className="p-4 border-t border-slate-700 space-y-2">
+              {/* Map Mode Toggle */}
+              <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
+                <label className="text-xs text-slate-400 block mb-2">Map Display Mode</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleMapModeToggle}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors font-semibold ${
+                      mapMode === 'states'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    }`}
+                  >
+                    <Map className="w-4 h-4" />
+                    {mapMode === 'states' ? 'States' : 'Counties'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-2 text-center">
+                  {mapMode === 'states' ? 'Click to switch to county view' : 'Click to switch to state view'}
+                </p>
+              </div>
+
               <button
                 onClick={handleReset}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
@@ -587,6 +948,81 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           </div>
         </div>
       </div>
+
+      {/* State Selection Modal for County Mode */}
+      {showStateSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-xl font-bold text-amber-400">Select States for County Map</h3>
+              <button
+                onClick={handleStateSelectionCancel}
+                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4">
+              <p className="text-slate-300 mb-4">
+                Select one or more states to load their county boundaries. Counties from selected states will be merged into a single editable map.
+              </p>
+
+              {/* State Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {usaStates.map(state => (
+                  <button
+                    key={state.abbreviation}
+                    onClick={() => toggleStateForCounties(state.abbreviation)}
+                    className={`p-3 rounded-lg text-left transition-colors ${
+                      selectedStatesForCounties.has(state.abbreviation)
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-sm">{state.abbreviation}</div>
+                    <div className="text-xs opacity-75">{state.name}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Selection Summary */}
+              {selectedStatesForCounties.size > 0 && (
+                <div className="mt-4 p-3 bg-slate-700 rounded-lg">
+                  <p className="text-sm text-slate-300">
+                    <span className="font-semibold text-amber-400">
+                      {selectedStatesForCounties.size}
+                    </span>{' '}
+                    {selectedStatesForCounties.size === 1 ? 'state' : 'states'} selected:{' '}
+                    <span className="text-blue-400">
+                      {Array.from(selectedStatesForCounties).join(', ')}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-700 flex gap-2">
+              <button
+                onClick={handleStateSelectionCancel}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStateSelectionConfirm}
+                disabled={selectedStatesForCounties.size === 0}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+              >
+                Load Counties ({selectedStatesForCounties.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
