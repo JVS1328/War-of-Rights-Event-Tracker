@@ -411,19 +411,27 @@ const SeasonTracker = () => {
       // 2-0 Sweep Bonus (skip in playoffs)
       if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
         const sweepTeam = week[`team${week.round1Winner}`];
-        // Use round-specific leads for single round leads mode, otherwise use week-level lead
-        let sweepLead;
+
         if (isSingleRoundLeads) {
-          // For single round leads, we need to determine if same unit led both rounds
+          // For single round leads, both round leads get the lead bonus
           const r1Lead = week[`lead${week.round1Winner}_r1`];
           const r2Lead = week[`lead${week.round1Winner}_r2`];
-          // Only award sweep bonus if same unit led both rounds
-          sweepLead = (r1Lead === r2Lead) ? r1Lead : null;
-        } else {
-          sweepLead = week[`lead${week.round1Winner}`];
-        }
+          const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
-        if (sweepLead) {
+          sweepTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+
+            if (sweepLeads.has(unit)) {
+              stats[unit].points += pointSystem.bonus2_0Lead;
+            } else {
+              stats[unit].points += pointSystem.bonus2_0Assist;
+            }
+          });
+        } else {
+          // Regular week: use week-level lead
+          const sweepLead = week[`lead${week.round1Winner}`];
+
           sweepTeam.forEach(unit => {
             // Skip non-token units
             if (!stats[unit]) return;
@@ -532,19 +540,24 @@ const SeasonTracker = () => {
 
         if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
           const sweepTeam = week[`team${week.round1Winner}`];
-          // Use round-specific leads for single round leads mode, otherwise use week-level lead
-          let sweepLead;
+
           if (isSingleRoundLeads) {
-            // For single round leads, we need to determine if same unit led both rounds
+            // For single round leads, both round leads get the lead bonus
             const r1Lead = week[`lead${week.round1Winner}_r1`];
             const r2Lead = week[`lead${week.round1Winner}_r2`];
-            // Only award sweep bonus if same unit led both rounds
-            sweepLead = (r1Lead === r2Lead) ? r1Lead : null;
-          } else {
-            sweepLead = week[`lead${week.round1Winner}`];
-          }
+            const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
-          if (sweepLead) {
+            sweepTeam.forEach(unit => {
+              if (sweepLeads.has(unit)) {
+                tempStats[unit].points += pointSystem.bonus2_0Lead;
+              } else {
+                tempStats[unit].points += pointSystem.bonus2_0Assist;
+              }
+            });
+          } else {
+            // Regular week: use week-level lead
+            const sweepLead = week[`lead${week.round1Winner}`];
+
             sweepTeam.forEach(unit => {
               if (unit === sweepLead) {
                 tempStats[unit].points += pointSystem.bonus2_0Lead;
@@ -3578,7 +3591,7 @@ const SeasonTracker = () => {
                       );
                     })}
                   </div>
-                  {!selectedWeek.isPlayoffs && (
+                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
                     <div className="mt-3">
                       <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
                       <select
@@ -3655,7 +3668,7 @@ const SeasonTracker = () => {
                       );
                     })}
                   </div>
-                  {!selectedWeek.isPlayoffs && (
+                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
                     <div className="mt-3">
                       <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
                       <select
