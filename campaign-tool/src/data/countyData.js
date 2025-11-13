@@ -50,7 +50,7 @@ const fetchGeoJSON = async () => {
  * @param {number} height - SVG viewBox height
  * @returns {string} SVG path string
  */
-const coordinatesToPath = (coordinates, bounds, width = 1000, height = 600) => {
+const coordinatesToPath = (coordinates, bounds, width = 1000, height = 589) => {
   const { minLon, maxLon, minLat, maxLat } = bounds;
 
   // Project lon/lat to x/y with padding
@@ -203,7 +203,7 @@ export const getCountiesForStates = async (stateAbbrs) => {
     return {
       counties: [],
       stateBorders: [],
-      viewBox: '0 0 1000 600',
+      viewBox: '0 0 1000 589',
       bounds: null
     };
   }
@@ -217,21 +217,21 @@ export const getCountiesForStates = async (stateAbbrs) => {
   // Convert each county's coordinates to SVG path
   const countiesWithPaths = selectedCounties.map(county => ({
     ...county,
-    svgPath: coordinatesToPath(county.coordinates, bounds, 1000, 600)
+    svgPath: coordinatesToPath(county.coordinates, bounds, 1000, 589)
   }));
 
   // Create state borders by combining all county paths for each state
   const stateBorders = Object.entries(stateBordersByState).map(([stateAbbr, counties]) => ({
     stateAbbr,
     svgPath: counties.map(c =>
-      coordinatesToPath(c.coordinates, bounds, 1000, 600)
+      coordinatesToPath(c.coordinates, bounds, 1000, 589)
     ).join(' ')
   }));
 
   return {
     counties: countiesWithPaths,
     stateBorders,
-    viewBox: '0 0 1000 600',
+    viewBox: '0 0 1000 589',
     bounds
   };
 };

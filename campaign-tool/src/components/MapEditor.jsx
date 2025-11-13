@@ -480,12 +480,21 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
     // Return modified territories with updated SVG paths and centers
     const modifiedTerritories = territories.map(t => {
-      // Only update SVG path and center if states array exists and has items
+      // Update SVG path and center for state-based territories
       if (t.states && t.states.length > 0) {
         return {
           ...t,
           svgPath: combineStatePaths(t.states),
           center: calculateGroupCenter(t.states)
+        };
+      }
+      // Update SVG path and center for county-based territories
+      if (t.counties && t.counties.length > 0 && countyData) {
+        const countyObjects = countyData.counties.filter(c => t.counties.includes(c.id));
+        return {
+          ...t,
+          svgPath: combineCountyPaths(countyObjects),
+          center: calculateCountyGroupCenter(countyObjects)
         };
       }
       // Otherwise preserve existing SVG path and center
@@ -576,10 +585,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
   // Zoom and pan handlers
   const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
-    setZoom(newZoom);
+    // Only zoom if shift is held
+    if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
+      setZoom(newZoom);
+    }
   };
 
   const handleMouseDown = (e) => {
@@ -752,7 +764,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
                   <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
-                  <li><strong>Scroll wheel</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
+                  <li><strong>Shift+Scroll</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
                   <li>Configure territories in the right panel</li>
                 </ul>
               ) : (
@@ -761,7 +773,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <li>Ctrl+Click on states to merge them into one territory (2+ states)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual states</li>
                   <li>Selected states are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
-                  <li><strong>Scroll wheel</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
+                  <li><strong>Shift+Scroll</strong> to zoom in/out, <strong>Shift+Drag</strong> to pan</li>
                   <li>Configure each territory in the right panel</li>
                 </ul>
               )}
@@ -849,11 +861,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                       <select
                         value={territory.owner || territory.initialOwner}
                         onChange={(e) => {
-                          handleTerritoryUpdate(territory.id, 'owner', e.target.value);
-                          // Also update initialOwner if it exists
-                          if (territory.initialOwner !== undefined) {
-                            handleTerritoryUpdate(territory.id, 'initialOwner', e.target.value);
-                          }
+                          // Update both owner and initialOwner in one operation
+                          setTerritories(territories.map(t =>
+                            t.id === territory.id
+                              ? { ...t, owner: e.target.value, initialOwner: e.target.value }
+                              : t
+                          ));
                         }}
                         className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm"
                       >
