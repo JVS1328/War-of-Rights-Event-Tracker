@@ -656,93 +656,225 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     const itemsArray = Array.from(draggedItems);
 
     if (isCountyMode) {
-      // Handle county drag selection - batch updates
-      const newCounties = [];
-      const newTerritories = [];
+      // Handle county drag selection
+      if (isDraggingMerge && itemsArray.length > 1) {
+        // Ctrl+drag: Create a single merged territory directly
+        const newCounties = [];
+        const countyObjects = [];
 
-      itemsArray.forEach(countyId => {
-        const county = countyData.counties.find(c => c.id === countyId);
-        if (county && !selectedCounties.has(countyId)) {
-          newCounties.push(countyId);
+        itemsArray.forEach(countyId => {
+          const county = countyData.counties.find(c => c.id === countyId);
+          if (county && !selectedCounties.has(countyId)) {
+            newCounties.push(countyId);
+            countyObjects.push(county);
+          }
+        });
 
-          // Create territory
-          const newTerritory = {
-            id: `territory-${Date.now()}-${Math.random()}-${countyId}`,
-            name: county.name,
-            counties: [countyId],
+        if (newCounties.length > 1) {
+          // Create a single merged territory
+          const mergedName = countyObjects.map(c => c.name).join(' & ');
+          const mergedTerritory = {
+            id: `territory-${Date.now()}-merged`,
+            name: mergedName,
+            counties: newCounties,
             victoryPoints: 1,
             maps: [],
             owner: 'NEUTRAL',
             initialOwner: 'NEUTRAL',
             isCountyBased: true
           };
-          newTerritories.push(newTerritory);
+
+          // Update selected counties
+          setSelectedCounties(prev => {
+            const updated = new Set(prev);
+            newCounties.forEach(id => updated.add(id));
+            return updated;
+          });
+
+          // Use callback to work with latest state
+          setTerritories(prev => {
+            // Find any existing territories that contain these counties
+            const affectedTerritories = prev.filter(t =>
+              t.counties && t.counties.some(c => newCounties.includes(c))
+            );
+
+            // Collect all counties from affected territories plus new ones
+            const allCounties = [...new Set([
+              ...affectedTerritories.flatMap(t => t.counties),
+              ...newCounties
+            ])];
+
+            // If there are existing territories, merge with them
+            if (affectedTerritories.length > 0) {
+              const allCountyObjects = countyData.counties.filter(c => allCounties.includes(c.id));
+              const finalMergedName = allCountyObjects.map(c => c.name).join(' & ');
+              const finalMergedTerritory = {
+                id: `territory-${Date.now()}-merged`,
+                name: finalMergedName,
+                counties: allCounties,
+                victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints), 1),
+                maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+                owner: affectedTerritories[0].owner || 'NEUTRAL',
+                initialOwner: affectedTerritories[0].initialOwner || 'NEUTRAL',
+                isCountyBased: true
+              };
+
+              // Remove affected territories and add the merged one
+              return [...prev.filter(t => !affectedTerritories.includes(t)), finalMergedTerritory];
+            } else {
+              // No existing territories, just add the new merged one
+              return [...prev, mergedTerritory];
+            }
+          });
+
+          setMultiSelectCounties(new Set(newCounties));
         }
-      });
+      } else {
+        // Normal drag: Create individual territories
+        const newCounties = [];
+        const newTerritories = [];
 
-      // Batch update selected counties and territories
-      if (newCounties.length > 0) {
-        setSelectedCounties(prev => {
-          const updated = new Set(prev);
-          newCounties.forEach(id => updated.add(id));
-          return updated;
-        });
-        setTerritories(prev => [...prev, ...newTerritories]);
-      }
+        itemsArray.forEach(countyId => {
+          const county = countyData.counties.find(c => c.id === countyId);
+          if (county && !selectedCounties.has(countyId)) {
+            newCounties.push(countyId);
 
-      // If merge-drag, merge all dragged counties
-      if (isDraggingMerge && itemsArray.length > 1) {
-        setTimeout(() => {
-          const newMultiSelect = new Set(itemsArray);
-          setMultiSelectCounties(newMultiSelect);
-          mergeSelectedCounties(newMultiSelect);
-        }, 50);
-      }
-    } else {
-      // Handle state drag selection - batch updates
-      const newStates = [];
-      const newTerritories = [];
-
-      itemsArray.forEach(stateAbbr => {
-        if (!selectedStates.has(stateAbbr)) {
-          newStates.push(stateAbbr);
-
-          // Create territory
-          const state = usaStates.find(s => s.abbreviation === stateAbbr);
-          if (state) {
             const newTerritory = {
-              id: `territory-${Date.now()}-${Math.random()}-${stateAbbr}`,
-              name: state.name,
-              states: [stateAbbr],
+              id: `territory-${Date.now()}-${Math.random()}-${countyId}`,
+              name: county.name,
+              counties: [countyId],
               victoryPoints: 1,
               maps: [],
               owner: 'NEUTRAL',
               initialOwner: 'NEUTRAL',
-              svgPath: state.svgPath,
-              center: state.center
+              isCountyBased: true
             };
             newTerritories.push(newTerritory);
           }
-        }
-      });
-
-      // Batch update selected states and territories
-      if (newStates.length > 0) {
-        setSelectedStates(prev => {
-          const updated = new Set(prev);
-          newStates.forEach(abbr => updated.add(abbr));
-          return updated;
         });
-        setTerritories(prev => [...prev, ...newTerritories]);
-      }
 
-      // If merge-drag, merge all dragged states
+        if (newCounties.length > 0) {
+          setSelectedCounties(prev => {
+            const updated = new Set(prev);
+            newCounties.forEach(id => updated.add(id));
+            return updated;
+          });
+          setTerritories(prev => [...prev, ...newTerritories]);
+        }
+      }
+    } else {
+      // Handle state drag selection
       if (isDraggingMerge && itemsArray.length > 1) {
-        setTimeout(() => {
-          const newMultiSelect = new Set(itemsArray);
-          setMultiSelectStates(newMultiSelect);
-          mergeSelectedStates(newMultiSelect);
-        }, 50);
+        // Ctrl+drag: Create a single merged territory directly
+        const newStates = [];
+        const stateObjects = [];
+
+        itemsArray.forEach(stateAbbr => {
+          if (!selectedStates.has(stateAbbr)) {
+            const state = usaStates.find(s => s.abbreviation === stateAbbr);
+            if (state) {
+              newStates.push(stateAbbr);
+              stateObjects.push(state);
+            }
+          }
+        });
+
+        if (newStates.length > 1) {
+          // Create a single merged territory
+          const mergedName = stateObjects.map(s => s.name).join(' & ');
+          const mergedTerritory = {
+            id: `territory-${Date.now()}-merged`,
+            name: mergedName,
+            states: newStates,
+            victoryPoints: 1,
+            maps: [],
+            owner: 'NEUTRAL',
+            initialOwner: 'NEUTRAL',
+            svgPath: combineStatePaths(newStates),
+            center: calculateGroupCenter(newStates)
+          };
+
+          // Update selected states
+          setSelectedStates(prev => {
+            const updated = new Set(prev);
+            newStates.forEach(abbr => updated.add(abbr));
+            return updated;
+          });
+
+          // Use callback to work with latest state
+          setTerritories(prev => {
+            // Find any existing territories that contain these states
+            const affectedTerritories = prev.filter(t =>
+              t.states && t.states.some(s => newStates.includes(s))
+            );
+
+            // Collect all states from affected territories plus new ones
+            const allStates = [...new Set([
+              ...affectedTerritories.flatMap(t => t.states),
+              ...newStates
+            ])];
+
+            // If there are existing territories, merge with them
+            if (affectedTerritories.length > 0) {
+              const allStateObjects = getStatesByAbbrs(allStates);
+              const finalMergedName = allStateObjects.map(s => s.name).join(' & ');
+              const finalMergedTerritory = {
+                id: `territory-${Date.now()}-merged`,
+                name: finalMergedName,
+                states: allStates,
+                victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints), 1),
+                maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+                owner: affectedTerritories[0].owner || 'NEUTRAL',
+                initialOwner: affectedTerritories[0].initialOwner || 'NEUTRAL',
+                svgPath: combineStatePaths(allStates),
+                center: calculateGroupCenter(allStates)
+              };
+
+              // Remove affected territories and add the merged one
+              return [...prev.filter(t => !affectedTerritories.includes(t)), finalMergedTerritory];
+            } else {
+              // No existing territories, just add the new merged one
+              return [...prev, mergedTerritory];
+            }
+          });
+
+          setMultiSelectStates(new Set(newStates));
+        }
+      } else {
+        // Normal drag: Create individual territories
+        const newStates = [];
+        const newTerritories = [];
+
+        itemsArray.forEach(stateAbbr => {
+          if (!selectedStates.has(stateAbbr)) {
+            const state = usaStates.find(s => s.abbreviation === stateAbbr);
+            if (state) {
+              newStates.push(stateAbbr);
+
+              const newTerritory = {
+                id: `territory-${Date.now()}-${Math.random()}-${stateAbbr}`,
+                name: state.name,
+                states: [stateAbbr],
+                victoryPoints: 1,
+                maps: [],
+                owner: 'NEUTRAL',
+                initialOwner: 'NEUTRAL',
+                svgPath: state.svgPath,
+                center: state.center
+              };
+              newTerritories.push(newTerritory);
+            }
+          }
+        });
+
+        if (newStates.length > 0) {
+          setSelectedStates(prev => {
+            const updated = new Set(prev);
+            newStates.forEach(abbr => updated.add(abbr));
+            return updated;
+          });
+          setTerritories(prev => [...prev, ...newTerritories]);
+        }
       }
     }
   };
@@ -975,8 +1107,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         />
                         <p className="text-xs text-slate-400 mt-1">
                           {territory.isCountyBased
-                            ? `County: ${territory.counties?.length || 0} selected`
-                            : `States: ${territory.states ? territory.states.join(', ') : 'N/A'}`
+                            ? (() => {
+                                const countyNames = territory.counties
+                                  ?.map(cId => countyData?.counties.find(c => c.id === cId)?.name)
+                                  .filter(Boolean) || [];
+                                return `Counties (${countyNames.length}): ${countyNames.join(', ')}`;
+                              })()
+                            : `States (${territory.states?.length || 0}): ${territory.states ? territory.states.join(', ') : 'N/A'}`
                           }
                         </p>
                       </div>
