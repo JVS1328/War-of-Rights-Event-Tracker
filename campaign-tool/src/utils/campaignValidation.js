@@ -80,12 +80,19 @@ export const validateCampaignState = (data) => {
       if (!['USA', 'CSA', 'NEUTRAL'].includes(territory.owner)) {
         errors.push(`Territory ${index}: Invalid owner (must be USA, CSA, or NEUTRAL)`);
       }
-      if (typeof territory.pointValue !== 'number' || territory.pointValue < 0) {
-        errors.push(`Territory ${index}: Invalid point value`);
+
+      // Accept either victoryPoints OR pointValue (they're synonyms)
+      const vpValue = territory.victoryPoints ?? territory.pointValue;
+      if (typeof vpValue !== 'number' || vpValue < 0) {
+        errors.push(`Territory ${index}: Invalid victory/point value`);
       }
-      if (!Array.isArray(territory.adjacentTerritories)) {
-        errors.push(`Territory ${index}: Missing or invalid adjacent territories`);
+
+      // adjacentTerritories is optional - can be empty or missing
+      // (will be auto-calculated if needed)
+      if (territory.adjacentTerritories !== undefined && !Array.isArray(territory.adjacentTerritories)) {
+        errors.push(`Territory ${index}: Invalid adjacent territories (must be array if present)`);
       }
+
       if (!territory.svgPath || typeof territory.svgPath !== 'string') {
         errors.push(`Territory ${index}: Missing or invalid SVG path`);
       }
@@ -182,6 +189,85 @@ export const validateCampaignState = (data) => {
 };
 
 /**
+ * Calculate which territories are adjacent based on shared states/counties
+ * @param {Array} territories - All campaign territories
+ * @returns {Object} Map of territory ID to array of adjacent territory IDs
+ */
+const calculateTerritoryAdjacency = (territories) => {
+  const adjacencyMap = {};
+
+  territories.forEach(territory => {
+    const adjacent = new Set();
+
+    // Find territories that share states or are geographically adjacent
+    territories.forEach(other => {
+      if (territory.id === other.id) return;
+
+      // Check for shared states
+      if (territory.states && other.states) {
+        const sharedStates = territory.states.some(s => other.states.includes(s));
+        if (sharedStates) {
+          adjacent.add(other.id);
+        }
+      }
+
+      // Check for shared counties
+      if (territory.counties && other.counties) {
+        const sharedCounties = territory.counties.some(c => other.counties.includes(c));
+        if (sharedCounties) {
+          adjacent.add(other.id);
+        }
+      }
+
+      // For state-based territories, check if states are geographically adjacent
+      // This would require state adjacency data - for now, we'll be permissive
+    });
+
+    adjacencyMap[territory.id] = Array.from(adjacent);
+  });
+
+  return adjacencyMap;
+};
+
+/**
+ * Normalize and sanitize campaign territory data
+ * Ensures both pointValue and victoryPoints exist, adds adjacentTerritories
+ * @param {Object} campaign - Campaign data to normalize
+ * @returns {Object} Normalized campaign data
+ */
+const normalizeCampaignData = (campaign) => {
+  const normalized = { ...campaign };
+
+  // Normalize territories
+  if (Array.isArray(normalized.territories)) {
+    // First pass: normalize individual territory fields
+    normalized.territories = normalized.territories.map(t => {
+      const vpValue = t.victoryPoints ?? t.pointValue ?? 1;
+
+      return {
+        ...t,
+        // Ensure both fields exist for backward compatibility
+        victoryPoints: vpValue,
+        pointValue: vpValue,
+        // Ensure adjacentTerritories exists (will be calculated below)
+        adjacentTerritories: t.adjacentTerritories || []
+      };
+    });
+
+    // Second pass: auto-calculate adjacencies if missing or empty
+    const adjacencyMap = calculateTerritoryAdjacency(normalized.territories);
+    normalized.territories = normalized.territories.map(t => ({
+      ...t,
+      adjacentTerritories: t.adjacentTerritories.length > 0
+        ? t.adjacentTerritories
+        : adjacencyMap[t.id] || []
+    }));
+  }
+
+  return normalized;
+};
+
+/**
  * Validates and sanitizes imported campaign data
  * @param {Object} data - Raw imported data
  * @returns {Object} { success: boolean, campaign?: Object, error?: string }
@@ -212,9 +298,12 @@ export const validateImportedCampaign = (data) => {
     // For now, we'll allow different versions, but log a warning
   }
 
+  // Normalize data to ensure all required fields exist
+  const normalizedCampaign = normalizeCampaignData(data);
+
   return {
     success: true,
-    campaign: data
+    campaign: normalizedCampaign
   };
 };
 

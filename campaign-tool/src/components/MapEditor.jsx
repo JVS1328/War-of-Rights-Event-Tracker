@@ -511,7 +511,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           return {
             ...t,
             svgPath: combineStatePaths(t.states),
-            center: calculateGroupCenter(t.states)
+            center: calculateGroupCenter(t.states),
+            // Ensure both victoryPoints and pointValue exist
+            victoryPoints: t.victoryPoints,
+            pointValue: t.victoryPoints,
+            // adjacentTerritories will be auto-calculated on import/export
+            adjacentTerritories: []
           };
         }
         // Update SVG path and center for county-based territories
@@ -526,11 +531,23 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               id: c.id,
               name: c.name,
               svgPath: c.svgPath
-            }))
+            })),
+            // Ensure both victoryPoints and pointValue exist
+            victoryPoints: t.victoryPoints,
+            pointValue: t.victoryPoints,
+            // adjacentTerritories will be auto-calculated on import/export
+            adjacentTerritories: []
           };
         }
         // Otherwise preserve existing SVG path and center
-        return { ...t };
+        return {
+          ...t,
+          // Ensure both victoryPoints and pointValue exist
+          victoryPoints: t.victoryPoints,
+          pointValue: t.victoryPoints,
+          // adjacentTerritories will be auto-calculated on import/export
+          adjacentTerritories: t.adjacentTerritories || []
+        };
       });
 
     if (modifiedTerritories.length < 2) {

@@ -83,3 +83,8 @@ console.log('  ✓ Battle history');
 console.log('  ✓ Settings (all gameplay & CP settings)');
 console.log('  ✓ Map configuration');
 console.log('  ✓ Version tracking for future compatibility');
+console.log('\nAuto-normalization features:');
+console.log('  ✓ Accepts both victoryPoints and pointValue fields');
+console.log('  ✓ Auto-calculates adjacentTerritories for custom maps');
+console.log('  ✓ Normalizes grouped territories (states/counties)');
+console.log('  ✓ Handles Map Editor custom territories');
