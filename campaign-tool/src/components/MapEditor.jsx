@@ -18,6 +18,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   // County-specific state
   const [selectedCounties, setSelectedCounties] = useState(new Set());
   const [hoveredCounty, setHoveredCounty] = useState(null);
+  const [multiSelectCounties, setMultiSelectCounties] = useState(new Set());
 
   // Available War of Rights maps organized by mapset
   const mapsByMapset = {
@@ -325,33 +326,140 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setEditingTerritory(null);
   };
 
-  const handleCountyClick = (county) => {
-    const newSelected = new Set(selectedCounties);
+  const handleCountyClick = (county, ctrlKey = false) => {
+    if (ctrlKey) {
+      // Find territory containing this county
+      const territory = territories.find(t => t.counties && t.counties.includes(county.id));
 
-    if (newSelected.has(county.id)) {
-      // Deselect county
-      newSelected.delete(county.id);
-      // Remove from territories
-      setTerritories(territories.filter(t => !t.counties || !t.counties.includes(county.id)));
+      if (territory && territory.counties.length > 1) {
+        // Ctrl+Click on merged territory: Split it
+        splitCountyTerritory(territory);
+        setMultiSelectCounties(new Set());
+      } else if (!territory) {
+        // Ctrl+Click on non-selected county: Select it first, then add to multi-select
+        const newSelected = new Set(selectedCounties);
+        newSelected.add(county.id);
+
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: county.name,
+          counties: [county.id],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          isCountyBased: true
+        };
+        setTerritories([...territories, newTerritory]);
+        setSelectedCounties(newSelected);
+
+        // Add to multi-select
+        const newMultiSelect = new Set(multiSelectCounties);
+        newMultiSelect.add(county.id);
+        setMultiSelectCounties(newMultiSelect);
+
+        // If we have 2+ counties selected, merge them
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedCounties(newMultiSelect);
+        }
+      } else {
+        // Ctrl+Click on single county territory: Add to multi-select for merging
+        const newMultiSelect = new Set(multiSelectCounties);
+
+        if (newMultiSelect.has(county.id)) {
+          newMultiSelect.delete(county.id);
+        } else {
+          newMultiSelect.add(county.id);
+        }
+
+        setMultiSelectCounties(newMultiSelect);
+
+        // If we have 2+ counties selected, merge them
+        if (newMultiSelect.size >= 2) {
+          mergeSelectedCounties(newMultiSelect);
+        }
+      }
     } else {
-      // Select county
-      newSelected.add(county.id);
+      // Normal click: toggle county selection
+      const newSelected = new Set(selectedCounties);
 
-      // Create a new territory for this county
-      const newTerritory = {
-        id: `territory-${Date.now()}`,
-        name: county.name,
-        counties: [county.id],
-        victoryPoints: 1,
-        maps: [],
-        owner: 'Contested',
-        initialOwner: 'Contested',
-        isCountyBased: true
-      };
-      setTerritories([...territories, newTerritory]);
+      if (newSelected.has(county.id)) {
+        // Deselect county
+        newSelected.delete(county.id);
+        // Remove from territories
+        setTerritories(territories.filter(t => !t.counties || !t.counties.includes(county.id)));
+      } else {
+        // Select county
+        newSelected.add(county.id);
+
+        // Create a new territory for this county
+        const newTerritory = {
+          id: `territory-${Date.now()}`,
+          name: county.name,
+          counties: [county.id],
+          victoryPoints: 1,
+          maps: [],
+          owner: 'Contested',
+          initialOwner: 'Contested',
+          isCountyBased: true
+        };
+        setTerritories([...territories, newTerritory]);
+      }
+
+      setSelectedCounties(newSelected);
+      setMultiSelectCounties(new Set()); // Clear multi-select on normal click
     }
+  };
 
-    setSelectedCounties(newSelected);
+  const mergeSelectedCounties = (countiesToMerge) => {
+    const countyArray = Array.from(countiesToMerge);
+
+    // Find all territories that contain these counties
+    const affectedTerritories = territories.filter(t =>
+      t.counties && t.counties.some(c => countyArray.includes(c))
+    );
+
+    if (affectedTerritories.length === 0) return;
+
+    // Collect all counties from affected territories
+    const allCounties = [...new Set(affectedTerritories.flatMap(t => t.counties))];
+
+    // Create merged territory
+    const mergedName = affectedTerritories.map(t => t.name).join(' & ');
+    const mergedTerritory = {
+      id: `territory-${Date.now()}`,
+      name: mergedName,
+      counties: allCounties,
+      victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
+      maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+      owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+      isCountyBased: true
+    };
+
+    // Remove old territories and add merged one
+    const remainingTerritories = territories.filter(t => !affectedTerritories.includes(t));
+    setTerritories([...remainingTerritories, mergedTerritory]);
+  };
+
+  const splitCountyTerritory = (territory) => {
+    // Remove the merged territory
+    const remainingTerritories = territories.filter(t => t.id !== territory.id);
+
+    // Create individual territories for each county
+    const countyObjects = countyData.counties.filter(c => territory.counties.includes(c.id));
+    const newTerritories = countyObjects.map(county => ({
+      id: `territory-${Date.now()}-${county.id}`,
+      name: county.name,
+      counties: [county.id],
+      victoryPoints: 1,
+      maps: [],
+      owner: territory.owner || territory.initialOwner,
+      initialOwner: territory.owner || territory.initialOwner,
+      isCountyBased: true
+    }));
+
+    setTerritories([...remainingTerritories, ...newTerritories]);
   };
 
   const handleSave = () => {
@@ -491,6 +599,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         {countyData.counties.map(county => {
                           const isSelected = selectedCounties.has(county.id);
                           const isHovered = hoveredCounty === county.id;
+                          const isMultiSelected = multiSelectCounties.has(county.id);
 
                           // Find territory that owns this county
                           const owningTerritory = territories.find(t =>
@@ -507,19 +616,23 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                             else fillColor = '#fbbf24'; // Amber (unassigned)
                           }
 
+                          // Highlight multi-selected counties with black border
+                          const strokeColor = isMultiSelected ? '#000000' : '#94a3b8';
+                          const strokeWidth = isMultiSelected ? '3' : '0.2';
+
                           return (
                             <path
                               key={county.id}
                               d={county.svgPath}
                               fill={fillColor}
                               fillOpacity={isSelected ? 0.6 : 0.3}
-                              stroke="#ffffff"
-                              strokeWidth={isHovered ? "2" : "0.5"}
+                              stroke={strokeColor}
+                              strokeWidth={strokeWidth}
                               className="cursor-pointer transition-all duration-200"
                               style={{
                                 filter: isHovered ? 'brightness(1.3)' : 'none'
                               }}
-                              onClick={() => handleCountyClick(county)}
+                              onClick={(e) => handleCountyClick(county, e.ctrlKey || e.metaKey)}
                               onMouseEnter={() => setHoveredCounty(county.id)}
                               onMouseLeave={() => setHoveredCounty(null)}
                             />
@@ -598,9 +711,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               {isCountyMode ? (
                 <ul className="space-y-1 list-disc list-inside">
                   <li>Click counties to select/deselect them</li>
+                  <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
+                  <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
                   <li>State boundaries are shown in red</li>
                   <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
-                  <li>Each county becomes a territory automatically</li>
                   <li>Configure territories in the right panel</li>
                 </ul>
               ) : (
@@ -622,7 +736,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 Territories ({territories.length})
               </h3>
               <p className="text-sm text-slate-400">
-                {selectedStates.size} states selected
+                {isCountyMode ? selectedCounties.size : selectedStates.size} {isCountyMode ? 'counties' : 'states'} selected
               </p>
             </div>
 
