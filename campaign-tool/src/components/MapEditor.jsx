@@ -638,18 +638,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                             />
                           );
                         })}
-                        {/* Render state borders on top */}
-                        {countyData.stateBorders && countyData.stateBorders.map((border, idx) => (
-                          <path
-                            key={`border-${idx}`}
-                            d={border.svgPath}
-                            fill="none"
-                            stroke="#ef4444"
-                            strokeWidth="2"
-                            className="pointer-events-none"
-                            opacity="0.7"
-                          />
-                        ))}
                       </>
                     ) : (
                       <text x="500" y="300" textAnchor="middle" fill="#fff" fontSize="20">
@@ -713,7 +701,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   <li>Click counties to select/deselect them</li>
                   <li>Ctrl+Click on counties to merge them into one territory (2+ counties)</li>
                   <li>Ctrl+Click on a merged territory to split it back into individual counties</li>
-                  <li>State boundaries are shown in red</li>
                   <li>Selected counties are colored by owner (Blue=USA, Red=CSA, Orange=Neutral)</li>
                   <li>Configure territories in the right panel</li>
                 </ul>
@@ -736,7 +723,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 Territories ({territories.length})
               </h3>
               <p className="text-sm text-slate-400">
-                {isCountyMode ? selectedCounties.size : selectedStates.size} {isCountyMode ? 'counties' : 'states'} selected
+                {isCountyMode
+                  ? `${selectedCounties.size} counties selected (${Array.from(selectedStatesForCounties).join(', ')})`
+                  : `${selectedStates.size} states selected`
+                }
               </p>
             </div>
 
