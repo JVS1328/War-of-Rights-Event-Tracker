@@ -2,6 +2,7 @@ import { INITIAL_TERRITORIES } from './territories';
 import { getDefaultStartDate } from '../utils/dateSystem';
 import { DEFAULT_STARTING_CP } from '../utils/cpSystem';
 import { getStateByAbbr, calculateGroupCenter } from './usaStates';
+import { CAMPAIGN_VERSION } from '../utils/campaignValidation';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -245,6 +246,9 @@ export const createDefaultCampaign = (customMap = null) => {
   const initialVP = calculateTerritoryVP(territories);
 
   return {
+    // === VERSION ===
+    version: CAMPAIGN_VERSION,
+
     // === EXISTING FIELDS (preserved for backward compatibility) ===
     id: Date.now().toString(),
     name: 'New Campaign',
@@ -256,21 +260,21 @@ export const createDefaultCampaign = (customMap = null) => {
     battles: [],
     customMap: customMap || null,
     mapTemplate: customMap ? 'custom' : 'civil-war-default',
-    
+
     // === NEW CP SYSTEM FIELDS ===
     combatPowerUSA: DEFAULT_STARTING_CP,
     combatPowerCSA: DEFAULT_STARTING_CP,
     campaignDate: campaignDate,
     cpSystemEnabled: true,
     cpHistory: [],
-    
+
     // Settings with both old and new fields
     settings: {
       // Core settings
       allowTerritoryRecapture: true,
       requireAdjacentAttack: false,
       casualtyTracking: true,
-      
+
       // New CP system settings
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,

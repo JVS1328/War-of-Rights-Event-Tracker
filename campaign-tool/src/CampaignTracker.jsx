@@ -12,6 +12,7 @@ import { processBattleResult } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
+import { validateImportedCampaign, prepareCampaignExport, formatImportError } from './utils/campaignValidation';
 
 const STORAGE_KEY = 'WarOfRightsCampaignTracker';
 
@@ -188,10 +189,8 @@ const CampaignTracker = () => {
   const exportCampaign = () => {
     if (!campaign) return;
 
-    const data = {
-      ...campaign,
-      exportDate: new Date().toISOString()
-    };
+    // Prepare campaign data with version and metadata
+    const data = prepareCampaignExport(campaign);
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -210,22 +209,32 @@ const CampaignTracker = () => {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        
-        // Validate basic structure
-        if (!data.territories || !data.battles || !data.settings) {
-          alert('Invalid campaign file format');
+
+        // Comprehensive validation of campaign state
+        const validation = validateImportedCampaign(data);
+
+        if (!validation.success) {
+          alert(formatImportError(validation.error));
           return;
         }
 
-        setCampaign(data);
+        // Import successful - update campaign state and reset UI
+        setCampaign(validation.campaign);
         setSelectedTerritory(null);
         setShowVictory(null);
+        setShowBattleRecorder(false);
+        setShowSettings(false);
+        setShowMapEditor(false);
+
         alert('Campaign imported successfully!');
       } catch (error) {
-        alert('Error importing campaign: ' + error.message);
+        alert(formatImportError(`JSON parsing error: ${error.message}`));
       }
     };
     reader.readAsText(file);
+
+    // Reset file input to allow re-importing the same file
+    event.target.value = '';
   };
 
   const saveSettings = (newSettings) => {

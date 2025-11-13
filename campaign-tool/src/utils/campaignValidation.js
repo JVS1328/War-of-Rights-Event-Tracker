@@ -1,0 +1,332 @@
+/**
+ * Campaign State Validation Utility
+ *
+ * Provides comprehensive validation for campaign import/export operations.
+ * Ensures all critical state fields are present and valid.
+ *
+ * Following SOLID principles:
+ * - Single Responsibility: Only handles campaign state validation
+ * - Open/Closed: Extendable for new validation rules
+ */
+
+export const CAMPAIGN_VERSION = '1.0.0';
+
+/**
+ * Validates the complete campaign state structure
+ * @param {Object} data - The campaign data to validate
+ * @returns {Object} { isValid: boolean, errors: string[] }
+ */
+export const validateCampaignState = (data) => {
+  const errors = [];
+
+  // === CORE IDENTIFICATION ===
+  if (!data.id || typeof data.id !== 'string') {
+    errors.push('Missing or invalid campaign ID');
+  }
+  if (!data.name || typeof data.name !== 'string') {
+    errors.push('Missing or invalid campaign name');
+  }
+  if (!data.startDate || typeof data.startDate !== 'string') {
+    errors.push('Missing or invalid start date');
+  }
+
+  // === TURN & TIME SYSTEM ===
+  if (typeof data.currentTurn !== 'number' || data.currentTurn < 1) {
+    errors.push('Missing or invalid current turn (must be >= 1)');
+  }
+
+  // Validate campaign date object
+  if (!data.campaignDate || typeof data.campaignDate !== 'object') {
+    errors.push('Missing campaign date object');
+  } else {
+    const { month, year, turn, displayString } = data.campaignDate;
+
+    if (typeof month !== 'number' || month < 1 || month > 12) {
+      errors.push('Invalid campaign date month (must be 1-12)');
+    }
+    if (typeof year !== 'number' || year < 1861 || year > 1865) {
+      errors.push('Invalid campaign date year (must be 1861-1865)');
+    }
+    if (typeof turn !== 'number' || turn < 1) {
+      errors.push('Invalid campaign date turn');
+    }
+    if (!displayString || typeof displayString !== 'string') {
+      errors.push('Missing campaign date display string');
+    }
+  }
+
+  // === VICTORY POINTS ===
+  if (typeof data.victoryPointsUSA !== 'number' || data.victoryPointsUSA < 0) {
+    errors.push('Missing or invalid USA victory points');
+  }
+  if (typeof data.victoryPointsCSA !== 'number' || data.victoryPointsCSA < 0) {
+    errors.push('Missing or invalid CSA victory points');
+  }
+
+  // === TERRITORIES ===
+  if (!Array.isArray(data.territories)) {
+    errors.push('Missing or invalid territories array');
+  } else if (data.territories.length === 0) {
+    errors.push('Territories array is empty');
+  } else {
+    // Validate territory structure
+    data.territories.forEach((territory, index) => {
+      if (!territory.id || typeof territory.id !== 'string') {
+        errors.push(`Territory ${index}: Missing or invalid ID`);
+      }
+      if (!territory.name || typeof territory.name !== 'string') {
+        errors.push(`Territory ${index}: Missing or invalid name`);
+      }
+      if (!['USA', 'CSA', 'NEUTRAL'].includes(territory.owner)) {
+        errors.push(`Territory ${index}: Invalid owner (must be USA, CSA, or NEUTRAL)`);
+      }
+
+      // Accept either victoryPoints OR pointValue (they're synonyms)
+      const vpValue = territory.victoryPoints ?? territory.pointValue;
+      if (typeof vpValue !== 'number' || vpValue < 0) {
+        errors.push(`Territory ${index}: Invalid victory/point value`);
+      }
+
+      // adjacentTerritories is optional - can be empty or missing
+      // (will be auto-calculated if needed)
+      if (territory.adjacentTerritories !== undefined && !Array.isArray(territory.adjacentTerritories)) {
+        errors.push(`Territory ${index}: Invalid adjacent territories (must be array if present)`);
+      }
+
+      if (!territory.svgPath || typeof territory.svgPath !== 'string') {
+        errors.push(`Territory ${index}: Missing or invalid SVG path`);
+      }
+      if (!territory.center || typeof territory.center.x !== 'number' || typeof territory.center.y !== 'number') {
+        errors.push(`Territory ${index}: Missing or invalid center coordinates`);
+      }
+    });
+  }
+
+  // === COMBAT POWER SYSTEM ===
+  if (typeof data.combatPowerUSA !== 'number' || data.combatPowerUSA < 0) {
+    errors.push('Missing or invalid USA combat power');
+  }
+  if (typeof data.combatPowerCSA !== 'number' || data.combatPowerCSA < 0) {
+    errors.push('Missing or invalid CSA combat power');
+  }
+  if (typeof data.cpSystemEnabled !== 'boolean') {
+    errors.push('Missing or invalid CP system enabled flag');
+  }
+
+  if (!Array.isArray(data.cpHistory)) {
+    errors.push('Missing or invalid CP history array');
+  }
+
+  // === BATTLES ===
+  if (!Array.isArray(data.battles)) {
+    errors.push('Missing or invalid battles array');
+  } else {
+    // Validate battle structure for non-empty arrays
+    data.battles.forEach((battle, index) => {
+      if (!battle.id || typeof battle.id !== 'string') {
+        errors.push(`Battle ${index}: Missing or invalid ID`);
+      }
+      if (typeof battle.turn !== 'number' || battle.turn < 1) {
+        errors.push(`Battle ${index}: Invalid turn number`);
+      }
+      if (!battle.territoryId || typeof battle.territoryId !== 'string') {
+        errors.push(`Battle ${index}: Missing or invalid territory ID`);
+      }
+      if (!battle.mapName || typeof battle.mapName !== 'string') {
+        errors.push(`Battle ${index}: Missing or invalid map name`);
+      }
+      if (!['USA', 'CSA'].includes(battle.attacker)) {
+        errors.push(`Battle ${index}: Invalid attacker (must be USA or CSA)`);
+      }
+      if (!['USA', 'CSA'].includes(battle.winner)) {
+        errors.push(`Battle ${index}: Invalid winner (must be USA or CSA)`);
+      }
+    });
+  }
+
+  // === SETTINGS ===
+  if (!data.settings || typeof data.settings !== 'object') {
+    errors.push('Missing settings object');
+  } else {
+    const { allowTerritoryRecapture, requireAdjacentAttack, casualtyTracking } = data.settings;
+
+    if (typeof allowTerritoryRecapture !== 'boolean') {
+      errors.push('Settings: Invalid allowTerritoryRecapture flag');
+    }
+    if (typeof requireAdjacentAttack !== 'boolean') {
+      errors.push('Settings: Invalid requireAdjacentAttack flag');
+    }
+    if (typeof casualtyTracking !== 'boolean') {
+      errors.push('Settings: Invalid casualtyTracking flag');
+    }
+
+    // Validate CP system settings
+    if (data.cpSystemEnabled) {
+      if (typeof data.settings.startingCP !== 'number' || data.settings.startingCP < 0) {
+        errors.push('Settings: Invalid starting CP value');
+      }
+      if (typeof data.settings.cpGenerationEnabled !== 'boolean') {
+        errors.push('Settings: Invalid CP generation enabled flag');
+      }
+      if (typeof data.settings.turnsPerYear !== 'number' || data.settings.turnsPerYear < 1) {
+        errors.push('Settings: Invalid turns per year');
+      }
+
+      // Validate campaign date settings
+      if (!data.settings.campaignStartDate || typeof data.settings.campaignStartDate !== 'object') {
+        errors.push('Settings: Missing campaign start date');
+      }
+      if (!data.settings.campaignEndDate || typeof data.settings.campaignEndDate !== 'object') {
+        errors.push('Settings: Missing campaign end date');
+      }
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+/**
+ * Calculate which territories are adjacent based on shared states/counties
+ * @param {Array} territories - All campaign territories
+ * @returns {Object} Map of territory ID to array of adjacent territory IDs
+ */
+const calculateTerritoryAdjacency = (territories) => {
+  const adjacencyMap = {};
+
+  territories.forEach(territory => {
+    const adjacent = new Set();
+
+    // Find territories that share states or are geographically adjacent
+    territories.forEach(other => {
+      if (territory.id === other.id) return;
+
+      // Check for shared states
+      if (territory.states && other.states) {
+        const sharedStates = territory.states.some(s => other.states.includes(s));
+        if (sharedStates) {
+          adjacent.add(other.id);
+        }
+      }
+
+      // Check for shared counties
+      if (territory.counties && other.counties) {
+        const sharedCounties = territory.counties.some(c => other.counties.includes(c));
+        if (sharedCounties) {
+          adjacent.add(other.id);
+        }
+      }
+
+      // For state-based territories, check if states are geographically adjacent
+      // This would require state adjacency data - for now, we'll be permissive
+    });
+
+    adjacencyMap[territory.id] = Array.from(adjacent);
+  });
+
+  return adjacencyMap;
+};
+
+/**
+ * Normalize and sanitize campaign territory data
+ * Ensures both pointValue and victoryPoints exist, adds adjacentTerritories
+ * @param {Object} campaign - Campaign data to normalize
+ * @returns {Object} Normalized campaign data
+ */
+const normalizeCampaignData = (campaign) => {
+  const normalized = { ...campaign };
+
+  // Normalize territories
+  if (Array.isArray(normalized.territories)) {
+    // First pass: normalize individual territory fields
+    normalized.territories = normalized.territories.map(t => {
+      const vpValue = t.victoryPoints ?? t.pointValue ?? 1;
+
+      return {
+        ...t,
+        // Ensure both fields exist for backward compatibility
+        victoryPoints: vpValue,
+        pointValue: vpValue,
+        // Ensure adjacentTerritories exists (will be calculated below)
+        adjacentTerritories: t.adjacentTerritories || []
+      };
+    });
+
+    // Second pass: auto-calculate adjacencies if missing or empty
+    const adjacencyMap = calculateTerritoryAdjacency(normalized.territories);
+    normalized.territories = normalized.territories.map(t => ({
+      ...t,
+      adjacentTerritories: t.adjacentTerritories.length > 0
+        ? t.adjacentTerritories
+        : adjacencyMap[t.id] || []
+    }));
+  }
+
+  return normalized;
+};
+
+/**
+ * Validates and sanitizes imported campaign data
+ * @param {Object} data - Raw imported data
+ * @returns {Object} { success: boolean, campaign?: Object, error?: string }
+ */
+export const validateImportedCampaign = (data) => {
+  // Check if data exists
+  if (!data || typeof data !== 'object') {
+    return {
+      success: false,
+      error: 'Invalid data: Not a valid JSON object'
+    };
+  }
+
+  // Perform comprehensive validation
+  const validation = validateCampaignState(data);
+
+  if (!validation.isValid) {
+    const errorList = validation.errors.join('\n• ');
+    return {
+      success: false,
+      error: `Campaign validation failed:\n\n• ${errorList}`
+    };
+  }
+
+  // Version compatibility check (for future use)
+  if (data.version && data.version !== CAMPAIGN_VERSION) {
+    console.warn(`Campaign version mismatch: imported ${data.version}, expected ${CAMPAIGN_VERSION}`);
+    // For now, we'll allow different versions, but log a warning
+  }
+
+  // Normalize data to ensure all required fields exist
+  const normalizedCampaign = normalizeCampaignData(data);
+
+  return {
+    success: true,
+    campaign: normalizedCampaign
+  };
+};
+
+/**
+ * Prepares campaign data for export
+ * Adds metadata and version information
+ * @param {Object} campaign - Current campaign state
+ * @returns {Object} Export-ready campaign data
+ */
+export const prepareCampaignExport = (campaign) => {
+  return {
+    ...campaign,
+    version: CAMPAIGN_VERSION,
+    exportDate: new Date().toISOString(),
+    exportedBy: 'War of Rights Campaign Tracker'
+  };
+};
+
+/**
+ * Generate a human-readable error message for import failures
+ * @param {string} errorMessage - The error message
+ * @returns {string} Formatted error message
+ */
+export const formatImportError = (errorMessage) => {
+  return `Failed to import campaign file.\n\n${errorMessage}\n\nPlease ensure you're importing a valid campaign file exported from this application.`;
+};
