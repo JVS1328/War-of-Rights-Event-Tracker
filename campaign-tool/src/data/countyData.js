@@ -26,22 +26,18 @@ const fetchGeoJSON = async () => {
   if (geoJsonCache) return geoJsonCache;
 
   try {
-    // Using a reliable public source for US county GeoJSON (simplified for performance)
-    // This is a 5m (1:5,000,000) resolution version which is good for overview maps
-    const response = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json');
-    const topoJson = await response.json();
-
-    // Convert TopoJSON to GeoJSON
-    // We'll need to use topojson-client library, but for now we'll use a simpler GeoJSON source
-    geoJsonCache = topoJson;
-    return topoJson;
-  } catch (error) {
-    console.error('Error fetching county GeoJSON:', error);
-    // Fallback to alternative source
+    // Using Plotly's GeoJSON counties dataset (direct GeoJSON, no conversion needed)
+    console.log('Fetching county GeoJSON data...');
     const response = await fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json');
     const geoJson = await response.json();
+
+    console.log('GeoJSON fetched, features count:', geoJson.features?.length || 0);
+
     geoJsonCache = geoJson;
     return geoJson;
+  } catch (error) {
+    console.error('Error fetching county GeoJSON:', error);
+    throw error;
   }
 };
 
