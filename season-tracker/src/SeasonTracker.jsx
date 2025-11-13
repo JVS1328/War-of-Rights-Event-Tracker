@@ -250,6 +250,7 @@ const SeasonTracker = () => {
       leadA: null,
       leadB: null,
       isPlayoffs: false,
+      isSingleRoundLeads: false,
       leadA_r1: null,
       leadB_r1: null,
       leadA_r2: null,
@@ -331,8 +332,9 @@ const SeasonTracker = () => {
 
     weeksToProcess.forEach(week => {
       if (!week.round1Winner && !week.round2Winner) return;
-      
+
       const isPlayoffs = week.isPlayoffs || false;
+      const isSingleRoundLeads = week.isSingleRoundLeads || false;
 
       // Process each round
       [1, 2].forEach(roundNum => {
@@ -341,10 +343,10 @@ const SeasonTracker = () => {
 
         const winningTeam = week[`team${winner}`];
         const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
-        
-        // Get leads based on playoffs mode
+
+        // Get leads based on playoffs or single round leads mode
         let leadWinner, leadLoser;
-        if (isPlayoffs) {
+        if (isPlayoffs || isSingleRoundLeads) {
           leadWinner = week[`lead${winner}_r${roundNum}`];
           leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
         } else {
@@ -409,18 +411,30 @@ const SeasonTracker = () => {
       // 2-0 Sweep Bonus (skip in playoffs)
       if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
         const sweepTeam = week[`team${week.round1Winner}`];
-        const sweepLead = week[`lead${week.round1Winner}`];
-        
-        sweepTeam.forEach(unit => {
-          // Skip non-token units
-          if (!stats[unit]) return;
-          
-          if (unit === sweepLead) {
-            stats[unit].points += pointSystem.bonus2_0Lead;
-          } else {
-            stats[unit].points += pointSystem.bonus2_0Assist;
-          }
-        });
+        // Use round-specific leads for single round leads mode, otherwise use week-level lead
+        let sweepLead;
+        if (isSingleRoundLeads) {
+          // For single round leads, we need to determine if same unit led both rounds
+          const r1Lead = week[`lead${week.round1Winner}_r1`];
+          const r2Lead = week[`lead${week.round1Winner}_r2`];
+          // Only award sweep bonus if same unit led both rounds
+          sweepLead = (r1Lead === r2Lead) ? r1Lead : null;
+        } else {
+          sweepLead = week[`lead${week.round1Winner}`];
+        }
+
+        if (sweepLead) {
+          sweepTeam.forEach(unit => {
+            // Skip non-token units
+            if (!stats[unit]) return;
+
+            if (unit === sweepLead) {
+              stats[unit].points += pointSystem.bonus2_0Lead;
+            } else {
+              stats[unit].points += pointSystem.bonus2_0Assist;
+            }
+          });
+        }
       }
     });
 
@@ -479,6 +493,7 @@ const SeasonTracker = () => {
       prevWeeks.forEach(week => {
         if (!week.round1Winner && !week.round2Winner) return;
         const isPlayoffs = week.isPlayoffs || false;
+        const isSingleRoundLeads = week.isSingleRoundLeads || false;
 
         [1, 2].forEach(roundNum => {
           const winner = week[`round${roundNum}Winner`];
@@ -486,9 +501,9 @@ const SeasonTracker = () => {
 
           const winningTeam = week[`team${winner}`];
           const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
-          
+
           let leadWinner, leadLoser;
-          if (isPlayoffs) {
+          if (isPlayoffs || isSingleRoundLeads) {
             leadWinner = week[`lead${winner}_r${roundNum}`];
             leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
           } else {
@@ -517,15 +532,27 @@ const SeasonTracker = () => {
 
         if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
           const sweepTeam = week[`team${week.round1Winner}`];
-          const sweepLead = week[`lead${week.round1Winner}`];
-          
-          sweepTeam.forEach(unit => {
-            if (unit === sweepLead) {
-              tempStats[unit].points += pointSystem.bonus2_0Lead;
-            } else {
-              tempStats[unit].points += pointSystem.bonus2_0Assist;
-            }
-          });
+          // Use round-specific leads for single round leads mode, otherwise use week-level lead
+          let sweepLead;
+          if (isSingleRoundLeads) {
+            // For single round leads, we need to determine if same unit led both rounds
+            const r1Lead = week[`lead${week.round1Winner}_r1`];
+            const r2Lead = week[`lead${week.round1Winner}_r2`];
+            // Only award sweep bonus if same unit led both rounds
+            sweepLead = (r1Lead === r2Lead) ? r1Lead : null;
+          } else {
+            sweepLead = week[`lead${week.round1Winner}`];
+          }
+
+          if (sweepLead) {
+            sweepTeam.forEach(unit => {
+              if (unit === sweepLead) {
+                tempStats[unit].points += pointSystem.bonus2_0Lead;
+              } else {
+                tempStats[unit].points += pointSystem.bonus2_0Assist;
+              }
+            });
+          }
         }
       });
 
@@ -728,7 +755,8 @@ const SeasonTracker = () => {
 
     weeksToProcess.forEach(week => {
       const isPlayoffs = week.isPlayoffs || false;
-      
+      const isSingleRoundLeads = week.isSingleRoundLeads || false;
+
       [1, 2].forEach(roundNum => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
@@ -744,7 +772,7 @@ const SeasonTracker = () => {
 
         // Get leads for this round
         let leadA, leadB;
-        if (isPlayoffs) {
+        if (isPlayoffs || isSingleRoundLeads) {
           leadA = week[`leadA_r${roundNum}`];
           leadB = week[`leadB_r${roundNum}`];
         } else {
@@ -1439,6 +1467,7 @@ const SeasonTracker = () => {
               leadA: week.lead_A || null,
               leadB: week.lead_B || null,
               isPlayoffs: week.playoffs || false,
+              isSingleRoundLeads: week.single_round_leads || false,
               leadA_r1: week.lead_A_r1 || null,
               leadB_r1: week.lead_B_r1 || null,
               leadA_r2: week.lead_A_r2 || null,
@@ -3650,7 +3679,10 @@ const SeasonTracker = () => {
                   <input
                     type="checkbox"
                     checked={selectedWeek.isPlayoffs || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, { isPlayoffs: e.target.checked })}
+                    onChange={(e) => updateWeek(selectedWeek.id, {
+                      isPlayoffs: e.target.checked,
+                      ...(e.target.checked && { isSingleRoundLeads: false })
+                    })}
                     className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
                   />
                   <Star className="w-4 h-4" />
@@ -3658,10 +3690,88 @@ const SeasonTracker = () => {
                 </label>
               </div>
 
+              {/* Single Round Leads Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedWeek.isSingleRoundLeads || false}
+                    onChange={(e) => updateWeek(selectedWeek.id, {
+                      isSingleRoundLeads: e.target.checked,
+                      ...(e.target.checked && { isPlayoffs: false })
+                    })}
+                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                  />
+                  <Star className="w-4 h-4" />
+                  <span className="font-semibold">Single Round Leads</span>
+                </label>
+              </div>
+
               {/* Playoffs Lead Selection */}
               {selectedWeek.isPlayoffs && (
                 <div className="mb-6 bg-slate-600 rounded-lg p-4">
                   <h3 className="text-lg font-bold text-amber-400 mb-3">Playoff Round Leads</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.A}</label>
+                      <select
+                        value={selectedWeek.leadA_r1 || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {selectedWeek.teamA.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.B}</label>
+                      <select
+                        value={selectedWeek.leadB_r1 || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {selectedWeek.teamB.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.A}</label>
+                      <select
+                        value={selectedWeek.leadA_r2 || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {selectedWeek.teamA.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.B}</label>
+                      <select
+                        value={selectedWeek.leadB_r2 || ''}
+                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {selectedWeek.teamB.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Single Round Leads Lead Selection */}
+              {selectedWeek.isSingleRoundLeads && (
+                <div className="mb-6 bg-slate-600 rounded-lg p-4">
+                  <h3 className="text-lg font-bold text-amber-400 mb-3">Round Leads</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.A}</label>
