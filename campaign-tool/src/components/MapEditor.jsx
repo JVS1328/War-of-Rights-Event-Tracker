@@ -241,34 +241,37 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
   const mergeSelectedStates = (statesToMerge) => {
     const stateArray = Array.from(statesToMerge);
-    
-    // Find all territories that contain these states
-    const affectedTerritories = territories.filter(t =>
-      t.states && t.states.some(s => stateArray.includes(s))
-    );
-    
-    if (affectedTerritories.length === 0) return;
-    
-    // Collect all states from affected territories
-    const allStates = [...new Set(affectedTerritories.flatMap(t => t.states))];
-    
-    // Create merged territory
-    const mergedName = affectedTerritories.map(t => t.name).join(' & ');
-    const mergedTerritory = {
-      id: `territory-${Date.now()}`,
-      name: mergedName,
-      states: allStates,
-      victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
-      maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
-      owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
-      initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
-      svgPath: combineStatePaths(allStates),
-      center: calculateGroupCenter(allStates)
-    };
-    
-    // Remove old territories and add merged one
-    const remainingTerritories = territories.filter(t => !affectedTerritories.includes(t));
-    setTerritories([...remainingTerritories, mergedTerritory]);
+
+    // Use callback to work with latest state
+    setTerritories(prev => {
+      // Find all territories that contain these states
+      const affectedTerritories = prev.filter(t =>
+        t.states && t.states.some(s => stateArray.includes(s))
+      );
+
+      if (affectedTerritories.length === 0) return prev;
+
+      // Collect all states from affected territories
+      const allStates = [...new Set(affectedTerritories.flatMap(t => t.states))];
+
+      // Create merged territory
+      const mergedName = affectedTerritories.map(t => t.name).join(' & ');
+      const mergedTerritory = {
+        id: `territory-${Date.now()}`,
+        name: mergedName,
+        states: allStates,
+        victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
+        maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+        owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+        initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+        svgPath: combineStatePaths(allStates),
+        center: calculateGroupCenter(allStates)
+      };
+
+      // Remove old territories and add merged one
+      const remainingTerritories = prev.filter(t => !affectedTerritories.includes(t));
+      return [...remainingTerritories, mergedTerritory];
+    });
   };
 
   const splitTerritory = (territory) => {
@@ -436,32 +439,35 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const mergeSelectedCounties = (countiesToMerge) => {
     const countyArray = Array.from(countiesToMerge);
 
-    // Find all territories that contain these counties
-    const affectedTerritories = territories.filter(t =>
-      t.counties && t.counties.some(c => countyArray.includes(c))
-    );
+    // Use callback to work with latest state
+    setTerritories(prev => {
+      // Find all territories that contain these counties
+      const affectedTerritories = prev.filter(t =>
+        t.counties && t.counties.some(c => countyArray.includes(c))
+      );
 
-    if (affectedTerritories.length === 0) return;
+      if (affectedTerritories.length === 0) return prev;
 
-    // Collect all counties from affected territories
-    const allCounties = [...new Set(affectedTerritories.flatMap(t => t.counties))];
+      // Collect all counties from affected territories
+      const allCounties = [...new Set(affectedTerritories.flatMap(t => t.counties))];
 
-    // Create merged territory
-    const mergedName = affectedTerritories.map(t => t.name).join(' & ');
-    const mergedTerritory = {
-      id: `territory-${Date.now()}`,
-      name: mergedName,
-      counties: allCounties,
-      victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
-      maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
-      owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
-      initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
-      isCountyBased: true
-    };
+      // Create merged territory
+      const mergedName = affectedTerritories.map(t => t.name).join(' & ');
+      const mergedTerritory = {
+        id: `territory-${Date.now()}`,
+        name: mergedName,
+        counties: allCounties,
+        victoryPoints: Math.max(...affectedTerritories.map(t => t.victoryPoints)),
+        maps: [...new Set(affectedTerritories.flatMap(t => t.maps || []))],
+        owner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+        initialOwner: affectedTerritories[0].owner || affectedTerritories[0].initialOwner,
+        isCountyBased: true
+      };
 
-    // Remove old territories and add merged one
-    const remainingTerritories = territories.filter(t => !affectedTerritories.includes(t));
-    setTerritories([...remainingTerritories, mergedTerritory]);
+      // Remove old territories and add merged one
+      const remainingTerritories = prev.filter(t => !affectedTerritories.includes(t));
+      return [...remainingTerritories, mergedTerritory];
+    });
   };
 
   const splitCountyTerritory = (territory) => {
@@ -490,28 +496,42 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       return;
     }
 
-    // Return modified territories with updated SVG paths and centers
-    const modifiedTerritories = territories.map(t => {
-      // Update SVG path and center for state-based territories
-      if (t.states && t.states.length > 0) {
-        return {
-          ...t,
-          svgPath: combineStatePaths(t.states),
-          center: calculateGroupCenter(t.states)
-        };
-      }
-      // Update SVG path and center for county-based territories
-      if (t.counties && t.counties.length > 0 && countyData) {
-        const countyObjects = countyData.counties.filter(c => t.counties.includes(c.id));
-        return {
-          ...t,
-          svgPath: combineCountyPaths(countyObjects),
-          center: calculateCountyGroupCenter(countyObjects)
-        };
-      }
-      // Otherwise preserve existing SVG path and center
-      return { ...t };
-    });
+    // Filter territories based on current mode and update SVG paths and centers
+    const modifiedTerritories = territories
+      .filter(t => {
+        // In county mode, only save county-based territories
+        if (isCountyMode) {
+          return t.isCountyBased && t.counties && t.counties.length > 0;
+        }
+        // In state mode, only save state-based territories
+        return !t.isCountyBased && t.states && t.states.length > 0;
+      })
+      .map(t => {
+        // Update SVG path and center for state-based territories
+        if (t.states && t.states.length > 0) {
+          return {
+            ...t,
+            svgPath: combineStatePaths(t.states),
+            center: calculateGroupCenter(t.states)
+          };
+        }
+        // Update SVG path and center for county-based territories
+        if (t.counties && t.counties.length > 0 && countyData) {
+          const countyObjects = countyData.counties.filter(c => t.counties.includes(c.id));
+          return {
+            ...t,
+            svgPath: combineCountyPaths(countyObjects),
+            center: calculateCountyGroupCenter(countyObjects)
+          };
+        }
+        // Otherwise preserve existing SVG path and center
+        return { ...t };
+      });
+
+    if (modifiedTerritories.length < 2) {
+      alert('Please create at least 2 territories for your campaign.');
+      return;
+    }
 
     onSave(modifiedTerritories);
   };
@@ -548,10 +568,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       // Show state selector modal
       setShowStateSelector(true);
     } else {
-      // Switch back to states mode
+      // Switch back to states mode - clear all territories and selections
       setIsCountyMode(false);
       setCountyData(null);
       setSelectedStatesForCounties(new Set());
+      setTerritories([]);
+      setSelectedStates(new Set());
+      setSelectedCounties(new Set());
     }
   };
 
