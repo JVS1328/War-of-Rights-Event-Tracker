@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, RotateCcw, Plus, Trash2, GripVertical, MapPin, Map } from 'lucide-react';
+import { X, Save, RotateCcw, Plus, Trash2, MapPin, Map } from 'lucide-react';
 import { usaStates, getStatesByAbbrs, calculateGroupCenter, combineStatePaths } from '../data/usaStates';
 import { getCountiesForStates, calculateCountyGroupCenter, combineCountyPaths, getAvailableStates, getCountyCount } from '../data/countyData';
 
@@ -8,7 +8,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [territories, setTerritories] = useState([]);
   const [hoveredState, setHoveredState] = useState(null);
   const [editingTerritory, setEditingTerritory] = useState(null);
-  const [draggedTerritory, setDraggedTerritory] = useState(null);
   const [multiSelectStates, setMultiSelectStates] = useState(new Set());
   const [mapMode, setMapMode] = useState('states'); // 'states' or 'counties'
   const [showStateSelector, setShowStateSelector] = useState(false);
@@ -540,30 +539,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     }
 
     onSave(modifiedTerritories);
-  };
-
-  const handleDragStart = (e, territoryId) => {
-    setDraggedTerritory(territoryId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e, territoryId) => {
-    e.preventDefault();
-    if (draggedTerritory && draggedTerritory !== territoryId) {
-      const draggedIdx = territories.findIndex(t => t.id === draggedTerritory);
-      const targetIdx = territories.findIndex(t => t.id === territoryId);
-      
-      if (draggedIdx !== -1 && targetIdx !== -1) {
-        const newTerritories = [...territories];
-        const [removed] = newTerritories.splice(draggedIdx, 1);
-        newTerritories.splice(targetIdx, 0, removed);
-        setTerritories(newTerritories);
-      }
-    }
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTerritory(null);
   };
 
   const handleMapModeToggle = () => {
@@ -1115,17 +1090,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 territories.map((territory, index) => (
                   <div
                     key={territory.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, territory.id)}
-                    onDragOver={(e) => handleDragOver(e, territory.id)}
-                    onDragEnd={handleDragEnd}
-                    className={`bg-slate-800 rounded-lg p-3 cursor-move ${
-                      draggedTerritory === territory.id ? 'opacity-50' : ''
-                    }`}
+                    className="bg-slate-800 rounded-lg p-3"
                   >
                     {/* Territory Header */}
                     <div className="flex items-start gap-2 mb-3">
-                      <GripVertical className="w-5 h-5 text-slate-500 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <input
                           type="text"
