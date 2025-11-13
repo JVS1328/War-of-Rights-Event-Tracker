@@ -29,9 +29,9 @@ export const parseCountyData = async () => {
   const svgDoc = await fetchSVG();
 
   const countyPaths = svgDoc.querySelectorAll('path.county');
-  const stateBorders = svgDoc.querySelectorAll('path.state');
-
   const countiesByState = {};
+
+  console.log('Parsing counties, found:', countyPaths.length, 'county paths');
 
   // Parse county paths
   countyPaths.forEach(path => {
@@ -42,8 +42,8 @@ export const parseCountyData = async () => {
       // ID format: StateAbbr_County_Name (e.g., "CA_Los_Angeles")
       const parts = id.split('_');
       if (parts.length >= 2) {
-        const stateAbbr = parts[0];
-        const countyName = parts.slice(1).join(' ');
+        const stateAbbr = parts[0].toUpperCase();
+        const countyName = parts.slice(1).join(' ').replace(/-/g, ' ');
 
         if (!countiesByState[stateAbbr]) {
           countiesByState[stateAbbr] = {
@@ -62,20 +62,7 @@ export const parseCountyData = async () => {
     }
   });
 
-  // Parse state border paths
-  stateBorders.forEach(path => {
-    const id = path.getAttribute('id');
-    const d = path.getAttribute('d');
-
-    if (id && d) {
-      // ID format might be just the state abbreviation or "state_XX"
-      const stateAbbr = id.replace('state_', '').toUpperCase();
-
-      if (countiesByState[stateAbbr]) {
-        countiesByState[stateAbbr].stateBorder = d;
-      }
-    }
-  });
+  console.log('Parsed counties by state:', Object.keys(countiesByState).length, 'states');
 
   parseCache = countiesByState;
   return countiesByState;
