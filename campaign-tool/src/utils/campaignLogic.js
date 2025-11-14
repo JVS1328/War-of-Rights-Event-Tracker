@@ -94,6 +94,8 @@ export const processBattleResult = (campaign, battle) => {
         previousOwner: previousOwner,
         capturedOnTurn: battle.turn
       };
+
+      console.log(`[Gradual VP] ${territory.name} entering transition. Turns: ${transitionTurns}, Previous: ${previousOwner}, New: ${battle.winner}`);
     }
   } else {
     // No ownership change (shouldn't happen, but handle it)
@@ -110,6 +112,8 @@ export const processBattleResult = (campaign, battle) => {
   let usaVP = 0;
   let csaVP = 0;
 
+  console.log(`[VP Calc] instantVPGains=${instantVPGains}`);
+
   campaign.territories.forEach(t => {
     const vp = t.victoryPoints || t.pointValue || 0;
 
@@ -117,6 +121,10 @@ export const processBattleResult = (campaign, battle) => {
     // 1. Instant VP mode, OR
     // 2. Gradual mode AND territory is not transitioning
     const shouldCountVP = instantVPGains || !t.transitionState?.isTransitioning;
+
+    if (t.id === territory.id) {
+      console.log(`[VP Calc] ${t.name}: owner=${t.owner}, transitioning=${t.transitionState?.isTransitioning}, shouldCount=${shouldCountVP}, vp=${vp}`);
+    }
 
     if (shouldCountVP) {
       if (t.owner === 'USA') {
@@ -126,6 +134,8 @@ export const processBattleResult = (campaign, battle) => {
       }
     }
   });
+
+  console.log(`[VP Calc] Final: USA=${usaVP}, CSA=${csaVP}`);
 
   updatedCampaign.victoryPointsUSA = usaVP;
   updatedCampaign.victoryPointsCSA = csaVP;
