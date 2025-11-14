@@ -244,14 +244,13 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
+    // Extract campaign name and settings
+    const { name, ...settings } = newSettings;
+
     setCampaign({
       ...campaign,
-      name: newSettings.name,
-      settings: {
-        allowTerritoryRecapture: newSettings.allowTerritoryRecapture,
-        requireAdjacentAttack: newSettings.requireAdjacentAttack,
-        casualtyTracking: newSettings.casualtyTracking
-      }
+      name: name,
+      settings: settings
     });
     setShowSettings(false);
   };
