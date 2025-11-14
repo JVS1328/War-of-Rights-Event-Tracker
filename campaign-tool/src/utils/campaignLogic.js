@@ -145,6 +145,9 @@ export const processBattleResult = (campaign, battle) => {
   updatedCampaign.battles = [...campaign.battles, battle];
 
   // Update territory capture history
+  if (!territory.captureHistory) {
+    territory.captureHistory = [];
+  }
   territory.captureHistory.push({
     turn: battle.turn,
     owner: battle.winner,

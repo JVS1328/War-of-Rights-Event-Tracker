@@ -5,6 +5,10 @@ import {
   calculateBattleCPCost,
   getMaxBattleCPCosts
 } from '../utils/cpSystem';
+import {
+  getAvailableMapsForTerritory,
+  getMapCooldownMessage
+} from '../utils/mapSelection';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
   const [selectedMap, setSelectedMap] = useState('');
@@ -13,12 +17,51 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [winner, setWinner] = useState('');
   const [casualties, setCasualties] = useState({ USA: 0, CSA: 0 });
   const [notes, setNotes] = useState('');
-  
+
+  // Map selection with cooldown enforcement
+  const [availableMaps, setAvailableMaps] = useState([]);
+  const [cooldownMaps, setCooldownMaps] = useState(new Map());
+  const [allTerritoryMaps, setAllTerritoryMaps] = useState([]);
+
   // CP cost estimation
   const [estimatedCPCost, setEstimatedCPCost] = useState({ attacker: 0, defender: 0 });
   const [maxCPCost, setMaxCPCost] = useState({ attacker: 0, defender: 0 });
   const [cpWarning, setCpWarning] = useState('');
   const [cpBlockingError, setCpBlockingError] = useState('');
+
+  // Calculate available maps when territory changes
+  useEffect(() => {
+    if (!selectedTerritory) {
+      setAvailableMaps([]);
+      setCooldownMaps(new Map());
+      setAllTerritoryMaps([]);
+      setSelectedMap(''); // Reset selected map when territory changes
+      return;
+    }
+
+    const territory = territories.find(t => t.id === selectedTerritory);
+    if (!territory) return;
+
+    const { availableMaps: available, cooldownMaps: cooldown } = getAvailableMapsForTerritory(
+      territory,
+      campaign?.battles || [],
+      currentTurn
+    );
+
+    // Store all maps for this territory (for showing cooldown info)
+    const territoryMaps = territory?.maps && territory.maps.length > 0
+      ? territory.maps
+      : ALL_MAPS;
+
+    setAllTerritoryMaps(territoryMaps);
+    setAvailableMaps(available);
+    setCooldownMaps(cooldown);
+
+    // Clear selected map if it's no longer available
+    if (selectedMap && !available.includes(selectedMap)) {
+      setSelectedMap('');
+    }
+  }, [selectedTerritory, territories, campaign, currentTurn, selectedMap]);
 
   // Calculate estimated CP cost whenever relevant fields change
   useEffect(() => {
@@ -144,24 +187,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
           {/* Form */}
           <div className="space-y-4">
-            {/* Map Selection */}
-            <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
-                Map <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={selectedMap}
-                onChange={(e) => setSelectedMap(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
-              >
-                <option value="">Select map...</option>
-                {ALL_MAPS.map(map => (
-                  <option key={map} value={map}>{map}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Territory Selection */}
+            {/* Territory Selection - Moved before Map Selection */}
             <div>
               <label className="block text-sm text-slate-300 mb-2 font-semibold">
                 Territory <span className="text-red-400">*</span>
@@ -178,6 +204,66 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Map Selection - Now filters based on selected territory */}
+            <div>
+              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+                Map <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={selectedMap}
+                onChange={(e) => setSelectedMap(e.target.value)}
+                disabled={!selectedTerritory}
+                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {selectedTerritory
+                    ? `Select map... (${availableMaps.length} available)`
+                    : 'Select a territory first...'}
+                </option>
+                {availableMaps.map(map => (
+                  <option key={map} value={map}>{map}</option>
+                ))}
+              </select>
+
+              {/* Map cooldown information */}
+              {selectedTerritory && cooldownMaps.size > 0 && (
+                <div className="mt-2 p-3 bg-slate-700/50 rounded border border-slate-600">
+                  <div className="text-xs text-amber-400 font-semibold mb-2">
+                    Maps on Cooldown ({cooldownMaps.size})
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {Array.from(cooldownMaps.entries())
+                      .filter(([mapName]) => allTerritoryMaps.includes(mapName))
+                      .sort((a, b) => b[1] - a[1]) // Sort by turn (most recent first)
+                      .map(([mapName, turn]) => (
+                        <div key={mapName} className="text-xs text-slate-400 flex justify-between items-center">
+                          <span className="truncate">{mapName}</span>
+                          <span className="text-orange-400 ml-2 whitespace-nowrap">
+                            {getMapCooldownMessage(mapName, cooldownMaps, currentTurn)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Info about map filtering */}
+              {selectedTerritory && (
+                <div className="mt-2 text-xs text-slate-400">
+                  {(() => {
+                    const territory = territories.find(t => t.id === selectedTerritory);
+                    const hasAssignedMaps = territory?.maps && territory.maps.length > 0;
+
+                    if (hasAssignedMaps) {
+                      return `Showing ${availableMaps.length} of ${territory.maps.length} assigned maps for this territory`;
+                    } else {
+                      return `No specific maps assigned - showing all available maps (${availableMaps.length} playable)`;
+                    }
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Territory Info Display */}
