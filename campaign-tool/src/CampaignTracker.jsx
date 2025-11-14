@@ -8,7 +8,7 @@ import BattleRecorder from './components/BattleRecorder';
 import SettingsModal from './components/SettingsModal';
 import MapEditor from './components/MapEditor';
 import { createDefaultCampaign } from './data/defaultCampaign';
-import { processBattleResult } from './utils/campaignLogic';
+import { processBattleResult, processTransitioningTerritories } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
@@ -93,14 +93,14 @@ const CampaignTracker = () => {
     if (campaign.cpSystemEnabled) {
       // Calculate VP from controlled territories
       const cpGeneration = calculateCPGeneration(campaign.territories);
-      
+
       // Add CP to each side's pool
       updatedCampaign.combatPowerUSA = (campaign.combatPowerUSA || 0) + cpGeneration.usa;
       updatedCampaign.combatPowerCSA = (campaign.combatPowerCSA || 0) + cpGeneration.csa;
 
       // Add CP history entries
       const cpHistory = [...(campaign.cpHistory || [])];
-      
+
       // USA CP generation
       if (cpGeneration.usa > 0) {
         cpHistory.push({
@@ -128,7 +128,11 @@ const CampaignTracker = () => {
       updatedCampaign.cpHistory = cpHistory;
     }
 
-    setCampaign(updatedCampaign);
+    // === PROCESS TERRITORY TRANSITIONS ===
+    // Progress any territories in capture transition state
+    const campaignWithTransitions = processTransitioningTerritories(updatedCampaign);
+
+    setCampaign(campaignWithTransitions);
   };
 
   const newCampaign = () => {
@@ -240,14 +244,13 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
+    // Extract campaign name and settings
+    const { name, ...settings } = newSettings;
+
     setCampaign({
       ...campaign,
-      name: newSettings.name,
-      settings: {
-        allowTerritoryRecapture: newSettings.allowTerritoryRecapture,
-        requireAdjacentAttack: newSettings.requireAdjacentAttack,
-        casualtyTracking: newSettings.casualtyTracking
-      }
+      name: name,
+      settings: settings
     });
     setShowSettings(false);
   };

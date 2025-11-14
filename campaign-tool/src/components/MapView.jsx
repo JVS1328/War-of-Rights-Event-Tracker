@@ -12,11 +12,51 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
-  const getTerritoryColor = (territory) => {
-    if (territory.owner === 'USA') return '#3b82f6'; // Blue
-    if (territory.owner === 'CSA') return '#ef4444'; // Red
-    if (territory.owner === 'NEUTRAL') return '#f59e0b'; // Orange
+  // Helper to get base color for an owner
+  const getOwnerColor = (owner) => {
+    if (owner === 'USA') return '#3b82f6'; // Blue
+    if (owner === 'CSA') return '#ef4444'; // Red
+    if (owner === 'NEUTRAL') return '#f59e0b'; // Orange
     return '#64748b'; // Gray (unassigned)
+  };
+
+  // Helper to interpolate between two hex colors
+  const interpolateColor = (color1, color2, factor) => {
+    // Parse hex colors
+    const r1 = parseInt(color1.slice(1, 3), 16);
+    const g1 = parseInt(color1.slice(3, 5), 16);
+    const b1 = parseInt(color1.slice(5, 7), 16);
+
+    const r2 = parseInt(color2.slice(1, 3), 16);
+    const g2 = parseInt(color2.slice(3, 5), 16);
+    const b2 = parseInt(color2.slice(5, 7), 16);
+
+    // Interpolate
+    const r = Math.round(r1 + (r2 - r1) * factor);
+    const g = Math.round(g1 + (g2 - g1) * factor);
+    const b = Math.round(b1 + (b2 - b1) * factor);
+
+    // Convert back to hex
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+
+  const getTerritoryColor = (territory) => {
+    // Check if territory is in transition state
+    if (territory.transitionState?.isTransitioning) {
+      const transition = territory.transitionState;
+      const previousColor = getOwnerColor(transition.previousOwner);
+      const newColor = getOwnerColor(territory.owner);
+
+      // Calculate progress (how far through the transition we are)
+      const turnsElapsed = transition.totalTurns - transition.turnsRemaining;
+      const progress = turnsElapsed / transition.totalTurns;
+
+      // Interpolate between previous and new color
+      return interpolateColor(previousColor, newColor, progress);
+    }
+
+    // Normal color for non-transitioning territories
+    return getOwnerColor(territory.owner);
   };
 
   const getTerritoryStroke = (territory) => {
@@ -217,6 +257,20 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick }) => {
                 'text-slate-400'
               }`}>{hoveredTerritory.owner}</span></div>
               <div>VP Value: <span className="text-green-400 font-semibold">{hoveredTerritory.victoryPoints}</span></div>
+              {hoveredTerritory.transitionState?.isTransitioning && (
+                <div className="mt-2 pt-2 border-t border-slate-600">
+                  <div className="text-orange-400 font-semibold mb-1">🕐 Capturing...</div>
+                  <div className="text-xs">
+                    <div>Turns Remaining: <span className="text-yellow-400 font-semibold">{hoveredTerritory.transitionState.turnsRemaining}</span></div>
+                    <div>From: <span className={`font-semibold ${
+                      hoveredTerritory.transitionState.previousOwner === 'USA' ? 'text-blue-400' :
+                      hoveredTerritory.transitionState.previousOwner === 'CSA' ? 'text-red-400' :
+                      'text-slate-400'
+                    }`}>{hoveredTerritory.transitionState.previousOwner}</span></div>
+                    <div className="text-slate-400 mt-1">VP awarded when complete</div>
+                  </div>
+                </div>
+              )}
               {hoveredTerritory.mapName && (
                 <div>Map: <span className="text-slate-400">{hoveredTerritory.mapName}</span></div>
               )}
