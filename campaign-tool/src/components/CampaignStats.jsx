@@ -4,11 +4,16 @@ const CampaignStats = ({ campaign }) => {
   if (!campaign) return null;
 
   // Calculate VP from owned territories
+  // If instant VP is disabled, exclude territories in transition
+  const instantVPGains = campaign.settings?.instantVPGains !== false;
+
   const usaTerritoryVP = campaign.territories
     .filter(t => t.owner === 'USA')
+    .filter(t => instantVPGains || !t.transitionState?.isTransitioning)
     .reduce((sum, t) => sum + (t.pointValue || t.victoryPoints || 0), 0);
   const csaTerritoryVP = campaign.territories
     .filter(t => t.owner === 'CSA')
+    .filter(t => instantVPGains || !t.transitionState?.isTransitioning)
     .reduce((sum, t) => sum + (t.pointValue || t.victoryPoints || 0), 0);
 
   // Calculate casualty totals from battle history
