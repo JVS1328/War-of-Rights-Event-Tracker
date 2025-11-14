@@ -64,31 +64,66 @@ export const processBattleResult = (campaign, battle) => {
 
   // Calculate VP gained from territory capture (if ownership changed)
   const territoryVP = territory.victoryPoints || territory.pointValue || 0;
-  const vpGained = (previousOwner !== battle.winner) ? territoryVP : 0;
+  const ownershipChanged = previousOwner !== battle.winner;
 
   // Update territory ownership
   territory.owner = battle.winner;
 
-  // Update battle record with VP gained and CP data
-  battle.victoryPointsAwarded = vpGained;
+  // Create updated campaign
+  const updatedCampaign = { ...campaign };
+
+  // === VP CAPTURE SYSTEM ===
+  const instantVPGains = campaign.settings?.instantVPGains !== false; // Default to true
+
+  if (ownershipChanged) {
+    if (instantVPGains) {
+      // INSTANT MODE: Award VP immediately
+      battle.victoryPointsAwarded = territoryVP;
+
+      // Clear any existing transition state
+      delete territory.transitionState;
+    } else {
+      // GRADUAL MODE: Enter transition state, no VP awarded yet
+      battle.victoryPointsAwarded = 0;
+      const transitionTurns = campaign.settings?.captureTransitionTurns || 2;
+
+      territory.transitionState = {
+        isTransitioning: true,
+        turnsRemaining: transitionTurns,
+        totalTurns: transitionTurns,
+        previousOwner: previousOwner,
+        capturedOnTurn: battle.turn
+      };
+    }
+  } else {
+    // No ownership change (shouldn't happen, but handle it)
+    battle.victoryPointsAwarded = 0;
+  }
+
+  // Update battle record with CP data
   battle.cpCostAttacker = cpCostAttacker;
   battle.cpCostDefender = cpCostDefender;
   battle.defender = defender;
-
-  // Create updated campaign
-  const updatedCampaign = { ...campaign };
 
   // === UPDATE VP BASED ON TERRITORY OWNERSHIP ===
   // Recalculate VP totals from all territories
   let usaVP = 0;
   let csaVP = 0;
-  
+
   campaign.territories.forEach(t => {
     const vp = t.victoryPoints || t.pointValue || 0;
-    if (t.owner === 'USA') {
-      usaVP += vp;
-    } else if (t.owner === 'CSA') {
-      csaVP += vp;
+
+    // Only count VP if:
+    // 1. Instant VP mode, OR
+    // 2. Gradual mode AND territory is not transitioning
+    const shouldCountVP = instantVPGains || !t.transitionState?.isTransitioning;
+
+    if (shouldCountVP) {
+      if (t.owner === 'USA') {
+        usaVP += vp;
+      } else if (t.owner === 'CSA') {
+        csaVP += vp;
+      }
     }
   });
 
@@ -213,4 +248,85 @@ export const getTerritoryStats = (campaign) => {
   });
 
   return stats;
+};
+
+/**
+ * Process territory capture transitions at turn end
+ * Decrements transition timers and awards VP when complete
+ *
+ * @param {Object} campaign - Current campaign state
+ * @returns {Object} Updated campaign with progressed transitions
+ */
+export const processTransitioningTerritories = (campaign) => {
+  const instantVPGains = campaign.settings?.instantVPGains !== false;
+
+  // If instant VP mode, no transitions to process
+  if (instantVPGains) {
+    return campaign;
+  }
+
+  const updatedCampaign = { ...campaign };
+  const transitionEvents = [];
+  let vpChanges = { USA: 0, CSA: 0 };
+
+  // Process each territory's transition state
+  campaign.territories.forEach(territory => {
+    if (territory.transitionState?.isTransitioning) {
+      const transition = territory.transitionState;
+
+      // Decrement turns remaining
+      transition.turnsRemaining -= 1;
+
+      // Check if transition is complete
+      if (transition.turnsRemaining <= 0) {
+        // Award VP to the current owner
+        const territoryVP = territory.victoryPoints || territory.pointValue || 0;
+
+        if (territory.owner === 'USA') {
+          vpChanges.USA += territoryVP;
+        } else if (territory.owner === 'CSA') {
+          vpChanges.CSA += territoryVP;
+        }
+
+        // Log transition completion
+        transitionEvents.push({
+          territoryId: territory.id,
+          territoryName: territory.name,
+          owner: territory.owner,
+          vpAwarded: territoryVP,
+          turn: campaign.currentTurn
+        });
+
+        // Clear transition state
+        delete territory.transitionState;
+      }
+    }
+  });
+
+  // Recalculate VP totals
+  let usaVP = 0;
+  let csaVP = 0;
+
+  campaign.territories.forEach(t => {
+    const vp = t.victoryPoints || t.pointValue || 0;
+    const shouldCountVP = !t.transitionState?.isTransitioning;
+
+    if (shouldCountVP) {
+      if (t.owner === 'USA') {
+        usaVP += vp;
+      } else if (t.owner === 'CSA') {
+        csaVP += vp;
+      }
+    }
+  });
+
+  updatedCampaign.victoryPointsUSA = usaVP;
+  updatedCampaign.victoryPointsCSA = csaVP;
+
+  // Store transition events for logging/history
+  if (transitionEvents.length > 0) {
+    updatedCampaign.lastTransitionEvents = transitionEvents;
+  }
+
+  return updatedCampaign;
 };

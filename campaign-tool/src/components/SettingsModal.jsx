@@ -99,6 +99,42 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                     </div>
                   </div>
                 </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.instantVPGains !== false}
+                    onChange={(e) => updateSetting('instantVPGains', e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                  />
+                  <div>
+                    <div className="text-white font-semibold">Instant VP Gains</div>
+                    <div className="text-xs text-slate-400">
+                      Award victory points immediately upon capturing a region
+                    </div>
+                  </div>
+                </label>
+
+                {settings.instantVPGains === false && (
+                  <div className="ml-7 mt-2 bg-slate-800 rounded-lg p-3 border border-slate-600">
+                    <label className="block">
+                      <div className="text-white font-semibold mb-2 text-sm">
+                        Capture Transition Duration (turns)
+                      </div>
+                      <div className="text-xs text-slate-400 mb-2">
+                        Number of turns required to fully capture a region and gain its VP
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={settings.captureTransitionTurns || 2}
+                        onChange={(e) => updateSetting('captureTransitionTurns', parseInt(e.target.value))}
+                        className="w-24 px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -275,6 +275,10 @@ export const createDefaultCampaign = (customMap = null) => {
       requireAdjacentAttack: false,
       casualtyTracking: true,
 
+      // VP system settings
+      instantVPGains: true,
+      captureTransitionTurns: 2,
+
       // New CP system settings
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
@@ -298,7 +302,11 @@ export const getDefaultSettings = () => ({
   allowTerritoryRecapture: true,
   requireAdjacentAttack: false,
   casualtyTracking: true,
-  
+
+  // VP system settings
+  instantVPGains: true,
+  captureTransitionTurns: 2,
+
   // New CP settings
   startingCP: DEFAULT_STARTING_CP,
   cpGenerationEnabled: true,
