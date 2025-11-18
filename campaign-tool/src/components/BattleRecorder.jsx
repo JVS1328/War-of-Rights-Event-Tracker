@@ -18,6 +18,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [casualties, setCasualties] = useState({ USA: 0, CSA: 0 });
   const [notes, setNotes] = useState('');
 
+  // Team ability state
+  const [abilityActive, setAbilityActive] = useState(false);
+
+  // Reset ability when attacker changes
+  useEffect(() => {
+    setAbilityActive(false);
+  }, [attacker]);
+
   // Map selection with cooldown enforcement
   const [availableMaps, setAvailableMaps] = useState([]);
   const [cooldownMaps, setCooldownMaps] = useState(new Map());
@@ -98,7 +106,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       attacker: attacker,
       winner: winner || attacker, // Default to attacker if no winner selected yet
       attackerCasualties,
-      defenderCasualties
+      defenderCasualties,
+      abilityActive: abilityActive // Pass ability state
     });
 
     setEstimatedCPCost({ attacker: cpResult.attackerLoss, defender: cpResult.defenderLoss });
@@ -124,7 +133,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         setCpWarning('');
       }
     }
-  }, [selectedTerritory, attacker, winner, casualties, territories, campaign]);
+  }, [selectedTerritory, attacker, winner, casualties, territories, campaign, abilityActive]);
 
   const handleSubmit = () => {
     if (!selectedMap || !selectedTerritory || !winner) {
@@ -157,7 +166,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         USA: parseInt(casualties.USA) || 0,
         CSA: parseInt(casualties.CSA) || 0
       },
-      notes: notes.trim()
+      notes: notes.trim(),
+      abilityUsed: abilityActive ? attacker : null // Track which side used ability
     };
 
     onRecordBattle(battle);
@@ -323,6 +333,51 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                 </button>
               </div>
             </div>
+
+            {/* Team Ability */}
+            {campaign?.abilities && (
+              <div className="bg-slate-700 rounded-lg p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="text-sm font-semibold text-amber-400 mb-1">
+                      {attacker === 'USA' ? '🇺🇸' : '🇨🇸'} {campaign.abilities[attacker]?.name}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {attacker === 'USA'
+                        ? 'Failed attacks keep territory neutral, wins triple CSA CP loss'
+                        : 'Reduces attack CP loss by 50%'}
+                    </div>
+                  </div>
+                  {campaign.abilities[attacker]?.cooldown > 0 && (
+                    <div className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-700">
+                      Cooldown: {campaign.abilities[attacker].cooldown} turns
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setAbilityActive(!abilityActive)}
+                  disabled={campaign.abilities[attacker]?.cooldown > 0}
+                  className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
+                    campaign.abilities[attacker]?.cooldown > 0
+                      ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                      : abilityActive
+                      ? attacker === 'USA'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-slate-600 hover:bg-slate-500 text-white'
+                  }`}
+                >
+                  {abilityActive ? '✓ Ability Active' : 'Use Ability'}
+                </button>
+
+                {abilityActive && (
+                  <div className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded text-xs text-green-300">
+                    ✓ Ability will be activated for this battle
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Winner Selection */}
             <div>

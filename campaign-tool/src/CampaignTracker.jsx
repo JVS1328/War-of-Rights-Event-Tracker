@@ -132,6 +132,19 @@ const CampaignTracker = () => {
     // Progress any territories in capture transition state
     const campaignWithTransitions = processTransitioningTerritories(updatedCampaign);
 
+    // === REDUCE ABILITY COOLDOWNS ===
+    if (campaignWithTransitions.abilities) {
+      // Reduce cooldowns for all abilities
+      ['USA', 'CSA'].forEach(side => {
+        if (campaignWithTransitions.abilities[side] && campaignWithTransitions.abilities[side].cooldown > 0) {
+          campaignWithTransitions.abilities[side] = {
+            ...campaignWithTransitions.abilities[side],
+            cooldown: Math.max(0, campaignWithTransitions.abilities[side].cooldown - 1)
+          };
+        }
+      });
+    }
+
     setCampaign(campaignWithTransitions);
   };
 

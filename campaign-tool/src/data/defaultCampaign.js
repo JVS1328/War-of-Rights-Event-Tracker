@@ -268,6 +268,20 @@ export const createDefaultCampaign = (customMap = null) => {
     cpSystemEnabled: true,
     cpHistory: [],
 
+    // === TEAM ABILITIES ===
+    abilities: {
+      USA: {
+        name: 'Special Orders 191',
+        cooldown: 0, // 0 means available
+        lastUsedTurn: null
+      },
+      CSA: {
+        name: 'Valley Supply Lines',
+        cooldown: 0, // 0 means available
+        lastUsedTurn: null
+      }
+    },
+
     // Settings with both old and new fields
     settings: {
       // Core settings
@@ -292,7 +306,10 @@ export const createDefaultCampaign = (customMap = null) => {
         turn: 30,
         displayString: 'December 1865'
       },
-      turnsPerYear: 6
+      turnsPerYear: 6,
+
+      // Team abilities settings
+      abilityCooldown: 2
     }
   };
 };
@@ -323,7 +340,10 @@ export const getDefaultSettings = () => ({
     turn: 30,
     displayString: 'December 1865'
   },
-  turnsPerYear: 6
+  turnsPerYear: 6,
+
+  // Team abilities settings
+  abilityCooldown: 2
 });
 
 /**

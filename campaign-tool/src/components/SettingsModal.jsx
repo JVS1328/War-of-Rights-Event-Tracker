@@ -152,6 +152,44 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                 )}
               </div>
             </div>
+
+            {/* Team Abilities */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-amber-300 mb-4">Team Abilities</h3>
+              <div>
+                <label className="block">
+                  <div className="text-white font-semibold mb-2">
+                    Ability Cooldown (turns)
+                  </div>
+                  <div className="text-xs text-slate-400 mb-2">
+                    Number of turns before an ability can be used again after activation
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.abilityCooldown || 2}
+                    onChange={(e) => updateSetting('abilityCooldown', parseInt(e.target.value))}
+                    className="w-24 px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  />
+                </label>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="bg-slate-800 rounded p-3">
+                    <div className="text-red-400 font-semibold mb-1">🇨🇸 CSA – "Valley Supply Lines"</div>
+                    <div className="text-slate-300 text-xs">
+                      When attacking: Attack CP loss reduced by 50%
+                    </div>
+                  </div>
+                  <div className="bg-slate-800 rounded p-3">
+                    <div className="text-blue-400 font-semibold mb-1">🇺🇸 USA – "Special Orders 191"</div>
+                    <div className="text-slate-300 text-xs">
+                      When attacking: Failed attacks on neutral territories keep them neutral (if setting enabled),
+                      successful attacks triple CSA CP loss
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Action Buttons */}
