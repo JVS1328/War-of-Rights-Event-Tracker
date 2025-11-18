@@ -39,7 +39,8 @@ export const processBattleResult = (campaign, battle) => {
       attacker: battle.attacker,
       winner: battle.winner,
       attackerCasualties,
-      defenderCasualties
+      defenderCasualties,
+      abilityActive: battle.abilityUsed === battle.attacker // Pass ability state
     });
 
     cpCostAttacker = cpResult.attackerLoss;
@@ -67,11 +68,17 @@ export const processBattleResult = (campaign, battle) => {
 
   // Handle failed attacks on neutral territories
   const failedNeutralAttackToEnemy = campaign.settings?.failedNeutralAttackToEnemy !== false;
+  const usaAbilityActive = battle.abilityUsed === 'USA';
   let finalWinner = battle.winner;
 
   if (previousOwner === 'NEUTRAL' && battle.winner !== battle.attacker) {
     // Attacker lost against neutral territory
-    if (failedNeutralAttackToEnemy) {
+    // Special Orders 191 (USA ability): Failed attacks keep territory neutral
+    if (usaAbilityActive && battle.attacker === 'USA') {
+      // USA ability active: keep neutral regardless of setting
+      finalWinner = 'NEUTRAL';
+      battle.winner = 'NEUTRAL';
+    } else if (failedNeutralAttackToEnemy) {
       // Setting ON: transfer to enemy
       const enemy = battle.attacker === 'USA' ? 'CSA' : 'USA';
       finalWinner = enemy;
@@ -207,6 +214,26 @@ export const processBattleResult = (campaign, battle) => {
     owner: battle.winner,
     battleId: battle.id
   });
+
+  // === HANDLE ABILITY COOLDOWN ===
+  if (battle.abilityUsed) {
+    const abilityCooldown = campaign.settings?.abilityCooldown || 2;
+
+    // Ensure abilities object exists in updatedCampaign
+    if (!updatedCampaign.abilities) {
+      updatedCampaign.abilities = {
+        USA: { name: 'Special Orders 191', cooldown: 0, lastUsedTurn: null },
+        CSA: { name: 'Valley Supply Lines', cooldown: 0, lastUsedTurn: null }
+      };
+    }
+
+    // Set cooldown for the ability that was used
+    updatedCampaign.abilities[battle.abilityUsed] = {
+      ...updatedCampaign.abilities[battle.abilityUsed],
+      cooldown: abilityCooldown,
+      lastUsedTurn: battle.turn
+    };
+  }
 
   return updatedCampaign;
 };

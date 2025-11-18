@@ -173,6 +173,7 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
  * @param {string} params.winner - Battle winner ('USA' or 'CSA')
  * @param {number} params.attackerCasualties - Attacker casualties
  * @param {number} params.defenderCasualties - Defender casualties
+ * @param {boolean} params.abilityActive - Whether the attacker's ability is active
  * @returns {Object} { attackerLoss: number, defenderLoss: number, defender: string }
  */
 export function calculateBattleCPCost({
@@ -181,31 +182,37 @@ export function calculateBattleCPCost({
   attacker,
   winner,
   attackerCasualties,
-  defenderCasualties
+  defenderCasualties,
+  abilityActive = false
 }) {
   // Determine defender (the side that is NOT attacking)
   // For neutral territories, the defender is the opposing side
   const defender = attacker === 'USA' ? 'CSA' : 'USA';
-  
+
   const totalCasualties = attackerCasualties + defenderCasualties;
-  
+
   // Determine if attacking neutral territory
   const isNeutralTerritory = territoryOwner === 'NEUTRAL';
-  
+
   // Calculate attacker CP loss (based on casualties and territory ownership)
-  const attackerLoss = calculateAttackerCPLoss(
+  let attackerLoss = calculateAttackerCPLoss(
     territoryPointValue,
     attackerCasualties,
     totalCasualties,
     isNeutralTerritory
   );
-  
+
+  // Apply CSA ability: "Valley Supply Lines" - reduces attack CP loss by 50%
+  if (abilityActive && attacker === 'CSA') {
+    attackerLoss = Math.round(attackerLoss * 0.5);
+  }
+
   // Calculate defender CP loss (if not NEUTRAL)
   let defenderLoss = 0;
   if (defender !== 'NEUTRAL') {
     const defenderWon = winner !== attacker;
     const isFriendlyTerritory = territoryOwner === defender;
-    
+
     defenderLoss = calculateDefenderCPLoss(
       territoryPointValue,
       defenderCasualties,
@@ -213,8 +220,13 @@ export function calculateBattleCPCost({
       defenderWon,
       isFriendlyTerritory
     );
+
+    // Apply USA ability: "Special Orders 191" - triples CSA CP loss on attacker victory
+    if (abilityActive && attacker === 'USA' && winner === 'USA' && defender === 'CSA') {
+      defenderLoss = Math.round(defenderLoss * 3);
+    }
   }
-  
+
   return {
     attackerLoss,
     defenderLoss,
