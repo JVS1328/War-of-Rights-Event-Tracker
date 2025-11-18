@@ -10,6 +10,7 @@ This repository includes four distinct tools:
 2. **[Season Tracker (React)](#react-season-tracker)** - Modern web-based season tracking with real-time standings
 3. **[Log Analyzer](#log-analyzer)** - Web-based tool for parsing and analyzing War of Rights combat logs
 4. **[Campaign Tool](#campaign-tool)** - Interactive campaign tracker with USA territory map and turn-based gameplay
+5. Map Rangefinder
 
 ---
 
