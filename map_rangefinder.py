@@ -32,6 +32,10 @@ class MapRangefinder:
         self.pan_start_x = 0
         self.pan_start_y = 0
 
+        # Canvas offset for zoom positioning
+        self.canvas_offset_x = 0
+        self.canvas_offset_y = 0
+
         self._setup_ui()
 
         if image_path:
@@ -97,6 +101,8 @@ class MapRangefinder:
             self.image = Image.open(path)
             self.image_path = path
             self.zoom_level = 1.0
+            self.canvas_offset_x = 0
+            self.canvas_offset_y = 0
             self.ruler_points = []
             self.clear_ruler()
             self._display_image()
@@ -104,8 +110,13 @@ class MapRangefinder:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load image: {e}")
 
-    def _display_image(self):
-        """Render the image on canvas at current zoom level."""
+    def _display_image(self, focal_x=None, focal_y=None, old_zoom=None):
+        """Render the image on canvas at current zoom level.
+
+        Args:
+            focal_x, focal_y: Image coordinates to keep centered during zoom
+            old_zoom: Previous zoom level for repositioning
+        """
         if not self.image:
             return
 
@@ -113,48 +124,118 @@ class MapRangefinder:
         new_width = int(self.image.width * self.zoom_level)
         new_height = int(self.image.height * self.zoom_level)
 
-        # Resize image
-        resized = self.image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        # Use faster resampling for better performance
+        # BILINEAR is much faster than LANCZOS and still looks good
+        resample_method = Image.Resampling.BILINEAR if self.zoom_level > 0.5 else Image.Resampling.LANCZOS
+        resized = self.image.resize((new_width, new_height), resample_method)
         self.photo = ImageTk.PhotoImage(resized)
+
+        # Save current canvas view position
+        if focal_x is not None and focal_y is not None and old_zoom is not None:
+            # Calculate where the focal point should be after zoom
+            new_focal_canvas_x = focal_x * self.zoom_level
+            new_focal_canvas_y = focal_y * self.zoom_level
+
+            old_focal_canvas_x = focal_x * old_zoom
+            old_focal_canvas_y = focal_y * old_zoom
+
+            # Calculate offset adjustment
+            dx = new_focal_canvas_x - old_focal_canvas_x
+            dy = new_focal_canvas_y - old_focal_canvas_y
+
+            self.canvas_offset_x += dx
+            self.canvas_offset_y += dy
 
         # Clear and redraw
         self.canvas.delete("all")
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo, tags="map")
+        self.canvas.create_image(self.canvas_offset_x, self.canvas_offset_y,
+                                anchor=tk.NW, image=self.photo, tags="map")
 
         # Update scroll region
-        self.canvas.config(scrollregion=(0, 0, new_width, new_height))
+        self.canvas.config(scrollregion=(self.canvas_offset_x, self.canvas_offset_y,
+                                        self.canvas_offset_x + new_width,
+                                        self.canvas_offset_y + new_height))
 
         # Redraw ruler if exists
         self._redraw_ruler()
 
     def zoom_in(self):
-        """Increase zoom level."""
+        """Increase zoom level (zooms to canvas center)."""
+        if not self.image:
+            return
+
+        old_zoom = self.zoom_level
         self.zoom_level *= 1.2
-        self._display_image()
+
+        # Get canvas center
+        canvas_center_x = self.canvas.winfo_width() / 2
+        canvas_center_y = self.canvas.winfo_height() / 2
+
+        # Convert to image coordinates
+        focal_x = (self.canvas.canvasx(canvas_center_x) - self.canvas_offset_x) / old_zoom
+        focal_y = (self.canvas.canvasy(canvas_center_y) - self.canvas_offset_y) / old_zoom
+
+        self._display_image(focal_x, focal_y, old_zoom)
         self.status_bar.config(text=f"Zoom: {self.zoom_level:.1f}x")
 
     def zoom_out(self):
-        """Decrease zoom level."""
+        """Decrease zoom level (zooms from canvas center)."""
+        if not self.image:
+            return
+
+        old_zoom = self.zoom_level
         self.zoom_level /= 1.2
-        self._display_image()
+
+        # Get canvas center
+        canvas_center_x = self.canvas.winfo_width() / 2
+        canvas_center_y = self.canvas.winfo_height() / 2
+
+        # Convert to image coordinates
+        focal_x = (self.canvas.canvasx(canvas_center_x) - self.canvas_offset_x) / old_zoom
+        focal_y = (self.canvas.canvasy(canvas_center_y) - self.canvas_offset_y) / old_zoom
+
+        self._display_image(focal_x, focal_y, old_zoom)
         self.status_bar.config(text=f"Zoom: {self.zoom_level:.1f}x")
 
     def reset_zoom(self):
         """Reset zoom to 100%."""
         self.zoom_level = 1.0
+        self.canvas_offset_x = 0
+        self.canvas_offset_y = 0
         self._display_image()
         self.status_bar.config(text="Zoom reset to 100%")
 
     def on_mousewheel(self, event):
-        """Handle mouse wheel zoom."""
+        """Handle mouse wheel zoom (zooms to cursor position)."""
         if not self.image:
             return
+
+        old_zoom = self.zoom_level
 
         # Determine scroll direction
         if event.num == 5 or event.delta < 0:
             self.zoom_level /= 1.1
         elif event.num == 4 or event.delta > 0:
             self.zoom_level *= 1.1
+
+        # Get mouse position in canvas coordinates
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+
+        # Convert to image coordinates (position in original image)
+        focal_x = (canvas_x - self.canvas_offset_x) / old_zoom
+        focal_y = (canvas_y - self.canvas_offset_y) / old_zoom
+
+        # Adjust offset so the point under mouse stays in same place
+        new_canvas_x = focal_x * self.zoom_level + self.canvas_offset_x
+        new_canvas_y = focal_y * self.zoom_level + self.canvas_offset_y
+
+        # Calculate how much to shift
+        shift_x = canvas_x - new_canvas_x
+        shift_y = canvas_y - new_canvas_y
+
+        self.canvas_offset_x += shift_x
+        self.canvas_offset_y += shift_y
 
         self._display_image()
 
@@ -169,6 +250,8 @@ class MapRangefinder:
         dx = event.x - self.pan_start_x
         dy = event.y - self.pan_start_y
         self.canvas.move("all", dx, dy)
+        self.canvas_offset_x += dx
+        self.canvas_offset_y += dy
         self.pan_start_x = event.x
         self.pan_start_y = event.y
 
@@ -185,9 +268,9 @@ class MapRangefinder:
         canvas_x = self.canvas.canvasx(event.x)
         canvas_y = self.canvas.canvasy(event.y)
 
-        # Account for zoom
-        img_x = canvas_x / self.zoom_level
-        img_y = canvas_y / self.zoom_level
+        # Account for zoom and offset
+        img_x = (canvas_x - self.canvas_offset_x) / self.zoom_level
+        img_y = (canvas_y - self.canvas_offset_y) / self.zoom_level
 
         self.ruler_points.append((canvas_x, canvas_y, img_x, img_y))
 
