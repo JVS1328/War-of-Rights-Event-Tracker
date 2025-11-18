@@ -216,7 +216,7 @@ export const processBattleResult = (campaign, battle) => {
   });
 
   // === HANDLE ABILITY COOLDOWN ===
-  if (battle.abilityUsed && campaign.abilities) {
+  if (battle.abilityUsed) {
     const abilityCooldown = campaign.settings?.abilityCooldown || 2;
 
     // Ensure abilities object exists in updatedCampaign
