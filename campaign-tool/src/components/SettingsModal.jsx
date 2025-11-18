@@ -175,13 +175,13 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                 </label>
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="bg-slate-800 rounded p-3">
-                    <div className="text-red-400 font-semibold mb-1">🇨🇸 CSA – "Valley Supply Lines"</div>
+                    <div className="text-red-400 font-semibold mb-1">Valley Supply Lines (CSA)</div>
                     <div className="text-slate-300 text-xs">
                       When attacking: Attack CP loss reduced by 50%
                     </div>
                   </div>
                   <div className="bg-slate-800 rounded p-3">
-                    <div className="text-blue-400 font-semibold mb-1">🇺🇸 USA – "Special Orders 191"</div>
+                    <div className="text-blue-400 font-semibold mb-1">Special Orders 191 (USA)</div>
                     <div className="text-slate-300 text-xs">
                       When attacking: Failed attacks on neutral territories keep them neutral (if setting enabled),
                       successful attacks triple CSA CP loss

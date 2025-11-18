@@ -26,6 +26,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     setAbilityActive(false);
   }, [attacker]);
 
+  // Initialize abilities if they don't exist (for backward compatibility)
+  const abilities = campaign?.abilities || {
+    USA: { name: 'Special Orders 191', cooldown: 0, lastUsedTurn: null },
+    CSA: { name: 'Valley Supply Lines', cooldown: 0, lastUsedTurn: null }
+  };
+
   // Map selection with cooldown enforcement
   const [availableMaps, setAvailableMaps] = useState([]);
   const [cooldownMaps, setCooldownMaps] = useState(new Map());
@@ -335,49 +341,47 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
             </div>
 
             {/* Team Ability */}
-            {campaign?.abilities && (
-              <div className="bg-slate-700 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <div className="text-sm font-semibold text-amber-400 mb-1">
-                      {attacker === 'USA' ? '🇺🇸' : '🇨🇸'} {campaign.abilities[attacker]?.name}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {attacker === 'USA'
-                        ? 'Failed attacks keep territory neutral, wins triple CSA CP loss'
-                        : 'Reduces attack CP loss by 50%'}
-                    </div>
+            <div className="bg-slate-700 rounded-lg p-4">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="text-sm font-semibold text-amber-400 mb-1">
+                    {abilities[attacker]?.name}
                   </div>
-                  {campaign.abilities[attacker]?.cooldown > 0 && (
-                    <div className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-700">
-                      Cooldown: {campaign.abilities[attacker].cooldown} turns
-                    </div>
-                  )}
+                  <div className="text-xs text-slate-400">
+                    {attacker === 'USA'
+                      ? 'Failed attacks keep territory neutral, wins triple CSA CP loss'
+                      : 'Reduces attack CP loss by 50%'}
+                  </div>
                 </div>
-
-                <button
-                  onClick={() => setAbilityActive(!abilityActive)}
-                  disabled={campaign.abilities[attacker]?.cooldown > 0}
-                  className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
-                    campaign.abilities[attacker]?.cooldown > 0
-                      ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
-                      : abilityActive
-                      ? attacker === 'USA'
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                        : 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-slate-600 hover:bg-slate-500 text-white'
-                  }`}
-                >
-                  {abilityActive ? '✓ Ability Active' : 'Use Ability'}
-                </button>
-
-                {abilityActive && (
-                  <div className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded text-xs text-green-300">
-                    ✓ Ability will be activated for this battle
+                {abilities[attacker]?.cooldown > 0 && (
+                  <div className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-700">
+                    Cooldown: {abilities[attacker].cooldown} turns
                   </div>
                 )}
               </div>
-            )}
+
+              <button
+                onClick={() => setAbilityActive(!abilityActive)}
+                disabled={abilities[attacker]?.cooldown > 0}
+                className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
+                  abilities[attacker]?.cooldown > 0
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                    : abilityActive
+                    ? attacker === 'USA'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-slate-600 hover:bg-slate-500 text-white'
+                }`}
+              >
+                {abilityActive ? '✓ Ability Active' : 'Use Ability'}
+              </button>
+
+              {abilityActive && (
+                <div className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded text-xs text-green-300">
+                  ✓ Ability will be activated for this battle
+                </div>
+              )}
+            </div>
 
             {/* Winner Selection */}
             <div>
