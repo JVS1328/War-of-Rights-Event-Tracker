@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Map, ZoomIn, ZoomOut, RotateCcw, Trash2, ArrowLeft, Ruler } from 'lucide-react';
+import { Map, ZoomIn, ZoomOut, RotateCcw, Trash2, ArrowLeft, Ruler, Pencil, Type, Eraser, Circle, Square, Minus, Edit2, Navigation } from 'lucide-react';
 
 // Map definitions
 const MAPS = [
@@ -12,6 +12,27 @@ const MAPS = [
 // Scale: 1 pixel = 1 yard in-game
 const PIXELS_TO_YARDS = 1;
 
+// Tool types
+const TOOLS = {
+  MEASURE: 'measure',
+  DRAW: 'draw',
+  LINE: 'line',
+  RECTANGLE: 'rectangle',
+  CIRCLE: 'circle',
+  TEXT: 'text',
+  ERASER: 'eraser',
+};
+
+// Drawing colors
+const COLORS = [
+  { name: 'Red', value: '#ef4444' },
+  { name: 'Blue', value: '#3b82f6' },
+  { name: 'Green', value: '#10b981' },
+  { name: 'Yellow', value: '#fbbf24' },
+  { name: 'White', value: '#ffffff' },
+  { name: 'Black', value: '#000000' },
+];
+
 const Rangefinder = () => {
   // State
   const [selectedMap, setSelectedMap] = useState(null);
@@ -20,13 +41,32 @@ const Rangefinder = () => {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Measurement state
   const [measurements, setMeasurements] = useState([]);
   const [currentPoints, setCurrentPoints] = useState([]);
-  const [annotations, setAnnotations] = useState([]);
+  const [draggedMeasurement, setDraggedMeasurement] = useState(null); // { index, point: 'point1' or 'point2' }
+  const [editingMeasurementIndex, setEditingMeasurementIndex] = useState(null);
+  const [editingMeasurementName, setEditingMeasurementName] = useState('');
+
+  // Drawing state
+  const [tool, setTool] = useState(TOOLS.MEASURE);
+  const [drawColor, setDrawColor] = useState('#ef4444');
+  const [drawSize, setDrawSize] = useState(3);
+  const [drawings, setDrawings] = useState([]);
+  const [currentDrawing, setCurrentDrawing] = useState(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawStart, setDrawStart] = useState(null);
+
+  // Text annotation state
+  const [textInput, setTextInput] = useState('');
+  const [textPosition, setTextPosition] = useState(null);
+  const [showTextInput, setShowTextInput] = useState(false);
 
   // Refs
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const textInputRef = useRef(null);
 
   // Load selected map
   useEffect(() => {
@@ -35,12 +75,7 @@ const Rangefinder = () => {
       img.src = `/src/assets/maps/${selectedMap.file}`;
       img.onload = () => {
         setMapImage(img);
-        // Reset state when loading new map
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-        setMeasurements([]);
-        setCurrentPoints([]);
-        setAnnotations([]);
+        resetState();
       };
       img.onerror = () => {
         console.error('Failed to load map:', selectedMap.file);
@@ -48,6 +83,28 @@ const Rangefinder = () => {
       };
     }
   }, [selectedMap]);
+
+  // Focus text input when shown
+  useEffect(() => {
+    if (showTextInput && textInputRef.current) {
+      textInputRef.current.focus();
+    }
+  }, [showTextInput]);
+
+  // Reset all state when loading new map
+  const resetState = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setMeasurements([]);
+    setCurrentPoints([]);
+    setDrawings([]);
+    setTool(TOOLS.MEASURE);
+    setDraggedMeasurement(null);
+    setEditingMeasurementIndex(null);
+    setCurrentDrawing(null);
+    setIsDrawing(false);
+    setShowTextInput(false);
+  };
 
   // Draw on canvas
   useEffect(() => {
@@ -84,15 +141,25 @@ const Rangefinder = () => {
     // Restore context for UI elements
     ctx.restore();
 
-    // Draw measurements
-    measurements.forEach((measurement) => {
-      drawMeasurement(ctx, measurement, canvas.width, canvas.height);
+    // Draw all drawings
+    drawings.forEach((drawing) => {
+      drawElement(ctx, drawing, canvas.width, canvas.height);
     });
 
-    // Draw current points
+    // Draw current drawing
+    if (currentDrawing) {
+      drawElement(ctx, currentDrawing, canvas.width, canvas.height);
+    }
+
+    // Draw measurements
+    measurements.forEach((measurement, index) => {
+      drawMeasurement(ctx, measurement, canvas.width, canvas.height, index === editingMeasurementIndex);
+    });
+
+    // Draw current measurement points
     if (currentPoints.length > 0) {
       currentPoints.forEach((point) => {
-        drawPoint(ctx, point, canvas.width, canvas.height);
+        drawPoint(ctx, point, canvas.width, canvas.height, '#ef4444');
       });
 
       // Draw line if two points
@@ -108,30 +175,7 @@ const Rangefinder = () => {
         ctx.stroke();
       }
     }
-
-    // Draw annotations
-    annotations.forEach((annotation) => {
-      const screenPos = imageToScreen(annotation.position, canvas.width, canvas.height);
-
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
-      ctx.strokeStyle = '#92400e';
-      ctx.lineWidth = 2;
-      ctx.font = 'bold 14px Arial';
-
-      const metrics = ctx.measureText(annotation.text);
-      const padding = 6;
-      const width = metrics.width + padding * 2;
-      const height = 20 + padding * 2;
-
-      ctx.fillRect(screenPos.x - width / 2, screenPos.y - height / 2, width, height);
-      ctx.strokeRect(screenPos.x - width / 2, screenPos.y - height / 2, width, height);
-
-      ctx.fillStyle = '#000000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(annotation.text, screenPos.x, screenPos.y);
-    });
-  }, [mapImage, zoom, pan, measurements, currentPoints, annotations]);
+  }, [mapImage, zoom, pan, measurements, currentPoints, drawings, currentDrawing, editingMeasurementIndex]);
 
   // Helper: Convert image coordinates to screen coordinates
   const imageToScreen = (imagePoint, canvasWidth, canvasHeight) => {
@@ -156,11 +200,33 @@ const Rangefinder = () => {
     return { x: imageX, y: imageY };
   };
 
+  // Helper: Check if point is within image bounds
+  const isInBounds = (point) => {
+    return (
+      point.x >= 0 &&
+      point.x <= mapImage.width &&
+      point.y >= 0 &&
+      point.y <= mapImage.height
+    );
+  };
+
+  // Helper: Check if clicking near a point
+  const isNearPoint = (clickPoint, targetPoint, threshold = 10) => {
+    const canvas = canvasRef.current;
+    const screenClick = imageToScreen(clickPoint, canvas.width, canvas.height);
+    const screenTarget = imageToScreen(targetPoint, canvas.width, canvas.height);
+    const dist = Math.sqrt(
+      Math.pow(screenClick.x - screenTarget.x, 2) +
+      Math.pow(screenClick.y - screenTarget.y, 2)
+    );
+    return dist < threshold;
+  };
+
   // Helper: Draw a point
-  const drawPoint = (ctx, point, canvasWidth, canvasHeight) => {
+  const drawPoint = (ctx, point, canvasWidth, canvasHeight, color = '#10b981') => {
     const screenPoint = imageToScreen(point, canvasWidth, canvasHeight);
 
-    ctx.fillStyle = '#ef4444';
+    ctx.fillStyle = color;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -170,13 +236,13 @@ const Rangefinder = () => {
   };
 
   // Helper: Draw a measurement
-  const drawMeasurement = (ctx, measurement, canvasWidth, canvasHeight) => {
+  const drawMeasurement = (ctx, measurement, canvasWidth, canvasHeight, isEditing = false) => {
     const screenPoint1 = imageToScreen(measurement.point1, canvasWidth, canvasHeight);
     const screenPoint2 = imageToScreen(measurement.point2, canvasWidth, canvasHeight);
 
     // Draw line
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = isEditing ? '#a855f7' : '#10b981';
+    ctx.lineWidth = isEditing ? 4 : 3;
     ctx.beginPath();
     ctx.moveTo(screenPoint1.x, screenPoint1.y);
     ctx.lineTo(screenPoint2.x, screenPoint2.y);
@@ -184,11 +250,11 @@ const Rangefinder = () => {
 
     // Draw points
     [screenPoint1, screenPoint2].forEach((point) => {
-      ctx.fillStyle = '#10b981';
+      ctx.fillStyle = isEditing ? '#a855f7' : '#10b981';
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, isEditing ? 8 : 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     });
@@ -200,9 +266,12 @@ const Rangefinder = () => {
     ctx.fillStyle = '#fbbf24';
     ctx.strokeStyle = '#92400e';
     ctx.lineWidth = 2;
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 14px Arial';
 
-    const text = `${measurement.distance.toFixed(1)} yards`;
+    const text = measurement.name
+      ? `${measurement.name}: ${measurement.distance.toFixed(1)} yards`
+      : `${measurement.distance.toFixed(1)} yards`;
+
     const metrics = ctx.measureText(text);
     const padding = 8;
     const width = metrics.width + padding * 2;
@@ -217,6 +286,86 @@ const Rangefinder = () => {
     ctx.fillText(text, midX, midY);
   };
 
+  // Helper: Draw an element (drawing)
+  const drawElement = (ctx, element, canvasWidth, canvasHeight) => {
+    if (element.type === 'freehand') {
+      if (element.points.length < 2) return;
+
+      ctx.strokeStyle = element.color;
+      ctx.lineWidth = element.size;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+
+      const firstPoint = imageToScreen(element.points[0], canvasWidth, canvasHeight);
+      ctx.moveTo(firstPoint.x, firstPoint.y);
+
+      for (let i = 1; i < element.points.length; i++) {
+        const point = imageToScreen(element.points[i], canvasWidth, canvasHeight);
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+    } else if (element.type === 'line') {
+      const start = imageToScreen(element.start, canvasWidth, canvasHeight);
+      const end = imageToScreen(element.end, canvasWidth, canvasHeight);
+
+      ctx.strokeStyle = element.color;
+      ctx.lineWidth = element.size;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+    } else if (element.type === 'rectangle') {
+      const start = imageToScreen(element.start, canvasWidth, canvasHeight);
+      const end = imageToScreen(element.end, canvasWidth, canvasHeight);
+
+      ctx.strokeStyle = element.color;
+      ctx.lineWidth = element.size;
+      ctx.strokeRect(
+        start.x,
+        start.y,
+        end.x - start.x,
+        end.y - start.y
+      );
+    } else if (element.type === 'circle') {
+      const start = imageToScreen(element.start, canvasWidth, canvasHeight);
+      const end = imageToScreen(element.end, canvasWidth, canvasHeight);
+
+      const centerX = (start.x + end.x) / 2;
+      const centerY = (start.y + end.y) / 2;
+      const radius = Math.sqrt(
+        Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2)
+      ) / 2;
+
+      ctx.strokeStyle = element.color;
+      ctx.lineWidth = element.size;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (element.type === 'text') {
+      const pos = imageToScreen(element.position, canvasWidth, canvasHeight);
+
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 2;
+      ctx.font = `bold ${element.size * 4}px Arial`;
+
+      const metrics = ctx.measureText(element.text);
+      const padding = 6;
+      const width = metrics.width + padding * 2;
+      const height = element.size * 4 + padding * 2;
+
+      ctx.fillRect(pos.x - width / 2, pos.y - height / 2, width, height);
+      ctx.strokeRect(pos.x - width / 2, pos.y - height / 2, width, height);
+
+      ctx.fillStyle = element.color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(element.text, pos.x, pos.y);
+    }
+  };
+
   // Calculate distance in yards
   const calculateDistance = (point1, point2) => {
     const dx = point2.x - point1.x;
@@ -224,61 +373,198 @@ const Rangefinder = () => {
     return Math.sqrt(dx * dx + dy * dy) * PIXELS_TO_YARDS;
   };
 
-  // Handle canvas click
-  const handleCanvasClick = (e) => {
-    if (!mapImage || isPanning) return;
-
-    const imagePoint = screenToImage(e.clientX, e.clientY);
-    if (!imagePoint) return;
-
-    // Check if click is within image bounds
-    if (
-      imagePoint.x < 0 ||
-      imagePoint.x > mapImage.width ||
-      imagePoint.y < 0 ||
-      imagePoint.y > mapImage.height
-    ) {
-      return;
-    }
-
-    if (currentPoints.length === 0) {
-      // First point
-      setCurrentPoints([imagePoint]);
-    } else if (currentPoints.length === 1) {
-      // Second point - complete measurement
-      const newMeasurement = {
-        point1: currentPoints[0],
-        point2: imagePoint,
-        distance: calculateDistance(currentPoints[0], imagePoint),
-      };
-      setMeasurements([...measurements, newMeasurement]);
-      setCurrentPoints([]);
-    }
-  };
-
-  // Handle mouse down for panning
+  // Handle canvas mouse down
   const handleMouseDown = (e) => {
+    if (!mapImage) return;
+
+    // Check for panning
     if (e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey)) {
-      // Middle mouse button or right click or shift+left click
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      return;
+    }
+
+    const imagePoint = screenToImage(e.clientX, e.clientY);
+    if (!imagePoint || !isInBounds(imagePoint)) return;
+
+    // Handle measurement tool
+    if (tool === TOOLS.MEASURE) {
+      // Check if clicking on an existing measurement endpoint
+      for (let i = 0; i < measurements.length; i++) {
+        if (isNearPoint(imagePoint, measurements[i].point1)) {
+          setDraggedMeasurement({ index: i, point: 'point1' });
+          return;
+        }
+        if (isNearPoint(imagePoint, measurements[i].point2)) {
+          setDraggedMeasurement({ index: i, point: 'point2' });
+          return;
+        }
+      }
+      // Otherwise, start new measurement
+      if (currentPoints.length === 0) {
+        setCurrentPoints([imagePoint]);
+      }
+    }
+    // Handle drawing tools
+    else if (tool === TOOLS.DRAW) {
+      setIsDrawing(true);
+      setCurrentDrawing({
+        type: 'freehand',
+        points: [imagePoint],
+        color: drawColor,
+        size: drawSize,
+      });
+    }
+    else if (tool === TOOLS.LINE || tool === TOOLS.RECTANGLE || tool === TOOLS.CIRCLE) {
+      setIsDrawing(true);
+      setDrawStart(imagePoint);
+      setCurrentDrawing({
+        type: tool,
+        start: imagePoint,
+        end: imagePoint,
+        color: drawColor,
+        size: drawSize,
+      });
+    }
+    else if (tool === TOOLS.TEXT) {
+      setTextPosition(imagePoint);
+      setShowTextInput(true);
+    }
+    else if (tool === TOOLS.ERASER) {
+      // Find and remove drawing at this point
+      const canvas = canvasRef.current;
+      const screenPoint = imageToScreen(imagePoint, canvas.width, canvas.height);
+
+      setDrawings(drawings.filter(drawing => {
+        if (drawing.type === 'freehand') {
+          return !drawing.points.some(p => {
+            const sp = imageToScreen(p, canvas.width, canvas.height);
+            const dist = Math.sqrt(
+              Math.pow(sp.x - screenPoint.x, 2) +
+              Math.pow(sp.y - screenPoint.y, 2)
+            );
+            return dist < drawSize * 2;
+          });
+        } else if (drawing.type === 'text') {
+          const sp = imageToScreen(drawing.position, canvas.width, canvas.height);
+          const dist = Math.sqrt(
+            Math.pow(sp.x - screenPoint.x, 2) +
+            Math.pow(sp.y - screenPoint.y, 2)
+          );
+          return dist >= 20;
+        }
+        return true;
+      }));
     }
   };
 
-  // Handle mouse move for panning
+  // Handle canvas mouse move
   const handleMouseMove = (e) => {
+    if (!mapImage) return;
+
     if (isPanning) {
       setPan({
         x: e.clientX - panStart.x,
         y: e.clientY - panStart.y,
       });
+      return;
+    }
+
+    const imagePoint = screenToImage(e.clientX, e.clientY);
+    if (!imagePoint || !isInBounds(imagePoint)) return;
+
+    // Handle dragging measurement endpoint
+    if (draggedMeasurement) {
+      const newMeasurements = [...measurements];
+      newMeasurements[draggedMeasurement.index][draggedMeasurement.point] = imagePoint;
+      newMeasurements[draggedMeasurement.index].distance = calculateDistance(
+        newMeasurements[draggedMeasurement.index].point1,
+        newMeasurements[draggedMeasurement.index].point2
+      );
+      setMeasurements(newMeasurements);
+      return;
+    }
+
+    // Handle drawing
+    if (isDrawing && currentDrawing) {
+      if (tool === TOOLS.DRAW) {
+        setCurrentDrawing({
+          ...currentDrawing,
+          points: [...currentDrawing.points, imagePoint],
+        });
+      } else if (tool === TOOLS.LINE || tool === TOOLS.RECTANGLE || tool === TOOLS.CIRCLE) {
+        setCurrentDrawing({
+          ...currentDrawing,
+          end: imagePoint,
+        });
+      }
+    }
+
+    // Handle eraser while dragging
+    if (tool === TOOLS.ERASER && e.buttons === 1) {
+      const canvas = canvasRef.current;
+      const screenPoint = imageToScreen(imagePoint, canvas.width, canvas.height);
+
+      setDrawings(drawings.filter(drawing => {
+        if (drawing.type === 'freehand') {
+          return !drawing.points.some(p => {
+            const sp = imageToScreen(p, canvas.width, canvas.height);
+            const dist = Math.sqrt(
+              Math.pow(sp.x - screenPoint.x, 2) +
+              Math.pow(sp.y - screenPoint.y, 2)
+            );
+            return dist < drawSize * 2;
+          });
+        } else if (drawing.type === 'text') {
+          const sp = imageToScreen(drawing.position, canvas.width, canvas.height);
+          const dist = Math.sqrt(
+            Math.pow(sp.x - screenPoint.x, 2) +
+            Math.pow(sp.y - screenPoint.y, 2)
+          );
+          return dist >= 20;
+        }
+        return true;
+      }));
     }
   };
 
-  // Handle mouse up
-  const handleMouseUp = () => {
-    setIsPanning(false);
+  // Handle canvas mouse up
+  const handleMouseUp = (e) => {
+    if (isPanning) {
+      setIsPanning(false);
+      return;
+    }
+
+    if (draggedMeasurement) {
+      setDraggedMeasurement(null);
+      return;
+    }
+
+    if (tool === TOOLS.MEASURE && currentPoints.length === 1 && !draggedMeasurement) {
+      const imagePoint = screenToImage(e.clientX, e.clientY);
+      if (imagePoint && isInBounds(imagePoint)) {
+        // Complete measurement
+        const newMeasurement = {
+          id: Date.now(),
+          point1: currentPoints[0],
+          point2: imagePoint,
+          distance: calculateDistance(currentPoints[0], imagePoint),
+          name: '',
+        };
+        setMeasurements([...measurements, newMeasurement]);
+        setCurrentPoints([]);
+      }
+    }
+
+    if (isDrawing && currentDrawing) {
+      if (currentDrawing.points?.length > 1 || currentDrawing.end) {
+        setDrawings([...drawings, currentDrawing]);
+      }
+      setCurrentDrawing(null);
+      setIsDrawing(false);
+      setDrawStart(null);
+    }
   };
 
   // Handle mouse wheel for zoom
@@ -327,22 +613,89 @@ const Rangefinder = () => {
     setPan({ x: 0, y: 0 });
   };
 
+  // Navigate to measurement
+  const handleNavigateToMeasurement = (measurement) => {
+    const midX = (measurement.point1.x + measurement.point2.x) / 2;
+    const midY = (measurement.point1.y + measurement.point2.y) / 2;
+
+    // Center on measurement
+    setPan({ x: 0, y: 0 });
+
+    // Calculate pan to center the measurement
+    const canvas = canvasRef.current;
+    const targetScreenX = canvas.width / 2;
+    const targetScreenY = canvas.height / 2;
+
+    const currentScreenX = (midX - mapImage.width / 2) * zoom + canvas.width / 2;
+    const currentScreenY = (midY - mapImage.height / 2) * zoom + canvas.height / 2;
+
+    setPan({
+      x: targetScreenX - currentScreenX,
+      y: targetScreenY - currentScreenY,
+    });
+  };
+
+  // Handle text annotation submission
+  const handleTextSubmit = () => {
+    if (textInput.trim() && textPosition) {
+      const newDrawing = {
+        type: 'text',
+        text: textInput.trim(),
+        position: textPosition,
+        color: drawColor,
+        size: drawSize,
+      };
+      setDrawings([...drawings, newDrawing]);
+      setTextInput('');
+      setTextPosition(null);
+      setShowTextInput(false);
+    }
+  };
+
+  // Handle measurement name edit
+  const handleStartEditMeasurement = (index) => {
+    setEditingMeasurementIndex(index);
+    setEditingMeasurementName(measurements[index].name || '');
+  };
+
+  const handleSaveMeasurementName = () => {
+    if (editingMeasurementIndex !== null) {
+      const newMeasurements = [...measurements];
+      newMeasurements[editingMeasurementIndex].name = editingMeasurementName;
+      setMeasurements(newMeasurements);
+      setEditingMeasurementIndex(null);
+      setEditingMeasurementName('');
+    }
+  };
+
+  const handleDeleteMeasurement = (index) => {
+    setMeasurements(measurements.filter((_, i) => i !== index));
+    if (editingMeasurementIndex === index) {
+      setEditingMeasurementIndex(null);
+      setEditingMeasurementName('');
+    }
+  };
+
   // Clear current measurement
   const handleClearCurrent = () => {
     setCurrentPoints([]);
   };
 
-  // Clear all measurements
+  // Clear all
   const handleClearAll = () => {
-    setMeasurements([]);
-    setCurrentPoints([]);
-    setAnnotations([]);
+    if (confirm('Clear all measurements and drawings?')) {
+      setMeasurements([]);
+      setCurrentPoints([]);
+      setDrawings([]);
+      setCurrentDrawing(null);
+      setEditingMeasurementIndex(null);
+    }
   };
 
   // Go back to map selection
   const handleBackToSelection = () => {
-    if (measurements.length > 0 || annotations.length > 0) {
-      if (!confirm('Go back to map selection? All measurements and annotations will be lost.')) {
+    if (measurements.length > 0 || drawings.length > 0) {
+      if (!confirm('Go back to map selection? All measurements and drawings will be lost.')) {
         return;
       }
     }
@@ -364,7 +717,7 @@ const Rangefinder = () => {
                   War of Rights - Map Rangefinder
                 </h1>
                 <p className="text-slate-400 text-sm mt-1">
-                  Measure distances on War of Rights maps (1 pixel = 1 yard)
+                  Measure distances, draw strategies, and annotate War of Rights maps
                 </p>
               </div>
             </div>
@@ -397,13 +750,32 @@ const Rangefinder = () => {
           {/* Instructions */}
           <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-6 mt-6">
             <h2 className="text-lg font-bold text-amber-400 mb-3">How to Use</h2>
-            <ul className="text-slate-300 space-y-2 text-sm">
-              <li>• <strong>Measure:</strong> Click two points to measure distance</li>
-              <li>• <strong>Zoom:</strong> Use mouse wheel or zoom buttons</li>
-              <li>• <strong>Pan:</strong> Middle click (or Shift+Click) and drag</li>
-              <li>• <strong>Clear:</strong> Remove current or all measurements</li>
-              <li>• <strong>Scale:</strong> 1 pixel = 1 yard in-game</li>
-            </ul>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-300 text-sm">
+              <div>
+                <h3 className="font-semibold text-amber-400 mb-2">Measurement</h3>
+                <ul className="space-y-1">
+                  <li>• Click two points to measure distance</li>
+                  <li>• Drag endpoints to adjust measurements</li>
+                  <li>• Name measurements and click to navigate</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-amber-400 mb-2">Drawing</h3>
+                <ul className="space-y-1">
+                  <li>• Draw freehand, lines, shapes</li>
+                  <li>• Add text annotations</li>
+                  <li>• Use eraser to remove drawings</li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-amber-400 mb-2">Navigation</h3>
+                <ul className="space-y-1">
+                  <li>• Mouse wheel to zoom in/out</li>
+                  <li>• Shift+Click or Middle-click to pan</li>
+                  <li>• Scale: 1 pixel = 1 yard in-game</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -422,9 +794,7 @@ const Rangefinder = () => {
               <div>
                 <h1 className="text-2xl font-bold text-amber-400">{selectedMap.name}</h1>
                 <p className="text-slate-400 text-sm">
-                  {currentPoints.length === 0 && 'Click two points to measure distance'}
-                  {currentPoints.length === 1 && 'Click second point to complete measurement'}
-                  {currentPoints.length === 2 && 'Measurement complete'}
+                  Tool: {tool.charAt(0).toUpperCase() + tool.slice(1)} • Zoom: {(zoom * 100).toFixed(0)}%
                 </p>
               </div>
             </div>
@@ -444,16 +814,113 @@ const Rangefinder = () => {
 
         {/* Toolbar */}
         <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 mb-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Tools */}
             <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm mr-2">Zoom:</span>
+              <span className="text-slate-400 text-sm mr-1">Tools:</span>
+              <button
+                onClick={() => setTool(TOOLS.MEASURE)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.MEASURE ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Measure"
+              >
+                <Ruler className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.DRAW)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.DRAW ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Draw"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.LINE)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.LINE ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Line"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.RECTANGLE)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.RECTANGLE ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Rectangle"
+              >
+                <Square className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.CIRCLE)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.CIRCLE ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Circle"
+              >
+                <Circle className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.TEXT)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.TEXT ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Text"
+              >
+                <Type className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTool(TOOLS.ERASER)}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1 transition ${
+                  tool === TOOLS.ERASER ? 'bg-amber-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+                title="Eraser"
+              >
+                <Eraser className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Color Picker */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-sm">Color:</span>
+              {COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  onClick={() => setDrawColor(color.value)}
+                  className={`w-8 h-8 rounded border-2 transition ${
+                    drawColor === color.value ? 'border-amber-400 scale-110' : 'border-slate-600'
+                  }`}
+                  style={{ backgroundColor: color.value }}
+                  title={color.name}
+                />
+              ))}
+            </div>
+
+            {/* Size Picker */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-sm">Size:</span>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={drawSize}
+                onChange={(e) => setDrawSize(parseInt(e.target.value))}
+                className="w-24"
+              />
+              <span className="text-amber-400 font-semibold w-6">{drawSize}</span>
+            </div>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 onClick={handleZoomIn}
                 className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-1 transition"
                 title="Zoom In"
               >
                 <ZoomIn className="w-4 h-4" />
-                In
               </button>
               <button
                 onClick={handleZoomOut}
@@ -461,38 +928,20 @@ const Rangefinder = () => {
                 title="Zoom Out"
               >
                 <ZoomOut className="w-4 h-4" />
-                Out
               </button>
               <button
                 onClick={handleResetZoom}
                 className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-1 transition"
-                title="Reset Zoom"
+                title="Reset View"
               >
                 <RotateCcw className="w-4 h-4" />
-                Reset
               </button>
-              <span className="text-amber-400 font-semibold ml-2">{(zoom * 100).toFixed(0)}%</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm mr-2">Clear:</span>
-              {currentPoints.length > 0 && (
-                <button
-                  onClick={handleClearCurrent}
-                  className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-1 transition"
-                  title="Clear Current Measurement"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Current
-                </button>
-              )}
               <button
                 onClick={handleClearAll}
                 className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-1 transition"
-                title="Clear All Measurements"
+                title="Clear All"
               >
                 <Trash2 className="w-4 h-4" />
-                All
               </button>
             </div>
           </div>
@@ -501,12 +950,11 @@ const Rangefinder = () => {
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 overflow-hidden"
-          style={{ height: 'calc(100vh - 280px)' }}
+          className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 overflow-hidden relative"
+          style={{ height: 'calc(100vh - 340px)' }}
         >
           <canvas
             ref={canvasRef}
-            onClick={handleCanvasClick}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -516,9 +964,52 @@ const Rangefinder = () => {
             className="cursor-crosshair"
             style={{ display: 'block', width: '100%', height: '100%' }}
           />
+
+          {/* Text Input Modal */}
+          {showTextInput && (
+            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full">
+                <h3 className="text-lg font-bold text-amber-400 mb-4">Add Text Annotation</h3>
+                <input
+                  ref={textInputRef}
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleTextSubmit();
+                    if (e.key === 'Escape') {
+                      setShowTextInput(false);
+                      setTextInput('');
+                      setTextPosition(null);
+                    }
+                  }}
+                  placeholder="Enter text..."
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-400 focus:outline-none mb-4"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleTextSubmit}
+                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowTextInput(false);
+                      setTextInput('');
+                      setTextPosition(null);
+                    }}
+                    className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Info Panel */}
+        {/* Measurements Panel */}
         {measurements.length > 0 && (
           <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 mt-4">
             <h3 className="text-lg font-bold text-amber-400 mb-3">
@@ -527,13 +1018,68 @@ const Rangefinder = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {measurements.map((measurement, index) => (
                 <div
-                  key={index}
-                  className="bg-slate-700 rounded px-3 py-2 text-sm"
+                  key={measurement.id}
+                  className="bg-slate-700 rounded px-3 py-2 text-sm flex items-center justify-between gap-2"
                 >
-                  <span className="text-slate-400">Measurement {index + 1}:</span>{' '}
-                  <span className="text-green-400 font-bold">
-                    {measurement.distance.toFixed(1)} yards
-                  </span>
+                  {editingMeasurementIndex === index ? (
+                    <div className="flex-1 flex gap-2">
+                      <input
+                        type="text"
+                        value={editingMeasurementName}
+                        onChange={(e) => setEditingMeasurementName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveMeasurementName();
+                          if (e.key === 'Escape') {
+                            setEditingMeasurementIndex(null);
+                            setEditingMeasurementName('');
+                          }
+                        }}
+                        placeholder="Name..."
+                        className="flex-1 px-2 py-1 bg-slate-800 text-white rounded text-xs border border-slate-600 focus:border-amber-400 focus:outline-none"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSaveMeasurementName}
+                        className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleNavigateToMeasurement(measurement)}
+                        className="flex-1 text-left hover:text-amber-400 transition"
+                        title="Click to navigate to measurement"
+                      >
+                        <div className="flex items-center gap-1">
+                          <Navigation className="w-3 h-3" />
+                          <span className="text-slate-400">
+                            {measurement.name || `Measurement ${index + 1}`}:
+                          </span>
+                          <span className="text-green-400 font-bold ml-1">
+                            {measurement.distance.toFixed(1)} yds
+                          </span>
+                        </div>
+                      </button>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleStartEditMeasurement(index)}
+                          className="p-1 hover:bg-slate-600 rounded transition"
+                          title="Edit name"
+                        >
+                          <Edit2 className="w-3 h-3 text-amber-400" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMeasurement(index)}
+                          className="p-1 hover:bg-slate-600 rounded transition"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3 text-red-400" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
