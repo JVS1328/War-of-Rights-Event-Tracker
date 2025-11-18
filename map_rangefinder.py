@@ -1,133 +1,282 @@
 #!/usr/bin/env python3
 """
 War of Rights Map Rangefinder Tool
-A simple utility to measure distances on War of Rights maps.
+A lightweight utility to measure distances on War of Rights maps.
 Scale: 1 pixel = 1 yard in-game
 """
 
 import sys
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-from matplotlib.backend_bases import MouseButton
-import numpy as np
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageTk
+import math
 
 
 class MapRangefinder:
-    """Interactive map viewer with rangefinding capabilities."""
+    """Modern GUI map viewer with rangefinding capabilities."""
 
-    def __init__(self, image_path):
-        self.image_path = image_path
+    def __init__(self, root, image_path=None):
+        self.root = root
+        self.root.title("War of Rights - Map Rangefinder")
+        self.root.geometry("1200x800")
+
+        # State
         self.image = None
-        self.fig = None
-        self.ax = None
+        self.photo = None
+        self.image_path = image_path
+        self.zoom_level = 1.0
         self.ruler_points = []
-        self.ruler_line = None
-        self.ruler_text = None
+        self.ruler_items = []
 
-    def load_image(self):
-        """Load the map image."""
+        # Pan state
+        self.pan_start_x = 0
+        self.pan_start_y = 0
+
+        self._setup_ui()
+
+        if image_path:
+            self.load_image(image_path)
+
+    def _setup_ui(self):
+        """Create the user interface."""
+        # Toolbar
+        toolbar = ttk.Frame(self.root, padding="5")
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        ttk.Button(toolbar, text="Open Map", command=self.open_file).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+
+        ttk.Button(toolbar, text="Zoom In", command=self.zoom_in).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Zoom Out", command=self.zoom_out).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Reset Zoom", command=self.reset_zoom).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+
+        ttk.Button(toolbar, text="Clear Ruler", command=self.clear_ruler).pack(side=tk.LEFT, padx=2)
+
+        # Canvas for map display
+        canvas_frame = ttk.Frame(self.root)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.canvas = tk.Canvas(canvas_frame, bg="#2b2b2b", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Status bar
+        self.status_bar = ttk.Label(self.root, text="Load a map to begin",
+                                     relief=tk.SUNKEN, anchor=tk.W, padding="5")
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Bind events
+        self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<Button-2>", self.start_pan)
+        self.canvas.bind("<B2-Motion>", self.pan_move)
+        self.canvas.bind("<ButtonRelease-2>", self.end_pan)
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.canvas.bind("<Button-4>", self.on_mousewheel)  # Linux scroll up
+        self.canvas.bind("<Button-5>", self.on_mousewheel)  # Linux scroll down
+
+        # Keyboard shortcuts
+        self.root.bind("<Control-o>", lambda e: self.open_file())
+        self.root.bind("<Control-c>", lambda e: self.clear_ruler())
+        self.root.bind("<Escape>", lambda e: self.clear_ruler())
+
+    def open_file(self):
+        """Open a map image file."""
+        filename = filedialog.askopenfilename(
+            title="Select Map Image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                ("All files", "*.*")
+            ]
+        )
+        if filename:
+            self.load_image(filename)
+
+    def load_image(self, path):
+        """Load and display a map image."""
         try:
-            self.image = mpimg.imread(self.image_path)
-            return True
+            self.image = Image.open(path)
+            self.image_path = path
+            self.zoom_level = 1.0
+            self.ruler_points = []
+            self.clear_ruler()
+            self._display_image()
+            self.status_bar.config(text=f"Loaded: {path} | Click two points to measure distance")
         except Exception as e:
-            print(f"Error loading image: {e}")
-            return False
+            messagebox.showerror("Error", f"Failed to load image: {e}")
+
+    def _display_image(self):
+        """Render the image on canvas at current zoom level."""
+        if not self.image:
+            return
+
+        # Calculate new size based on zoom
+        new_width = int(self.image.width * self.zoom_level)
+        new_height = int(self.image.height * self.zoom_level)
+
+        # Resize image
+        resized = self.image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        self.photo = ImageTk.PhotoImage(resized)
+
+        # Clear and redraw
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo, tags="map")
+
+        # Update scroll region
+        self.canvas.config(scrollregion=(0, 0, new_width, new_height))
+
+        # Redraw ruler if exists
+        self._redraw_ruler()
+
+    def zoom_in(self):
+        """Increase zoom level."""
+        self.zoom_level *= 1.2
+        self._display_image()
+        self.status_bar.config(text=f"Zoom: {self.zoom_level:.1f}x")
+
+    def zoom_out(self):
+        """Decrease zoom level."""
+        self.zoom_level /= 1.2
+        self._display_image()
+        self.status_bar.config(text=f"Zoom: {self.zoom_level:.1f}x")
+
+    def reset_zoom(self):
+        """Reset zoom to 100%."""
+        self.zoom_level = 1.0
+        self._display_image()
+        self.status_bar.config(text="Zoom reset to 100%")
+
+    def on_mousewheel(self, event):
+        """Handle mouse wheel zoom."""
+        if not self.image:
+            return
+
+        # Determine scroll direction
+        if event.num == 5 or event.delta < 0:
+            self.zoom_level /= 1.1
+        elif event.num == 4 or event.delta > 0:
+            self.zoom_level *= 1.1
+
+        self._display_image()
+
+    def start_pan(self, event):
+        """Start panning with middle mouse button."""
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+        self.canvas.config(cursor="fleur")
+
+    def pan_move(self, event):
+        """Pan the image."""
+        dx = event.x - self.pan_start_x
+        dy = event.y - self.pan_start_y
+        self.canvas.move("all", dx, dy)
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+
+    def end_pan(self, event):
+        """End panning."""
+        self.canvas.config(cursor="")
 
     def on_click(self, event):
-        """Handle mouse click events for ruler tool."""
-        if event.inaxes != self.ax or event.button != MouseButton.LEFT:
+        """Handle left click for ruler tool."""
+        if not self.image:
             return
 
-        # Add point to ruler
-        self.ruler_points.append((event.xdata, event.ydata))
+        # Convert canvas coords to image coords
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
 
-        # Draw ruler when we have 2 points
+        # Account for zoom
+        img_x = canvas_x / self.zoom_level
+        img_y = canvas_y / self.zoom_level
+
+        self.ruler_points.append((canvas_x, canvas_y, img_x, img_y))
+
+        # Draw point
+        r = 4
+        point = self.canvas.create_oval(
+            canvas_x - r, canvas_y - r, canvas_x + r, canvas_y + r,
+            fill="#ff4444", outline="#ffffff", width=2, tags="ruler"
+        )
+        self.ruler_items.append(point)
+
         if len(self.ruler_points) == 2:
             self._draw_ruler()
-            self.ruler_points = []  # Reset for next measurement
-
-    def on_key(self, event):
-        """Handle keyboard events."""
-        if event.key == 'c':
-            # Clear ruler
-            self._clear_ruler()
-        elif event.key == 'q':
-            # Quit
-            plt.close(self.fig)
 
     def _draw_ruler(self):
-        """Draw ruler line and display distance."""
-        self._clear_ruler()
-
-        x1, y1 = self.ruler_points[0]
-        x2, y2 = self.ruler_points[1]
-
-        # Calculate distance in yards (1 pixel = 1 yard)
-        distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-        # Draw line
-        self.ruler_line, = self.ax.plot([x1, x2], [y1, y2],
-                                         'r-', linewidth=2,
-                                         marker='o', markersize=8)
-
-        # Add text label with distance
-        mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
-        self.ruler_text = self.ax.text(mid_x, mid_y,
-                                        f'{distance:.1f} yards',
-                                        bbox=dict(boxstyle='round',
-                                                 facecolor='yellow',
-                                                 alpha=0.8),
-                                        fontsize=10,
-                                        ha='center')
-
-        self.fig.canvas.draw()
-
-    def _clear_ruler(self):
-        """Clear existing ruler from display."""
-        if self.ruler_line:
-            self.ruler_line.remove()
-            self.ruler_line = None
-        if self.ruler_text:
-            self.ruler_text.remove()
-            self.ruler_text = None
-        self.fig.canvas.draw()
-
-    def run(self):
-        """Start the interactive map viewer."""
-        if not self.load_image():
+        """Draw ruler line and show distance."""
+        if len(self.ruler_points) != 2:
             return
 
-        # Create figure and axis
-        self.fig, self.ax = plt.subplots(figsize=(12, 8))
-        self.ax.imshow(self.image)
-        self.ax.set_title('War of Rights Map Rangefinder\n'
-                         'Click two points to measure distance | '
-                         'C: Clear ruler | Q: Quit | '
-                         'Toolbar: Zoom/Pan',
-                         fontsize=12)
+        # Get canvas and image coordinates
+        cx1, cy1, ix1, iy1 = self.ruler_points[0]
+        cx2, cy2, ix2, iy2 = self.ruler_points[1]
 
-        # Connect event handlers
-        self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+        # Calculate distance in yards (based on original image pixels)
+        distance = math.sqrt((ix2 - ix1)**2 + (iy2 - iy1)**2)
 
-        plt.tight_layout()
-        plt.show()
+        # Draw line on canvas
+        line = self.canvas.create_line(
+            cx1, cy1, cx2, cy2,
+            fill="#ff4444", width=3, tags="ruler"
+        )
+        self.ruler_items.append(line)
+
+        # Draw text label
+        mid_x = (cx1 + cx2) / 2
+        mid_y = (cy1 + cy2) / 2
+
+        text_bg = self.canvas.create_rectangle(
+            mid_x - 60, mid_y - 15, mid_x + 60, mid_y + 15,
+            fill="#ffeb3b", outline="#333333", width=2, tags="ruler"
+        )
+        text = self.canvas.create_text(
+            mid_x, mid_y,
+            text=f"{distance:.1f} yards",
+            font=("Arial", 12, "bold"),
+            fill="#000000", tags="ruler"
+        )
+        self.ruler_items.extend([text_bg, text])
+
+        # Update status
+        self.status_bar.config(text=f"Distance: {distance:.1f} yards | Click to measure again or press Clear")
+
+        # Reset for next measurement
+        self.ruler_points = []
+
+    def _redraw_ruler(self):
+        """Redraw ruler items after zoom/pan."""
+        # Clear existing ruler graphics
+        for item in self.ruler_items:
+            self.canvas.delete(item)
+        self.ruler_items = []
+
+    def clear_ruler(self):
+        """Clear current ruler measurement."""
+        self.canvas.delete("ruler")
+        self.ruler_items = []
+        self.ruler_points = []
+        self.status_bar.config(text="Ruler cleared | Click two points to measure distance")
+
+    def run(self):
+        """Start the application."""
+        self.root.mainloop()
 
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
-        print("Usage: python map_rangefinder.py <map_image_path>")
-        print("\nExample: python map_rangefinder.py maps/antietam.png")
-        print("\nControls:")
-        print("  - Click two points to measure distance in yards")
-        print("  - Use toolbar to zoom and pan")
-        print("  - Press 'C' to clear current ruler")
-        print("  - Press 'Q' to quit")
-        sys.exit(1)
+    root = tk.Tk()
 
-    rangefinder = MapRangefinder(sys.argv[1])
-    rangefinder.run()
+    # Set modern theme if available
+    try:
+        style = ttk.Style()
+        style.theme_use('clam')
+    except:
+        pass
+
+    image_path = sys.argv[1] if len(sys.argv) > 1 else None
+
+    app = MapRangefinder(root, image_path)
+    app.run()
 
 
 if __name__ == '__main__':
