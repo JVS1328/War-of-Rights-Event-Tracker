@@ -64,10 +64,22 @@ export const processBattleResult = (campaign, battle) => {
 
   // Calculate VP gained from territory capture (if ownership changed)
   const territoryVP = territory.victoryPoints || territory.pointValue || 0;
-  const ownershipChanged = previousOwner !== battle.winner;
+
+  // Handle failed attacks on neutral territories
+  const failedNeutralAttackToEnemy = campaign.settings?.failedNeutralAttackToEnemy !== false;
+  let finalWinner = battle.winner;
+
+  if (failedNeutralAttackToEnemy && previousOwner === 'NEUTRAL' && battle.winner !== battle.attacker) {
+    // Attacker lost against neutral territory - transfer to enemy
+    const enemy = battle.attacker === 'USA' ? 'CSA' : 'USA';
+    finalWinner = enemy;
+    battle.winner = enemy; // Update battle record to reflect actual result
+  }
+
+  const ownershipChanged = previousOwner !== finalWinner;
 
   // Update territory ownership
-  territory.owner = battle.winner;
+  territory.owner = finalWinner;
 
   // Create updated campaign
   const updatedCampaign = { ...campaign };
