@@ -46,6 +46,8 @@ const Rangefinder = () => {
   const [measurements, setMeasurements] = useState([]);
   const [currentPoints, setCurrentPoints] = useState([]);
   const [draggedMeasurement, setDraggedMeasurement] = useState(null); // { index, point: 'point1' or 'point2' }
+  const [dragPreviewPoint, setDragPreviewPoint] = useState(null); // Current mouse position while dragging
+  const [hoverPoint, setHoverPoint] = useState(null); // Current mouse position for live preview
   const [editingMeasurementIndex, setEditingMeasurementIndex] = useState(null);
   const [editingMeasurementName, setEditingMeasurementName] = useState('');
 
@@ -156,11 +158,51 @@ const Rangefinder = () => {
       drawMeasurement(ctx, measurement, canvas.width, canvas.height, index === editingMeasurementIndex);
     });
 
-    // Draw current measurement points
+    // Draw current measurement points and live preview
     if (currentPoints.length > 0) {
       currentPoints.forEach((point) => {
         drawPoint(ctx, point, canvas.width, canvas.height, '#ef4444');
       });
+
+      // Draw live preview line if one point and hovering
+      if (currentPoints.length === 1 && hoverPoint) {
+        const screenPoint1 = imageToScreen(currentPoints[0], canvas.width, canvas.height);
+        const screenPoint2 = imageToScreen(hoverPoint, canvas.width, canvas.height);
+
+        // Draw preview line (dashed)
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(screenPoint1.x, screenPoint1.y);
+        ctx.lineTo(screenPoint2.x, screenPoint2.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw live distance
+        const liveDistance = calculateDistance(currentPoints[0], hoverPoint);
+        const midX = (screenPoint1.x + screenPoint2.x) / 2;
+        const midY = (screenPoint1.y + screenPoint2.y) / 2;
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.strokeStyle = '#92400e';
+        ctx.lineWidth = 2;
+        ctx.font = 'bold 16px Arial';
+
+        const text = `${liveDistance.toFixed(1)} yards`;
+        const metrics = ctx.measureText(text);
+        const padding = 8;
+        const width = metrics.width + padding * 2;
+        const height = 20 + padding * 2;
+
+        ctx.fillRect(midX - width / 2, midY - height / 2, width, height);
+        ctx.strokeRect(midX - width / 2, midY - height / 2, width, height);
+
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, midX, midY);
+      }
 
       // Draw line if two points
       if (currentPoints.length === 2) {
@@ -175,7 +217,54 @@ const Rangefinder = () => {
         ctx.stroke();
       }
     }
-  }, [mapImage, zoom, pan, measurements, currentPoints, drawings, currentDrawing, editingMeasurementIndex]);
+
+    // Draw live preview while dragging measurement
+    if (draggedMeasurement && dragPreviewPoint) {
+      const measurement = measurements[draggedMeasurement.index];
+      const fixedPoint = draggedMeasurement.point === 'point1' ? measurement.point2 : measurement.point1;
+
+      const screenFixed = imageToScreen(fixedPoint, canvas.width, canvas.height);
+      const screenPreview = imageToScreen(dragPreviewPoint, canvas.width, canvas.height);
+
+      // Draw preview line
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([5, 5]); // Dashed line
+      ctx.beginPath();
+      ctx.moveTo(screenFixed.x, screenFixed.y);
+      ctx.lineTo(screenPreview.x, screenPreview.y);
+      ctx.stroke();
+      ctx.setLineDash([]); // Reset to solid
+
+      // Draw preview points
+      drawPoint(ctx, fixedPoint, canvas.width, canvas.height, '#a855f7');
+      drawPoint(ctx, dragPreviewPoint, canvas.width, canvas.height, '#a855f7');
+
+      // Draw live distance
+      const liveDistance = calculateDistance(fixedPoint, dragPreviewPoint);
+      const midX = (screenFixed.x + screenPreview.x) / 2;
+      const midY = (screenFixed.y + screenPreview.y) / 2;
+
+      ctx.fillStyle = '#a855f7';
+      ctx.strokeStyle = '#581c87';
+      ctx.lineWidth = 2;
+      ctx.font = 'bold 16px Arial';
+
+      const text = `${liveDistance.toFixed(1)} yards`;
+      const metrics = ctx.measureText(text);
+      const padding = 8;
+      const width = metrics.width + padding * 2;
+      const height = 20 + padding * 2;
+
+      ctx.fillRect(midX - width / 2, midY - height / 2, width, height);
+      ctx.strokeRect(midX - width / 2, midY - height / 2, width, height);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, midX, midY);
+    }
+  }, [mapImage, zoom, pan, measurements, currentPoints, drawings, currentDrawing, editingMeasurementIndex, draggedMeasurement, dragPreviewPoint, hoverPoint]);
 
   // Helper: Convert image coordinates to screen coordinates
   const imageToScreen = (imagePoint, canvasWidth, canvasHeight) => {
@@ -472,10 +561,21 @@ const Rangefinder = () => {
     }
 
     const imagePoint = screenToImage(e.clientX, e.clientY);
-    if (!imagePoint || !isInBounds(imagePoint)) return;
+    if (!imagePoint || !isInBounds(imagePoint)) {
+      setHoverPoint(null);
+      return;
+    }
+
+    // Update hover point for live preview when measuring
+    if (tool === TOOLS.MEASURE && currentPoints.length === 1 && !draggedMeasurement) {
+      setHoverPoint(imagePoint);
+    } else {
+      setHoverPoint(null);
+    }
 
     // Handle dragging measurement endpoint
     if (draggedMeasurement) {
+      setDragPreviewPoint(imagePoint);
       const newMeasurements = [...measurements];
       newMeasurements[draggedMeasurement.index][draggedMeasurement.point] = imagePoint;
       newMeasurements[draggedMeasurement.index].distance = calculateDistance(
@@ -538,6 +638,7 @@ const Rangefinder = () => {
 
     if (draggedMeasurement) {
       setDraggedMeasurement(null);
+      setDragPreviewPoint(null);
       return;
     }
 
@@ -679,6 +780,7 @@ const Rangefinder = () => {
   // Clear current measurement
   const handleClearCurrent = () => {
     setCurrentPoints([]);
+    setHoverPoint(null);
   };
 
   // Clear all
