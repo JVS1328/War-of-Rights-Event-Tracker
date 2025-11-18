@@ -103,6 +103,21 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
+                    checked={settings.failedNeutralAttackToEnemy !== false}
+                    onChange={(e) => updateSetting('failedNeutralAttackToEnemy', e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                  />
+                  <div>
+                    <div className="text-white font-semibold">Failed Attack on Neutral Territories Falls to Enemy Hands?</div>
+                    <div className="text-xs text-slate-400">
+                      When enabled, a failed attack on a neutral territory transfers control to the opposing side
+                    </div>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
                     checked={settings.instantVPGains !== false}
                     onChange={(e) => updateSetting('instantVPGains', e.target.checked)}
                     className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"

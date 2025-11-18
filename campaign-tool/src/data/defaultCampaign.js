@@ -279,6 +279,9 @@ export const createDefaultCampaign = (customMap = null) => {
       instantVPGains: true,
       captureTransitionTurns: 2,
 
+      // Territory capture rules
+      failedNeutralAttackToEnemy: true,
+
       // New CP system settings
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
@@ -306,6 +309,9 @@ export const getDefaultSettings = () => ({
   // VP system settings
   instantVPGains: true,
   captureTransitionTurns: 2,
+
+  // Territory capture rules
+  failedNeutralAttackToEnemy: true,
 
   // New CP settings
   startingCP: DEFAULT_STARTING_CP,
