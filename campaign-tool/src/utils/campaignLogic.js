@@ -69,11 +69,18 @@ export const processBattleResult = (campaign, battle) => {
   const failedNeutralAttackToEnemy = campaign.settings?.failedNeutralAttackToEnemy !== false;
   let finalWinner = battle.winner;
 
-  if (failedNeutralAttackToEnemy && previousOwner === 'NEUTRAL' && battle.winner !== battle.attacker) {
-    // Attacker lost against neutral territory - transfer to enemy
-    const enemy = battle.attacker === 'USA' ? 'CSA' : 'USA';
-    finalWinner = enemy;
-    battle.winner = enemy; // Update battle record to reflect actual result
+  if (previousOwner === 'NEUTRAL' && battle.winner !== battle.attacker) {
+    // Attacker lost against neutral territory
+    if (failedNeutralAttackToEnemy) {
+      // Setting ON: transfer to enemy
+      const enemy = battle.attacker === 'USA' ? 'CSA' : 'USA';
+      finalWinner = enemy;
+      battle.winner = enemy;
+    } else {
+      // Setting OFF: keep neutral
+      finalWinner = 'NEUTRAL';
+      battle.winner = 'NEUTRAL';
+    }
   }
 
   const ownershipChanged = previousOwner !== finalWinner;
