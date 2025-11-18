@@ -356,7 +356,7 @@ const Rangefinder = () => {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mb-6">
+          <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-6 mb-6">
             <div className="flex items-center gap-3">
               <Ruler className="w-8 h-8 text-amber-400" />
               <div>
@@ -371,7 +371,7 @@ const Rangefinder = () => {
           </div>
 
           {/* Map Selection */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-6">
             <h2 className="text-xl font-bold text-amber-400 mb-4">Select a Map</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {MAPS.map((map) => (
@@ -395,7 +395,7 @@ const Rangefinder = () => {
           </div>
 
           {/* Instructions */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mt-6">
+          <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-6 mt-6">
             <h2 className="text-lg font-bold text-amber-400 mb-3">How to Use</h2>
             <ul className="text-slate-300 space-y-2 text-sm">
               <li>• <strong>Measure:</strong> Click two points to measure distance</li>
@@ -415,7 +415,7 @@ const Rangefinder = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4">
+        <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Ruler className="w-6 h-6 text-amber-400" />
@@ -443,7 +443,7 @@ const Rangefinder = () => {
         </div>
 
         {/* Toolbar */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mb-4">
+        <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 mb-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <span className="text-slate-400 text-sm mr-2">Zoom:</span>
@@ -501,7 +501,7 @@ const Rangefinder = () => {
         {/* Canvas */}
         <div
           ref={containerRef}
-          className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden"
+          className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 overflow-hidden"
           style={{ height: 'calc(100vh - 280px)' }}
         >
           <canvas
@@ -520,7 +520,7 @@ const Rangefinder = () => {
 
         {/* Info Panel */}
         {measurements.length > 0 && (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 mt-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 mt-4">
             <h3 className="text-lg font-bold text-amber-400 mb-3">
               Measurements ({measurements.length})
             </h3>
