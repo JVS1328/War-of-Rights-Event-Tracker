@@ -2349,7 +2349,7 @@ const SeasonTracker = () => {
     const avgLeadPercentage = avgTotalPoints > 0 ? (avgLeadPoints / avgTotalPoints * 100) : 0;
     const avgAssistPercentage = avgTotalPoints > 0 ? (avgAssistPoints / avgTotalPoints * 100) : 0;
 
-    // Calculate theoretical per token unit
+    // Calculate theoretical per token unit - MAX POSSIBLE POINTS
     // Determine lead rounds per unit based on mode
     const leadRoundsPerUnit = simLeadMode === 'rounds'
       ? simLeadNightsPerUnit  // In rounds mode: each night = 1 round as lead
@@ -2357,30 +2357,23 @@ const SeasonTracker = () => {
 
     const assistRoundsPerUnit = totalRounds - leadRoundsPerUnit;
 
-    // Expected points per round type (50/50 win rate)
-    const expectedLeadPointsPerRound = (pointSystem.winLead + pointSystem.lossLead) / 2;
-    const expectedAssistPointsPerRound = (pointSystem.winAssist + pointSystem.lossAssist) / 2;
-
-    // Expected sweep bonuses
-    // Sweeps happen 50% of the time, and you're on the winning team 50% of the time
-    // So you get sweep bonus in 25% of weeks
-    const totalWeeks = simulatedWeeks.length;
-    const expectedSweepsOnWinningTeam = totalWeeks * 0.25;
-
     // Determine weeks as lead vs assist
+    const totalWeeks = simulatedWeeks.length;
     const weeksAsLead = simLeadMode === 'rounds'
       ? simLeadNightsPerUnit * 2  // In rounds mode: lead 1 round per week for 2x weeks
       : simLeadNightsPerUnit;  // In fullWeeks mode: lead both rounds for X weeks
 
     const weeksAsAssist = totalWeeks - weeksAsLead;
 
-    // Expected sweep bonuses
-    const expectedLeadSweepBonus = (weeksAsLead / totalWeeks) * expectedSweepsOnWinningTeam * pointSystem.bonus2_0Lead;
-    const expectedAssistSweepBonus = (weeksAsAssist / totalWeeks) * expectedSweepsOnWinningTeam * pointSystem.bonus2_0Assist;
+    // Max possible points (win every round, win every sweep)
+    const maxLeadPointsFromRounds = leadRoundsPerUnit * pointSystem.winLead;
+    const maxAssistPointsFromRounds = assistRoundsPerUnit * pointSystem.winAssist;
+    const maxLeadSweepBonus = weeksAsLead * pointSystem.bonus2_0Lead;
+    const maxAssistSweepBonus = weeksAsAssist * pointSystem.bonus2_0Assist;
 
-    // Total theoretical points per unit
-    const theoreticalLeadPoints = (leadRoundsPerUnit * expectedLeadPointsPerRound) + expectedLeadSweepBonus;
-    const theoreticalAssistPoints = (assistRoundsPerUnit * expectedAssistPointsPerRound) + expectedAssistSweepBonus;
+    // Total max theoretical points per unit
+    const theoreticalLeadPoints = maxLeadPointsFromRounds + maxLeadSweepBonus;
+    const theoreticalAssistPoints = maxAssistPointsFromRounds + maxAssistSweepBonus;
     const theoreticalTotalPoints = theoreticalLeadPoints + theoreticalAssistPoints;
 
     const theoreticalLeadPercentage = theoreticalTotalPoints > 0 ? (theoreticalLeadPoints / theoreticalTotalPoints * 100) : 0;
@@ -6040,11 +6033,11 @@ const SeasonTracker = () => {
                         Theoretical Distribution (Per Token Unit)
                       </h3>
                       <p className="text-xs text-slate-400 mb-4">
-                        Expected points per token unit over the season (50/50 win rates)
+                        Maximum possible points per token unit (winning every round and sweep)
                       </p>
                       <div className="space-y-3">
                         <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Season Totals</div>
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Season)</div>
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-slate-300 font-semibold">Lead Points</span>
                             <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(1)}</span>
@@ -6060,7 +6053,7 @@ const SeasonTracker = () => {
                           </div>
                         </div>
                         <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Per Round Average</div>
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Per Round)</div>
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-slate-300 font-semibold">Lead Points</span>
                             <span className="text-amber-400 font-bold">{(simulationAnalytics.theoretical.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
