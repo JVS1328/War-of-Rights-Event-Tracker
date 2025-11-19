@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
-  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap
+  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap,
+  CheckCircle2, FileText
 } from 'lucide-react';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
@@ -135,6 +136,8 @@ const SeasonTracker = () => {
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [simulationAnalytics, setSimulationAnalytics] = useState(null);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
   const [showNonTokenElo, setShowNonTokenElo] = useState(true);
   const [rankByElo, setRankByElo] = useState(false);
@@ -2245,6 +2248,131 @@ const SeasonTracker = () => {
   };
 
   // Simulation Functions
+  const calculatePointAnalytics = (simulatedWeeks) => {
+    // Calculate points from simulated weeks
+    let leadPoints = 0;
+    let assistPoints = 0;
+    let totalRounds = 0;
+
+    simulatedWeeks.forEach(week => {
+      if (week.round1Winner && week.round2Winner) {
+        totalRounds += 2;
+
+        // Process each round
+        [1, 2].forEach(roundNum => {
+          const winner = roundNum === 1 ? week.round1Winner : week.round2Winner;
+          const winningTeam = winner === 'A' ? week.teamA : week.teamB;
+          const losingTeam = winner === 'A' ? week.teamB : week.teamA;
+
+          // Determine leads for this round
+          let leadWinner, leadLoser;
+          if (week.isSingleRoundLeads) {
+            leadWinner = week[`lead${winner}_r${roundNum}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
+          } else {
+            leadWinner = week[`lead${winner}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
+          }
+
+          // Award win points
+          winningTeam.forEach(unit => {
+            if (unit === leadWinner) {
+              leadPoints += pointSystem.winLead;
+            } else {
+              assistPoints += pointSystem.winAssist;
+            }
+          });
+
+          // Award loss points
+          losingTeam.forEach(unit => {
+            if (unit === leadLoser) {
+              leadPoints += pointSystem.lossLead;
+            } else {
+              assistPoints += pointSystem.lossAssist;
+            }
+          });
+        });
+
+        // Check for sweep bonus
+        if (week.round1Winner === week.round2Winner) {
+          const sweepTeam = week.round1Winner === 'A' ? week.teamA : week.teamB;
+
+          if (week.isSingleRoundLeads) {
+            const sweepLeads = new Set([
+              week[`lead${week.round1Winner}_r1`],
+              week[`lead${week.round1Winner}_r2`]
+            ].filter(Boolean));
+
+            sweepTeam.forEach(unit => {
+              if (sweepLeads.has(unit)) {
+                leadPoints += pointSystem.bonus2_0Lead;
+              } else {
+                assistPoints += pointSystem.bonus2_0Assist;
+              }
+            });
+          } else {
+            const sweepLead = week[`lead${week.round1Winner}`];
+            sweepTeam.forEach(unit => {
+              if (unit === sweepLead) {
+                leadPoints += pointSystem.bonus2_0Lead;
+              } else {
+                assistPoints += pointSystem.bonus2_0Assist;
+              }
+            });
+          }
+        }
+      }
+    });
+
+    const totalPoints = leadPoints + assistPoints;
+    const leadPercentage = totalPoints > 0 ? (leadPoints / totalPoints * 100) : 0;
+    const assistPercentage = totalPoints > 0 ? (assistPoints / totalPoints * 100) : 0;
+
+    // Calculate theoretical "on paper" values assuming 50/50 distribution
+    // For a typical round: 1 lead and N assists per side
+    const avgTeamSize = units.length / 2;
+    const avgAssistsPerSide = avgTeamSize - 1; // Subtract the lead
+
+    // Expected points per round
+    const theoreticalLeadPerRound = (pointSystem.winLead + pointSystem.lossLead) / 2; // 50/50 win rate
+    const theoreticalAssistPerRound = (pointSystem.winAssist + pointSystem.lossAssist) / 2; // 50/50 win rate
+
+    // Per round: 2 leads (one per side), 2 * avgAssists assists (one per side)
+    const theoreticalLeadPointsPerRound = 2 * theoreticalLeadPerRound;
+    const theoreticalAssistPointsPerRound = 2 * avgAssistsPerSide * theoreticalAssistPerRound;
+
+    // Add sweep bonus (happens ~50% of the time)
+    // When sweep happens: 1 side gets bonus, avgTeamSize units, 1 lead + avgAssists assists
+    const sweepProbability = 0.5;
+    const theoreticalSweepLeadBonus = sweepProbability * pointSystem.bonus2_0Lead;
+    const theoreticalSweepAssistBonus = sweepProbability * avgAssistsPerSide * pointSystem.bonus2_0Assist;
+
+    const theoreticalLeadTotal = theoreticalLeadPointsPerRound + theoreticalSweepLeadBonus;
+    const theoreticalAssistTotal = theoreticalAssistPointsPerRound + theoreticalSweepAssistBonus;
+    const theoreticalTotal = theoreticalLeadTotal + theoreticalAssistTotal;
+
+    const theoreticalLeadPercentage = theoreticalTotal > 0 ? (theoreticalLeadTotal / theoreticalTotal * 100) : 0;
+    const theoreticalAssistPercentage = theoreticalTotal > 0 ? (theoreticalAssistTotal / theoreticalTotal * 100) : 0;
+
+    return {
+      simulated: {
+        leadPoints,
+        assistPoints,
+        totalPoints,
+        leadPercentage,
+        assistPercentage
+      },
+      theoretical: {
+        leadPoints: theoreticalLeadTotal,
+        assistPoints: theoreticalAssistTotal,
+        totalPoints: theoreticalTotal,
+        leadPercentage: theoreticalLeadPercentage,
+        assistPercentage: theoreticalAssistPercentage
+      },
+      totalRounds
+    };
+  };
+
   const simulateSeason = () => {
     if (units.length === 0) {
       alert('Please add units before simulating a season.');
@@ -2370,8 +2498,15 @@ const SeasonTracker = () => {
     // Add simulated weeks to existing weeks
     setWeeks([...weeks, ...simulatedWeeks]);
     setShowSimulateModal(false);
-    
-    alert(`Successfully simulated ${simulatedWeeks.length} weeks!`);
+
+    // Calculate and show analytics (only if not schedule-only mode)
+    if (!simScheduleOnly) {
+      const analytics = calculatePointAnalytics(simulatedWeeks);
+      setSimulationAnalytics(analytics);
+      setShowAnalyticsModal(true);
+    } else {
+      alert(`Successfully simulated ${simulatedWeeks.length} weeks!`);
+    }
   };
 
   // Helper function to try generating a valid schedule
@@ -5794,6 +5929,183 @@ const SeasonTracker = () => {
                       {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
                       {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Simulation Analytics Modal */}
+          {showAnalyticsModal && simulationAnalytics && (
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setShowAnalyticsModal(false)}
+            >
+              <div
+                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <TrendingUp className="w-6 h-6" />
+                      Simulation Analytics
+                    </h2>
+                    <button
+                      onClick={() => setShowAnalyticsModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Success Message */}
+                    <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
+                      <p className="text-green-400 font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5" />
+                        Successfully simulated {Math.floor(simulationAnalytics.totalRounds / 2)} weeks ({simulationAnalytics.totalRounds} rounds)!
+                      </p>
+                    </div>
+
+                    {/* Point System Summary */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                        <Settings className="w-5 h-5" />
+                        Current Point System
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-slate-400 mb-2 font-semibold">Lead Points</div>
+                          <div className="space-y-1 text-slate-300">
+                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winLead}</span></div>
+                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossLead}</span></div>
+                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
+                          </div>
+                        </div>
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-slate-400 mb-2 font-semibold">Assist Points</div>
+                          <div className="space-y-1 text-slate-300">
+                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winAssist}</span></div>
+                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossAssist}</span></div>
+                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Theoretical Analysis */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                        <FileText className="w-5 h-5" />
+                        Theoretical Distribution (On Paper)
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Expected point distribution assuming 50/50 win rates and even team splits
+                      </p>
+                      <div className="space-y-3">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points per Round</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points per Round</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.theoretical.assistPoints.toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total per Round</span>
+                            <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
+                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.theoretical.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          </div>
+                          <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.theoretical.assistPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Simulated Results */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5" />
+                        Simulated Results
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Actual point distribution from the generated simulation
+                      </p>
+                      <div className="space-y-3">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.simulated.leadPoints}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.simulated.assistPoints}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{simulationAnalytics.simulated.totalPoints}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
+                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.simulated.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          </div>
+                          <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.simulated.assistPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Comparison */}
+                    <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5" />
+                        Comparison
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="text-slate-400 mb-1">Lead Point Variance</div>
+                          <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage > 0 ? '+' : '')}
+                            {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage).toFixed(1)}%
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-slate-400 mb-1">Assist Point Variance</div>
+                          <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage > 0 ? '+' : '')}
+                            {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage).toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-3">
+                        💡 Small variances are expected due to randomization. Large variances may indicate imbalanced settings.
+                      </p>
+                    </div>
+
+                    {/* Close Button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => setShowAnalyticsModal(false)}
+                        className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
