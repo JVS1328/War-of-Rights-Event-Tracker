@@ -2543,10 +2543,12 @@ const SeasonTracker = () => {
     const leadMatchups = new Set();
     const unitLeadCounts = {};
     const unitDivisionLeadCounts = {};
+    const teammatePairings = {}; // Track how many times units have been on same team
 
     tokenUnits.forEach(unit => {
       unitLeadCounts[unit] = 0;
       unitDivisionLeadCounts[unit] = 0;
+      teammatePairings[unit] = {};
     });
 
     const generatedWeeks = [];
@@ -2686,6 +2688,61 @@ const SeasonTracker = () => {
       });
     }
 
+    // Helper: Record that two units were on the same team
+    const recordPairing = (unit1, unit2) => {
+      if (unit1 === unit2) return;
+      const [u1, u2] = [unit1, unit2].sort(); // Ensure consistent ordering
+      if (!teammatePairings[u1]) teammatePairings[u1] = {};
+      if (!teammatePairings[u2]) teammatePairings[u2] = {};
+      teammatePairings[u1][u2] = (teammatePairings[u1][u2] || 0) + 1;
+      teammatePairings[u2][u1] = (teammatePairings[u2][u1] || 0) + 1;
+    };
+
+    // Helper: Get pairing count between two units
+    const getPairingCount = (unit1, unit2) => {
+      if (unit1 === unit2) return 0;
+      return teammatePairings[unit1]?.[unit2] || 0;
+    };
+
+    // Helper: Calculate total pairing score for a unit with a team
+    // Lower score = less over-teaming = better variety
+    const calculateTeamScore = (unit, team) => {
+      return team.reduce((sum, teammate) => sum + getPairingCount(unit, teammate), 0);
+    };
+
+    // Helper: Distribute remaining units across teams with balancing
+    const distributeUnitsBalanced = (remainingUnits, teamA, teamB) => {
+      // Sort units by their total pairing history (least paired first)
+      const unitsByPairings = remainingUnits.map(u => ({
+        unit: u,
+        totalPairings: Object.values(teammatePairings[u] || {}).reduce((sum, count) => sum + count, 0)
+      })).sort((a, b) => a.totalPairings - b.totalPairings);
+
+      // Assign each unit to the team with lower pairing score
+      unitsByPairings.forEach(({ unit }) => {
+        const scoreA = calculateTeamScore(unit, teamA);
+        const scoreB = calculateTeamScore(unit, teamB);
+
+        if (scoreA <= scoreB) {
+          teamA.push(unit);
+        } else {
+          teamB.push(unit);
+        }
+      });
+
+      // Record all pairings for both teams
+      for (let i = 0; i < teamA.length; i++) {
+        for (let j = i + 1; j < teamA.length; j++) {
+          recordPairing(teamA[i], teamA[j]);
+        }
+      }
+      for (let i = 0; i < teamB.length; i++) {
+        for (let j = i + 1; j < teamB.length; j++) {
+          recordPairing(teamB[i], teamB[j]);
+        }
+      }
+    };
+
     // Convert matchups to week structures based on mode
     const finalWeeks = [];
 
@@ -2703,11 +2760,12 @@ const SeasonTracker = () => {
         // Create teams by combining all units from both matchups
         const allLeads = [matchup1.leadA, matchup1.leadB, matchup2.leadA, matchup2.leadB];
         const remainingUnits = units.filter(u => !allLeads.includes(u));
-        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-        const midpoint = Math.floor(shuffled.length / 2);
 
-        const teamA = [matchup1.leadA, matchup2.leadA, ...shuffled.slice(0, midpoint)];
-        const teamB = [matchup1.leadB, matchup2.leadB, ...shuffled.slice(midpoint)];
+        const teamA = [matchup1.leadA, matchup2.leadA];
+        const teamB = [matchup1.leadB, matchup2.leadB];
+
+        // Use balanced distribution instead of random shuffle
+        distributeUnitsBalanced(remainingUnits, teamA, teamB);
 
         // Randomly select maps
         const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
@@ -2742,13 +2800,14 @@ const SeasonTracker = () => {
     } else {
       // In fullWeeks mode, each matchup becomes a full week
       for (const matchup of generatedWeeks) {
-        // Randomly assign remaining units to teams
+        // Assign remaining units to teams with balancing
         const remainingUnits = units.filter(u => u !== matchup.leadA && u !== matchup.leadB);
-        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-        const midpoint = Math.floor(shuffled.length / 2);
 
-        const teamA = [matchup.leadA, ...shuffled.slice(0, midpoint)];
-        const teamB = [matchup.leadB, ...shuffled.slice(midpoint)];
+        const teamA = [matchup.leadA];
+        const teamB = [matchup.leadB];
+
+        // Use balanced distribution instead of random shuffle
+        distributeUnitsBalanced(remainingUnits, teamA, teamB);
 
         // Randomly select maps
         const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
