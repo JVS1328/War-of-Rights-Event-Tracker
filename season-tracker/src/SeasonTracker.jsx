@@ -2477,11 +2477,11 @@ const SeasonTracker = () => {
         inheritedUnitPlayerCounts = { ...unitPlayerCounts };
       }
 
-      // Handle schedule-only mode for single round leads
+      // Handle schedule-only mode
       let teamA, teamB;
       if (simScheduleOnly) {
+        // In schedule-only mode, only show the lead units
         if (weekData.isSingleRoundLeads) {
-          // Include all leads in schedule-only mode
           teamA = [weekData.leadA_r1, weekData.leadA_r2].filter(Boolean);
           teamB = [weekData.leadB_r1, weekData.leadB_r2].filter(Boolean);
         } else {
@@ -2489,6 +2489,7 @@ const SeasonTracker = () => {
           teamB = [weekData.leadB];
         }
       } else {
+        // In simulation mode, use full balanced teams
         teamA = weekData.teamA;
         teamB = weekData.teamB;
       }
@@ -2543,10 +2544,12 @@ const SeasonTracker = () => {
     const leadMatchups = new Set();
     const unitLeadCounts = {};
     const unitDivisionLeadCounts = {};
+    const teammatePairings = {}; // Track how many times units have been on same team
 
     tokenUnits.forEach(unit => {
       unitLeadCounts[unit] = 0;
       unitDivisionLeadCounts[unit] = 0;
+      teammatePairings[unit] = {};
     });
 
     const generatedWeeks = [];
@@ -2686,28 +2689,152 @@ const SeasonTracker = () => {
       });
     }
 
+    // Helper: Record that two units were on the same team
+    const recordPairing = (unit1, unit2) => {
+      if (unit1 === unit2) return;
+      const [u1, u2] = [unit1, unit2].sort(); // Ensure consistent ordering
+      if (!teammatePairings[u1]) teammatePairings[u1] = {};
+      if (!teammatePairings[u2]) teammatePairings[u2] = {};
+      teammatePairings[u1][u2] = (teammatePairings[u1][u2] || 0) + 1;
+      teammatePairings[u2][u1] = (teammatePairings[u2][u1] || 0) + 1;
+    };
+
+    // Helper: Get pairing count between two units
+    const getPairingCount = (unit1, unit2) => {
+      if (unit1 === unit2) return 0;
+      return teammatePairings[unit1]?.[unit2] || 0;
+    };
+
+    // Helper: Calculate total pairing score for a unit with a team
+    // Lower score = less over-teaming = better variety
+    const calculateTeamScore = (unit, team) => {
+      return team.reduce((sum, teammate) => sum + getPairingCount(unit, teammate), 0);
+    };
+
+    // Helper: Distribute remaining units across teams with balancing
+    const distributeUnitsBalanced = (remainingUnits, teamA, teamB) => {
+      // Sort units by their total pairing history (least paired first)
+      const unitsByPairings = remainingUnits.map(u => ({
+        unit: u,
+        totalPairings: Object.values(teammatePairings[u] || {}).reduce((sum, count) => sum + count, 0)
+      })).sort((a, b) => a.totalPairings - b.totalPairings);
+
+      // Assign each unit to the team with lower pairing score
+      unitsByPairings.forEach(({ unit }) => {
+        const scoreA = calculateTeamScore(unit, teamA);
+        const scoreB = calculateTeamScore(unit, teamB);
+
+        if (scoreA <= scoreB) {
+          teamA.push(unit);
+        } else {
+          teamB.push(unit);
+        }
+      });
+
+      // Record all pairings for both teams
+      for (let i = 0; i < teamA.length; i++) {
+        for (let j = i + 1; j < teamA.length; j++) {
+          recordPairing(teamA[i], teamA[j]);
+        }
+      }
+      for (let i = 0; i < teamB.length; i++) {
+        for (let j = i + 1; j < teamB.length; j++) {
+          recordPairing(teamB[i], teamB[j]);
+        }
+      }
+    };
+
     // Convert matchups to week structures based on mode
     const finalWeeks = [];
 
     if (simLeadMode === 'rounds') {
-      // In rounds mode, pair up matchups into weeks with different leads per round
-      for (let i = 0; i < generatedWeeks.length; i += 2) {
-        const matchup1 = generatedWeeks[i];
-        const matchup2 = generatedWeeks[i + 1];
+      // In rounds mode, pair up matchups into weeks with balanced lead pairings
+      const availableMatchups = [...generatedWeeks];
+      const leadPairings = {}; // Track how often leads are teammates
 
-        if (!matchup2) {
-          // Odd number of matchups, skip the last one
-          break;
+      // Initialize lead pairings tracker
+      tokenUnits.forEach(unit => {
+        leadPairings[unit] = {};
+      });
+
+      // Helper: Get pairing count between two lead units
+      const getLeadPairingCount = (lead1, lead2) => {
+        if (lead1 === lead2) return 0;
+        return leadPairings[lead1]?.[lead2] || 0;
+      };
+
+      // Helper: Record lead pairing
+      const recordLeadPairing = (lead1, lead2) => {
+        if (lead1 === lead2) return;
+        if (!leadPairings[lead1]) leadPairings[lead1] = {};
+        if (!leadPairings[lead2]) leadPairings[lead2] = {};
+        leadPairings[lead1][lead2] = (leadPairings[lead1][lead2] || 0) + 1;
+        leadPairings[lead2][lead1] = (leadPairings[lead2][lead1] || 0) + 1;
+      };
+
+      // Helper: Calculate pairing score for combining two matchups
+      // Returns [sameTeamScore, opponentScore] - lower is better
+      const calculateMatchupPairingScore = (m1, m2) => {
+        // Score for leads being on same team
+        const sameTeamScoreA = getLeadPairingCount(m1.leadA, m2.leadA) + getLeadPairingCount(m1.leadB, m2.leadB);
+        const sameTeamScoreB = getLeadPairingCount(m1.leadA, m2.leadB) + getLeadPairingCount(m1.leadB, m2.leadA);
+
+        // Also consider if leads have faced each other as opponents
+        const opponentScoreA = getLeadPairingCount(m1.leadA, m2.leadB) + getLeadPairingCount(m1.leadB, m2.leadA);
+        const opponentScoreB = getLeadPairingCount(m1.leadA, m2.leadA) + getLeadPairingCount(m1.leadB, m2.leadB);
+
+        // Return best orientation (A=normal, B=flipped)
+        const scoreA = { same: sameTeamScoreA, opponent: opponentScoreA, flip: false };
+        const scoreB = { same: sameTeamScoreB, opponent: opponentScoreB, flip: true };
+
+        // Prefer lower same-team score (primary), then higher opponent variety (secondary)
+        if (scoreA.same !== scoreB.same) {
+          return scoreA.same < scoreB.same ? scoreA : scoreB;
+        }
+        return scoreA.opponent > scoreB.opponent ? scoreA : scoreB;
+      };
+
+      // Greedily pair matchups to minimize lead repetition
+      while (availableMatchups.length >= 2) {
+        const matchup1 = availableMatchups.shift();
+
+        // Find best partner for matchup1
+        let bestIdx = 0;
+        let bestScore = null;
+
+        for (let i = 0; i < availableMatchups.length; i++) {
+          const score = calculateMatchupPairingScore(matchup1, availableMatchups[i]);
+
+          if (!bestScore ||
+              score.same < bestScore.same ||
+              (score.same === bestScore.same && score.opponent > bestScore.opponent)) {
+            bestScore = score;
+            bestIdx = i;
+          }
         }
 
-        // Create teams by combining all units from both matchups
-        const allLeads = [matchup1.leadA, matchup1.leadB, matchup2.leadA, matchup2.leadB];
-        const remainingUnits = units.filter(u => !allLeads.includes(u));
-        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-        const midpoint = Math.floor(shuffled.length / 2);
+        const matchup2 = availableMatchups.splice(bestIdx, 1)[0];
+        const shouldFlip = bestScore.flip;
 
-        const teamA = [matchup1.leadA, matchup2.leadA, ...shuffled.slice(0, midpoint)];
-        const teamB = [matchup1.leadB, matchup2.leadB, ...shuffled.slice(midpoint)];
+        // Assign leads based on best orientation
+        const teamA_lead1 = matchup1.leadA;
+        const teamB_lead1 = matchup1.leadB;
+        const teamA_lead2 = shouldFlip ? matchup2.leadB : matchup2.leadA;
+        const teamB_lead2 = shouldFlip ? matchup2.leadA : matchup2.leadB;
+
+        // Record lead pairings
+        recordLeadPairing(teamA_lead1, teamA_lead2);
+        recordLeadPairing(teamB_lead1, teamB_lead2);
+
+        // Create teams by combining all units from both matchups
+        const allLeads = [teamA_lead1, teamB_lead1, teamA_lead2, teamB_lead2];
+        const remainingUnits = units.filter(u => !allLeads.includes(u));
+
+        const teamA = [teamA_lead1, teamA_lead2];
+        const teamB = [teamB_lead1, teamB_lead2];
+
+        // Use balanced distribution instead of random shuffle
+        distributeUnitsBalanced(remainingUnits, teamA, teamB);
 
         // Randomly select maps
         const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
@@ -2732,23 +2859,24 @@ const SeasonTracker = () => {
           round2Flipped,
           leadA: null, // Not used in single round leads mode
           leadB: null, // Not used in single round leads mode
-          leadA_r1: matchup1.leadA,
-          leadB_r1: matchup1.leadB,
-          leadA_r2: matchup2.leadA,
-          leadB_r2: matchup2.leadB,
+          leadA_r1: teamA_lead1,
+          leadB_r1: teamB_lead1,
+          leadA_r2: teamA_lead2,
+          leadB_r2: teamB_lead2,
           isSingleRoundLeads: true
         });
       }
     } else {
       // In fullWeeks mode, each matchup becomes a full week
       for (const matchup of generatedWeeks) {
-        // Randomly assign remaining units to teams
+        // Assign remaining units to teams with balancing
         const remainingUnits = units.filter(u => u !== matchup.leadA && u !== matchup.leadB);
-        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-        const midpoint = Math.floor(shuffled.length / 2);
 
-        const teamA = [matchup.leadA, ...shuffled.slice(0, midpoint)];
-        const teamB = [matchup.leadB, ...shuffled.slice(midpoint)];
+        const teamA = [matchup.leadA];
+        const teamB = [matchup.leadB];
+
+        // Use balanced distribution instead of random shuffle
+        distributeUnitsBalanced(remainingUnits, teamA, teamB);
 
         // Randomly select maps
         const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
