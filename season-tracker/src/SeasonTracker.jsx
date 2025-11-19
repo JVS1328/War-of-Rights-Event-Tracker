@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
-  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap
+  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap,
+  CheckCircle2, FileText
 } from 'lucide-react';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
@@ -135,6 +136,8 @@ const SeasonTracker = () => {
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [simulationAnalytics, setSimulationAnalytics] = useState(null);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
   const [showNonTokenElo, setShowNonTokenElo] = useState(true);
   const [rankByElo, setRankByElo] = useState(false);
@@ -160,6 +163,7 @@ const SeasonTracker = () => {
   const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
+  const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
   
   // Playoff configuration state
   const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
@@ -2244,6 +2248,160 @@ const SeasonTracker = () => {
   };
 
   // Simulation Functions
+  const calculatePointAnalytics = (simulatedWeeks) => {
+    const tokenUnits = units.filter(u => !nonTokenUnits.includes(u));
+    if (tokenUnits.length === 0) return null;
+
+    // Track points per unit (simulated)
+    const unitStats = {};
+    tokenUnits.forEach(unit => {
+      unitStats[unit] = { leadPoints: 0, assistPoints: 0 };
+    });
+
+    let totalRounds = 0;
+
+    // Calculate actual points from simulated weeks
+    simulatedWeeks.forEach(week => {
+      if (week.round1Winner && week.round2Winner) {
+        totalRounds += 2;
+
+        // Process each round
+        [1, 2].forEach(roundNum => {
+          const winner = roundNum === 1 ? week.round1Winner : week.round2Winner;
+          const winningTeam = winner === 'A' ? week.teamA : week.teamB;
+          const losingTeam = winner === 'A' ? week.teamB : week.teamA;
+
+          // Determine leads for this round
+          let leadWinner, leadLoser;
+          if (week.isSingleRoundLeads) {
+            leadWinner = week[`lead${winner}_r${roundNum}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
+          } else {
+            leadWinner = week[`lead${winner}`];
+            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
+          }
+
+          // Award win points
+          winningTeam.forEach(unit => {
+            if (!unitStats[unit]) return;
+            if (unit === leadWinner) {
+              unitStats[unit].leadPoints += pointSystem.winLead;
+            } else {
+              unitStats[unit].assistPoints += pointSystem.winAssist;
+            }
+          });
+
+          // Award loss points
+          losingTeam.forEach(unit => {
+            if (!unitStats[unit]) return;
+            if (unit === leadLoser) {
+              unitStats[unit].leadPoints += pointSystem.lossLead;
+            } else {
+              unitStats[unit].assistPoints += pointSystem.lossAssist;
+            }
+          });
+        });
+
+        // Check for sweep bonus
+        if (week.round1Winner === week.round2Winner) {
+          const sweepTeam = week.round1Winner === 'A' ? week.teamA : week.teamB;
+
+          if (week.isSingleRoundLeads) {
+            const sweepLeads = new Set([
+              week[`lead${week.round1Winner}_r1`],
+              week[`lead${week.round1Winner}_r2`]
+            ].filter(Boolean));
+
+            sweepTeam.forEach(unit => {
+              if (!unitStats[unit]) return;
+              if (sweepLeads.has(unit)) {
+                unitStats[unit].leadPoints += pointSystem.bonus2_0Lead;
+              } else {
+                unitStats[unit].assistPoints += pointSystem.bonus2_0Assist;
+              }
+            });
+          } else {
+            const sweepLead = week[`lead${week.round1Winner}`];
+            sweepTeam.forEach(unit => {
+              if (!unitStats[unit]) return;
+              if (unit === sweepLead) {
+                unitStats[unit].leadPoints += pointSystem.bonus2_0Lead;
+              } else {
+                unitStats[unit].assistPoints += pointSystem.bonus2_0Assist;
+              }
+            });
+          }
+        }
+      }
+    });
+
+    // Calculate average per token unit
+    let totalLeadPoints = 0;
+    let totalAssistPoints = 0;
+    tokenUnits.forEach(unit => {
+      totalLeadPoints += unitStats[unit].leadPoints;
+      totalAssistPoints += unitStats[unit].assistPoints;
+    });
+
+    const avgLeadPoints = totalLeadPoints / tokenUnits.length;
+    const avgAssistPoints = totalAssistPoints / tokenUnits.length;
+    const avgTotalPoints = avgLeadPoints + avgAssistPoints;
+    const avgLeadPercentage = avgTotalPoints > 0 ? (avgLeadPoints / avgTotalPoints * 100) : 0;
+    const avgAssistPercentage = avgTotalPoints > 0 ? (avgAssistPoints / avgTotalPoints * 100) : 0;
+
+    // Calculate theoretical per token unit - MAX POSSIBLE POINTS
+    // Determine lead rounds per unit based on mode
+    const leadRoundsPerUnit = simLeadMode === 'rounds'
+      ? simLeadNightsPerUnit  // In rounds mode: each night = 1 round as lead
+      : simLeadNightsPerUnit * 2;  // In fullWeeks mode: each night = 2 rounds as lead
+
+    const assistRoundsPerUnit = totalRounds - leadRoundsPerUnit;
+
+    // Determine weeks as lead vs assist
+    const totalWeeks = simulatedWeeks.length;
+    const weeksAsLead = simLeadMode === 'rounds'
+      ? simLeadNightsPerUnit * 2  // In rounds mode: lead 1 round per week for 2x weeks
+      : simLeadNightsPerUnit;  // In fullWeeks mode: lead both rounds for X weeks
+
+    const weeksAsAssist = totalWeeks - weeksAsLead;
+
+    // Max possible points (win every round, win every sweep)
+    const maxLeadPointsFromRounds = leadRoundsPerUnit * pointSystem.winLead;
+    const maxAssistPointsFromRounds = assistRoundsPerUnit * pointSystem.winAssist;
+    const maxLeadSweepBonus = weeksAsLead * pointSystem.bonus2_0Lead;
+    const maxAssistSweepBonus = weeksAsAssist * pointSystem.bonus2_0Assist;
+
+    // Total max theoretical points per unit
+    const theoreticalLeadPoints = maxLeadPointsFromRounds + maxLeadSweepBonus;
+    const theoreticalAssistPoints = maxAssistPointsFromRounds + maxAssistSweepBonus;
+    const theoreticalTotalPoints = theoreticalLeadPoints + theoreticalAssistPoints;
+
+    const theoreticalLeadPercentage = theoreticalTotalPoints > 0 ? (theoreticalLeadPoints / theoreticalTotalPoints * 100) : 0;
+    const theoreticalAssistPercentage = theoreticalTotalPoints > 0 ? (theoreticalAssistPoints / theoreticalTotalPoints * 100) : 0;
+
+    return {
+      simulated: {
+        leadPoints: avgLeadPoints,
+        assistPoints: avgAssistPoints,
+        totalPoints: avgTotalPoints,
+        leadPercentage: avgLeadPercentage,
+        assistPercentage: avgAssistPercentage,
+        totalLeadPoints,
+        totalAssistPoints,
+        totalTotalPoints: totalLeadPoints + totalAssistPoints
+      },
+      theoretical: {
+        leadPoints: theoreticalLeadPoints,
+        assistPoints: theoreticalAssistPoints,
+        totalPoints: theoreticalTotalPoints,
+        leadPercentage: theoreticalLeadPercentage,
+        assistPercentage: theoreticalAssistPercentage
+      },
+      totalRounds,
+      totalWeeks
+    };
+  };
+
   const simulateSeason = () => {
     if (units.length === 0) {
       alert('Please add units before simulating a season.');
@@ -2319,24 +2477,41 @@ const SeasonTracker = () => {
         inheritedUnitPlayerCounts = { ...unitPlayerCounts };
       }
 
+      // Handle schedule-only mode for single round leads
+      let teamA, teamB;
+      if (simScheduleOnly) {
+        if (weekData.isSingleRoundLeads) {
+          // Include all leads in schedule-only mode
+          teamA = [weekData.leadA_r1, weekData.leadA_r2].filter(Boolean);
+          teamB = [weekData.leadB_r1, weekData.leadB_r2].filter(Boolean);
+        } else {
+          teamA = [weekData.leadA];
+          teamB = [weekData.leadB];
+        }
+      } else {
+        teamA = weekData.teamA;
+        teamB = weekData.teamB;
+      }
+
       return {
         id: Date.now() + i,
         name: `Week ${weeks.length + 1 + i}`,
-        teamA: simScheduleOnly ? [weekData.leadA] : weekData.teamA,
-        teamB: simScheduleOnly ? [weekData.leadB] : weekData.teamB,
+        teamA,
+        teamB,
         round1Winner: simScheduleOnly ? null : weekData.round1Winner,
         round2Winner: simScheduleOnly ? null : weekData.round2Winner,
         round1Map: simScheduleOnly ? null : weekData.round1Map,
         round2Map: simScheduleOnly ? null : weekData.round2Map,
         round1Flipped: simScheduleOnly ? false : weekData.round1Flipped,
         round2Flipped: simScheduleOnly ? false : weekData.round2Flipped,
-        leadA: weekData.leadA,
-        leadB: weekData.leadB,
+        leadA: weekData.leadA || null,
+        leadB: weekData.leadB || null,
         isPlayoffs: false,
-        leadA_r1: null,
-        leadB_r1: null,
-        leadA_r2: null,
-        leadB_r2: null,
+        isSingleRoundLeads: weekData.isSingleRoundLeads || false,
+        leadA_r1: weekData.leadA_r1 || null,
+        leadB_r1: weekData.leadB_r1 || null,
+        leadA_r2: weekData.leadA_r2 || null,
+        leadB_r2: weekData.leadB_r2 || null,
         r1CasualtiesA: 0,
         r1CasualtiesB: 0,
         r2CasualtiesA: 0,
@@ -2352,8 +2527,15 @@ const SeasonTracker = () => {
     // Add simulated weeks to existing weeks
     setWeeks([...weeks, ...simulatedWeeks]);
     setShowSimulateModal(false);
-    
-    alert(`Successfully simulated ${simulatedWeeks.length} weeks!`);
+
+    // Calculate and show analytics (only if not schedule-only mode)
+    if (!simScheduleOnly) {
+      const analytics = calculatePointAnalytics(simulatedWeeks);
+      setSimulationAnalytics(analytics);
+      setShowAnalyticsModal(true);
+    } else {
+      alert(`Successfully simulated ${simulatedWeeks.length} weeks!`);
+    }
   };
 
   // Helper function to try generating a valid schedule
@@ -2361,14 +2543,18 @@ const SeasonTracker = () => {
     const leadMatchups = new Set();
     const unitLeadCounts = {};
     const unitDivisionLeadCounts = {};
-    
+
     tokenUnits.forEach(unit => {
       unitLeadCounts[unit] = 0;
       unitDivisionLeadCounts[unit] = 0;
     });
 
     const generatedWeeks = [];
-    const maxWeeks = tokenUnits.length * simLeadNightsPerUnit;
+    // In 'rounds' mode, we need 2x matchups since each unit leads individual rounds, not full weeks
+    const matchupsPerWeek = simLeadMode === 'rounds' ? 2 : 1;
+    const maxWeeks = simLeadMode === 'rounds'
+      ? tokenUnits.length * simLeadNightsPerUnit // Each unit leads X rounds, 2 matchups per week
+      : tokenUnits.length * simLeadNightsPerUnit; // Each unit leads X full weeks
     
     // Try to generate weeks until we can't find valid matchups
     for (let i = 0; i < maxWeeks * 2; i++) { // Allow extra iterations to find matchups
@@ -2493,42 +2679,107 @@ const SeasonTracker = () => {
         unitDivisionLeadCounts[leadB]++;
       }
 
-      // Randomly assign remaining units to teams
-      const remainingUnits = units.filter(u => u !== leadA && u !== leadB);
-      const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-      const midpoint = Math.floor(shuffled.length / 2);
-      
-      const teamA = [leadA, ...shuffled.slice(0, midpoint)];
-      const teamB = [leadB, ...shuffled.slice(midpoint)];
-
-      // Randomly select maps
-      const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
-      const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
-      
-      // Randomly determine flipped state
-      const round1Flipped = Math.random() < 0.5;
-      const round2Flipped = Math.random() < 0.5;
-
-      // Simulate round results (50/50 chance for each team)
-      const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
-      const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
-
+      // Store the matchup (we'll convert to weeks later)
       generatedWeeks.push({
-        teamA,
-        teamB,
-        round1Winner,
-        round2Winner,
-        round1Map,
-        round2Map,
-        round1Flipped,
-        round2Flipped,
         leadA,
         leadB
       });
     }
 
+    // Convert matchups to week structures based on mode
+    const finalWeeks = [];
+
+    if (simLeadMode === 'rounds') {
+      // In rounds mode, pair up matchups into weeks with different leads per round
+      for (let i = 0; i < generatedWeeks.length; i += 2) {
+        const matchup1 = generatedWeeks[i];
+        const matchup2 = generatedWeeks[i + 1];
+
+        if (!matchup2) {
+          // Odd number of matchups, skip the last one
+          break;
+        }
+
+        // Create teams by combining all units from both matchups
+        const allLeads = [matchup1.leadA, matchup1.leadB, matchup2.leadA, matchup2.leadB];
+        const remainingUnits = units.filter(u => !allLeads.includes(u));
+        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
+        const midpoint = Math.floor(shuffled.length / 2);
+
+        const teamA = [matchup1.leadA, matchup2.leadA, ...shuffled.slice(0, midpoint)];
+        const teamB = [matchup1.leadB, matchup2.leadB, ...shuffled.slice(midpoint)];
+
+        // Randomly select maps
+        const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+        const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+
+        // Randomly determine flipped state
+        const round1Flipped = Math.random() < 0.5;
+        const round2Flipped = Math.random() < 0.5;
+
+        // Simulate round results (50/50 chance for each team)
+        const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
+        const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
+
+        finalWeeks.push({
+          teamA,
+          teamB,
+          round1Winner,
+          round2Winner,
+          round1Map,
+          round2Map,
+          round1Flipped,
+          round2Flipped,
+          leadA: null, // Not used in single round leads mode
+          leadB: null, // Not used in single round leads mode
+          leadA_r1: matchup1.leadA,
+          leadB_r1: matchup1.leadB,
+          leadA_r2: matchup2.leadA,
+          leadB_r2: matchup2.leadB,
+          isSingleRoundLeads: true
+        });
+      }
+    } else {
+      // In fullWeeks mode, each matchup becomes a full week
+      for (const matchup of generatedWeeks) {
+        // Randomly assign remaining units to teams
+        const remainingUnits = units.filter(u => u !== matchup.leadA && u !== matchup.leadB);
+        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
+        const midpoint = Math.floor(shuffled.length / 2);
+
+        const teamA = [matchup.leadA, ...shuffled.slice(0, midpoint)];
+        const teamB = [matchup.leadB, ...shuffled.slice(midpoint)];
+
+        // Randomly select maps
+        const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+        const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+
+        // Randomly determine flipped state
+        const round1Flipped = Math.random() < 0.5;
+        const round2Flipped = Math.random() < 0.5;
+
+        // Simulate round results (50/50 chance for each team)
+        const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
+        const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
+
+        finalWeeks.push({
+          teamA,
+          teamB,
+          round1Winner,
+          round2Winner,
+          round1Map,
+          round2Map,
+          round1Flipped,
+          round2Flipped,
+          leadA: matchup.leadA,
+          leadB: matchup.leadB,
+          isSingleRoundLeads: false
+        });
+      }
+    }
+
     return {
-      weeks: generatedWeeks,
+      weeks: finalWeeks,
       unitLeadCounts,
       unitDivisionLeadCounts
     };
@@ -5611,8 +5862,48 @@ const SeasonTracker = () => {
                           className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                          Each token unit will lead this many weeks. Total weeks = {units.filter(u => !nonTokenUnits.includes(u)).length} units × {simLeadNightsPerUnit} = {units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks
+                          {simLeadMode === 'rounds'
+                            ? `Each token unit will lead ${simLeadNightsPerUnit} night(s) with 2 rounds per night. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} × 2 = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit * 2} weeks`
+                            : `Each token unit will lead this many weeks. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks`
+                          }
                         </p>
+                      </div>
+
+                      {/* Lead Mode Selection */}
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-2">
+                          Lead Assignment Mode
+                        </label>
+                        <div className="space-y-2">
+                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="simLeadMode"
+                              value="fullWeeks"
+                              checked={simLeadMode === 'fullWeeks'}
+                              onChange={(e) => setSimLeadMode(e.target.value)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="text-sm">Full Lead Weeks</div>
+                              <div className="text-xs text-slate-400">One unit leads both rounds each night</div>
+                            </div>
+                          </label>
+                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="simLeadMode"
+                              value="rounds"
+                              checked={simLeadMode === 'rounds'}
+                              onChange={(e) => setSimLeadMode(e.target.value)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="text-sm">Lead Rounds</div>
+                              <div className="text-xs text-slate-400">Two units lead per night (one per round)</div>
+                            </div>
+                          </label>
+                        </div>
                       </div>
 
                       {/* Division Lead Nights */}
@@ -5667,6 +5958,223 @@ const SeasonTracker = () => {
                       {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
                       {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Simulation Analytics Modal */}
+          {showAnalyticsModal && simulationAnalytics && (
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setShowAnalyticsModal(false)}
+            >
+              <div
+                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <TrendingUp className="w-6 h-6" />
+                      Simulation Analytics
+                    </h2>
+                    <button
+                      onClick={() => setShowAnalyticsModal(false)}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Success Message */}
+                    <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
+                      <p className="text-green-400 font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5" />
+                        Successfully simulated {simulationAnalytics.totalWeeks} weeks ({simulationAnalytics.totalRounds} rounds)!
+                      </p>
+                      <p className="text-xs text-slate-300 mt-2">
+                        Analysis shows point distribution from a per-token-unit perspective
+                      </p>
+                    </div>
+
+                    {/* Point System Summary */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                        <Settings className="w-5 h-5" />
+                        Current Point System
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-slate-400 mb-2 font-semibold">Lead Points</div>
+                          <div className="space-y-1 text-slate-300">
+                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winLead}</span></div>
+                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossLead}</span></div>
+                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
+                          </div>
+                        </div>
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-slate-400 mb-2 font-semibold">Assist Points</div>
+                          <div className="space-y-1 text-slate-300">
+                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winAssist}</span></div>
+                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossAssist}</span></div>
+                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Theoretical Analysis */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                        <FileText className="w-5 h-5" />
+                        Theoretical Distribution (Per Token Unit)
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Maximum possible points per token unit (winning every round and sweep)
+                      </p>
+                      <div className="space-y-3">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Season)</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.theoretical.assistPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(1)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Per Round)</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{(simulationAnalytics.theoretical.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{(simulationAnalytics.theoretical.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{(simulationAnalytics.theoretical.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
+                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.theoretical.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          </div>
+                          <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.theoretical.assistPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Simulated Results */}
+                    <div className="bg-slate-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5" />
+                        Simulated Results (Per Token Unit Average)
+                      </h3>
+                      <p className="text-xs text-slate-400 mb-4">
+                        Actual points averaged across all token units from the simulation
+                      </p>
+                      <div className="space-y-3">
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Season Totals (Average)</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.simulated.leadPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.simulated.assistPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{simulationAnalytics.simulated.totalPoints.toFixed(1)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Per Round Average</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{(simulationAnalytics.simulated.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{(simulationAnalytics.simulated.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{(simulationAnalytics.simulated.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
+                          All token units combined: {simulationAnalytics.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.simulated.totalAssistPoints.toFixed(0)} assist points
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
+                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.simulated.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          </div>
+                          <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.simulated.assistPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Comparison */}
+                    <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5" />
+                        Comparison
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="text-slate-400 mb-1">Lead Point Variance</div>
+                          <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage > 0 ? '+' : '')}
+                            {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage).toFixed(1)}%
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-slate-400 mb-1">Assist Point Variance</div>
+                          <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage > 0 ? '+' : '')}
+                            {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage).toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-3">
+                        💡 Small variances are expected due to randomization. Large variances may indicate imbalanced settings.
+                      </p>
+                    </div>
+
+                    {/* Close Button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => setShowAnalyticsModal(false)}
+                        className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
