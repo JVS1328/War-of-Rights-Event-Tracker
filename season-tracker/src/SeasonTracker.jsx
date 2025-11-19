@@ -2249,11 +2249,18 @@ const SeasonTracker = () => {
 
   // Simulation Functions
   const calculatePointAnalytics = (simulatedWeeks) => {
-    // Calculate points from simulated weeks
-    let leadPoints = 0;
-    let assistPoints = 0;
+    const tokenUnits = units.filter(u => !nonTokenUnits.includes(u));
+    if (tokenUnits.length === 0) return null;
+
+    // Track points per unit (simulated)
+    const unitStats = {};
+    tokenUnits.forEach(unit => {
+      unitStats[unit] = { leadPoints: 0, assistPoints: 0 };
+    });
+
     let totalRounds = 0;
 
+    // Calculate actual points from simulated weeks
     simulatedWeeks.forEach(week => {
       if (week.round1Winner && week.round2Winner) {
         totalRounds += 2;
@@ -2276,19 +2283,21 @@ const SeasonTracker = () => {
 
           // Award win points
           winningTeam.forEach(unit => {
+            if (!unitStats[unit]) return;
             if (unit === leadWinner) {
-              leadPoints += pointSystem.winLead;
+              unitStats[unit].leadPoints += pointSystem.winLead;
             } else {
-              assistPoints += pointSystem.winAssist;
+              unitStats[unit].assistPoints += pointSystem.winAssist;
             }
           });
 
           // Award loss points
           losingTeam.forEach(unit => {
+            if (!unitStats[unit]) return;
             if (unit === leadLoser) {
-              leadPoints += pointSystem.lossLead;
+              unitStats[unit].leadPoints += pointSystem.lossLead;
             } else {
-              assistPoints += pointSystem.lossAssist;
+              unitStats[unit].assistPoints += pointSystem.lossAssist;
             }
           });
         });
@@ -2304,19 +2313,21 @@ const SeasonTracker = () => {
             ].filter(Boolean));
 
             sweepTeam.forEach(unit => {
+              if (!unitStats[unit]) return;
               if (sweepLeads.has(unit)) {
-                leadPoints += pointSystem.bonus2_0Lead;
+                unitStats[unit].leadPoints += pointSystem.bonus2_0Lead;
               } else {
-                assistPoints += pointSystem.bonus2_0Assist;
+                unitStats[unit].assistPoints += pointSystem.bonus2_0Assist;
               }
             });
           } else {
             const sweepLead = week[`lead${week.round1Winner}`];
             sweepTeam.forEach(unit => {
+              if (!unitStats[unit]) return;
               if (unit === sweepLead) {
-                leadPoints += pointSystem.bonus2_0Lead;
+                unitStats[unit].leadPoints += pointSystem.bonus2_0Lead;
               } else {
-                assistPoints += pointSystem.bonus2_0Assist;
+                unitStats[unit].assistPoints += pointSystem.bonus2_0Assist;
               }
             });
           }
@@ -2324,52 +2335,77 @@ const SeasonTracker = () => {
       }
     });
 
-    const totalPoints = leadPoints + assistPoints;
-    const leadPercentage = totalPoints > 0 ? (leadPoints / totalPoints * 100) : 0;
-    const assistPercentage = totalPoints > 0 ? (assistPoints / totalPoints * 100) : 0;
+    // Calculate average per token unit
+    let totalLeadPoints = 0;
+    let totalAssistPoints = 0;
+    tokenUnits.forEach(unit => {
+      totalLeadPoints += unitStats[unit].leadPoints;
+      totalAssistPoints += unitStats[unit].assistPoints;
+    });
 
-    // Calculate theoretical "on paper" values assuming 50/50 distribution
-    // For a typical round: 1 lead and N assists per side
-    const avgTeamSize = units.length / 2;
-    const avgAssistsPerSide = avgTeamSize - 1; // Subtract the lead
+    const avgLeadPoints = totalLeadPoints / tokenUnits.length;
+    const avgAssistPoints = totalAssistPoints / tokenUnits.length;
+    const avgTotalPoints = avgLeadPoints + avgAssistPoints;
+    const avgLeadPercentage = avgTotalPoints > 0 ? (avgLeadPoints / avgTotalPoints * 100) : 0;
+    const avgAssistPercentage = avgTotalPoints > 0 ? (avgAssistPoints / avgTotalPoints * 100) : 0;
 
-    // Expected points per round
-    const theoreticalLeadPerRound = (pointSystem.winLead + pointSystem.lossLead) / 2; // 50/50 win rate
-    const theoreticalAssistPerRound = (pointSystem.winAssist + pointSystem.lossAssist) / 2; // 50/50 win rate
+    // Calculate theoretical per token unit
+    // Determine lead rounds per unit based on mode
+    const leadRoundsPerUnit = simLeadMode === 'rounds'
+      ? simLeadNightsPerUnit  // In rounds mode: each night = 1 round as lead
+      : simLeadNightsPerUnit * 2;  // In fullWeeks mode: each night = 2 rounds as lead
 
-    // Per round: 2 leads (one per side), 2 * avgAssists assists (one per side)
-    const theoreticalLeadPointsPerRound = 2 * theoreticalLeadPerRound;
-    const theoreticalAssistPointsPerRound = 2 * avgAssistsPerSide * theoreticalAssistPerRound;
+    const assistRoundsPerUnit = totalRounds - leadRoundsPerUnit;
 
-    // Add sweep bonus (happens ~50% of the time)
-    // When sweep happens: 1 side gets bonus, avgTeamSize units, 1 lead + avgAssists assists
-    const sweepProbability = 0.5;
-    const theoreticalSweepLeadBonus = sweepProbability * pointSystem.bonus2_0Lead;
-    const theoreticalSweepAssistBonus = sweepProbability * avgAssistsPerSide * pointSystem.bonus2_0Assist;
+    // Expected points per round type (50/50 win rate)
+    const expectedLeadPointsPerRound = (pointSystem.winLead + pointSystem.lossLead) / 2;
+    const expectedAssistPointsPerRound = (pointSystem.winAssist + pointSystem.lossAssist) / 2;
 
-    const theoreticalLeadTotal = theoreticalLeadPointsPerRound + theoreticalSweepLeadBonus;
-    const theoreticalAssistTotal = theoreticalAssistPointsPerRound + theoreticalSweepAssistBonus;
-    const theoreticalTotal = theoreticalLeadTotal + theoreticalAssistTotal;
+    // Expected sweep bonuses
+    // Sweeps happen 50% of the time, and you're on the winning team 50% of the time
+    // So you get sweep bonus in 25% of weeks
+    const totalWeeks = simulatedWeeks.length;
+    const expectedSweepsOnWinningTeam = totalWeeks * 0.25;
 
-    const theoreticalLeadPercentage = theoreticalTotal > 0 ? (theoreticalLeadTotal / theoreticalTotal * 100) : 0;
-    const theoreticalAssistPercentage = theoreticalTotal > 0 ? (theoreticalAssistTotal / theoreticalTotal * 100) : 0;
+    // Determine weeks as lead vs assist
+    const weeksAsLead = simLeadMode === 'rounds'
+      ? simLeadNightsPerUnit * 2  // In rounds mode: lead 1 round per week for 2x weeks
+      : simLeadNightsPerUnit;  // In fullWeeks mode: lead both rounds for X weeks
+
+    const weeksAsAssist = totalWeeks - weeksAsLead;
+
+    // Expected sweep bonuses
+    const expectedLeadSweepBonus = (weeksAsLead / totalWeeks) * expectedSweepsOnWinningTeam * pointSystem.bonus2_0Lead;
+    const expectedAssistSweepBonus = (weeksAsAssist / totalWeeks) * expectedSweepsOnWinningTeam * pointSystem.bonus2_0Assist;
+
+    // Total theoretical points per unit
+    const theoreticalLeadPoints = (leadRoundsPerUnit * expectedLeadPointsPerRound) + expectedLeadSweepBonus;
+    const theoreticalAssistPoints = (assistRoundsPerUnit * expectedAssistPointsPerRound) + expectedAssistSweepBonus;
+    const theoreticalTotalPoints = theoreticalLeadPoints + theoreticalAssistPoints;
+
+    const theoreticalLeadPercentage = theoreticalTotalPoints > 0 ? (theoreticalLeadPoints / theoreticalTotalPoints * 100) : 0;
+    const theoreticalAssistPercentage = theoreticalTotalPoints > 0 ? (theoreticalAssistPoints / theoreticalTotalPoints * 100) : 0;
 
     return {
       simulated: {
-        leadPoints,
-        assistPoints,
-        totalPoints,
-        leadPercentage,
-        assistPercentage
+        leadPoints: avgLeadPoints,
+        assistPoints: avgAssistPoints,
+        totalPoints: avgTotalPoints,
+        leadPercentage: avgLeadPercentage,
+        assistPercentage: avgAssistPercentage,
+        totalLeadPoints,
+        totalAssistPoints,
+        totalTotalPoints: totalLeadPoints + totalAssistPoints
       },
       theoretical: {
-        leadPoints: theoreticalLeadTotal,
-        assistPoints: theoreticalAssistTotal,
-        totalPoints: theoreticalTotal,
+        leadPoints: theoreticalLeadPoints,
+        assistPoints: theoreticalAssistPoints,
+        totalPoints: theoreticalTotalPoints,
         leadPercentage: theoreticalLeadPercentage,
         assistPercentage: theoreticalAssistPercentage
       },
-      totalRounds
+      totalRounds,
+      totalWeeks
     };
   };
 
@@ -5964,7 +6000,10 @@ const SeasonTracker = () => {
                     <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
                       <p className="text-green-400 font-semibold flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
-                        Successfully simulated {Math.floor(simulationAnalytics.totalRounds / 2)} weeks ({simulationAnalytics.totalRounds} rounds)!
+                        Successfully simulated {simulationAnalytics.totalWeeks} weeks ({simulationAnalytics.totalRounds} rounds)!
+                      </p>
+                      <p className="text-xs text-slate-300 mt-2">
+                        Analysis shows point distribution from a per-token-unit perspective
                       </p>
                     </div>
 
@@ -5998,29 +6037,43 @@ const SeasonTracker = () => {
                     <div className="bg-slate-700 rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
                         <FileText className="w-5 h-5" />
-                        Theoretical Distribution (On Paper)
+                        Theoretical Distribution (Per Token Unit)
                       </h3>
                       <p className="text-xs text-slate-400 mb-4">
-                        Expected point distribution assuming 50/50 win rates and even team splits
+                        Expected points per token unit over the season (50/50 win rates)
                       </p>
                       <div className="space-y-3">
                         <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Season Totals</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points per Round</span>
-                            <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(2)}</span>
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(1)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points per Round</span>
-                            <span className="text-blue-400 font-bold">{simulationAnalytics.theoretical.assistPoints.toFixed(2)}</span>
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.theoretical.assistPoints.toFixed(1)}</span>
                           </div>
                           <div className="border-t border-slate-500 my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total per Round</span>
-                            <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(2)}</span>
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(1)}</span>
                           </div>
                         </div>
-                        <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
-                          Expected over {simulationAnalytics.totalRounds} rounds: {(simulationAnalytics.theoretical.leadPoints * simulationAnalytics.totalRounds).toFixed(0)} lead, {(simulationAnalytics.theoretical.assistPoints * simulationAnalytics.totalRounds).toFixed(0)} assist
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Per Round Average</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{(simulationAnalytics.theoretical.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{(simulationAnalytics.theoretical.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{(simulationAnalytics.theoretical.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                          </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
@@ -6039,29 +6092,46 @@ const SeasonTracker = () => {
                     <div className="bg-slate-700 rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
                         <BarChart3 className="w-5 h-5" />
-                        Simulated Results
+                        Simulated Results (Per Token Unit Average)
                       </h3>
                       <p className="text-xs text-slate-400 mb-4">
-                        Actual point distribution from the generated simulation
+                        Actual points averaged across all token units from the simulation
                       </p>
                       <div className="space-y-3">
                         <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Season Totals (Average)</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points per Round</span>
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
+                            <span className="text-amber-400 font-bold">{simulationAnalytics.simulated.leadPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-blue-400 font-bold">{simulationAnalytics.simulated.assistPoints.toFixed(1)}</span>
+                          </div>
+                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-semibold">Total Points</span>
+                            <span className="text-white font-bold">{simulationAnalytics.simulated.totalPoints.toFixed(1)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-slate-600 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2 font-semibold">Per Round Average</div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-slate-300 font-semibold">Lead Points</span>
                             <span className="text-amber-400 font-bold">{(simulationAnalytics.simulated.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points per Round</span>
+                            <span className="text-slate-300 font-semibold">Assist Points</span>
                             <span className="text-blue-400 font-bold">{(simulationAnalytics.simulated.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="border-t border-slate-500 my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total per Round</span>
+                            <span className="text-slate-300 font-semibold">Total Points</span>
                             <span className="text-white font-bold">{(simulationAnalytics.simulated.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                         </div>
                         <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
-                          Totals: {simulationAnalytics.simulated.leadPoints} lead, {simulationAnalytics.simulated.assistPoints} assist, {simulationAnalytics.simulated.totalPoints} total points
+                          All token units combined: {simulationAnalytics.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.simulated.totalAssistPoints.toFixed(0)} assist points
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
