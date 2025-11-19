@@ -6019,6 +6019,9 @@ const SeasonTracker = () => {
                             <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(2)}</span>
                           </div>
                         </div>
+                        <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
+                          Expected over {simulationAnalytics.totalRounds} rounds: {(simulationAnalytics.theoretical.leadPoints * simulationAnalytics.totalRounds).toFixed(0)} lead, {(simulationAnalytics.theoretical.assistPoints * simulationAnalytics.totalRounds).toFixed(0)} assist
+                        </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
                             <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.theoretical.leadPercentage.toFixed(1)}%</div>
@@ -6044,18 +6047,21 @@ const SeasonTracker = () => {
                       <div className="space-y-3">
                         <div className="bg-slate-600 rounded p-3">
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points</span>
-                            <span className="text-amber-400 font-bold">{simulationAnalytics.simulated.leadPoints}</span>
+                            <span className="text-slate-300 font-semibold">Lead Points per Round</span>
+                            <span className="text-amber-400 font-bold">{(simulationAnalytics.simulated.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points</span>
-                            <span className="text-blue-400 font-bold">{simulationAnalytics.simulated.assistPoints}</span>
+                            <span className="text-slate-300 font-semibold">Assist Points per Round</span>
+                            <span className="text-blue-400 font-bold">{(simulationAnalytics.simulated.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="border-t border-slate-500 my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total Points</span>
-                            <span className="text-white font-bold">{simulationAnalytics.simulated.totalPoints}</span>
+                            <span className="text-slate-300 font-semibold">Total per Round</span>
+                            <span className="text-white font-bold">{(simulationAnalytics.simulated.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
+                        </div>
+                        <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
+                          Totals: {simulationAnalytics.simulated.leadPoints} lead, {simulationAnalytics.simulated.assistPoints} assist, {simulationAnalytics.simulated.totalPoints} total points
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
