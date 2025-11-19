@@ -160,6 +160,7 @@ const SeasonTracker = () => {
   const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
+  const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
   
   // Playoff configuration state
   const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
@@ -2319,24 +2320,41 @@ const SeasonTracker = () => {
         inheritedUnitPlayerCounts = { ...unitPlayerCounts };
       }
 
+      // Handle schedule-only mode for single round leads
+      let teamA, teamB;
+      if (simScheduleOnly) {
+        if (weekData.isSingleRoundLeads) {
+          // Include all leads in schedule-only mode
+          teamA = [weekData.leadA_r1, weekData.leadA_r2].filter(Boolean);
+          teamB = [weekData.leadB_r1, weekData.leadB_r2].filter(Boolean);
+        } else {
+          teamA = [weekData.leadA];
+          teamB = [weekData.leadB];
+        }
+      } else {
+        teamA = weekData.teamA;
+        teamB = weekData.teamB;
+      }
+
       return {
         id: Date.now() + i,
         name: `Week ${weeks.length + 1 + i}`,
-        teamA: simScheduleOnly ? [weekData.leadA] : weekData.teamA,
-        teamB: simScheduleOnly ? [weekData.leadB] : weekData.teamB,
+        teamA,
+        teamB,
         round1Winner: simScheduleOnly ? null : weekData.round1Winner,
         round2Winner: simScheduleOnly ? null : weekData.round2Winner,
         round1Map: simScheduleOnly ? null : weekData.round1Map,
         round2Map: simScheduleOnly ? null : weekData.round2Map,
         round1Flipped: simScheduleOnly ? false : weekData.round1Flipped,
         round2Flipped: simScheduleOnly ? false : weekData.round2Flipped,
-        leadA: weekData.leadA,
-        leadB: weekData.leadB,
+        leadA: weekData.leadA || null,
+        leadB: weekData.leadB || null,
         isPlayoffs: false,
-        leadA_r1: null,
-        leadB_r1: null,
-        leadA_r2: null,
-        leadB_r2: null,
+        isSingleRoundLeads: weekData.isSingleRoundLeads || false,
+        leadA_r1: weekData.leadA_r1 || null,
+        leadB_r1: weekData.leadB_r1 || null,
+        leadA_r2: weekData.leadA_r2 || null,
+        leadB_r2: weekData.leadB_r2 || null,
         r1CasualtiesA: 0,
         r1CasualtiesB: 0,
         r2CasualtiesA: 0,
@@ -2361,14 +2379,18 @@ const SeasonTracker = () => {
     const leadMatchups = new Set();
     const unitLeadCounts = {};
     const unitDivisionLeadCounts = {};
-    
+
     tokenUnits.forEach(unit => {
       unitLeadCounts[unit] = 0;
       unitDivisionLeadCounts[unit] = 0;
     });
 
     const generatedWeeks = [];
-    const maxWeeks = tokenUnits.length * simLeadNightsPerUnit;
+    // In 'rounds' mode, we need 2x matchups since each unit leads individual rounds, not full weeks
+    const matchupsPerWeek = simLeadMode === 'rounds' ? 2 : 1;
+    const maxWeeks = simLeadMode === 'rounds'
+      ? tokenUnits.length * simLeadNightsPerUnit // Each unit leads X rounds, 2 matchups per week
+      : tokenUnits.length * simLeadNightsPerUnit; // Each unit leads X full weeks
     
     // Try to generate weeks until we can't find valid matchups
     for (let i = 0; i < maxWeeks * 2; i++) { // Allow extra iterations to find matchups
@@ -2493,42 +2515,107 @@ const SeasonTracker = () => {
         unitDivisionLeadCounts[leadB]++;
       }
 
-      // Randomly assign remaining units to teams
-      const remainingUnits = units.filter(u => u !== leadA && u !== leadB);
-      const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
-      const midpoint = Math.floor(shuffled.length / 2);
-      
-      const teamA = [leadA, ...shuffled.slice(0, midpoint)];
-      const teamB = [leadB, ...shuffled.slice(midpoint)];
-
-      // Randomly select maps
-      const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
-      const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
-      
-      // Randomly determine flipped state
-      const round1Flipped = Math.random() < 0.5;
-      const round2Flipped = Math.random() < 0.5;
-
-      // Simulate round results (50/50 chance for each team)
-      const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
-      const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
-
+      // Store the matchup (we'll convert to weeks later)
       generatedWeeks.push({
-        teamA,
-        teamB,
-        round1Winner,
-        round2Winner,
-        round1Map,
-        round2Map,
-        round1Flipped,
-        round2Flipped,
         leadA,
         leadB
       });
     }
 
+    // Convert matchups to week structures based on mode
+    const finalWeeks = [];
+
+    if (simLeadMode === 'rounds') {
+      // In rounds mode, pair up matchups into weeks with different leads per round
+      for (let i = 0; i < generatedWeeks.length; i += 2) {
+        const matchup1 = generatedWeeks[i];
+        const matchup2 = generatedWeeks[i + 1];
+
+        if (!matchup2) {
+          // Odd number of matchups, skip the last one
+          break;
+        }
+
+        // Create teams by combining all units from both matchups
+        const allLeads = [matchup1.leadA, matchup1.leadB, matchup2.leadA, matchup2.leadB];
+        const remainingUnits = units.filter(u => !allLeads.includes(u));
+        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
+        const midpoint = Math.floor(shuffled.length / 2);
+
+        const teamA = [matchup1.leadA, matchup2.leadA, ...shuffled.slice(0, midpoint)];
+        const teamB = [matchup1.leadB, matchup2.leadB, ...shuffled.slice(midpoint)];
+
+        // Randomly select maps
+        const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+        const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+
+        // Randomly determine flipped state
+        const round1Flipped = Math.random() < 0.5;
+        const round2Flipped = Math.random() < 0.5;
+
+        // Simulate round results (50/50 chance for each team)
+        const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
+        const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
+
+        finalWeeks.push({
+          teamA,
+          teamB,
+          round1Winner,
+          round2Winner,
+          round1Map,
+          round2Map,
+          round1Flipped,
+          round2Flipped,
+          leadA: null, // Not used in single round leads mode
+          leadB: null, // Not used in single round leads mode
+          leadA_r1: matchup1.leadA,
+          leadB_r1: matchup1.leadB,
+          leadA_r2: matchup2.leadA,
+          leadB_r2: matchup2.leadB,
+          isSingleRoundLeads: true
+        });
+      }
+    } else {
+      // In fullWeeks mode, each matchup becomes a full week
+      for (const matchup of generatedWeeks) {
+        // Randomly assign remaining units to teams
+        const remainingUnits = units.filter(u => u !== matchup.leadA && u !== matchup.leadB);
+        const shuffled = [...remainingUnits].sort(() => Math.random() - 0.5);
+        const midpoint = Math.floor(shuffled.length / 2);
+
+        const teamA = [matchup.leadA, ...shuffled.slice(0, midpoint)];
+        const teamB = [matchup.leadB, ...shuffled.slice(midpoint)];
+
+        // Randomly select maps
+        const round1Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+        const round2Map = ALL_MAPS[Math.floor(Math.random() * ALL_MAPS.length)];
+
+        // Randomly determine flipped state
+        const round1Flipped = Math.random() < 0.5;
+        const round2Flipped = Math.random() < 0.5;
+
+        // Simulate round results (50/50 chance for each team)
+        const round1Winner = Math.random() < 0.5 ? 'A' : 'B';
+        const round2Winner = Math.random() < 0.5 ? 'A' : 'B';
+
+        finalWeeks.push({
+          teamA,
+          teamB,
+          round1Winner,
+          round2Winner,
+          round1Map,
+          round2Map,
+          round1Flipped,
+          round2Flipped,
+          leadA: matchup.leadA,
+          leadB: matchup.leadB,
+          isSingleRoundLeads: false
+        });
+      }
+    }
+
     return {
-      weeks: generatedWeeks,
+      weeks: finalWeeks,
       unitLeadCounts,
       unitDivisionLeadCounts
     };
@@ -5611,8 +5698,48 @@ const SeasonTracker = () => {
                           className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                         />
                         <p className="text-xs text-slate-400 mt-1">
-                          Each token unit will lead this many weeks. Total weeks = {units.filter(u => !nonTokenUnits.includes(u)).length} units × {simLeadNightsPerUnit} = {units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks
+                          {simLeadMode === 'rounds'
+                            ? `Each token unit will lead ${simLeadNightsPerUnit} night(s) with 2 rounds per night. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} × 2 = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit * 2} weeks`
+                            : `Each token unit will lead this many weeks. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks`
+                          }
                         </p>
+                      </div>
+
+                      {/* Lead Mode Selection */}
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-2">
+                          Lead Assignment Mode
+                        </label>
+                        <div className="space-y-2">
+                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="simLeadMode"
+                              value="fullWeeks"
+                              checked={simLeadMode === 'fullWeeks'}
+                              onChange={(e) => setSimLeadMode(e.target.value)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="text-sm">Full Lead Weeks</div>
+                              <div className="text-xs text-slate-400">One unit leads both rounds each night</div>
+                            </div>
+                          </label>
+                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="simLeadMode"
+                              value="rounds"
+                              checked={simLeadMode === 'rounds'}
+                              onChange={(e) => setSimLeadMode(e.target.value)}
+                              className="mt-1"
+                            />
+                            <div>
+                              <div className="text-sm">Lead Rounds</div>
+                              <div className="text-xs text-slate-400">Two units lead per night (one per round)</div>
+                            </div>
+                          </label>
+                        </div>
                       </div>
 
                       {/* Division Lead Nights */}
