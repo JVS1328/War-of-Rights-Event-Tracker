@@ -697,6 +697,92 @@ const WarOfRightsLogAnalyzer = () => {
     }
   };
 
+  const handleExportAnalysis = () => {
+    if (!rounds || rounds.length === 0) {
+      alert('No analysis data to export');
+      return;
+    }
+
+    try {
+      const analysisData = {
+        rounds,
+        selectedRound,
+        logDate,
+        playerAssignments,
+        expandedRegiments,
+        pinnedRegiment,
+        timeRangeStart,
+        timeRangeEnd,
+        showAllLossRates,
+        showAllTimeInCombat,
+        exportedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      const dataStr = JSON.stringify(analysisData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `WoR_Analysis_${logDate ? logDate.replace(/\s+/g, '_') : new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting analysis:', error);
+      alert('Failed to export analysis. Please try again.');
+    }
+  };
+
+  const handleImportAnalysis = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+
+        // Validate the imported data
+        if (!importedData.rounds || !Array.isArray(importedData.rounds)) {
+          alert('Invalid analysis file format');
+          return;
+        }
+
+        // Load the imported data into state
+        setRounds(importedData.rounds || []);
+        setLogDate(importedData.logDate || null);
+        setPlayerAssignments(importedData.playerAssignments || {});
+        setExpandedRegiments(importedData.expandedRegiments || {});
+        setPinnedRegiment(importedData.pinnedRegiment || null);
+        setTimeRangeStart(importedData.timeRangeStart || 0);
+        setTimeRangeEnd(importedData.timeRangeEnd || 100);
+        setShowAllLossRates(importedData.showAllLossRates || false);
+        setShowAllTimeInCombat(importedData.showAllTimeInCombat || false);
+
+        // If there was a selected round, re-analyze it
+        if (importedData.selectedRound) {
+          const round = importedData.rounds.find(r => r.id === importedData.selectedRound.id);
+          if (round) {
+            setSelectedRound(round);
+            analyzeRound(round);
+          }
+        } else {
+          setSelectedRound(null);
+          setRegimentStats([]);
+        }
+
+        alert('Analysis imported successfully!');
+      } catch (error) {
+        console.error('Error importing analysis:', error);
+        alert('Failed to import analysis. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset the input so the same file can be imported again
+    event.target.value = '';
+  };
+
   const getRoundDurationSeconds = () => {
     if (!selectedRound || !selectedRound.startTime || !selectedRound.endTime) return 0;
     if (selectedRound.startTime === 'Unknown' || selectedRound.endTime === 'Unknown') return 0;
@@ -1487,16 +1573,37 @@ const WarOfRightsLogAnalyzer = () => {
                     <Clock className="w-6 h-6" />
                     Rounds ({rounds.length}){logDate && ` - ${logDate}`}
                   </h2>
-                  {selectedRound && (
+                  <div className="flex items-center gap-2">
+                    {selectedRound && (
+                      <button
+                        onClick={handleExportPDF}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold text-sm"
+                        title="Export current round to PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export to PDF
+                      </button>
+                    )}
                     <button
-                      onClick={handleExportPDF}
-                      className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold text-sm"
-                      title="Export current round to PDF"
+                      onClick={handleExportAnalysis}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-semibold text-sm"
+                      title="Export all analysis data"
                     >
                       <Download className="w-4 h-4" />
-                      Export to PDF
+                      Export Analysis
                     </button>
-                  )}
+                    <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold text-sm cursor-pointer"
+                      title="Import analysis data">
+                      <Upload className="w-4 h-4" />
+                      Import Analysis
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".json"
+                        onChange={handleImportAnalysis}
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {rounds.map((round) => (
