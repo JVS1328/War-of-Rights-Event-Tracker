@@ -377,6 +377,11 @@ const WarOfRightsLogAnalyzer = () => {
     setSmartMatchPreview(null);
   };
 
+  // Filter out incomplete rounds (map switches) that don't have an end time
+  const filterCompleteRounds = (rounds) => {
+    return rounds.filter(round => round.endTime !== null);
+  };
+
   const parseLogFile = (logText) => {
     const lines = logText.split('\n');
     const parsedRounds = [];
@@ -562,7 +567,9 @@ const WarOfRightsLogAnalyzer = () => {
     });
 
     // Reset all state when loading a new log file
-    setRounds(parsedRounds);
+    // Filter out incomplete rounds (map switches without end times)
+    const completeRounds = filterCompleteRounds(parsedRounds);
+    setRounds(completeRounds);
     setLogDate(extractedDate);
     setSelectedRound(null);
     setRegimentStats([]);
@@ -667,8 +674,11 @@ const WarOfRightsLogAnalyzer = () => {
             return;
           }
 
+          // Filter out incomplete rounds (map switches without end times)
+          const completeRounds = filterCompleteRounds(importedData.rounds || []);
+
           // Load the imported data into state
-          setRounds(importedData.rounds || []);
+          setRounds(completeRounds);
           setLogDate(importedData.logDate || null);
           setPlayerAssignments(importedData.playerAssignments || {});
           setExpandedRegiments(importedData.expandedRegiments || {});
@@ -680,7 +690,7 @@ const WarOfRightsLogAnalyzer = () => {
 
           // If there was a selected round, re-analyze it
           if (importedData.selectedRound) {
-            const round = importedData.rounds.find(r => r.id === importedData.selectedRound.id);
+            const round = completeRounds.find(r => r.id === importedData.selectedRound.id);
             if (round) {
               setSelectedRound(round);
               analyzeRound(round);
