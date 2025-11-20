@@ -385,11 +385,12 @@ const WarOfRightsLogAnalyzer = () => {
     let extractedDate = null;
 
     // Extract date from near the top of the file: "Log Started at Wed Nov 19 19:31:14 2025"
+    // Extract only: "Wed Nov 19 2025" (remove time)
     const searchLines = Math.min(100, lines.length);
     for (let i = 0; i < searchLines; i++) {
-      const dateMatch = lines[i].match(/Log Started at (.+)/);
+      const dateMatch = lines[i].match(/Log Started at (\w+\s+\w+\s+\d+)\s+\d+:\d+:\d+\s+(\d+)/);
       if (dateMatch) {
-        extractedDate = dateMatch[1].trim();
+        extractedDate = `${dateMatch[1]} ${dateMatch[2]}`; // "Wed Nov 19 2025"
         break;
       }
     }
@@ -678,6 +679,7 @@ const WarOfRightsLogAnalyzer = () => {
       const lossRates = getHighestLossRates(true); // Get all regiments
       const topDeaths = getTopIndividualDeaths();
       const timelineData = getRegimentLossesOverTime();
+      const firstAndLastDeaths = getFirstAndLastDeaths();
 
       await generateRoundPDF({
         round: selectedRound,
@@ -687,6 +689,7 @@ const WarOfRightsLogAnalyzer = () => {
         timelineData,
         getPlayerPresenceData,
         logDate,
+        firstAndLastDeaths,
       });
     } catch (error) {
       console.error('Error generating PDF:', error);

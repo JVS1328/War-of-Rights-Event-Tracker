@@ -103,6 +103,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     borderRadius: 4,
   },
+  deathBox: {
+    padding: 10,
+    backgroundColor: '#475569', // slate-600
+    borderRadius: 4,
+    marginBottom: 10,
+  },
+  deathLabel: {
+    fontSize: 9,
+    color: '#cbd5e1',
+    marginBottom: 3,
+  },
+  deathValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#e2e8f0',
+  },
 });
 
 // Regiment Losses Over Time Chart Component
@@ -240,6 +256,7 @@ const RoundAnalysisPDF = ({
   timelineData,
   getPlayerPresenceData,
   logDate,
+  firstAndLastDeaths,
 }) => {
   // Helper to format time in combat
   const formatTimeInCombat = (presencePercentage, roundDurationSeconds) => {
@@ -327,9 +344,44 @@ const RoundAnalysisPDF = ({
           </View>
         </View>
 
+        {/* First and Last Deaths */}
+        {firstAndLastDeaths && (firstAndLastDeaths.firstDeath || firstAndLastDeaths.lastDeath) && (
+          <View style={{ marginTop: 12, marginBottom: 12 }} wrap={false}>
+            <Text style={styles.subtitle}>First & Last Deaths</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {firstAndLastDeaths.firstDeath && (
+                <View style={[styles.deathBox, { flex: 1 }]}>
+                  <Text style={[styles.sectionTitle, { marginTop: 0, color: '#22c55e' }]}>First Death</Text>
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.deathLabel}>Player</Text>
+                    <Text style={styles.deathValue}>{firstAndLastDeaths.firstDeath.player}</Text>
+                  </View>
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.deathLabel}>Regiment</Text>
+                    <Text style={[styles.deathValue, { color: '#fbbf24' }]}>{firstAndLastDeaths.firstDeath.regiment}</Text>
+                  </View>
+                </View>
+              )}
+              {firstAndLastDeaths.lastDeath && (
+                <View style={[styles.deathBox, { flex: 1 }]}>
+                  <Text style={[styles.sectionTitle, { marginTop: 0, color: '#ef4444' }]}>Last Death</Text>
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.deathLabel}>Player</Text>
+                    <Text style={styles.deathValue}>{firstAndLastDeaths.lastDeath.player}</Text>
+                  </View>
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.deathLabel}>Regiment</Text>
+                    <Text style={[styles.deathValue, { color: '#fbbf24' }]}>{firstAndLastDeaths.lastDeath.regiment}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Highest Loss Rates */}
         <Text style={styles.subtitle}>Highest Loss Rates by Regiment</Text>
-        <View style={styles.table}>
+        <View style={styles.table} wrap={false}>
           <View style={[styles.tableRow, styles.tableHeader]}>
             <Text style={[styles.tableCell, { width: '40%' }]}>Regiment</Text>
             <Text style={[styles.tableCell, { width: '20%' }]}>Loss Rate</Text>
@@ -348,7 +400,7 @@ const RoundAnalysisPDF = ({
 
         {/* Top Individual Deaths */}
         <Text style={styles.subtitle}>Top Individual Deaths</Text>
-        <View style={styles.table}>
+        <View style={styles.table} wrap={false}>
           <View style={[styles.tableRow, styles.tableHeader]}>
             <Text style={[styles.tableCell, { width: '50%' }]}>Player</Text>
             <Text style={[styles.tableCell, { width: '30%' }]}>Regiment</Text>
@@ -370,7 +422,7 @@ const RoundAnalysisPDF = ({
         <Text style={styles.text}>Average time spent in combat per regiment</Text>
         <View style={styles.divider} />
 
-        <View style={styles.table}>
+        <View style={styles.table} wrap={false}>
           <View style={[styles.tableRow, styles.tableHeader]}>
             <Text style={[styles.tableCell, { width: '35%' }]}>Regiment</Text>
             <Text style={[styles.tableCell, { width: '20%' }]}>Players</Text>
