@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle } from 'lucide-react';
+import { generateRoundPDF } from './PDFExport';
 
 const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
 
@@ -21,6 +22,7 @@ const WarOfRightsLogAnalyzer = () => {
 
   const [rounds, setRounds] = useState(savedState?.rounds || []);
   const [selectedRound, setSelectedRound] = useState(savedState?.selectedRound || null);
+  const [logDate, setLogDate] = useState(savedState?.logDate || null);
   const [regimentStats, setRegimentStats] = useState([]);
   const [selectedRegiment, setSelectedRegiment] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -48,6 +50,7 @@ const WarOfRightsLogAnalyzer = () => {
     const stateToSave = {
       rounds,
       selectedRound,
+      logDate,
       playerAssignments,
       expandedRegiments,
       pinnedRegiment,
@@ -62,7 +65,7 @@ const WarOfRightsLogAnalyzer = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [rounds, selectedRound, playerAssignments, expandedRegiments, pinnedRegiment, timeRangeStart, timeRangeEnd, showAllLossRates, showAllTimeInCombat]);
+  }, [rounds, selectedRound, logDate, playerAssignments, expandedRegiments, pinnedRegiment, timeRangeStart, timeRangeEnd, showAllLossRates, showAllTimeInCombat]);
 
   // Restore selected round's stats on mount if there's a saved selected round
   useEffect(() => {
@@ -379,6 +382,18 @@ const WarOfRightsLogAnalyzer = () => {
     const parsedRounds = [];
     let currentRound = null;
     let roundNumber = 0;
+    let extractedDate = null;
+
+    // Extract date from near the top of the file: "Log Started at Wed Nov 19 19:31:14 2025"
+    // Extract only: "Wed Nov 19 2025" (remove time)
+    const searchLines = Math.min(100, lines.length);
+    for (let i = 0; i < searchLines; i++) {
+      const dateMatch = lines[i].match(/Log Started at (\w+\s+\w+\s+\d+)\s+\d+:\d+:\d+\s+(\d+)/);
+      if (dateMatch) {
+        extractedDate = `${dateMatch[1]} ${dateMatch[2]}`; // "Wed Nov 19 2025"
+        break;
+      }
+    }
 
     lines.forEach(line => {
       // Detect round start
@@ -548,6 +563,7 @@ const WarOfRightsLogAnalyzer = () => {
 
     // Reset all state when loading a new log file
     setRounds(parsedRounds);
+    setLogDate(extractedDate);
     setSelectedRound(null);
     setRegimentStats([]);
     setSelectedRegiment(null);
@@ -651,6 +667,120 @@ const WarOfRightsLogAnalyzer = () => {
 
   const handleRegimentClick = (regiment) => {
     setSelectedRegiment(selectedRegiment?.name === regiment.name ? null : regiment);
+  };
+
+  const handleExportPDF = async () => {
+    if (!selectedRound || !regimentStats.length) {
+      alert('Please select a round to export');
+      return;
+    }
+
+    try {
+      const lossRates = getHighestLossRates(true); // Get all regiments
+      const topDeaths = getTopIndividualDeaths();
+      const timelineData = getRegimentLossesOverTime();
+      const firstAndLastDeaths = getFirstAndLastDeaths();
+
+      await generateRoundPDF({
+        round: selectedRound,
+        regimentStats,
+        lossRates,
+        topDeaths,
+        timelineData,
+        getPlayerPresenceData,
+        logDate,
+        firstAndLastDeaths,
+      });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
+  };
+
+  const handleExportAnalysis = () => {
+    if (!rounds || rounds.length === 0) {
+      alert('No analysis data to export');
+      return;
+    }
+
+    try {
+      const analysisData = {
+        rounds,
+        selectedRound,
+        logDate,
+        playerAssignments,
+        expandedRegiments,
+        pinnedRegiment,
+        timeRangeStart,
+        timeRangeEnd,
+        showAllLossRates,
+        showAllTimeInCombat,
+        exportedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      const dataStr = JSON.stringify(analysisData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `WoR_Analysis_${logDate ? logDate.replace(/\s+/g, '_') : new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting analysis:', error);
+      alert('Failed to export analysis. Please try again.');
+    }
+  };
+
+  const handleImportAnalysis = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+
+        // Validate the imported data
+        if (!importedData.rounds || !Array.isArray(importedData.rounds)) {
+          alert('Invalid analysis file format');
+          return;
+        }
+
+        // Load the imported data into state
+        setRounds(importedData.rounds || []);
+        setLogDate(importedData.logDate || null);
+        setPlayerAssignments(importedData.playerAssignments || {});
+        setExpandedRegiments(importedData.expandedRegiments || {});
+        setPinnedRegiment(importedData.pinnedRegiment || null);
+        setTimeRangeStart(importedData.timeRangeStart || 0);
+        setTimeRangeEnd(importedData.timeRangeEnd || 100);
+        setShowAllLossRates(importedData.showAllLossRates || false);
+        setShowAllTimeInCombat(importedData.showAllTimeInCombat || false);
+
+        // If there was a selected round, re-analyze it
+        if (importedData.selectedRound) {
+          const round = importedData.rounds.find(r => r.id === importedData.selectedRound.id);
+          if (round) {
+            setSelectedRound(round);
+            analyzeRound(round);
+          }
+        } else {
+          setSelectedRound(null);
+          setRegimentStats([]);
+        }
+
+        alert('Analysis imported successfully!');
+      } catch (error) {
+        console.error('Error importing analysis:', error);
+        alert('Failed to import analysis. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset the input so the same file can be imported again
+    event.target.value = '';
   };
 
   const getRoundDurationSeconds = () => {
@@ -1291,9 +1421,10 @@ const WarOfRightsLogAnalyzer = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
+    const dateStr = logDate ? `_${logDate.replace(/\s+/g, '_')}` : '';
     link.setAttribute('href', url);
-    link.setAttribute('download', `round_${selectedRound.id}_casualties.csv`);
+    link.setAttribute('download', `round_${selectedRound.id}_casualties${dateStr}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -1368,8 +1499,9 @@ const WarOfRightsLogAnalyzer = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
 
+    const dateStr = logDate ? `_${logDate.replace(/\s+/g, '_')}` : '';
     link.setAttribute('href', url);
-    link.setAttribute('download', `round_${selectedRound.id}_casualty_list.txt`);
+    link.setAttribute('download', `round_${selectedRound.id}_casualty_list${dateStr}.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -1438,10 +1570,40 @@ const WarOfRightsLogAnalyzer = () => {
           {rounds.length > 0 && !showEditor && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-700 rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                  <Clock className="w-6 h-6" />
-                  Rounds ({rounds.length})
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <Clock className="w-6 h-6" />
+                    Rounds ({rounds.length}){logDate && ` - ${logDate}`}
+                  </h2>
+                  <div className="flex items-center gap-1.5">
+                    {selectedRound && (
+                      <button
+                        onClick={handleExportPDF}
+                        className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition"
+                        title="Export current round to PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={handleExportAnalysis}
+                      className="p-2 bg-green-600 hover:bg-green-700 text-white rounded transition"
+                      title="Export all analysis data"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                    <label className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition cursor-pointer"
+                      title="Import analysis data">
+                      <Upload className="w-4 h-4" />
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".json"
+                        onChange={handleImportAnalysis}
+                      />
+                    </label>
+                  </div>
+                </div>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {rounds.map((round) => (
                     <button
