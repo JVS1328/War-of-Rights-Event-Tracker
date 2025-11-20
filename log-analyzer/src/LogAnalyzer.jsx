@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle } from 'lucide-react';
+import { generateRoundPDF } from './PDFExport';
 
 const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
 
@@ -651,6 +652,31 @@ const WarOfRightsLogAnalyzer = () => {
 
   const handleRegimentClick = (regiment) => {
     setSelectedRegiment(selectedRegiment?.name === regiment.name ? null : regiment);
+  };
+
+  const handleExportPDF = async () => {
+    if (!selectedRound || !regimentStats.length) {
+      alert('Please select a round to export');
+      return;
+    }
+
+    try {
+      const lossRates = getHighestLossRates(true); // Get all regiments
+      const topDeaths = getTopIndividualDeaths();
+      const timelineData = getRegimentLossesOverTime();
+
+      await generateRoundPDF({
+        round: selectedRound,
+        regimentStats,
+        lossRates,
+        topDeaths,
+        timelineData,
+        getPlayerPresenceData,
+      });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
   };
 
   const getRoundDurationSeconds = () => {
@@ -1438,10 +1464,22 @@ const WarOfRightsLogAnalyzer = () => {
           {rounds.length > 0 && !showEditor && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-700 rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                  <Clock className="w-6 h-6" />
-                  Rounds ({rounds.length})
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <Clock className="w-6 h-6" />
+                    Rounds ({rounds.length})
+                  </h2>
+                  {selectedRound && (
+                    <button
+                      onClick={handleExportPDF}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold text-sm"
+                      title="Export current round to PDF"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export to PDF
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {rounds.map((round) => (
                     <button
