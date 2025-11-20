@@ -1575,29 +1575,26 @@ const WarOfRightsLogAnalyzer = () => {
                     <Clock className="w-6 h-6" />
                     Rounds ({rounds.length}){logDate && ` - ${logDate}`}
                   </h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {selectedRound && (
                       <button
                         onClick={handleExportPDF}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold text-sm"
+                        className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition"
                         title="Export current round to PDF"
                       >
                         <Download className="w-4 h-4" />
-                        Export to PDF
                       </button>
                     )}
                     <button
                       onClick={handleExportAnalysis}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition font-semibold text-sm"
+                      className="p-2 bg-green-600 hover:bg-green-700 text-white rounded transition"
                       title="Export all analysis data"
                     >
                       <Download className="w-4 h-4" />
-                      Export Analysis
                     </button>
-                    <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-semibold text-sm cursor-pointer"
+                    <label className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition cursor-pointer"
                       title="Import analysis data">
                       <Upload className="w-4 h-4" />
-                      Import Analysis
                       <input
                         type="file"
                         className="hidden"
