@@ -1,37 +1,42 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, pdf, Svg, Line, Polyline, Circle, Rect } from '@react-pdf/renderer';
 
-// Create styles
+// Create dark theme styles matching the web page
 const styles = StyleSheet.create({
   page: {
     padding: 30,
     fontSize: 10,
     fontFamily: 'Helvetica',
+    backgroundColor: '#1e293b', // slate-800
   },
   title: {
     fontSize: 20,
     marginBottom: 10,
     fontWeight: 'bold',
-    color: '#1e293b',
+    color: '#f59e0b', // amber-500
   },
   subtitle: {
     fontSize: 14,
     marginBottom: 8,
     marginTop: 16,
     fontWeight: 'bold',
-    color: '#334155',
+    color: '#fbbf24', // amber-400
   },
   sectionTitle: {
     fontSize: 12,
     marginBottom: 6,
     marginTop: 12,
     fontWeight: 'bold',
-    color: '#475569',
+    color: '#fcd34d', // amber-300
   },
   text: {
     fontSize: 10,
     marginBottom: 4,
-    color: '#1e293b',
+    color: '#e2e8f0', // slate-200
+  },
+  textSmall: {
+    fontSize: 8,
+    color: '#cbd5e1', // slate-300
   },
   table: {
     display: 'table',
@@ -40,25 +45,27 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderStyle: 'solid',
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: '#475569', // slate-600
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#cbd5e1',
+    borderBottomColor: '#475569',
   },
   tableHeader: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#334155', // slate-700
     fontWeight: 'bold',
+    color: '#fbbf24', // amber-400
   },
   tableCell: {
     padding: 6,
     fontSize: 9,
     borderRightWidth: 1,
-    borderRightColor: '#cbd5e1',
+    borderRightColor: '#475569',
+    color: '#e2e8f0',
   },
   metadata: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#334155', // slate-700
     padding: 10,
     marginBottom: 12,
     borderRadius: 4,
@@ -66,7 +73,7 @@ const styles = StyleSheet.create({
   regimentSection: {
     marginBottom: 16,
     padding: 10,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#334155',
     borderLeftWidth: 3,
     borderLeftColor: '#f59e0b',
   },
@@ -74,7 +81,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    borderBottomColor: '#475569',
   },
   statRow: {
     flexDirection: 'row',
@@ -83,11 +90,147 @@ const styles = StyleSheet.create({
   statLabel: {
     fontWeight: 'bold',
     width: 120,
+    color: '#fbbf24',
   },
   statValue: {
     flex: 1,
+    color: '#e2e8f0',
+  },
+  chartContainer: {
+    marginTop: 12,
+    marginBottom: 16,
+    padding: 10,
+    backgroundColor: '#334155',
+    borderRadius: 4,
   },
 });
+
+// Regiment Losses Over Time Chart Component
+const LossesOverTimeChart = ({ timelineData }) => {
+  if (!timelineData || !timelineData.buckets || !timelineData.regiments) {
+    return null;
+  }
+
+  const width = 500;
+  const height = 250;
+  const padding = { top: 20, right: 20, bottom: 30, left: 40 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  // Get top 8 regiments by total casualties
+  const topRegiments = timelineData.regiments
+    .filter(r => r.name !== 'UNTAGGED')
+    .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0))
+    .slice(0, 8);
+
+  if (topRegiments.length === 0) return null;
+
+  // Find max value for scaling
+  const maxDeaths = Math.max(
+    ...topRegiments.map(r => Math.max(...r.deaths)),
+    1
+  );
+
+  // Colors for regiment lines
+  const colors = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#3b82f6', '#a855f7', '#ec4899', '#06b6d4',
+  ];
+
+  // Calculate points for each regiment
+  const getPoints = (regiment) => {
+    return regiment.deaths.map((deaths, i) => {
+      const x = padding.left + (i / Math.max(regiment.deaths.length - 1, 1)) * chartWidth;
+      const y = padding.top + chartHeight - (deaths / maxDeaths) * chartHeight;
+      return `${x},${y}`;
+    }).join(' ');
+  };
+
+  // Grid lines (horizontal)
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
+    const y = padding.top + chartHeight - ratio * chartHeight;
+    return { y, value: Math.round(maxDeaths * ratio) };
+  });
+
+  return (
+    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {/* Background */}
+      <Rect x="0" y="0" width={width} height={height} fill="#1e293b" />
+
+      {/* Grid lines */}
+      {gridLines.map((line, i) => (
+        <React.Fragment key={i}>
+          <Line
+            x1={padding.left}
+            y1={line.y}
+            x2={width - padding.right}
+            y2={line.y}
+            stroke="#475569"
+            strokeWidth="0.5"
+            strokeDasharray="3,3"
+          />
+        </React.Fragment>
+      ))}
+
+      {/* Y-axis labels */}
+      {gridLines.map((line, i) => (
+        <React.Fragment key={`label-${i}`}>
+          <Rect x="0" y={line.y - 6} width={padding.left - 5} height="12" fill="#1e293b" />
+        </React.Fragment>
+      ))}
+
+      {/* Regiment lines */}
+      {topRegiments.map((regiment, i) => (
+        <Polyline
+          key={i}
+          points={getPoints(regiment)}
+          fill="none"
+          stroke={colors[i % colors.length]}
+          strokeWidth="2"
+        />
+      ))}
+
+      {/* Data points */}
+      {topRegiments.map((regiment, regIndex) => (
+        <React.Fragment key={`points-${regIndex}`}>
+          {regiment.deaths.map((deaths, i) => {
+            const x = padding.left + (i / Math.max(regiment.deaths.length - 1, 1)) * chartWidth;
+            const y = padding.top + chartHeight - (deaths / maxDeaths) * chartHeight;
+            return (
+              <Circle
+                key={i}
+                cx={x}
+                cy={y}
+                r="2"
+                fill={colors[regIndex % colors.length]}
+              />
+            );
+          })}
+        </React.Fragment>
+      ))}
+
+      {/* X-axis */}
+      <Line
+        x1={padding.left}
+        y1={height - padding.bottom}
+        x2={width - padding.right}
+        y2={height - padding.bottom}
+        stroke="#475569"
+        strokeWidth="1"
+      />
+
+      {/* Y-axis */}
+      <Line
+        x1={padding.left}
+        y1={padding.top}
+        x2={padding.left}
+        y2={height - padding.bottom}
+        stroke="#475569"
+        strokeWidth="1"
+      />
+    </Svg>
+  );
+};
 
 // PDF Document Component
 const RoundAnalysisPDF = ({
@@ -96,7 +239,8 @@ const RoundAnalysisPDF = ({
   lossRates,
   topDeaths,
   timelineData,
-  getPlayerPresenceData
+  getPlayerPresenceData,
+  logDate,
 }) => {
   // Helper to format time in combat
   const formatTimeInCombat = (presencePercentage, roundDurationSeconds) => {
@@ -118,11 +262,45 @@ const RoundAnalysisPDF = ({
 
   const roundDuration = getRoundDurationSeconds();
 
+  // Get all players with time in combat data
+  const getAllPlayersTimeInCombat = () => {
+    const allPlayers = [];
+    regimentStats
+      .filter(r => r.name !== 'UNTAGGED')
+      .forEach(regiment => {
+        const playerData = getPlayerPresenceData(regiment.name);
+        playerData.forEach(player => {
+          allPlayers.push({
+            name: player.name,
+            regiment: regiment.name,
+            presence: player.presence,
+            deaths: player.deaths,
+          });
+        });
+      });
+
+    // Sort by presence percentage (highest first)
+    return allPlayers.sort((a, b) => b.presence - a.presence).slice(0, 20);
+  };
+
+  const timeInCombatData = getAllPlayersTimeInCombat();
+
+  // Colors for chart legend
+  const colors = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#3b82f6', '#a855f7', '#ec4899', '#06b6d4',
+  ];
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Header */}
-        <Text style={styles.title}>War of Rights - Round {round.id} Analysis</Text>
+        <Text style={styles.title}>
+          War of Rights - Round {round.id} Analysis
+        </Text>
+        {logDate && (
+          <Text style={[styles.text, { marginBottom: 12 }]}>{logDate}</Text>
+        )}
 
         {/* Round Metadata */}
         <View style={styles.metadata}>
@@ -157,7 +335,7 @@ const RoundAnalysisPDF = ({
             <Text style={[styles.tableCell, { width: '20%' }]}>Casualties</Text>
             <Text style={[styles.tableCell, { width: '20%', borderRightWidth: 0 }]}>Players</Text>
           </View>
-          {lossRates.map((regiment, index) => (
+          {lossRates.slice(0, 12).map((regiment, index) => (
             <View key={index} style={styles.tableRow}>
               <Text style={[styles.tableCell, { width: '40%' }]}>{regiment.name}</Text>
               <Text style={[styles.tableCell, { width: '20%' }]}>{regiment.lossRate.toFixed(2)}</Text>
@@ -185,7 +363,57 @@ const RoundAnalysisPDF = ({
         </View>
       </Page>
 
-      {/* Regiment Casualty Details - Page 2+ */}
+      {/* Time in Combat - Page 2 */}
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.title}>Time in Combat</Text>
+        <Text style={styles.text}>Top 20 players by time spent in combat</Text>
+        <View style={styles.divider} />
+
+        <View style={styles.table}>
+          <View style={[styles.tableRow, styles.tableHeader]}>
+            <Text style={[styles.tableCell, { width: '45%' }]}>Player</Text>
+            <Text style={[styles.tableCell, { width: '25%' }]}>Regiment</Text>
+            <Text style={[styles.tableCell, { width: '30%', borderRightWidth: 0 }]}>Time in Combat</Text>
+          </View>
+          {timeInCombatData.map((player, index) => (
+            <View key={index} style={styles.tableRow}>
+              <Text style={[styles.tableCell, { width: '45%' }]}>{player.name}</Text>
+              <Text style={[styles.tableCell, { width: '25%' }]}>{player.regiment}</Text>
+              <Text style={[styles.tableCell, { width: '30%', borderRightWidth: 0 }]}>
+                {formatTimeInCombat(player.presence, roundDuration)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Page>
+
+      {/* Regiment Losses Over Time Chart - Page 3 */}
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.title}>Regiment Losses Over Time</Text>
+        <Text style={styles.text}>Deaths per regiment throughout the round (1-minute intervals)</Text>
+        <View style={styles.divider} />
+
+        <View style={styles.chartContainer}>
+          <LossesOverTimeChart timelineData={timelineData} />
+        </View>
+
+        {/* Chart Legend */}
+        <Text style={styles.sectionTitle}>Legend (Top 8 Regiments)</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
+          {timelineData && timelineData.regiments
+            .filter(r => r.name !== 'UNTAGGED')
+            .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0))
+            .slice(0, 8)
+            .map((regiment, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12, marginBottom: 4 }}>
+                <View style={{ width: 12, height: 12, backgroundColor: colors[i % colors.length], marginRight: 4 }} />
+                <Text style={[styles.textSmall, { color: '#e2e8f0' }]}>{regiment.name}</Text>
+              </View>
+            ))}
+        </View>
+      </Page>
+
+      {/* Regiment Casualty Details - Page 4+ */}
       <Page size="A4" style={styles.page}>
         <Text style={styles.title}>Regiment Casualty Details</Text>
         <Text style={styles.text}>Organized by regiment with individual player statistics</Text>
@@ -235,44 +463,6 @@ const RoundAnalysisPDF = ({
             );
           })}
       </Page>
-
-      {/* Timeline Data - Page 3 */}
-      {timelineData && timelineData.buckets && (
-        <Page size="A4" style={styles.page}>
-          <Text style={styles.title}>Regiment Losses Over Time</Text>
-          <Text style={styles.text}>Casualties per regiment in 1-minute intervals</Text>
-          <View style={styles.divider} />
-
-          <View style={styles.table}>
-            <View style={[styles.tableRow, styles.tableHeader]}>
-              <Text style={[styles.tableCell, { width: '25%' }]}>Regiment</Text>
-              {timelineData.buckets.slice(0, 10).map((bucket, i) => (
-                <Text key={i} style={[styles.tableCell, { width: `${75 / Math.min(10, timelineData.buckets.length)}%`, borderRightWidth: i === Math.min(9, timelineData.buckets.length - 1) ? 0 : 1 }]}>
-                  {bucket}
-                </Text>
-              ))}
-            </View>
-            {timelineData.regiments
-              .filter(r => r.name !== 'UNTAGGED')
-              .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0))
-              .slice(0, 15)
-              .map((regiment, regIndex) => (
-                <View key={regIndex} style={styles.tableRow}>
-                  <Text style={[styles.tableCell, { width: '25%' }]}>{regiment.name}</Text>
-                  {regiment.deaths.slice(0, 10).map((count, i) => (
-                    <Text key={i} style={[styles.tableCell, { width: `${75 / Math.min(10, timelineData.buckets.length)}%`, borderRightWidth: i === Math.min(9, timelineData.buckets.length - 1) ? 0 : 1 }]}>
-                      {count || 0}
-                    </Text>
-                  ))}
-                </View>
-              ))}
-          </View>
-
-          <Text style={[styles.text, { marginTop: 12, fontSize: 8, color: '#64748b' }]}>
-            Note: Showing first 10 time intervals and top 15 regiments by total casualties
-          </Text>
-        </Page>
-      )}
     </Document>
   );
 };

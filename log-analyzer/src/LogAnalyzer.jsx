@@ -22,6 +22,7 @@ const WarOfRightsLogAnalyzer = () => {
 
   const [rounds, setRounds] = useState(savedState?.rounds || []);
   const [selectedRound, setSelectedRound] = useState(savedState?.selectedRound || null);
+  const [logDate, setLogDate] = useState(savedState?.logDate || null);
   const [regimentStats, setRegimentStats] = useState([]);
   const [selectedRegiment, setSelectedRegiment] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -49,6 +50,7 @@ const WarOfRightsLogAnalyzer = () => {
     const stateToSave = {
       rounds,
       selectedRound,
+      logDate,
       playerAssignments,
       expandedRegiments,
       pinnedRegiment,
@@ -63,7 +65,7 @@ const WarOfRightsLogAnalyzer = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [rounds, selectedRound, playerAssignments, expandedRegiments, pinnedRegiment, timeRangeStart, timeRangeEnd, showAllLossRates, showAllTimeInCombat]);
+  }, [rounds, selectedRound, logDate, playerAssignments, expandedRegiments, pinnedRegiment, timeRangeStart, timeRangeEnd, showAllLossRates, showAllTimeInCombat]);
 
   // Restore selected round's stats on mount if there's a saved selected round
   useEffect(() => {
@@ -380,6 +382,15 @@ const WarOfRightsLogAnalyzer = () => {
     const parsedRounds = [];
     let currentRound = null;
     let roundNumber = 0;
+    let extractedDate = null;
+
+    // Extract date from the first line: "Log Started at Wed Nov 19 19:31:14 2025"
+    if (lines.length > 0) {
+      const dateMatch = lines[0].match(/Log Started at (.+)/);
+      if (dateMatch) {
+        extractedDate = dateMatch[1].trim();
+      }
+    }
 
     lines.forEach(line => {
       // Detect round start
@@ -549,6 +560,7 @@ const WarOfRightsLogAnalyzer = () => {
 
     // Reset all state when loading a new log file
     setRounds(parsedRounds);
+    setLogDate(extractedDate);
     setSelectedRound(null);
     setRegimentStats([]);
     setSelectedRegiment(null);
@@ -672,6 +684,7 @@ const WarOfRightsLogAnalyzer = () => {
         topDeaths,
         timelineData,
         getPlayerPresenceData,
+        logDate,
       });
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -1467,7 +1480,7 @@ const WarOfRightsLogAnalyzer = () => {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
                     <Clock className="w-6 h-6" />
-                    Rounds ({rounds.length})
+                    Rounds ({rounds.length}){logDate && ` - ${logDate}`}
                   </h2>
                   {selectedRound && (
                     <button
