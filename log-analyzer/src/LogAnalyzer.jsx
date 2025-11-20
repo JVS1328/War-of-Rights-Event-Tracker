@@ -1421,9 +1421,10 @@ const WarOfRightsLogAnalyzer = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
+    const dateStr = logDate ? `_${logDate.replace(/\s+/g, '_')}` : '';
     link.setAttribute('href', url);
-    link.setAttribute('download', `round_${selectedRound.id}_casualties.csv`);
+    link.setAttribute('download', `round_${selectedRound.id}_casualties${dateStr}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -1498,8 +1499,9 @@ const WarOfRightsLogAnalyzer = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
 
+    const dateStr = logDate ? `_${logDate.replace(/\s+/g, '_')}` : '';
     link.setAttribute('href', url);
-    link.setAttribute('download', `round_${selectedRound.id}_casualty_list.txt`);
+    link.setAttribute('download', `round_${selectedRound.id}_casualty_list${dateStr}.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
