@@ -117,17 +117,16 @@ const LossesOverTimeChart = ({ timelineData }) => {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Get top 8 regiments by total casualties
-  const topRegiments = timelineData.regiments
+  // Get all regiments sorted by total casualties
+  const allRegiments = timelineData.regiments
     .filter(r => r.name !== 'UNTAGGED')
-    .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0))
-    .slice(0, 8);
+    .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0));
 
-  if (topRegiments.length === 0) return null;
+  if (allRegiments.length === 0) return null;
 
   // Find max value for scaling
   const maxDeaths = Math.max(
-    ...topRegiments.map(r => Math.max(...r.deaths)),
+    ...allRegiments.map(r => Math.max(...r.deaths)),
     1
   );
 
@@ -180,7 +179,7 @@ const LossesOverTimeChart = ({ timelineData }) => {
       ))}
 
       {/* Regiment lines */}
-      {topRegiments.map((regiment, i) => (
+      {allRegiments.map((regiment, i) => (
         <Polyline
           key={i}
           points={getPoints(regiment)}
@@ -191,7 +190,7 @@ const LossesOverTimeChart = ({ timelineData }) => {
       ))}
 
       {/* Data points */}
-      {topRegiments.map((regiment, regIndex) => (
+      {allRegiments.map((regiment, regIndex) => (
         <React.Fragment key={`points-${regIndex}`}>
           {regiment.deaths.map((deaths, i) => {
             const x = padding.left + (i / Math.max(regiment.deaths.length - 1, 1)) * chartWidth;
@@ -262,28 +261,30 @@ const RoundAnalysisPDF = ({
 
   const roundDuration = getRoundDurationSeconds();
 
-  // Get all players with time in combat data
-  const getAllPlayersTimeInCombat = () => {
-    const allPlayers = [];
-    regimentStats
+  // Get regiment-level time in combat data
+  const getRegimentTimeInCombat = () => {
+    return regimentStats
       .filter(r => r.name !== 'UNTAGGED')
-      .forEach(regiment => {
+      .map(regiment => {
         const playerData = getPlayerPresenceData(regiment.name);
-        playerData.forEach(player => {
-          allPlayers.push({
-            name: player.name,
-            regiment: regiment.name,
-            presence: player.presence,
-            deaths: player.deaths,
-          });
-        });
-      });
+        const totalPlayers = playerData.length;
 
-    // Sort by presence percentage (highest first)
-    return allPlayers.sort((a, b) => b.presence - a.presence).slice(0, 20);
+        // Calculate average presence across all players in the regiment
+        const avgPresence = totalPlayers > 0
+          ? Math.round(playerData.reduce((sum, p) => sum + p.presence, 0) / totalPlayers)
+          : 0;
+
+        return {
+          name: regiment.name,
+          totalPlayers,
+          avgPresence,
+          casualties: regiment.casualties,
+        };
+      })
+      .sort((a, b) => b.avgPresence - a.avgPresence); // Sort by average presence
   };
 
-  const timeInCombatData = getAllPlayersTimeInCombat();
+  const regimentTimeInCombatData = getRegimentTimeInCombat();
 
   // Colors for chart legend
   const colors = [
@@ -365,22 +366,26 @@ const RoundAnalysisPDF = ({
 
       {/* Time in Combat - Page 2 */}
       <Page size="A4" style={styles.page}>
-        <Text style={styles.title}>Time in Combat</Text>
-        <Text style={styles.text}>Top 20 players by time spent in combat</Text>
+        <Text style={styles.title}>Time in Combat by Regiment</Text>
+        <Text style={styles.text}>Average time spent in combat per regiment</Text>
         <View style={styles.divider} />
 
         <View style={styles.table}>
           <View style={[styles.tableRow, styles.tableHeader]}>
-            <Text style={[styles.tableCell, { width: '45%' }]}>Player</Text>
-            <Text style={[styles.tableCell, { width: '25%' }]}>Regiment</Text>
-            <Text style={[styles.tableCell, { width: '30%', borderRightWidth: 0 }]}>Time in Combat</Text>
+            <Text style={[styles.tableCell, { width: '35%' }]}>Regiment</Text>
+            <Text style={[styles.tableCell, { width: '20%' }]}>Players</Text>
+            <Text style={[styles.tableCell, { width: '25%' }]}>Avg Time</Text>
+            <Text style={[styles.tableCell, { width: '20%', borderRightWidth: 0 }]}>Casualties</Text>
           </View>
-          {timeInCombatData.map((player, index) => (
+          {regimentTimeInCombatData.map((regiment, index) => (
             <View key={index} style={styles.tableRow}>
-              <Text style={[styles.tableCell, { width: '45%' }]}>{player.name}</Text>
-              <Text style={[styles.tableCell, { width: '25%' }]}>{player.regiment}</Text>
-              <Text style={[styles.tableCell, { width: '30%', borderRightWidth: 0 }]}>
-                {formatTimeInCombat(player.presence, roundDuration)}
+              <Text style={[styles.tableCell, { width: '35%' }]}>{regiment.name}</Text>
+              <Text style={[styles.tableCell, { width: '20%' }]}>{regiment.totalPlayers}</Text>
+              <Text style={[styles.tableCell, { width: '25%' }]}>
+                {formatTimeInCombat(regiment.avgPresence, roundDuration)}
+              </Text>
+              <Text style={[styles.tableCell, { width: '20%', borderRightWidth: 0 }]}>
+                {regiment.casualties}
               </Text>
             </View>
           ))}
@@ -398,12 +403,11 @@ const RoundAnalysisPDF = ({
         </View>
 
         {/* Chart Legend */}
-        <Text style={styles.sectionTitle}>Legend (Top 8 Regiments)</Text>
+        <Text style={styles.sectionTitle}>Legend</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 }}>
           {timelineData && timelineData.regiments
             .filter(r => r.name !== 'UNTAGGED')
             .sort((a, b) => b.deaths.reduce((sum, d) => sum + d, 0) - a.deaths.reduce((sum, d) => sum + d, 0))
-            .slice(0, 8)
             .map((regiment, i) => (
               <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12, marginBottom: 4 }}>
                 <View style={{ width: 12, height: 12, backgroundColor: colors[i % colors.length], marginRight: 4 }} />

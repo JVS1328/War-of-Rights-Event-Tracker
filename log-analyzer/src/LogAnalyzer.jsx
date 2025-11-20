@@ -384,11 +384,13 @@ const WarOfRightsLogAnalyzer = () => {
     let roundNumber = 0;
     let extractedDate = null;
 
-    // Extract date from the first line: "Log Started at Wed Nov 19 19:31:14 2025"
-    if (lines.length > 0) {
-      const dateMatch = lines[0].match(/Log Started at (.+)/);
+    // Extract date from near the top of the file: "Log Started at Wed Nov 19 19:31:14 2025"
+    const searchLines = Math.min(100, lines.length);
+    for (let i = 0; i < searchLines; i++) {
+      const dateMatch = lines[i].match(/Log Started at (.+)/);
       if (dateMatch) {
         extractedDate = dateMatch[1].trim();
+        break;
       }
     }
 
