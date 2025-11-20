@@ -649,13 +649,61 @@ const WarOfRightsLogAnalyzer = () => {
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const isJsonFile = fileName.endsWith('.json');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (isJsonFile) {
+        // Handle analysis file import
+        try {
+          const importedData = JSON.parse(e.target.result);
+
+          // Validate the imported data
+          if (!importedData.rounds || !Array.isArray(importedData.rounds)) {
+            alert('Invalid analysis file format');
+            return;
+          }
+
+          // Load the imported data into state
+          setRounds(importedData.rounds || []);
+          setLogDate(importedData.logDate || null);
+          setPlayerAssignments(importedData.playerAssignments || {});
+          setExpandedRegiments(importedData.expandedRegiments || {});
+          setPinnedRegiment(importedData.pinnedRegiment || null);
+          setTimeRangeStart(importedData.timeRangeStart || 0);
+          setTimeRangeEnd(importedData.timeRangeEnd || 100);
+          setShowAllLossRates(importedData.showAllLossRates || false);
+          setShowAllTimeInCombat(importedData.showAllTimeInCombat || false);
+
+          // If there was a selected round, re-analyze it
+          if (importedData.selectedRound) {
+            const round = importedData.rounds.find(r => r.id === importedData.selectedRound.id);
+            if (round) {
+              setSelectedRound(round);
+              analyzeRound(round);
+            }
+          } else {
+            setSelectedRound(null);
+            setRegimentStats([]);
+          }
+
+          alert('Analysis imported successfully!');
+        } catch (error) {
+          console.error('Error importing analysis:', error);
+          alert('Failed to import analysis. Please check the file format.');
+        }
+      } else {
+        // Handle log file parsing
         parseLogFile(e.target.result);
-      };
-      reader.readAsText(file);
-    }
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset the input so the same file can be uploaded again
+    event.target.value = '';
   };
 
   const handleRoundSelect = (round) => {
@@ -1551,16 +1599,16 @@ const WarOfRightsLogAnalyzer = () => {
               <div className="flex flex-col items-center space-y-2">
                 <Upload className="w-8 h-8 text-amber-400" />
                 <span className="text-slate-300 font-medium">
-                  Click to upload log file
+                  Click to upload log file or analysis file
                 </span>
                 <span className="text-slate-500 text-sm">
-                  .txt or .log files
+                  .txt, .log, or .json files
                 </span>
               </div>
               <input
                 type="file"
                 className="hidden"
-                accept=".txt,.log"
+                accept=".txt,.log,.json"
                 onChange={handleFileUpload}
               />
             </label>
