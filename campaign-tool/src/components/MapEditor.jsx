@@ -11,6 +11,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [editingTerritoryComponents, setEditingTerritoryComponents] = useState(null);
   const [selectedComponentsForMerge, setSelectedComponentsForMerge] = useState(new Set());
   const [mergeTargetTerritory, setMergeTargetTerritory] = useState(null);
+  const [selectedTerritoriesForMerge, setSelectedTerritoriesForMerge] = useState(new Set());
   const [multiSelectStates, setMultiSelectStates] = useState(new Set());
   const [mapMode, setMapMode] = useState('states'); // 'states' or 'counties'
   const [showStateSelector, setShowStateSelector] = useState(false);
@@ -222,6 +223,52 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     // Ignore clicks right after a drag
     if (justDragged) return;
 
+    // If we're editing a territory, add this state to it
+    if (editingTerritoryComponents && !editingTerritoryComponents.isCountyBased) {
+      const territory = editingTerritoryComponents;
+      
+      // Check if state is already in this territory
+      if (territory.states && territory.states.includes(stateAbbr)) {
+        return; // Already in this territory
+      }
+      
+      // Check if state is in another territory
+      const existingTerritory = territories.find(t =>
+        t.id !== territory.id && t.states && t.states.includes(stateAbbr)
+      );
+      
+      if (existingTerritory) {
+        // State is in another territory - can't add directly
+        return;
+      }
+      
+      // Add state to the editing territory
+      setTerritories(prev => prev.map(t => {
+        if (t.id === territory.id) {
+          const newStates = [...(t.states || []), stateAbbr];
+          return {
+            ...t,
+            states: newStates,
+            svgPath: combineStatePaths(newStates),
+            center: calculateGroupCenter(newStates),
+            name: getStatesByAbbrs(newStates).map(s => s.name).join(' & ')
+          };
+        }
+        return t;
+      }));
+      
+      // Update selected states
+      setSelectedStates(prev => new Set([...prev, stateAbbr]));
+      
+      // Update the editing territory reference
+      setEditingTerritoryComponents(prev => ({
+        ...prev,
+        states: [...(prev.states || []), stateAbbr]
+      }));
+      
+      return;
+    }
+
     if (ctrlKey) {
       // Find territory containing this state
       const territory = territories.find(t => t.states && t.states.includes(stateAbbr));
@@ -405,9 +452,17 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const handleDeleteTerritory = (territoryId) => {
     const territory = territories.find(t => t.id === territoryId);
     if (territory) {
-      const newSelected = new Set(selectedStates);
-      territory.states.forEach(s => newSelected.delete(s));
-      setSelectedStates(newSelected);
+      if (territory.isCountyBased && territory.counties) {
+        // County-based territory
+        const newSelected = new Set(selectedCounties);
+        territory.counties.forEach(c => newSelected.delete(c));
+        setSelectedCounties(newSelected);
+      } else if (territory.states) {
+        // State-based territory
+        const newSelected = new Set(selectedStates);
+        territory.states.forEach(s => newSelected.delete(s));
+        setSelectedStates(newSelected);
+      }
       setTerritories(territories.filter(t => t.id !== territoryId));
     }
   };
@@ -416,12 +471,14 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
     setEditingTerritoryComponents(territory);
     setSelectedComponentsForMerge(new Set());
     setMergeTargetTerritory(null);
+    setSelectedTerritoriesForMerge(new Set());
   };
 
   const handleCloseEditComponents = () => {
     setEditingTerritoryComponents(null);
     setSelectedComponentsForMerge(new Set());
     setMergeTargetTerritory(null);
+    setSelectedTerritoriesForMerge(new Set());
   };
 
   const toggleComponentSelection = (componentId) => {
@@ -432,6 +489,98 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       newSelection.add(componentId);
     }
     setSelectedComponentsForMerge(newSelection);
+  };
+
+  const toggleTerritorySelection = (territoryId) => {
+    const newSelection = new Set(selectedTerritoriesForMerge);
+    if (newSelection.has(territoryId)) {
+      newSelection.delete(territoryId);
+    } else {
+      newSelection.add(territoryId);
+    }
+    setSelectedTerritoriesForMerge(newSelection);
+  };
+
+  const handleMergeTerritoriesIntoEditing = () => {
+    if (!editingTerritoryComponents || selectedTerritoriesForMerge.size === 0) {
+      return;
+    }
+
+    const targetTerritory = editingTerritoryComponents;
+    const selectedTerritoryIds = Array.from(selectedTerritoriesForMerge);
+    const territoriesToMerge = territories.filter(t => selectedTerritoryIds.includes(t.id));
+
+    // Verify all territories are the same type (state-based or county-based)
+    const isCountyBased = targetTerritory.isCountyBased;
+    const allSameType = territoriesToMerge.every(t => !!t.isCountyBased === !!isCountyBased);
+    
+    if (!allSameType) {
+      alert('Can only merge territories of the same type (all state-based or all county-based).');
+      return;
+    }
+
+    const componentsKey = isCountyBased ? 'counties' : 'states';
+    
+    // Collect all components from selected territories
+    const componentsToMerge = territoriesToMerge.flatMap(t => t[componentsKey] || []);
+    
+    // Merge into target territory
+    const mergedComponents = [...new Set([
+      ...targetTerritory[componentsKey],
+      ...componentsToMerge
+    ])];
+
+    // Update territories
+    setTerritories(prev => {
+      const updated = prev.map(t => {
+        if (t.id === targetTerritory.id) {
+          // Update target territory with merged components
+          const updatedTerritory = { ...t, [componentsKey]: mergedComponents };
+          
+          // Update SVG path and center
+          if (isCountyBased && countyData) {
+            const countyObjects = countyData.counties.filter(c => mergedComponents.includes(c.id));
+            updatedTerritory.svgPath = combineCountyPaths(countyObjects);
+            updatedTerritory.center = calculateCountyGroupCenter(countyObjects);
+            updatedTerritory.name = countyObjects.map(c => c.name).join(' & ');
+          } else if (!isCountyBased) {
+            updatedTerritory.svgPath = combineStatePaths(mergedComponents);
+            updatedTerritory.center = calculateGroupCenter(mergedComponents);
+            const stateObjects = getStatesByAbbrs(mergedComponents);
+            updatedTerritory.name = stateObjects.map(s => s.name).join(' & ');
+          }
+          
+          return updatedTerritory;
+        }
+        return t;
+      }).filter(t => !selectedTerritoryIds.includes(t.id)); // Remove merged territories
+
+      return updated;
+    });
+
+    // Update selected counties/states
+    if (isCountyBased) {
+      setSelectedCounties(prev => {
+        const updated = new Set(prev);
+        componentsToMerge.forEach(c => updated.add(c));
+        return updated;
+      });
+    } else {
+      setSelectedStates(prev => {
+        const updated = new Set(prev);
+        componentsToMerge.forEach(s => updated.add(s));
+        return updated;
+      });
+    }
+
+    // Update the editing territory reference
+    setEditingTerritoryComponents(prev => ({
+      ...prev,
+      [componentsKey]: mergedComponents
+    }));
+
+    // Clear selection
+    setSelectedTerritoriesForMerge(new Set());
   };
 
   const handleMergeComponentsToTerritory = () => {
@@ -532,6 +681,53 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const handleCountyClick = (county, ctrlKey = false) => {
     // Ignore clicks right after a drag
     if (justDragged) return;
+
+    // If we're editing a territory, add this county to it
+    if (editingTerritoryComponents && editingTerritoryComponents.isCountyBased) {
+      const territory = editingTerritoryComponents;
+      
+      // Check if county is already in this territory
+      if (territory.counties && territory.counties.includes(county.id)) {
+        return; // Already in this territory
+      }
+      
+      // Check if county is in another territory
+      const existingTerritory = territories.find(t =>
+        t.id !== territory.id && t.counties && t.counties.includes(county.id)
+      );
+      
+      if (existingTerritory) {
+        // County is in another territory - can't add directly
+        return;
+      }
+      
+      // Add county to the editing territory
+      setTerritories(prev => prev.map(t => {
+        if (t.id === territory.id) {
+          const newCounties = [...(t.counties || []), county.id];
+          const countyObjects = countyData.counties.filter(c => newCounties.includes(c.id));
+          return {
+            ...t,
+            counties: newCounties,
+            svgPath: combineCountyPaths(countyObjects),
+            center: calculateCountyGroupCenter(countyObjects),
+            name: countyObjects.map(c => c.name).join(' & ')
+          };
+        }
+        return t;
+      }));
+      
+      // Update selected counties
+      setSelectedCounties(prev => new Set([...prev, county.id]));
+      
+      // Update the editing territory reference
+      setEditingTerritoryComponents(prev => ({
+        ...prev,
+        counties: [...(prev.counties || []), county.id]
+      }));
+      
+      return;
+    }
 
     if (ctrlKey) {
       // Find territory containing this county
@@ -1552,8 +1748,18 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
             {/* Content */}
             <div className="flex-1 overflow-auto p-4">
               <p className="text-slate-300 mb-4">
-                Select {editingTerritoryComponents.isCountyBased ? 'counties' : 'states'} to merge into another territory.
+                Click on the map to add {editingTerritoryComponents.isCountyBased ? 'counties' : 'states'}, select components below to move them, or merge entire territories.
               </p>
+
+              {/* Add from Map Instructions */}
+              <div className="mb-4 p-3 bg-blue-900/30 border border-blue-600 rounded-lg">
+                <p className="text-sm text-blue-200 font-semibold mb-1">
+                  <span className="text-blue-400">💡 Add from Map:</span>
+                </p>
+                <p className="text-xs text-blue-300">
+                  Click any unassigned {editingTerritoryComponents.isCountyBased ? 'county' : 'state'} on the map to add it to this territory.
+                </p>
+              </div>
 
               {/* Components List */}
               <div className="space-y-2 mb-4">
@@ -1641,6 +1847,62 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                   </select>
                 </div>
               )}
+
+              {/* Merge Entire Territories Section */}
+              <div className="mt-6 pt-4 border-t border-slate-600">
+                <label className="text-sm font-semibold text-amber-400 block mb-2">
+                  Or merge entire territories:
+                </label>
+                <p className="text-xs text-slate-400 mb-3">
+                  Select other territories to merge completely into this one.
+                </p>
+                
+                <div className="space-y-2 max-h-48 overflow-auto">
+                  {territories
+                    .filter(t =>
+                      t.id !== editingTerritoryComponents.id &&
+                      t.isCountyBased === editingTerritoryComponents.isCountyBased
+                    )
+                    .map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => toggleTerritorySelection(t.id)}
+                        className={`w-full p-3 rounded-lg text-left transition-colors ${
+                          selectedTerritoriesForMerge.has(t.id)
+                            ? 'bg-green-600 text-white'
+                            : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                        }`}
+                      >
+                        <div className="font-semibold text-sm">{t.name}</div>
+                        <div className="text-xs opacity-75">
+                          {t.isCountyBased
+                            ? `${t.counties?.length || 0} counties`
+                            : `${t.states?.length || 0} states`
+                          } • {t.victoryPoints} VP
+                        </div>
+                      </button>
+                    ))
+                  }
+                </div>
+
+                {selectedTerritoriesForMerge.size > 0 && (
+                  <div className="mt-3 p-3 bg-green-900/30 border border-green-600 rounded-lg">
+                    <p className="text-sm text-green-200">
+                      <span className="font-semibold text-green-400">
+                        {selectedTerritoriesForMerge.size}
+                      </span>{' '}
+                      {selectedTerritoriesForMerge.size === 1 ? 'territory' : 'territories'} selected to merge
+                    </p>
+                    <button
+                      onClick={handleMergeTerritoriesIntoEditing}
+                      className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-semibold text-sm"
+                    >
+                      <GitMerge className="w-4 h-4" />
+                      Merge {selectedTerritoriesForMerge.size} {selectedTerritoriesForMerge.size === 1 ? 'Territory' : 'Territories'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer */}
