@@ -1530,9 +1530,17 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         </p>
                       </div>
                       <button
-                        onClick={() => handleEditTerritoryComponents(territory)}
-                        className="p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0"
-                        title="Edit Territory Components"
+                        onClick={() => {
+                          if (editingTerritoryComponents?.id === territory.id) {
+                            handleCloseEditComponents();
+                          } else {
+                            handleEditTerritoryComponents(territory);
+                          }
+                        }}
+                        className={`p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0 ${
+                          editingTerritoryComponents?.id === territory.id ? 'bg-amber-600' : ''
+                        }`}
+                        title={editingTerritoryComponents?.id === territory.id ? "Close Edit Mode" : "Edit Territory Components"}
                       >
                         <Edit className="w-4 h-4 text-amber-400" />
                       </button>
@@ -1604,6 +1612,148 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         Hold Ctrl/Cmd to select multiple
                       </p>
                     </div>
+
+                    {/* Inline Editing Section */}
+                    {editingTerritoryComponents?.id === territory.id && (
+                      <div className="mt-4 pt-4 border-t border-slate-600">
+                        <div className="mb-3 p-3 bg-blue-900/30 border border-blue-600 rounded-lg">
+                          <p className="text-sm text-blue-200 font-semibold mb-1">
+                            <span className="text-blue-400">✏️ Edit Mode Active</span>
+                          </p>
+                          <p className="text-xs text-blue-300">
+                            Click any unassigned {territory.isCountyBased ? 'county' : 'state'} on the map to add it to this territory.
+                          </p>
+                        </div>
+
+                        {/* Move Components to Another Territory */}
+                        {((territory.isCountyBased && territory.counties?.length > 1) ||
+                          (!territory.isCountyBased && territory.states?.length > 1)) && (
+                          <div className="mb-4">
+                            <label className="text-xs font-semibold text-amber-400 block mb-2">
+                              Move components to another territory:
+                            </label>
+                            
+                            {/* Components List for Selection */}
+                            <div className="space-y-1 mb-2 max-h-32 overflow-auto">
+                              {territory.isCountyBased ? (
+                                territory.counties?.map(countyId => {
+                                  const county = countyData?.counties.find(c => c.id === countyId);
+                                  if (!county) return null;
+                                  
+                                  return (
+                                    <button
+                                      key={countyId}
+                                      onClick={() => toggleComponentSelection(countyId)}
+                                      className={`w-full p-2 rounded text-left transition-colors text-xs ${
+                                        selectedComponentsForMerge.has(countyId)
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                      }`}
+                                    >
+                                      {county.name}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                territory.states?.map(stateAbbr => {
+                                  const state = usaStates.find(s => s.abbreviation === stateAbbr);
+                                  if (!state) return null;
+                                  
+                                  return (
+                                    <button
+                                      key={stateAbbr}
+                                      onClick={() => toggleComponentSelection(stateAbbr)}
+                                      className={`w-full p-2 rounded text-left transition-colors text-xs ${
+                                        selectedComponentsForMerge.has(stateAbbr)
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                      }`}
+                                    >
+                                      {state.abbreviation} - {state.name}
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+
+                            {selectedComponentsForMerge.size > 0 && (
+                              <>
+                                <select
+                                  value={mergeTargetTerritory || ''}
+                                  onChange={(e) => setMergeTargetTerritory(e.target.value)}
+                                  className="w-full bg-slate-700 text-white px-2 py-1 rounded text-xs mb-2"
+                                >
+                                  <option value="">Move to...</option>
+                                  {territories
+                                    .filter(t =>
+                                      t.id !== territory.id &&
+                                      t.isCountyBased === territory.isCountyBased
+                                    )
+                                    .map(t => (
+                                      <option key={t.id} value={t.id}>
+                                        {t.name}
+                                      </option>
+                                    ))
+                                  }
+                                </select>
+                                <button
+                                  onClick={handleMergeComponentsToTerritory}
+                                  disabled={!mergeTargetTerritory}
+                                  className="w-full px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-xs font-semibold"
+                                >
+                                  Move {selectedComponentsForMerge.size} selected
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Merge Entire Territories */}
+                        <div className="mb-3">
+                          <label className="text-xs font-semibold text-amber-400 block mb-2">
+                            Merge other territories into this one:
+                          </label>
+                          
+                          <div className="space-y-1 max-h-32 overflow-auto mb-2">
+                            {territories
+                              .filter(t =>
+                                t.id !== territory.id &&
+                                t.isCountyBased === territory.isCountyBased
+                              )
+                              .map(t => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => toggleTerritorySelection(t.id)}
+                                  className={`w-full p-2 rounded text-left transition-colors text-xs ${
+                                    selectedTerritoriesForMerge.has(t.id)
+                                      ? 'bg-green-600 text-white'
+                                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                  }`}
+                                >
+                                  <div className="font-semibold">{t.name}</div>
+                                  <div className="opacity-75">
+                                    {t.isCountyBased
+                                      ? `${t.counties?.length || 0} counties`
+                                      : `${t.states?.length || 0} states`
+                                    }
+                                  </div>
+                                </button>
+                              ))
+                            }
+                          </div>
+
+                          {selectedTerritoriesForMerge.size > 0 && (
+                            <button
+                              onClick={handleMergeTerritoriesIntoEditing}
+                              className="w-full flex items-center justify-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold"
+                            >
+                              <GitMerge className="w-3 h-3" />
+                              Merge {selectedTerritoriesForMerge.size} {selectedTerritoriesForMerge.size === 1 ? 'Territory' : 'Territories'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 ))
@@ -1722,204 +1872,6 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
               >
                 Load Counties ({selectedStatesForCounties.size})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Territory Components Modal */}
-      {editingTerritoryComponents && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <h3 className="text-xl font-bold text-amber-400">
-                Edit Territory: {editingTerritoryComponents.name}
-              </h3>
-              <button
-                onClick={handleCloseEditComponents}
-                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4">
-              <p className="text-slate-300 mb-4">
-                Click on the map to add {editingTerritoryComponents.isCountyBased ? 'counties' : 'states'}, select components below to move them, or merge entire territories.
-              </p>
-
-              {/* Add from Map Instructions */}
-              <div className="mb-4 p-3 bg-blue-900/30 border border-blue-600 rounded-lg">
-                <p className="text-sm text-blue-200 font-semibold mb-1">
-                  <span className="text-blue-400">💡 Add from Map:</span>
-                </p>
-                <p className="text-xs text-blue-300">
-                  Click any unassigned {editingTerritoryComponents.isCountyBased ? 'county' : 'state'} on the map to add it to this territory.
-                </p>
-              </div>
-
-              {/* Components List */}
-              <div className="space-y-2 mb-4">
-                <label className="text-sm font-semibold text-amber-400 block mb-2">
-                  {editingTerritoryComponents.isCountyBased ? 'Counties' : 'States'} in this territory:
-                </label>
-                {editingTerritoryComponents.isCountyBased ? (
-                  editingTerritoryComponents.counties?.map(countyId => {
-                    const county = countyData?.counties.find(c => c.id === countyId);
-                    if (!county) return null;
-                    
-                    return (
-                      <button
-                        key={countyId}
-                        onClick={() => toggleComponentSelection(countyId)}
-                        className={`w-full p-3 rounded-lg text-left transition-colors ${
-                          selectedComponentsForMerge.has(countyId)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                        }`}
-                      >
-                        <div className="font-semibold text-sm">{county.name}</div>
-                        <div className="text-xs opacity-75">{countyId}</div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  editingTerritoryComponents.states?.map(stateAbbr => {
-                    const state = usaStates.find(s => s.abbreviation === stateAbbr);
-                    if (!state) return null;
-                    
-                    return (
-                      <button
-                        key={stateAbbr}
-                        onClick={() => toggleComponentSelection(stateAbbr)}
-                        className={`w-full p-3 rounded-lg text-left transition-colors ${
-                          selectedComponentsForMerge.has(stateAbbr)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                        }`}
-                      >
-                        <div className="font-semibold text-sm">{state.abbreviation}</div>
-                        <div className="text-xs opacity-75">{state.name}</div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Selection Summary */}
-              {selectedComponentsForMerge.size > 0 && (
-                <div className="mb-4 p-3 bg-slate-700 rounded-lg">
-                  <p className="text-sm text-slate-300">
-                    <span className="font-semibold text-amber-400">
-                      {selectedComponentsForMerge.size}
-                    </span>{' '}
-                    {editingTerritoryComponents.isCountyBased ? 'counties' : 'states'} selected
-                  </p>
-                </div>
-              )}
-
-              {/* Merge Target Selection */}
-              {selectedComponentsForMerge.size > 0 && (
-                <div className="mb-4">
-                  <label className="text-sm font-semibold text-amber-400 block mb-2">
-                    Merge into territory:
-                  </label>
-                  <select
-                    value={mergeTargetTerritory || ''}
-                    onChange={(e) => setMergeTargetTerritory(e.target.value)}
-                    className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg text-sm"
-                  >
-                    <option value="">Select target territory...</option>
-                    {territories
-                      .filter(t =>
-                        t.id !== editingTerritoryComponents.id &&
-                        t.isCountyBased === editingTerritoryComponents.isCountyBased
-                      )
-                      .map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))
-                    }
-                  </select>
-                </div>
-              )}
-
-              {/* Merge Entire Territories Section */}
-              <div className="mt-6 pt-4 border-t border-slate-600">
-                <label className="text-sm font-semibold text-amber-400 block mb-2">
-                  Or merge entire territories:
-                </label>
-                <p className="text-xs text-slate-400 mb-3">
-                  Select other territories to merge completely into this one.
-                </p>
-                
-                <div className="space-y-2 max-h-48 overflow-auto">
-                  {territories
-                    .filter(t =>
-                      t.id !== editingTerritoryComponents.id &&
-                      t.isCountyBased === editingTerritoryComponents.isCountyBased
-                    )
-                    .map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => toggleTerritorySelection(t.id)}
-                        className={`w-full p-3 rounded-lg text-left transition-colors ${
-                          selectedTerritoriesForMerge.has(t.id)
-                            ? 'bg-green-600 text-white'
-                            : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
-                        }`}
-                      >
-                        <div className="font-semibold text-sm">{t.name}</div>
-                        <div className="text-xs opacity-75">
-                          {t.isCountyBased
-                            ? `${t.counties?.length || 0} counties`
-                            : `${t.states?.length || 0} states`
-                          } • {t.victoryPoints} VP
-                        </div>
-                      </button>
-                    ))
-                  }
-                </div>
-
-                {selectedTerritoriesForMerge.size > 0 && (
-                  <div className="mt-3 p-3 bg-green-900/30 border border-green-600 rounded-lg">
-                    <p className="text-sm text-green-200">
-                      <span className="font-semibold text-green-400">
-                        {selectedTerritoriesForMerge.size}
-                      </span>{' '}
-                      {selectedTerritoriesForMerge.size === 1 ? 'territory' : 'territories'} selected to merge
-                    </p>
-                    <button
-                      onClick={handleMergeTerritoriesIntoEditing}
-                      className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-semibold text-sm"
-                    >
-                      <GitMerge className="w-4 h-4" />
-                      Merge {selectedTerritoriesForMerge.size} {selectedTerritoriesForMerge.size === 1 ? 'Territory' : 'Territories'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-700 flex gap-2">
-              <button
-                onClick={handleCloseEditComponents}
-                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMergeComponentsToTerritory}
-                disabled={selectedComponentsForMerge.size === 0 || !mergeTargetTerritory}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
-              >
-                <GitMerge className="w-4 h-4" />
-                Merge Selected ({selectedComponentsForMerge.size})
               </button>
             </div>
           </div>
