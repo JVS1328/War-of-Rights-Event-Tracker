@@ -656,6 +656,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           const countyObjects = countyData.counties.filter(c => t.counties.includes(c.id));
           return {
             ...t,
+            isCountyBased: true, // Explicitly mark as county-based
             svgPath: combineCountyPaths(countyObjects),
             center: calculateCountyGroupCenter(countyObjects),
             // Store individual county paths for rendering each county separately on the map
