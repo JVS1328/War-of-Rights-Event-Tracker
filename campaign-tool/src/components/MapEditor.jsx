@@ -151,37 +151,78 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       }
     } else if (existingCampaign?.territories) {
       // Load existing campaign territories
-      // Map each territory to find its state abbreviation from the SVG path
-      const loadedTerritories = existingCampaign.territories.map(t => {
-        // Find matching state by comparing SVG paths or by ID
-        const matchingState = usaStates.find(s =>
-          s.abbreviation === t.id?.toUpperCase() ||
-          s.name === t.name ||
-          s.svgPath === t.svgPath
-        );
-        
-        return {
-          id: t.id || `territory-${Date.now()}-${Math.random()}`,
-          name: t.name,
-          victoryPoints: t.victoryPoints || t.pointValue || 1,
-          owner: t.owner,
-          initialOwner: t.owner,
-          maps: t.maps || [],
-          states: matchingState ? [matchingState.abbreviation] : (t.states || []),
-          svgPath: t.svgPath || '',
-          center: t.center || { x: 0, y: 0 }
-        };
-      });
-      setTerritories(loadedTerritories);
+      // Check if this is a county-based campaign
+      const hasCountyTerritories = existingCampaign.territories.some(t => t.isCountyBased || t.counties);
       
-      // Select all states that are part of territories
-      const allStates = new Set();
-      loadedTerritories.forEach(t => {
-        if (t.states && t.states.length > 0) {
-          t.states.forEach(s => allStates.add(s));
-        }
-      });
-      setSelectedStates(allStates);
+      if (hasCountyTerritories) {
+        // County-based campaign
+        setIsCountyMode(true);
+        setMapMode('counties');
+        setTerritories(existingCampaign.territories);
+        
+        // Collect all counties and states
+        const allCounties = new Set();
+        const statesUsed = new Set();
+        
+        existingCampaign.territories.forEach(t => {
+          if (t.counties) {
+            t.counties.forEach(c => {
+              allCounties.add(c);
+              // Extract state abbreviations from county IDs (format: "ST-CountyName")
+              const stateAbbr = c.split('-')[0];
+              statesUsed.add(stateAbbr);
+            });
+          }
+        });
+        
+        setSelectedCounties(allCounties);
+        setSelectedStatesForCounties(statesUsed);
+        
+        // Load county data for those states
+        const loadCountyData = async () => {
+          try {
+            const stateAbbrs = Array.from(statesUsed);
+            const countyDataForStates = await getCountiesForStates(stateAbbrs);
+            setCountyData(countyDataForStates);
+          } catch (error) {
+            console.error('Error loading county data:', error);
+          }
+        };
+        loadCountyData();
+      } else {
+        // State-based campaign
+        // Map each territory to find its state abbreviation from the SVG path
+        const loadedTerritories = existingCampaign.territories.map(t => {
+          // Find matching state by comparing SVG paths or by ID
+          const matchingState = usaStates.find(s =>
+            s.abbreviation === t.id?.toUpperCase() ||
+            s.name === t.name ||
+            s.svgPath === t.svgPath
+          );
+          
+          return {
+            id: t.id || `territory-${Date.now()}-${Math.random()}`,
+            name: t.name,
+            victoryPoints: t.victoryPoints || t.pointValue || 1,
+            owner: t.owner,
+            initialOwner: t.owner,
+            maps: t.maps || [],
+            states: matchingState ? [matchingState.abbreviation] : (t.states || []),
+            svgPath: t.svgPath || '',
+            center: t.center || { x: 0, y: 0 }
+          };
+        });
+        setTerritories(loadedTerritories);
+        
+        // Select all states that are part of territories
+        const allStates = new Set();
+        loadedTerritories.forEach(t => {
+          if (t.states && t.states.length > 0) {
+            t.states.forEach(s => allStates.add(s));
+          }
+        });
+        setSelectedStates(allStates);
+      }
     }
   }, [existingCampaign]);
 
