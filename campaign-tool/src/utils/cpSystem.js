@@ -34,13 +34,11 @@ export const DEFENDER_MAX_LOSS = {
 };
 
 /**
- * VP multipliers based on territory point value
+ * Base VP value for 1x multiplier
+ * VP multipliers are calculated as: pointValue / VP_BASE
+ * Examples: 5 VP = 1x, 10 VP = 2x, 15 VP = 3x, 20 VP = 4x, etc.
  */
-export const VP_MULTIPLIERS = {
-  5: 1,   // 5 VP territory
-  10: 2,  // 10 VP territory
-  15: 3   // 15 VP territory
-};
+export const VP_BASE = 5;
 
 /**
  * Default starting CP for both sides
@@ -53,16 +51,17 @@ export const DEFAULT_STARTING_CP = 500;
 
 /**
  * Get VP multiplier for a territory based on its point value
+ * Calculates multiplier dynamically: pointValue / VP_BASE
  *
- * @param {number} pointValue - Territory point value (5, 10, or 15)
- * @returns {number} VP multiplier (1, 2, or 3)
+ * @param {number} pointValue - Territory point value (any positive number)
+ * @returns {number} VP multiplier (pointValue / 5, e.g., 5=1x, 10=2x, 15=3x, 20=4x)
  * @throws {Error} If territory point value is invalid
  */
 export function getVPMultiplier(pointValue) {
-  if (![5, 10, 15].includes(pointValue)) {
-    throw new Error(`Invalid territory point value: ${pointValue}. Must be 5, 10, or 15.`);
+  if (typeof pointValue !== 'number' || pointValue <= 0) {
+    throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
   }
-  return VP_MULTIPLIERS[pointValue];
+  return pointValue / VP_BASE;
 }
 
 /**
@@ -71,7 +70,7 @@ export function getVPMultiplier(pointValue) {
  * Base cost is 50 for neutral territories, 75 for enemy territories
  * Maximum possible: BASE_ATTACK_COST * vpMultiplier
  *
- * @param {number} pointValue - Territory point value (5, 10, or 15)
+ * @param {number} pointValue - Territory point value (any positive number)
  * @param {number} casualties - Attacker casualties
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} isNeutralTerritory - Whether attacking neutral (true) or enemy (false) territory
@@ -79,8 +78,8 @@ export function getVPMultiplier(pointValue) {
  */
 export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties, isNeutralTerritory = false) {
   // Validate inputs
-  if (![5, 10, 15].includes(pointValue)) {
-    throw new Error(`Invalid territory point value: ${pointValue}. Must be 5, 10, or 15.`);
+  if (typeof pointValue !== 'number' || pointValue <= 0) {
+    throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
   }
   
   if (typeof casualties !== 'number' || casualties < 0) {
@@ -115,7 +114,7 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * If defender WINS: BASE_DEFENSE_COST * vpMultiplier * (casualties / totalCasualties), capped at max for territory type
  * If defender LOSES: Capped maximum (25 for friendly, 50 for neutral - NOT scaled by VP)
  *
- * @param {number} pointValue - Territory point value (5, 10, or 15)
+ * @param {number} pointValue - Territory point value (any positive number)
  * @param {number} casualties - Defender casualties
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} defenderWon - Whether the defender won the battle
@@ -124,8 +123,8 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  */
 export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory) {
   // Validate inputs
-  if (![5, 10, 15].includes(pointValue)) {
-    throw new Error(`Invalid territory point value: ${pointValue}. Must be 5, 10, or 15.`);
+  if (typeof pointValue !== 'number' || pointValue <= 0) {
+    throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
   }
   
   if (typeof casualties !== 'number' || casualties < 0) {
@@ -284,18 +283,18 @@ export function calculateCPGeneration(territories) {
 
 /**
  * Validate territory point value
- * 
+ *
  * @param {number} pointValue - Point value to validate
  * @returns {boolean} True if valid
  */
 export function isValidPointValue(pointValue) {
-  return [5, 10, 15].includes(pointValue);
+  return typeof pointValue === 'number' && pointValue > 0;
 }
 
 /**
  * Get maximum possible CP losses for a battle (for display purposes)
  *
- * @param {number} territoryPointValue - Territory VP value (5, 10, or 15)
+ * @param {number} territoryPointValue - Territory VP value (any positive number)
  * @param {string} territoryOwner - Current territory owner
  * @param {string} defender - Defending side
  * @returns {Object} { attackerMax: number, defenderMax: number }

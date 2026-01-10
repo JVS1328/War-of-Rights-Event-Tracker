@@ -357,7 +357,10 @@ const CampaignTracker = () => {
 
           {/* Right Sidebar - Stats */}
           <div>
-            <CampaignStats campaign={campaign} />
+            <CampaignStats
+              campaign={campaign}
+              onUpdateCampaign={setCampaign}
+            />
           </div>
         </div>
 

@@ -299,6 +299,7 @@ export const createDefaultCampaign = (customMap = null) => {
       // New CP system settings
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
+      cpCalculationMode: 'auto', // 'auto' or 'manual'
       campaignStartDate: getDefaultStartDate(),
       campaignEndDate: {
         month: 12,
@@ -333,6 +334,7 @@ export const getDefaultSettings = () => ({
   // New CP settings
   startingCP: DEFAULT_STARTING_CP,
   cpGenerationEnabled: true,
+  cpCalculationMode: 'auto', // 'auto' or 'manual'
   campaignStartDate: getDefaultStartDate(),
   campaignEndDate: {
     month: 12,

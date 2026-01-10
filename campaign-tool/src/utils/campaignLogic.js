@@ -28,23 +28,29 @@ export const processBattleResult = (campaign, battle) => {
   let cpCostDefender = 0;
   
   if (campaign.cpSystemEnabled) {
-    // Get casualties from battle
-    const attackerCasualties = battle.casualties?.[battle.attacker] || 0;
-    const defenderCasualties = battle.casualties?.[defender] || 0;
+    // Check if manual CP loss was provided
+    if (battle.manualCPLoss) {
+      // Manual mode: use provided CP values
+      cpCostAttacker = battle.manualCPLoss.attacker || 0;
+      cpCostDefender = battle.manualCPLoss.defender || 0;
+    } else {
+      // Auto mode: calculate CP costs
+      const attackerCasualties = battle.casualties?.[battle.attacker] || 0;
+      const defenderCasualties = battle.casualties?.[defender] || 0;
 
-    // Calculate CP costs using the new system
-    const cpResult = calculateBattleCPCost({
-      territoryPointValue: territory.pointValue || territory.victoryPoints || 10,
-      territoryOwner: previousOwner,
-      attacker: battle.attacker,
-      winner: battle.winner,
-      attackerCasualties,
-      defenderCasualties,
-      abilityActive: battle.abilityUsed === battle.attacker // Pass ability state
-    });
+      const cpResult = calculateBattleCPCost({
+        territoryPointValue: territory.pointValue || territory.victoryPoints || 10,
+        territoryOwner: previousOwner,
+        attacker: battle.attacker,
+        winner: battle.winner,
+        attackerCasualties,
+        defenderCasualties,
+        abilityActive: battle.abilityUsed === battle.attacker
+      });
 
-    cpCostAttacker = cpResult.attackerLoss;
-    cpCostDefender = cpResult.defenderLoss;
+      cpCostAttacker = cpResult.attackerLoss;
+      cpCostDefender = cpResult.defenderLoss;
+    }
 
     // Validate CP availability (should have been checked in UI, but validate here)
     const attackerCP = battle.attacker === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;

@@ -21,6 +21,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   // Team ability state
   const [abilityActive, setAbilityActive] = useState(false);
 
+  // Manual CP loss state
+  const [manualCPLoss, setManualCPLoss] = useState({ attacker: 0, defender: 0 });
+
   // Reset ability when attacker changes
   useEffect(() => {
     setAbilityActive(false);
@@ -42,6 +45,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [maxCPCost, setMaxCPCost] = useState({ attacker: 0, defender: 0 });
   const [cpWarning, setCpWarning] = useState('');
   const [cpBlockingError, setCpBlockingError] = useState('');
+
+  // Check if manual CP mode is enabled
+  const isManualCPMode = campaign?.settings?.cpCalculationMode === 'manual';
 
   // Calculate available maps when territory changes
   useEffect(() => {
@@ -77,9 +83,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     }
   }, [selectedTerritory, territories, campaign, currentTurn, selectedMap]);
 
-  // Calculate estimated CP cost whenever relevant fields change
+  // Calculate estimated CP cost whenever relevant fields change (only in auto mode)
   useEffect(() => {
-    if (!selectedTerritory || !campaign?.cpSystemEnabled) {
+    if (!selectedTerritory || !campaign?.cpSystemEnabled || isManualCPMode) {
       setEstimatedCPCost({ attacker: 0, defender: 0 });
       setMaxCPCost({ attacker: 0, defender: 0 });
       setCpWarning('');
@@ -139,7 +145,40 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         setCpWarning('');
       }
     }
-  }, [selectedTerritory, attacker, winner, casualties, territories, campaign, abilityActive]);
+  }, [selectedTerritory, attacker, winner, casualties, territories, campaign, abilityActive, isManualCPMode]);
+
+  // Validate manual CP loss inputs
+  useEffect(() => {
+    if (!campaign?.cpSystemEnabled || !isManualCPMode || !selectedTerritory) {
+      return;
+    }
+
+    const attackerCP = attacker === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;
+    const territory = territories.find(t => t.id === selectedTerritory);
+    const defender = attacker === 'USA' ?
+      (territory?.owner === 'CSA' ? 'CSA' : 'NEUTRAL') :
+      (territory?.owner === 'USA' ? 'USA' : 'NEUTRAL');
+    const defenderCP = defender === 'USA' ? campaign.combatPowerUSA :
+                       defender === 'CSA' ? campaign.combatPowerCSA : 0;
+
+    const attackerLoss = parseInt(manualCPLoss.attacker) || 0;
+    const defenderLoss = parseInt(manualCPLoss.defender) || 0;
+
+    // Check if attacker can afford the specified CP loss
+    if (attackerCP < attackerLoss) {
+      setCpBlockingError(`Attack impossible! ${attacker} needs ${attackerLoss} CP but only has ${attackerCP} CP available.`);
+      setCpWarning('');
+    } else {
+      setCpBlockingError('');
+      
+      // Non-blocking warning for defender
+      if (defender !== 'NEUTRAL' && defenderCP < defenderLoss) {
+        setCpWarning(`Warning: ${defender} has insufficient CP. Required: ${defenderLoss}, Available: ${defenderCP}`);
+      } else {
+        setCpWarning('');
+      }
+    }
+  }, [manualCPLoss, selectedTerritory, attacker, campaign, territories, isManualCPMode]);
 
   const handleSubmit = () => {
     if (!selectedMap || !selectedTerritory || !winner) {
@@ -173,7 +212,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         CSA: parseInt(casualties.CSA) || 0
       },
       notes: notes.trim(),
-      abilityUsed: abilityActive ? attacker : null // Track which side used ability
+      abilityUsed: abilityActive ? attacker : null, // Track which side used ability
+      manualCPLoss: isManualCPMode ? {
+        attacker: parseInt(manualCPLoss.attacker) || 0,
+        defender: parseInt(manualCPLoss.defender) || 0
+      } : undefined
     };
 
     onRecordBattle(battle);
@@ -446,8 +489,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
             {/* CP Cost Display */}
             {campaign?.cpSystemEnabled && selectedTerritory && (
               <div className="bg-slate-700 rounded-lg p-4">
-                <div className="text-sm font-semibold text-amber-400 mb-3">
-                  Combat Power Costs
+                <div className="text-sm font-semibold text-amber-400 mb-3 flex items-center justify-between">
+                  <span>Combat Power Costs</span>
+                  {isManualCPMode && (
+                    <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-1 rounded border border-purple-700">
+                      Manual Mode
+                    </span>
+                  )}
                 </div>
                 
                 <div className="space-y-3">
@@ -465,57 +513,101 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   
                   <div className="border-t border-slate-600"></div>
                   
-                  {/* Battle CP Costs */}
-                  <div className="space-y-2 text-sm">
-                    <div className="bg-slate-800 rounded p-3">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-slate-300 font-semibold">
-                          {attacker} (Attacker)
-                        </span>
-                        <span className={`font-bold text-lg ${
-                          attacker === 'USA' ? 'text-blue-400' : 'text-red-400'
-                        }`}>
-                          -{estimatedCPCost.attacker} CP
-                        </span>
+                  {/* Battle CP Costs - Manual Mode */}
+                  {isManualCPMode && (
+                    <div className="space-y-3">
+                      <div className="text-xs text-slate-400 mb-2">
+                        Enter CP loss for each side:
                       </div>
-                      <div className="text-xs text-slate-400">
-                        Estimated cost based on casualties
-                      </div>
-                      <div className="text-xs text-amber-400 mt-1">
-                        Maximum possible loss: {maxCPCost.attacker} CP
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs text-amber-400 mb-1 font-semibold">
+                            {attacker} (Attacker) CP Loss
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={manualCPLoss.attacker}
+                            onChange={(e) => setManualCPLoss({ ...manualCPLoss, attacker: e.target.value })}
+                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-amber-400 mb-1 font-semibold">
+                            {(() => {
+                              const territory = territories.find(t => t.id === selectedTerritory);
+                              return attacker === 'USA' ?
+                                (territory?.owner === 'CSA' ? 'CSA' : 'Defender') :
+                                (territory?.owner === 'USA' ? 'USA' : 'Defender');
+                            })()} CP Loss
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={manualCPLoss.defender}
+                            onChange={(e) => setManualCPLoss({ ...manualCPLoss, defender: e.target.value })}
+                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            placeholder="0"
+                          />
+                        </div>
                       </div>
                     </div>
-                    
-                    {(() => {
-                      const territory = territories.find(t => t.id === selectedTerritory);
-                      const defender = attacker === 'USA' ? 'CSA' : 'USA';
-                      
-                      const defenderWon = winner !== attacker;
-                      const isNeutral = territory.owner === 'NEUTRAL';
-                      const isFriendly = territory.owner === defender;
-                      
-                      return (
-                        <div className="bg-slate-800 rounded p-3">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-slate-300 font-semibold">
-                              {defender} (Defender)
-                            </span>
-                            <span className={`font-bold text-lg ${
-                              defender === 'USA' ? 'text-blue-400' : 'text-red-400'
-                            }`}>
-                              -{estimatedCPCost.defender} CP
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-400">
-                            {defenderWon
-                              ? 'Base: 25 × VP multiplier × (casualties / total casualties)'
-                              : `Max loss: ${isFriendly ? '25' : '50'} CP (${isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory)`
-                            }
-                          </div>
+                  )}
+
+                  {/* Battle CP Costs - Auto Mode */}
+                  {!isManualCPMode && (
+                    <div className="space-y-2 text-sm">
+                      <div className="bg-slate-800 rounded p-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-slate-300 font-semibold">
+                            {attacker} (Attacker)
+                          </span>
+                          <span className={`font-bold text-lg ${
+                            attacker === 'USA' ? 'text-blue-400' : 'text-red-400'
+                          }`}>
+                            -{estimatedCPCost.attacker} CP
+                          </span>
                         </div>
-                      );
-                    })()}
-                  </div>
+                        <div className="text-xs text-slate-400">
+                          Estimated cost based on casualties
+                        </div>
+                        <div className="text-xs text-amber-400 mt-1">
+                          Maximum possible loss: {maxCPCost.attacker} CP
+                        </div>
+                      </div>
+                      
+                      {(() => {
+                        const territory = territories.find(t => t.id === selectedTerritory);
+                        const defender = attacker === 'USA' ? 'CSA' : 'USA';
+                        
+                        const defenderWon = winner !== attacker;
+                        const isNeutral = territory.owner === 'NEUTRAL';
+                        const isFriendly = territory.owner === defender;
+                        
+                        return (
+                          <div className="bg-slate-800 rounded p-3">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-slate-300 font-semibold">
+                                {defender} (Defender)
+                              </span>
+                              <span className={`font-bold text-lg ${
+                                defender === 'USA' ? 'text-blue-400' : 'text-red-400'
+                              }`}>
+                                -{estimatedCPCost.defender} CP
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {defenderWon
+                                ? 'Base: 25 × VP multiplier × (casualties / total casualties)'
+                                : `Max loss: ${isFriendly ? '25' : '50'} CP (${isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory)`
+                              }
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Blocking Error - Attack Impossible */}

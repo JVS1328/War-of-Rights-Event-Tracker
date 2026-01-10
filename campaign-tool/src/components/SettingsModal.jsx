@@ -152,7 +152,69 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                 )}
               </div>
             </div>
-
+  
+            {/* Combat Power System */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-amber-300 mb-4">Combat Power (CP) System</h3>
+              <div className="space-y-4">
+                {/* Starting CP/VP */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <div className="text-white font-semibold mb-2 text-sm">
+                      Starting CP per side
+                    </div>
+                    <div className="text-xs text-slate-400 mb-2">
+                      Initial Combat Power pool for each faction
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={settings.startingCP || 500}
+                      onChange={(e) => updateSetting('startingCP', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </label>
+                </div>
+  
+                {/* CP Calculation Mode */}
+                <div>
+                  <label className="block">
+                    <div className="text-white font-semibold mb-2">
+                      CP Loss Calculation Mode
+                    </div>
+                    <div className="text-xs text-slate-400 mb-2">
+                      Choose how CP losses are calculated during battles
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => updateSetting('cpCalculationMode', 'auto')}
+                        className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                          (settings.cpCalculationMode || 'auto') === 'auto'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">Auto Calculate</div>
+                        <div className="text-xs mt-1 opacity-80">Based on VP & casualties</div>
+                      </button>
+                      <button
+                        onClick={() => updateSetting('cpCalculationMode', 'manual')}
+                        className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                          settings.cpCalculationMode === 'manual'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">Manual Entry</div>
+                        <div className="text-xs mt-1 opacity-80">Enter CP loss manually</div>
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+  
             {/* Team Abilities */}
             <div className="bg-slate-700 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-amber-300 mb-4">Team Abilities</h3>
