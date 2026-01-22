@@ -1347,11 +1347,12 @@ const SeasonTracker = () => {
               const u1 = teamArray[i];
               const u2 = teamArray[j];
               const count = teammateHistory[u1]?.[u2] || 0;
-              teammateScore += count;
               
-              // Add penalty for over-teaming
+              // Apply penalty multiplier for over-teaming, otherwise use base count
               if (averageTeammateCount > 0 && count > overTeamingThreshold) {
-                teammateScore += (count - overTeamingThreshold) * overTeamingPenaltyMultiplier;
+                teammateScore += count * overTeamingPenaltyMultiplier;
+              } else {
+                teammateScore += count;
               }
             }
           }
@@ -1360,7 +1361,7 @@ const SeasonTracker = () => {
         calculatePairScore(teamA);
         calculatePairScore(teamB);
 
-        const currentScore = [gap, minDiff, teammateScore, avgDiff];
+        const currentScore = [avgDiff, gap, teammateScore, minDiff];
 
         // Compare scores (lexicographic comparison)
         let isBetter = false;
@@ -4200,6 +4201,10 @@ const SeasonTracker = () => {
                         : { impactStats: {} };
                       const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
                       
+                      // Get min/max for this unit
+                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
+                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
+                      
                       return (
                         <div
                           key={unit}
@@ -4207,15 +4212,18 @@ const SeasonTracker = () => {
                           onDragStart={() => handleMainDragStart(unit, 'A')}
                           className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
                         >
-                          <div className="flex flex-col">
-                            <span className="text-white font-medium">{unit}</span>
+                          <div className="flex flex-col flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-white font-medium">{unit}</span>
+                              <span className="text-xs text-slate-400 ml-2">{minMax}</span>
+                            </div>
                             <span className="text-xs text-slate-400">
                               Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
                             </span>
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'A')}
-                            className="p-1 hover:bg-red-600 rounded transition"
+                            className="p-1 hover:bg-red-600 rounded transition ml-2"
                           >
                             <X className="w-4 h-4 text-white" />
                           </button>
@@ -4277,6 +4285,10 @@ const SeasonTracker = () => {
                         : { impactStats: {} };
                       const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
                       
+                      // Get min/max for this unit
+                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
+                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
+                      
                       return (
                         <div
                           key={unit}
@@ -4284,15 +4296,18 @@ const SeasonTracker = () => {
                           onDragStart={() => handleMainDragStart(unit, 'B')}
                           className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
                         >
-                          <div className="flex flex-col">
-                            <span className="text-white font-medium">{unit}</span>
+                          <div className="flex flex-col flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-white font-medium">{unit}</span>
+                              <span className="text-xs text-slate-400 ml-2">{minMax}</span>
+                            </div>
                             <span className="text-xs text-slate-400">
                               Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
                             </span>
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'B')}
-                            className="p-1 hover:bg-red-600 rounded transition"
+                            className="p-1 hover:bg-red-600 rounded transition ml-2"
                           >
                             <X className="w-4 h-4 text-white" />
                           </button>
@@ -4856,17 +4871,24 @@ const SeasonTracker = () => {
                           </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
-                              {balancerResults.teamA.sort().map(unit => (
-                                <div
-                                  key={unit}
-                                  draggable
-                                  onDragStart={() => handleDragStart(unit, 'A')}
-                                  className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center gap-2"
-                                >
-                                  <Swords className="w-3 h-3 text-slate-400" />
-                                  {unit}
-                                </div>
-                              ))}
+                              {balancerResults.teamA.sort().map(unit => {
+                                const counts = balancerUnitCounts[unit];
+                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
+                                return (
+                                  <div
+                                    key={unit}
+                                    draggable
+                                    onDragStart={() => handleDragStart(unit, 'A')}
+                                    className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center justify-between gap-2"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Swords className="w-3 h-3 text-slate-400" />
+                                      {unit}
+                                    </div>
+                                    <span className="text-xs text-slate-400">{minMax}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
@@ -4888,17 +4910,24 @@ const SeasonTracker = () => {
                           </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
-                              {balancerResults.teamB.sort().map(unit => (
-                                <div
-                                  key={unit}
-                                  draggable
-                                  onDragStart={() => handleDragStart(unit, 'B')}
-                                  className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center gap-2"
-                                >
-                                  <Swords className="w-3 h-3 text-slate-400" />
-                                  {unit}
-                                </div>
-                              ))}
+                              {balancerResults.teamB.sort().map(unit => {
+                                const counts = balancerUnitCounts[unit];
+                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
+                                return (
+                                  <div
+                                    key={unit}
+                                    draggable
+                                    onDragStart={() => handleDragStart(unit, 'B')}
+                                    className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center justify-between gap-2"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Swords className="w-3 h-3 text-slate-400" />
+                                      {unit}
+                                    </div>
+                                    <span className="text-xs text-slate-400">{minMax}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
