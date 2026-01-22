@@ -2223,6 +2223,109 @@ const SeasonTracker = () => {
     return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory };
   };
 
+  // Calculate team balance stats for current week assignments
+  const calculateWeekTeamStats = () => {
+    if (!selectedWeek) return null;
+    
+    const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+    const teamA = selectedWeek.teamA || [];
+    const teamB = selectedWeek.teamB || [];
+    
+    if (teamA.length === 0 && teamB.length === 0) return null;
+    
+    // Get unit player counts for this week
+    const getPlayerCount = (unit) => {
+      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
+      if (!counts) return 0;
+      const min = parseInt(counts.min) || 0;
+      const max = parseInt(counts.max) || 0;
+      return (min + max) / 2;
+    };
+    
+    const minA = teamA.reduce((sum, u) => sum + (selectedWeek.unitPlayerCounts?.[u]?.min || unitPlayerCounts[u]?.min || 0), 0);
+    const maxA = teamA.reduce((sum, u) => sum + (selectedWeek.unitPlayerCounts?.[u]?.max || unitPlayerCounts[u]?.max || 0), 0);
+    const minB = teamB.reduce((sum, u) => sum + (selectedWeek.unitPlayerCounts?.[u]?.min || unitPlayerCounts[u]?.min || 0), 0);
+    const maxB = teamB.reduce((sum, u) => sum + (selectedWeek.unitPlayerCounts?.[u]?.max || unitPlayerCounts[u]?.max || 0), 0);
+    
+    const avgA = (minA + maxA) / 2;
+    const avgB = (minB + maxB) / 2;
+    const avgDiff = Math.abs(avgA - avgB);
+    const minDiff = Math.abs(minA - minB);
+    const maxDiff = Math.abs(maxA - maxB);
+    
+    // Calculate average teammate history for each team
+    // Only count weeks BEFORE the current week (same as balancer)
+    const teammate = {};
+    
+    weeks.forEach((week, idx) => {
+      // Skip current week and all weeks after it
+      if (idx >= weekIdx) return;
+      
+      const wTeamA = week.teamA || [];
+      const wTeamB = week.teamB || [];
+
+      // Teammates in Team A
+      wTeamA.forEach(unit1 => {
+        if (!teammate[unit1]) teammate[unit1] = {};
+        wTeamA.forEach(unit2 => {
+          if (unit1 !== unit2) {
+            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+          }
+        });
+      });
+
+      // Teammates in Team B
+      wTeamB.forEach(unit1 => {
+        if (!teammate[unit1]) teammate[unit1] = {};
+        wTeamB.forEach(unit2 => {
+          if (unit1 !== unit2) {
+            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+          }
+        });
+      });
+    });
+    
+    const calculateTeamAvgHistory = (team) => {
+      if (team.length < 2) return 0;
+      
+      let totalHistory = 0;
+      let pairCount = 0;
+      
+      for (let i = 0; i < team.length; i++) {
+        for (let j = i + 1; j < team.length; j++) {
+          const u1 = team[i];
+          const u2 = team[j];
+          const count = teammate[u1]?.[u2] || 0;
+          totalHistory += count;
+          pairCount++;
+        }
+      }
+      
+      return pairCount > 0 ? totalHistory / pairCount : 0;
+    };
+    
+    const avgHistoryA = calculateTeamAvgHistory(teamA);
+    const avgHistoryB = calculateTeamAvgHistory(teamB);
+    const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
+    
+    return {
+      teamA,
+      teamB,
+      minA,
+      maxA,
+      minB,
+      maxB,
+      avgA,
+      avgB,
+      avgDiff,
+      minDiff,
+      maxDiff,
+      avgHistoryA,
+      avgHistoryB,
+      combinedAvgHistory
+    };
+  };
+
   // Drag and drop handlers for balancer
   const handleDragStart = (unit, sourceTeam) => {
     setDraggedUnit({ unit, sourceTeam });
@@ -3988,6 +4091,76 @@ const SeasonTracker = () => {
               <h2 className="text-2xl font-bold text-amber-400 mb-4">
                 {selectedWeek.name} - Team Rosters
               </h2>
+              
+              {/* Team Balance Stats */}
+              {(() => {
+                const stats = calculateWeekTeamStats();
+                if (!stats) return null;
+                
+                return (
+                  <div className="mb-6 bg-slate-600 rounded-lg p-4">
+                    <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                      <Target className="w-5 h-5" />
+                      Team Balance Overview
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Avg Difference</div>
+                        <div className="text-lg font-bold text-amber-400">
+                          {stats.avgDiff.toFixed(1)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Min Difference</div>
+                        <div className="text-lg font-bold text-cyan-400">
+                          {stats.minDiff.toFixed(0)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Max Difference</div>
+                        <div className="text-lg font-bold text-purple-400">
+                          {stats.maxDiff.toFixed(0)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Avg Teammate History</div>
+                        <div className="text-lg font-bold text-green-400">
+                          {stats.combinedAvgHistory.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      {/* Team A Stats */}
+                      <div className="bg-slate-700 rounded p-3">
+                        <h4 className="text-sm font-semibold text-blue-400 mb-2">
+                          {teamNames.A} ({stats.teamA.length} units)
+                        </h4>
+                        <div className="text-slate-300 text-sm space-y-1">
+                          <p>Players: {stats.minA}-{stats.maxA} (avg: {stats.avgA.toFixed(1)})</p>
+                          <p className="text-xs">
+                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
+                          </p>
+                        </div>
+                      </div>
+                      {/* Team B Stats */}
+                      <div className="bg-slate-700 rounded p-3">
+                        <h4 className="text-sm font-semibold text-red-400 mb-2">
+                          {teamNames.B} ({stats.teamB.length} units)
+                        </h4>
+                        <div className="text-slate-300 text-sm space-y-1">
+                          <p>Players: {stats.minB}-{stats.maxB} (avg: {stats.avgB.toFixed(1)})</p>
+                          <p className="text-xs">
+                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3 text-center">
+                      💡 Lower teammate history = better variety • Counts history up to the current week, not including.
+                    </p>
+                  </div>
+                );
+              })()}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {/* Team A */}
