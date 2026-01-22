@@ -650,17 +650,76 @@ const SeasonTracker = () => {
 
   // Get grouped standings by division
   const getGroupedStandings = () => {
+    const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+    const previousWeekIdx = currentWeekIdx - 1;
+    
     const allStandings = getStandingsWithChanges();
     
     if (!divisions || divisions.length === 0) {
       return [{ name: 'All Units', units: allStandings }];
     }
 
+    // Calculate previous week's group rankings for delta calculation
+    let previousGroupRanks = {};
+    if (previousWeekIdx >= 0) {
+      const prevStats = calculatePointsUpToWeek(previousWeekIdx);
+      const { eloRatings: prevElo } = calculateEloRatings(previousWeekIdx);
+      
+      const prevStandings = Object.entries(prevStats)
+        .map(([unit, data]) => ({
+          unit,
+          ...data,
+          elo: prevElo[unit] || eloSystem.initialElo
+        }))
+        .sort((a, b) => rankByElo ? b.elo - a.elo : b.points - a.points);
+      
+      // Calculate previous ranks within each division
+      divisions.forEach(division => {
+        const divisionUnits = new Set(division.units);
+        const prevDivStandings = prevStandings
+          .filter(stat => divisionUnits.has(stat.unit));
+        
+        prevDivStandings.forEach((stat, index) => {
+          previousGroupRanks[`${division.name}:${stat.unit}`] = index + 1;
+        });
+      });
+      
+      // Handle unassigned units
+      const assignedUnits = new Set(divisions.flatMap(d => d.units));
+      const prevUnassigned = prevStandings
+        .filter(stat => !assignedUnits.has(stat.unit));
+      
+      prevUnassigned.forEach((stat, index) => {
+        previousGroupRanks[`Unassigned:${stat.unit}`] = index + 1;
+      });
+    }
+
     const grouped = divisions.map(division => {
       const divisionUnits = new Set(division.units);
       const divisionStandings = allStandings
         .filter(stat => divisionUnits.has(stat.unit))
-        .map((stat, index) => ({ ...stat, divisionRank: index + 1 }));
+        .map((stat, index) => {
+          const currentRank = index + 1;
+          const prevRank = previousGroupRanks[`${division.name}:${stat.unit}`] || null;
+          
+          // Check if current week is a playoff week
+          const currentWeek = currentWeekIdx >= 0 ? weeks[currentWeekIdx] : null;
+          const isCurrentWeekPlayoff = currentWeek?.isPlayoffs || false;
+          
+          // Calculate group-specific rank delta
+          let groupRankDelta = null;
+          if (!rankByElo && isCurrentWeekPlayoff) {
+            groupRankDelta = null; // Don't show delta in playoffs when ranking by points
+          } else if (prevRank !== null) {
+            groupRankDelta = prevRank - currentRank;
+          }
+          
+          return {
+            ...stat,
+            divisionRank: currentRank,
+            rankDelta: groupRankDelta // Override with group-specific delta
+          };
+        });
       
       return {
         name: division.name,
@@ -671,7 +730,28 @@ const SeasonTracker = () => {
     const assignedUnits = new Set(divisions.flatMap(d => d.units));
     const unassignedStandings = allStandings
       .filter(stat => !assignedUnits.has(stat.unit))
-      .map((stat, index) => ({ ...stat, divisionRank: index + 1 }));
+      .map((stat, index) => {
+        const currentRank = index + 1;
+        const prevRank = previousGroupRanks[`Unassigned:${stat.unit}`] || null;
+        
+        // Check if current week is a playoff week
+        const currentWeek = currentWeekIdx >= 0 ? weeks[currentWeekIdx] : null;
+        const isCurrentWeekPlayoff = currentWeek?.isPlayoffs || false;
+        
+        // Calculate group-specific rank delta
+        let groupRankDelta = null;
+        if (!rankByElo && isCurrentWeekPlayoff) {
+          groupRankDelta = null;
+        } else if (prevRank !== null) {
+          groupRankDelta = prevRank - currentRank;
+        }
+        
+        return {
+          ...stat,
+          divisionRank: currentRank,
+          rankDelta: groupRankDelta // Override with group-specific delta
+        };
+      });
     
     if (unassignedStandings.length > 0) {
       grouped.push({
@@ -6553,9 +6633,30 @@ const SeasonTracker = () => {
                                             {isNonToken ? '*' : ''}{stat.unit}
                                           </span>
                                         </div>
-                                        <span className="text-green-400 font-bold text-xl">
-                                          {stat.points}
-                                        </span>
+                                        <div className="flex items-center gap-3">
+                                          <div className="flex items-center gap-1 text-xs">
+                                            {stat.eloDelta > 0 ? (
+                                              <TrendingUp className="w-3 h-3 text-blue-400" />
+                                            ) : stat.eloDelta < 0 ? (
+                                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                            ) : (
+                                              <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
+                                            )}
+                                            <span className="text-cyan-400 font-semibold">
+                                              {Math.round(stat.elo)}
+                                            </span>
+                                            {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
+                                              <span className={`ml-1 ${
+                                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                              }`}>
+                                                ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-green-400 font-bold text-xl">
+                                            {stat.points}
+                                          </span>
+                                        </div>
                                       </div>
                                       <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
                                         <div>L-Wins: {stat.leadWins}</div>
@@ -6600,9 +6701,30 @@ const SeasonTracker = () => {
                                       {isNonToken ? '*' : ''}{stat.unit}
                                     </span>
                                   </div>
-                                  <span className="text-green-400 font-bold text-xl">
-                                    {stat.points}
-                                  </span>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1 text-xs">
+                                      {stat.eloDelta > 0 ? (
+                                        <TrendingUp className="w-3 h-3 text-blue-400" />
+                                      ) : stat.eloDelta < 0 ? (
+                                        <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                      ) : (
+                                        <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
+                                      )}
+                                      <span className="text-cyan-400 font-semibold">
+                                        {Math.round(stat.elo)}
+                                      </span>
+                                      {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
+                                        <span className={`ml-1 ${
+                                          stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                        }`}>
+                                          ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-green-400 font-bold text-xl">
+                                      {stat.points}
+                                    </span>
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
                                   <div>L-Wins: {stat.leadWins}</div>
