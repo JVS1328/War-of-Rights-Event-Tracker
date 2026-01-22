@@ -22,6 +22,14 @@ const getDefaultPlayoffConfig = () => ({
   }
 });
 
+// Default balancer settings
+const getDefaultBalancerSettings = () => ({
+  teammateWeight: 1.0,
+  avgDiffWeight: 1.0,
+  gapWeight: 0.75,
+  minDiffWeight: 0.50
+});
+
 // Map data from maps.py
 const MAPS = {
   antietam: [
@@ -167,6 +175,9 @@ const SeasonTracker = () => {
   
   // Playoff configuration state
   const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
+  
+  // Balancer settings state
+  const [balancerSettings, setBalancerSettings] = useState(savedState?.balancerSettings || getDefaultBalancerSettings());
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -183,7 +194,8 @@ const SeasonTracker = () => {
       unitPlayerCounts,
       divisions,
       mapBiases,
-      playoffConfig
+      playoffConfig,
+      balancerSettings
     };
 
     try {
@@ -191,7 +203,7 @@ const SeasonTracker = () => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, playoffConfig]);
+  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, playoffConfig, balancerSettings]);
 
   // Unit Management
   const addUnit = () => {
@@ -1260,7 +1272,7 @@ const SeasonTracker = () => {
     });
 
     let bestSolution = {
-      score: [Infinity, Infinity, Infinity, Infinity],
+      score: Infinity,
       teams: null,
       stats: null
     };
@@ -1361,20 +1373,13 @@ const SeasonTracker = () => {
         calculatePairScore(teamA);
         calculatePairScore(teamB);
 
-        const currentScore = [avgDiff, gap, teammateScore, minDiff];
+        // Calculate composite score accounting for all metrics together
+        const currentScore = (teammateScore * balancerSettings.teammateWeight) +
+                            (avgDiff * balancerSettings.avgDiffWeight) +
+                            (gap * balancerSettings.gapWeight) +
+                            (minDiff * balancerSettings.minDiffWeight);
 
-        // Compare scores (lexicographic comparison)
-        let isBetter = false;
-        for (let i = 0; i < currentScore.length; i++) {
-          if (currentScore[i] < bestSolution.score[i]) {
-            isBetter = true;
-            break;
-          } else if (currentScore[i] > bestSolution.score[i]) {
-            break;
-          }
-        }
-
-        if (isBetter) {
+        if (currentScore < bestSolution.score) {
           bestSolution = {
             score: currentScore,
             teams: [[...teamA], [...teamB]],
@@ -1386,10 +1391,22 @@ const SeasonTracker = () => {
 
     // Check if solution is valid
     if (bestSolution.teams) {
-      const [gap, minDiff, teammateScore, avgDiff] = bestSolution.score;
+      const [teamA, teamB] = bestSolution.teams;
+      const [minA, maxA, minB, maxB] = bestSolution.stats;
+      
+      // Calculate individual metrics for validation
+      let gap = 0;
+      if (maxA < minB) {
+        gap = minB - maxA;
+      } else if (maxB < minA) {
+        gap = minA - maxB;
+      }
+      const minDiff = Math.abs(minA - minB);
+      const avgA = (minA + maxA) / 2;
+      const avgB = (minB + maxB) / 2;
+      const avgDiff = Math.abs(avgA - avgB);
+      
       if (gap <= maxPlayerDiff && minDiff <= maxPlayerDiff) {
-        const [teamA, teamB] = bestSolution.teams;
-        const [minA, maxA, minB, maxB] = bestSolution.stats;
         return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB };
       } else {
         let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
@@ -1474,6 +1491,7 @@ const SeasonTracker = () => {
     setDivisions([]);
     setMapBiases(getDefaultMapBiases());
     setPlayoffConfig(getDefaultPlayoffConfig());
+    setBalancerSettings(getDefaultBalancerSettings());
     
     alert('New season started! All data has been cleared.');
   };
@@ -1493,6 +1511,7 @@ const SeasonTracker = () => {
       divisions,
       mapBiases,
       playoffConfig,
+      balancerSettings,
       exportDate: new Date().toISOString()
     };
     
@@ -1669,6 +1688,10 @@ const SeasonTracker = () => {
         // Handle playoff configuration - always use default if not present
         const importedPlayoffConfig = data.playoffConfig || getDefaultPlayoffConfig();
         setPlayoffConfig(importedPlayoffConfig);
+        
+        // Handle balancer settings - use default if not present (backwards compatibility)
+        const importedBalancerSettings = data.balancerSettings || getDefaultBalancerSettings();
+        setBalancerSettings(importedBalancerSettings);
         
         setSelectedWeek(null);
         alert('Data imported successfully!');
@@ -3649,6 +3672,68 @@ const SeasonTracker = () => {
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Balancer Settings Section */}
+              <div className="mb-6">
+                <h3 className="text-xl font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Team Balancer Weights
+                </h3>
+                <p className="text-xs text-slate-400 mb-3">
+                  Adjust the weights used in the composite score calculation. Higher weights increase the importance of that metric.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Teammate History Weight</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={balancerSettings.teammateWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, teammateWeight: parseFloat(e.target.value) || 1.0 })}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Avg Difference Weight</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={balancerSettings.avgDiffWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, avgDiffWeight: parseFloat(e.target.value) || 1.0 })}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Range Gap Weight</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={balancerSettings.gapWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, gapWeight: parseFloat(e.target.value) || 0.75 })}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-300 mb-1">Min Difference Weight</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={balancerSettings.minDiffWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, minDiffWeight: parseFloat(e.target.value) || 0.50 })}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
+                  <p className="font-semibold text-amber-300 mb-2">💡 Weight Explanations:</p>
+                  <ul className="space-y-1 ml-4">
+                    <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
+                    <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
+                    <li><strong>Range Gap:</strong> Penalizes non-overlapping player ranges (e.g., Team A: 40-50, Team B: 60-70)</li>
+                    <li><strong>Min Difference:</strong> Minimizes the difference between minimum player counts</li>
+                  </ul>
                 </div>
               </div>
 
