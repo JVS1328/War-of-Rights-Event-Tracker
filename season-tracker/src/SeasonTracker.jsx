@@ -777,38 +777,95 @@ const SeasonTracker = () => {
 
   // Calculate Map Statistics
   const calculateMapStats = () => {
-    const mapStats = {};
-    
+    // USA Attack Maps (same as used in Elo calculation)
+    const usaAttackMaps = new Set([
+      "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
+      "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
+      "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
+      "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
+      "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
+      "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
+    ]);
+
+    const byMap = {};
+    const overall = {
+      totalRounds: 0,
+      usaWins: 0, csaWins: 0,
+      attackerWins: 0, defenderWins: 0,
+      usaAttackWins: 0, usaAttackRounds: 0,
+      usaDefenseWins: 0, usaDefenseRounds: 0,
+      csaAttackWins: 0, csaAttackRounds: 0,
+      csaDefenseWins: 0, csaDefenseRounds: 0
+    };
+
     weeks.forEach(week => {
       [1, 2].forEach(roundNum => {
         const mapName = week[`round${roundNum}Map`];
         const winner = week[`round${roundNum}Winner`];
-        const flipped = week[`round${roundNum}Flipped`];
-        
+        const flipped = week[`round${roundNum}Flipped`] || false;
+        const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
+        const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
+
         if (!mapName || !winner) return;
-        
-        if (!mapStats[mapName]) {
-          mapStats[mapName] = {
-            plays: 0,
-            usaWins: 0,
-            csaWins: 0
+
+        if (!byMap[mapName]) {
+          byMap[mapName] = {
+            plays: 0, usaWins: 0, csaWins: 0,
+            attackerWins: 0, defenderWins: 0,
+            totalCasualties: 0
           };
         }
-        
-        mapStats[mapName].plays++;
-        
+
+        byMap[mapName].plays++;
+        byMap[mapName].totalCasualties += casualtiesA + casualtiesB;
+        overall.totalRounds++;
+
         // Determine USA/CSA sides based on flipped state
         const usaSide = flipped ? 'B' : 'A';
-        
-        if (winner === usaSide) {
-          mapStats[mapName].usaWins++;
+        const isUsaAttack = usaAttackMaps.has(mapName);
+        const usaWon = winner === usaSide;
+        const attackerWon = isUsaAttack ? usaWon : !usaWon;
+
+        // USA/CSA wins
+        if (usaWon) {
+          byMap[mapName].usaWins++;
+          overall.usaWins++;
         } else {
-          mapStats[mapName].csaWins++;
+          byMap[mapName].csaWins++;
+          overall.csaWins++;
+        }
+
+        // Attacker/Defender wins
+        if (attackerWon) {
+          byMap[mapName].attackerWins++;
+          overall.attackerWins++;
+        } else {
+          byMap[mapName].defenderWins++;
+          overall.defenderWins++;
+        }
+
+        // USA/CSA Attack/Defense breakdown
+        if (isUsaAttack) {
+          overall.usaAttackRounds++;
+          overall.csaDefenseRounds++;
+          if (usaWon) {
+            overall.usaAttackWins++;
+          } else {
+            overall.csaDefenseWins++;
+          }
+        } else {
+          overall.csaAttackRounds++;
+          overall.usaDefenseRounds++;
+          if (usaWon) {
+            overall.usaDefenseWins++;
+          } else {
+            overall.csaAttackWins++;
+          }
         }
       });
     });
-    
-    return mapStats;
+
+    return { overall, byMap };
   };
 
   // Helper function to get unit player count
@@ -5262,25 +5319,117 @@ const SeasonTracker = () => {
                       <Map className="w-5 h-5" />
                       Map Statistics
                     </h3>
-                    <div className="space-y-2">
-                      {Object.entries(calculateMapStats())
-                        .sort(([, a], [, b]) => b.plays - a.plays)
-                        .map(([mapName, stats]) => (
-                          <div key={mapName} className="bg-slate-600 rounded p-3">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="font-semibold text-white">{mapName}</span>
-                              <span className="text-slate-300 text-sm">{stats.plays} plays</span>
+                    {(() => {
+                      const { overall, byMap } = calculateMapStats();
+                      const pct = (wins, total) => total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
+
+                      return (
+                        <>
+                          {/* Overall Statistics */}
+                          {overall.totalRounds > 0 && (
+                            <div className="mb-4 space-y-3">
+                              {/* Faction Win Rates */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-600 rounded p-3">
+                                  <div className="text-xs text-slate-400 mb-1">USA Overall</div>
+                                  <div className="text-lg font-bold text-blue-400">
+                                    {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.usaWins}/{overall.totalRounds})</span>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-600 rounded p-3">
+                                  <div className="text-xs text-slate-400 mb-1">CSA Overall</div>
+                                  <div className="text-lg font-bold text-red-400">
+                                    {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.csaWins}/{overall.totalRounds})</span>
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Attacker/Defender Win Rates */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-slate-600 rounded p-3">
+                                  <div className="text-xs text-slate-400 mb-1">Attackers Won</div>
+                                  <div className="text-lg font-bold text-amber-400">
+                                    {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.attackerWins}/{overall.totalRounds})</span>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-600 rounded p-3">
+                                  <div className="text-xs text-slate-400 mb-1">Defenders Won</div>
+                                  <div className="text-lg font-bold text-green-400">
+                                    {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.defenderWins}/{overall.totalRounds})</span>
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Faction Attack/Defense Breakdown */}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div className="bg-slate-600 rounded p-2">
+                                  <div className="text-xs text-slate-400">USA Attack</div>
+                                  <div className="text-sm font-semibold text-blue-400">
+                                    {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-slate-400">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-600 rounded p-2">
+                                  <div className="text-xs text-slate-400">USA Defense</div>
+                                  <div className="text-sm font-semibold text-blue-400">
+                                    {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-slate-400">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-600 rounded p-2">
+                                  <div className="text-xs text-slate-400">CSA Attack</div>
+                                  <div className="text-sm font-semibold text-red-400">
+                                    {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-slate-400">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
+                                  </div>
+                                </div>
+                                <div className="bg-slate-600 rounded p-2">
+                                  <div className="text-xs text-slate-400">CSA Defense</div>
+                                  <div className="text-sm font-semibold text-red-400">
+                                    {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-slate-400">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
-                              <div>USA Wins: {stats.usaWins} ({stats.plays > 0 ? ((stats.usaWins / stats.plays) * 100).toFixed(1) : 0}%)</div>
-                              <div>CSA Wins: {stats.csaWins} ({stats.plays > 0 ? ((stats.csaWins / stats.plays) * 100).toFixed(1) : 0}%)</div>
-                            </div>
+                          )}
+
+                          {/* Maps by Skirmish Area */}
+                          <div className="space-y-3">
+                            {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
+                              const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                              const playedMaps = areaMaps.filter(m => byMap[m]);
+                              if (playedMaps.length === 0) return null;
+
+                              return (
+                                <div key={areaKey} className="bg-slate-600 rounded-lg overflow-hidden">
+                                  <div className="bg-slate-500 px-3 py-2 font-semibold text-amber-300">{areaName}</div>
+                                  <div className="p-2 space-y-2">
+                                    {playedMaps
+                                      .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
+                                      .map(mapName => {
+                                        const stats = byMap[mapName];
+                                        const avgCas = stats.plays > 0 ? (stats.totalCasualties / stats.plays).toFixed(0) : 0;
+                                        return (
+                                          <div key={mapName} className="bg-slate-700 rounded p-2">
+                                            <div className="flex justify-between items-center mb-1">
+                                              <span className="text-sm font-medium text-white">{mapName}</span>
+                                              <span className="text-xs text-slate-400">{stats.plays} rounds</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                              <div className="text-blue-300">USA: {stats.usaWins} ({pct(stats.usaWins, stats.plays)}%)</div>
+                                              <div className="text-red-300">CSA: {stats.csaWins} ({pct(stats.csaWins, stats.plays)}%)</div>
+                                              <div className="text-slate-300">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
-                      {Object.keys(calculateMapStats()).length === 0 && (
-                        <p className="text-slate-400 text-center py-4">No map data available</p>
-                      )}
-                    </div>
+
+                          {Object.keys(byMap).length === 0 && (
+                            <p className="text-slate-400 text-center py-4">No map data available</p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Casualties Summary */}
