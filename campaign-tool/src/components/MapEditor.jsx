@@ -164,26 +164,47 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               const stateAbbrs = Array.from(statesSet);
               const countyDataForStates = await getCountiesForStates(stateAbbrs);
 
+              // Build FIPS to county ID mapping
+              const fipsToCountyId = {};
+              countyDataForStates.counties.forEach(county => {
+                if (county.fips) {
+                  fipsToCountyId[county.fips] = county.id;
+                }
+              });
+
               // Set up county mode
               setCountyData(countyDataForStates);
               setIsCountyMode(true);
               setMapMode('counties');
               setSelectedStatesForCounties(statesSet);
 
-              // Load territories with county data
-              setTerritories(countyTerritories.map(t => ({
-                ...t,
-                id: t.id || `territory-${Date.now()}-${Math.random()}`,
-                victoryPoints: t.victoryPoints || t.pointValue || 1,
-                owner: t.owner,
-                initialOwner: t.owner,
-                maps: t.maps || [],
-                isCountyBased: true
-              })));
+              // Load territories with county data, converting countyFips to counties
+              const loadedTerritories = countyTerritories.map(t => {
+                // Convert countyFips to counties format if needed
+                let counties = t.counties || [];
+                if (t.countyFips && t.countyFips.length > 0) {
+                  counties = t.countyFips
+                    .map(fips => fipsToCountyId[fips])
+                    .filter(Boolean); // Remove any unmapped FIPS
+                }
+
+                return {
+                  ...t,
+                  id: t.id || `territory-${Date.now()}-${Math.random()}`,
+                  counties, // Use converted counties
+                  victoryPoints: t.victoryPoints || t.pointValue || 1,
+                  owner: t.owner,
+                  initialOwner: t.owner,
+                  maps: t.maps || [],
+                  isCountyBased: true
+                };
+              });
+
+              setTerritories(loadedTerritories);
 
               // Mark counties as selected
               const allCounties = new Set();
-              countyTerritories.forEach(t => {
+              loadedTerritories.forEach(t => {
                 if (t.counties) {
                   t.counties.forEach(c => allCounties.add(c));
                 }
