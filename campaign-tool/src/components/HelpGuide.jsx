@@ -123,23 +123,71 @@ const HelpGuide = ({ isOpen, onClose }) => {
             </p>
 
             <div className="space-y-3">
+              <div className="bg-blue-900 bg-opacity-30 p-3 rounded-lg border border-blue-700">
+                <p className="text-blue-400 font-semibold mb-2">📊 Understanding VP Multiplier</p>
+                <p className="mb-2">
+                  The VP Multiplier dynamically scales CP costs based on territory value:
+                </p>
+                <div className="bg-slate-800 p-2 rounded mt-2 font-mono text-xs">
+                  <p className="text-amber-400 mb-1">Formula: VP Multiplier = Territory VP ÷ 5</p>
+                  <p className="text-slate-400 mb-2">This works for ANY VP value, not just 5/10/15:</p>
+                  <ul className="list-disc list-inside space-y-1 text-slate-300">
+                    <li>5 VP = 1.0× multiplier</li>
+                    <li>7 VP = 1.4× multiplier</li>
+                    <li>10 VP = 2.0× multiplier</li>
+                    <li>12 VP = 2.4× multiplier</li>
+                    <li>15 VP = 3.0× multiplier</li>
+                    <li>20 VP = 4.0× multiplier</li>
+                  </ul>
+                </div>
+                <p className="text-green-400 text-xs mt-2 italic">
+                  💡 Why? More valuable territories are harder to take and more costly to fight over.
+                  The system scales smoothly for custom VP values, making it flexible for any campaign setup!
+                </p>
+              </div>
+
               <div className="bg-slate-700 p-3 rounded-lg">
                 <p className="text-amber-400 font-semibold mb-2">CP Costs (Attackers)</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong>Attacking Neutral:</strong> Base 50 CP × VP multiplier × casualty ratio</li>
-                  <li><strong>Attacking Enemy:</strong> Base 75 CP × VP multiplier × casualty ratio</li>
+                  <li><strong>Attacking Neutral:</strong> Base 50 CP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Attacking Enemy:</strong> Base 75 CP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
-                <p className="text-slate-400 text-xs mt-2">VP Multiplier = Territory VP ÷ 5 (e.g., 10 VP = 2x multiplier)</p>
+                <p className="text-slate-400 text-xs mt-2">
+                  VP Multiplier = Territory VP ÷ 5 (e.g., 10 VP = 2x multiplier)
+                </p>
+                <p className="text-green-400 text-xs mt-2 italic">
+                  💡 Why? Attackers pay more because they're the aggressors - they must commit more resources to take territory.
+                  Enemy territories cost even more (75 vs 50) because they're fortified and defended.
+                </p>
               </div>
 
               <div className="bg-slate-700 p-3 rounded-lg">
                 <p className="text-amber-400 font-semibold mb-2">CP Costs (Defenders)</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong>Defending (Win or Lose):</strong> Base 25 CP × VP multiplier × casualty ratio</li>
+                  <li><strong>Defending Friendly Territory:</strong> Base 25 CP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Defending Neutral Territory:</strong> Base 50 CP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
                 <p className="text-slate-400 text-xs mt-2">
-                  Defender CP loss scales with their proportion of total casualties.
-                  If you take more casualties, you lose more CP.
+                  Defender CP loss scales with their proportion of total casualties - the more you bleed, the more CP you lose.
+                </p>
+                <p className="text-green-400 text-xs mt-2 italic">
+                  💡 Why? Defending your own territory is cheaper (25) because you have home advantage, supply lines, and fortifications.
+                  Defending neutral ground costs more (50) because you lack these advantages - you're fighting away from home.
+                </p>
+              </div>
+
+              <div className="bg-slate-700 p-3 rounded-lg">
+                <p className="text-amber-400 font-semibold mb-2">Casualty Ratio Matters!</p>
+                <p className="mb-2">
+                  Both attackers and defenders pay CP based on the proportion of casualties they take:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>If you take 50% of total casualties, you pay 50% of max CP cost</li>
+                  <li>If you take 80% of total casualties, you pay 80% of max CP cost</li>
+                  <li>Win or lose, heavy casualties mean heavy CP losses</li>
+                </ul>
+                <p className="text-orange-400 text-xs mt-2 italic">
+                  ⚠️ Pyrrhic victories hurt! Even if you win, taking massive casualties can cripple your campaign.
                 </p>
               </div>
 

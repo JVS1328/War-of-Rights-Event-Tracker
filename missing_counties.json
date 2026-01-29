@@ -1,0 +1,344 @@
+{
+  "PA": [
+    {
+      "name": "Northampton",
+      "fips": "42095",
+      "id": "PA_Northampton"
+    }
+  ],
+  "OH": [
+    {
+      "name": "Carroll",
+      "fips": "39019",
+      "id": "OH_Carroll"
+    },
+    {
+      "name": "Clark",
+      "fips": "39023",
+      "id": "OH_Clark"
+    }
+  ],
+  "IN": [
+    {
+      "name": "Carroll",
+      "fips": "18015",
+      "id": "IN_Carroll"
+    },
+    {
+      "name": "Madison",
+      "fips": "18095",
+      "id": "IN_Madison"
+    }
+  ],
+  "IL": [
+    {
+      "name": "Knox",
+      "fips": "17095",
+      "id": "IL_Knox"
+    },
+    {
+      "name": "LaSalle",
+      "fips": "17099",
+      "id": "IL_LaSalle"
+    },
+    {
+      "name": "Will",
+      "fips": "17197",
+      "id": "IL_Will"
+    }
+  ],
+  "NY": [
+    {
+      "name": "Montgomery",
+      "fips": "36057",
+      "id": "NY_Montgomery"
+    }
+  ],
+  "VA": [
+    {
+      "name": "Alleghany",
+      "fips": "51005",
+      "id": "VA_Alleghany"
+    },
+    {
+      "name": "Campbell",
+      "fips": "51031",
+      "id": "VA_Campbell"
+    },
+    {
+      "name": "Chesapeake",
+      "fips": "51550",
+      "id": "VA_Chesapeake"
+    },
+    {
+      "name": "Emporia",
+      "fips": "51595",
+      "id": "VA_Emporia"
+    },
+    {
+      "name": "Essex",
+      "fips": "51057",
+      "id": "VA_Essex"
+    },
+    {
+      "name": "Franklin",
+      "fips": "51620",
+      "id": "VA_Franklin"
+    },
+    {
+      "name": "Fredericksburg",
+      "fips": "51630",
+      "id": "VA_Fredericksburg"
+    },
+    {
+      "name": "Spotsylvania",
+      "fips": "51177",
+      "id": "VA_Spotsylvania"
+    },
+    {
+      "name": "Winchester",
+      "fips": "51840",
+      "id": "VA_Winchester"
+    }
+  ],
+  "NC": [
+    {
+      "name": "Catawba",
+      "fips": "37035",
+      "id": "NC_Catawba"
+    },
+    {
+      "name": "Cumberland",
+      "fips": "37051",
+      "id": "NC_Cumberland"
+    },
+    {
+      "name": "Greene",
+      "fips": "37079",
+      "id": "NC_Greene"
+    },
+    {
+      "name": "Hoke",
+      "fips": "37093",
+      "id": "NC_Hoke"
+    },
+    {
+      "name": "Montgomery",
+      "fips": "37123",
+      "id": "NC_Montgomery"
+    },
+    {
+      "name": "Pender",
+      "fips": "37141",
+      "id": "NC_Pender"
+    },
+    {
+      "name": "Robeson",
+      "fips": "37155",
+      "id": "NC_Robeson"
+    },
+    {
+      "name": "Scotland",
+      "fips": "37165",
+      "id": "NC_Scotland"
+    },
+    {
+      "name": "Warren",
+      "fips": "37185",
+      "id": "NC_Warren"
+    },
+    {
+      "name": "Wilson",
+      "fips": "37195",
+      "id": "NC_Wilson"
+    }
+  ],
+  "GA": [
+    {
+      "name": "Atkinson",
+      "fips": "13003",
+      "id": "GA_Atkinson"
+    },
+    {
+      "name": "Baldwin",
+      "fips": "13009",
+      "id": "GA_Baldwin"
+    },
+    {
+      "name": "Candler",
+      "fips": "13043",
+      "id": "GA_Candler"
+    },
+    {
+      "name": "Evans",
+      "fips": "13109",
+      "id": "GA_Evans"
+    },
+    {
+      "name": "Gordon",
+      "fips": "13129",
+      "id": "GA_Gordon"
+    },
+    {
+      "name": "Jenkins",
+      "fips": "13165",
+      "id": "GA_Jenkins"
+    },
+    {
+      "name": "Johnson",
+      "fips": "13167",
+      "id": "GA_Johnson"
+    },
+    {
+      "name": "Mitchell",
+      "fips": "13205",
+      "id": "GA_Mitchell"
+    },
+    {
+      "name": "Peach",
+      "fips": "13225",
+      "id": "GA_Peach"
+    },
+    {
+      "name": "Randolph",
+      "fips": "13243",
+      "id": "GA_Randolph"
+    },
+    {
+      "name": "Screven",
+      "fips": "13251",
+      "id": "GA_Screven"
+    },
+    {
+      "name": "Terrell",
+      "fips": "13273",
+      "id": "GA_Terrell"
+    },
+    {
+      "name": "Webster",
+      "fips": "13307",
+      "id": "GA_Webster"
+    }
+  ],
+  "FL": [
+    {
+      "name": "Broward",
+      "fips": "12011",
+      "id": "FL_Broward"
+    },
+    {
+      "name": "Collier",
+      "fips": "12021",
+      "id": "FL_Collier"
+    },
+    {
+      "name": "DeSoto",
+      "fips": "12027",
+      "id": "FL_DeSoto"
+    },
+    {
+      "name": "Glades",
+      "fips": "12043",
+      "id": "FL_Glades"
+    },
+    {
+      "name": "Hendry",
+      "fips": "12051",
+      "id": "FL_Hendry"
+    },
+    {
+      "name": "Miami-Dade",
+      "fips": "12086",
+      "id": "FL_MiamiDade"
+    },
+    {
+      "name": "Palm Beach",
+      "fips": "12099",
+      "id": "FL_Palm_Beach"
+    },
+    {
+      "name": "St. Lucie",
+      "fips": "12111",
+      "id": "FL_St_Lucie"
+    }
+  ],
+  "TN": [
+    {
+      "name": "Perry",
+      "fips": "47135",
+      "id": "TN_Perry"
+    }
+  ],
+  "AL": [
+    {
+      "name": "Lamar",
+      "fips": "01075",
+      "id": "AL_Lamar"
+    }
+  ],
+  "MS": [
+    {
+      "name": "Scott",
+      "fips": "28123",
+      "id": "MS_Scott"
+    },
+    {
+      "name": "Webster",
+      "fips": "28155",
+      "id": "MS_Webster"
+    }
+  ],
+  "LA": [
+    {
+      "name": "Bossier",
+      "fips": "22015",
+      "id": "LA_Bossier"
+    },
+    {
+      "name": "Caldwell",
+      "fips": "22021",
+      "id": "LA_Caldwell"
+    }
+  ],
+  "MO": [
+    {
+      "name": "Franklin",
+      "fips": "29071",
+      "id": "MO_Franklin"
+    },
+    {
+      "name": "Mercer",
+      "fips": "29129",
+      "id": "MO_Mercer"
+    },
+    {
+      "name": "Pulaski",
+      "fips": "29169",
+      "id": "MO_Pulaski"
+    }
+  ],
+  "KY": [
+    {
+      "name": "Pulaski",
+      "fips": "21199",
+      "id": "KY_Pulaski"
+    }
+  ],
+  "MI": [
+    {
+      "name": "Arenac",
+      "fips": "26011",
+      "id": "MI_Arenac"
+    },
+    {
+      "name": "Dickinson",
+      "fips": "26043",
+      "id": "MI_Dickinson"
+    },
+    {
+      "name": "Mecosta",
+      "fips": "26107",
+      "id": "MI_Mecosta"
+    }
+  ]
+}

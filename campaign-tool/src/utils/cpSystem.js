@@ -21,7 +21,13 @@ export const BASE_ATTACK_COST_NEUTRAL = 50;
 export const BASE_ATTACK_COST_ENEMY = 75;
 
 /**
- * Base CP cost for defending a territory (before VP multiplier)
+ * Base CP cost for defending a neutral territory (before VP multiplier)
+ */
+export const BASE_DEFENSE_COST_NEUTRAL = 50;
+
+/**
+ * @deprecated BASE_DEFENSE_COST is replaced by BASE_DEFENSE_COST_FRIENDLY and BASE_DEFENSE_COST_NEUTRAL
+ * Kept for backward compatibility
  */
 export const BASE_DEFENSE_COST = 25;
 
@@ -113,14 +119,14 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * Calculate CP loss for defender based on casualties
  *
  * Formula: BASE_DEFENSE_COST * vpMultiplier * (casualties / totalCasualties)
- * Same formula regardless of win/loss - proportional to casualties taken
- * Maximum possible: BASE_DEFENSE_COST * vpMultiplier (if defender takes all casualties)
+ * Base cost is 25 for friendly territories, 50 for neutral territories
+ * Proportional to casualties taken - the more casualties you take, the more CP you lose
  *
  * @param {number} pointValue - Territory point value (any positive number)
  * @param {number} casualties - Defender casualties
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} defenderWon - Whether the defender won the battle (no longer affects calculation)
- * @param {boolean} isFriendlyTerritory - Whether defending friendly or neutral territory (no longer affects calculation)
+ * @param {boolean} isFriendlyTerritory - Whether defending friendly (true) or neutral (false) territory
  * @returns {number} CP loss (rounded to nearest integer)
  */
 export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory) {
@@ -142,10 +148,13 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
     return 0;
   }
 
-  // Calculate based on casualties - same formula as attacker but with defense base cost
-  // No caps - proportional to casualties taken
+  // Determine base cost based on territory ownership
+  // Defending neutral territory is more costly (50) than defending friendly territory (25)
+  const baseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
+
+  // Calculate based on casualties - proportional to casualties taken
   const vpMultiplier = getVPMultiplier(pointValue);
-  const maxLoss = BASE_DEFENSE_COST * vpMultiplier;
+  const maxLoss = baseCost * vpMultiplier;
 
   // Calculate loss based on casualty ratio (capped at 100%)
   const casualtyRatio = Math.min(1, casualties / totalCasualties);
@@ -297,13 +306,15 @@ export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defende
 
   // Determine attacker max based on territory ownership
   const isNeutralTerritory = territoryOwner === 'NEUTRAL';
-  const baseCost = isNeutralTerritory ? BASE_ATTACK_COST_NEUTRAL : BASE_ATTACK_COST_ENEMY;
-  const attackerMax = baseCost * vpMultiplier;
+  const attackerBaseCost = isNeutralTerritory ? BASE_ATTACK_COST_NEUTRAL : BASE_ATTACK_COST_ENEMY;
+  const attackerMax = attackerBaseCost * vpMultiplier;
 
-  // Defender max is now also based on VP multiplier (proportional, no fixed cap)
+  // Defender max based on whether defending friendly or neutral territory
   let defenderMax = 0;
   if (defender !== 'NEUTRAL') {
-    defenderMax = BASE_DEFENSE_COST * vpMultiplier;
+    const isFriendlyTerritory = territoryOwner === defender;
+    const defenderBaseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
+    defenderMax = defenderBaseCost * vpMultiplier;
   }
 
   return { attackerMax, defenderMax };

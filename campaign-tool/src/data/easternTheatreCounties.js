@@ -32,7 +32,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'PA',
     owner: 'USA',
     pointValue: 10, // Gettysburg area
-    countyFips: ['42001', '42041', '42043', '42055', '42133', '42099', '42097'], // Adams, Cumberland, Dauphin, Franklin, York, Northumberland, Northampton
+    countyFips: ['42001', '42041', '42043', '42055', '42133', '42099', '42095'], // Adams, Cumberland, Dauphin, Franklin, York, Northumberland, Northampton
     adjacentTerritories: ['pa-southeast', 'pa-central', 'md-north', 'wv-eastern-panhandle'],
   },
   'pa-pittsburgh': {
@@ -84,7 +84,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'OH',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['39007', '39029', '39099', '39151', '39155', '39077'], // Ashtabula, Columbiana, Mahoning, Stark, Trumbull, Huron
+    countyFips: ['39007', '39019', '39029', '39099', '39151', '39155', '39077'], // Ashtabula, Carroll, Columbiana, Mahoning, Stark, Trumbull, Huron
     adjacentTerritories: ['oh-cleveland', 'oh-central', 'pa-pittsburgh', 'wv-northern'],
   },
   'oh-columbus': {
@@ -116,7 +116,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'OH',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['39113', '39057', '39135', '39027', '39047', '39071'], // Montgomery, Greene, Preble, Clinton, Fayette, Highland
+    countyFips: ['39113', '39057', '39135', '39027', '39047', '39071', '39023'], // Montgomery, Greene, Preble, Clinton, Fayette, Highland, Clark
     adjacentTerritories: ['oh-cincinnati', 'oh-central', 'oh-columbus', 'in-eastern', 'ky-northern'],
   },
   'oh-southern': {
@@ -144,7 +144,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'IN',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['18001', '18003', '18009', '18017', '18033', '18035', '18039', '18049', '18053', '18067', '18069', '18075', '18085', '18087', '18089', '18091', '18099', '18103', '18113', '18127', '18131', '18141', '18149', '18151', '18169', '18179', '18181', '18183'], // Adams, Allen, Blackford, Cass, DeKalb, Delaware, Elkhart, Fulton, Grant, Howard, Huntington, Jay, Kosciusko, LaGrange, Lake, LaPorte, Marshall, Miami, Noble, Porter, Pulaski, St. Joseph, Steuben, Tippecanoe, Wabash, Wells, White, Whitley
+    countyFips: ['18001', '18003', '18009', '18015', '18017', '18033', '18035', '18039', '18049', '18053', '18067', '18069', '18075', '18085', '18087', '18089', '18091', '18095', '18099', '18103', '18113', '18127', '18131', '18141', '18149', '18151', '18169', '18179', '18181', '18183'], // Adams, Allen, Blackford, Carroll, Cass, DeKalb, Delaware, Elkhart, Fulton, Grant, Howard, Huntington, Jay, Kosciusko, LaGrange, Lake, LaPorte, Madison, Marshall, Miami, Noble, Porter, Pulaski, St. Joseph, Steuben, Tippecanoe, Wabash, Wells, White, Whitley
     adjacentTerritories: ['in-indianapolis', 'in-eastern', 'in-western', 'oh-central', 'il-east', 'mi-southwest'],
   },
   'in-eastern': {
@@ -196,7 +196,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'IL',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['17007', '17015', '17037', '17063', '17085', '17091', '17103', '17141', '17177', '17195', '17201'], // Boone, Carroll, DeKalb, Grundy, Jo Daviess, Kankakee, Lee, Ogle, Stephenson, Whiteside, Winnebago
+    countyFips: ['17007', '17015', '17037', '17063', '17085', '17091', '17099', '17103', '17141', '17177', '17197', '17201'], // Boone, Carroll, DeKalb, Grundy, Jo Daviess, Kankakee, LaSalle, Lee, Ogle, Stephenson, Will, Whiteside, Winnebago
     adjacentTerritories: ['il-chicago', 'il-central', 'il-west'],
   },
   'il-springfield': {
@@ -212,7 +212,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'IL',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['17019', '17039', '17053', '17057', '17073', '17075', '17093', '17105', '17109', '17113', '17123', '17129', '17135', '17137', '17139', '17143', '17147', '17175', '17179', '17183', '17203'], // Champaign, De Witt, Ford, Fulton, Henry, Iroquois, Kendall, Livingston, McDonough, McLean, Marshall, Menard, Morgan, Moultrie, Peoria, Piatt, Pike, Stark, Tazewell, Vermilion, Woodford
+    countyFips: ['17019', '17039', '17053', '17057', '17073', '17075', '17093', '17095', '17105', '17109', '17113', '17123', '17129', '17135', '17137', '17139', '17143', '17147', '17175', '17179', '17183', '17203'], // Champaign, De Witt, Ford, Fulton, Henry, Iroquois, Kendall, Knox, Livingston, McDonough, McLean, Marshall, Menard, Morgan, Moultrie, Peoria, Piatt, Pike, Stark, Tazewell, Vermilion, Woodford
     adjacentTerritories: ['il-chicago', 'il-north', 'il-springfield', 'il-east', 'il-west', 'il-south', 'in-western'],
   },
   'il-east': {
@@ -356,7 +356,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'NY',
     owner: 'USA',
     pointValue: 10, // State capital
-    countyFips: ['36001', '36083', '36091', '36093', '36095'], // Albany, Rensselaer, Saratoga, Schenectady, Schoharie
+    countyFips: ['36001', '36057', '36083', '36091', '36093', '36095'], // Albany, Montgomery, Rensselaer, Saratoga, Schenectady, Schoharie
     adjacentTerritories: ['ny-hudson-valley', 'ny-central', 'ny-adirondacks'],
   },
   'ny-central': {
@@ -440,7 +440,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'VA',
     owner: 'CSA',
     pointValue: 15, // Strategic valley
-    countyFips: ['51015', '51017', '51043', '51047', '51069', '51091', '51113', '51137', '51139', '51157', '51163', '51165', '51171', '51187', '51660', '51790', '51820'], // Augusta, Bath, Clarke, Culpeper, Frederick, Highland, Madison, Orange, Page, Rappahannock, Rockbridge, Rockingham, Shenandoah, Warren, Harrisonburg, Staunton, Waynesboro
+    countyFips: ['51005', '51015', '51017', '51043', '51047', '51069', '51091', '51113', '51137', '51139', '51157', '51163', '51165', '51171', '51187', '51660', '51790', '51820', '51840'], // Alleghany, Augusta, Bath, Clarke, Culpeper, Frederick, Highland, Madison, Orange, Page, Rappahannock, Rockbridge, Rockingham, Shenandoah, Warren, Harrisonburg, Staunton, Waynesboro, Winchester
     adjacentTerritories: ['va-northern', 'va-piedmont', 'va-southwest', 'wv-eastern-panhandle', 'wv-southern'],
   },
   'va-southside': {
@@ -448,7 +448,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'VA',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['51025', '51053', '51081', '51083', '51089', '51111', '51117', '51143', '51149', '51570', '51590', '51670', '51690', '51730'], // Brunswick, Dinwiddie, Greensville, Halifax, Henry, Lunenburg, Mecklenburg, Pittsylvania, Prince George, Colonial Heights, Danville, Hopewell, Martinsville, Petersburg
+    countyFips: ['51025', '51031', '51053', '51081', '51083', '51089', '51111', '51117', '51143', '51149', '51570', '51590', '51670', '51690', '51730'], // Brunswick, Campbell, Dinwiddie, Greensville, Halifax, Henry, Lunenburg, Mecklenburg, Pittsylvania, Prince George, Colonial Heights, Danville, Hopewell, Martinsville, Petersburg
     adjacentTerritories: ['va-richmond', 'va-piedmont', 'va-southeast', 'nc-piedmont'],
   },
   'va-southeast': {
@@ -456,7 +456,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'VA',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['51033', '51097', '51099', '51101', '51103', '51119', '51133', '51159', '51175', '51179', '51181', '51183', '51193'], // Caroline, King and Queen, King George, King William, Lancaster, Middlesex, Northumberland, Richmond County, Southampton, Spotsylvania, Stafford, Surry, Sussex, Westmoreland
+    countyFips: ['51033', '51057', '51097', '51099', '51101', '51103', '51119', '51133', '51159', '51175', '51177', '51179', '51181', '51183', '51193', '51550', '51595', '51620', '51630'], // Caroline, Essex, King and Queen, King George, King William, Lancaster, Middlesex, Northumberland, Richmond County, Southampton, Spotsylvania, Stafford, Surry, Sussex, Westmoreland, Chesapeake, Emporia, Franklin, Fredericksburg
     adjacentTerritories: ['va-richmond', 'va-tidewater', 'va-southside', 'nc-northeast'],
   },
   'va-southwest': {
@@ -492,7 +492,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'NC',
     owner: 'CSA',
     pointValue: 10,
-    countyFips: ['37001', '37033', '37057', '37059', '37067', '37081', '37097', '37105', '37125', '37145', '37151', '37153', '37157', '37163', '37167', '37169', '37171', '37181', '37193', '37197'], // Alamance, Caswell, Davidson, Davie, Forsyth, Guilford, Iredell, Lee, Moore, Person, Randolph, Richmond, Rockingham, Sampson, Stanly, Stokes, Surry, Vance, Wilkes, Yadkin
+    countyFips: ['37001', '37033', '37035', '37057', '37059', '37067', '37081', '37097', '37105', '37123', '37125', '37145', '37151', '37153', '37157', '37163', '37167', '37169', '37171', '37181', '37193', '37197'], // Alamance, Caswell, Catawba, Davidson, Davie, Forsyth, Guilford, Iredell, Lee, Montgomery, Moore, Person, Randolph, Richmond, Rockingham, Sampson, Stanly, Stokes, Surry, Vance, Wilkes, Yadkin
     adjacentTerritories: ['nc-raleigh', 'nc-charlotte', 'nc-mountains', 'nc-coastal', 'va-southside', 'sc-upstate'],
   },
   'nc-coastal': {
@@ -500,7 +500,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'NC',
     owner: 'CSA',
     pointValue: 10, // Wilmington port
-    countyFips: ['37013', '37017', '37019', '37031', '37047', '37049', '37061', '37085', '37103', '37107', '37117', '37129', '37133', '37137', '37147', '37177', '37187', '37191'], // Beaufort, Bladen, Brunswick, Carteret, Columbus, Craven, Duplin, Harnett, Jones, Lenoir, Martin, New Hanover, Onslow, Pamlico, Pitt, Tyrrell, Washington, Wayne
+    countyFips: ['37013', '37017', '37019', '37031', '37047', '37049', '37051', '37061', '37079', '37085', '37093', '37103', '37107', '37117', '37129', '37133', '37137', '37141', '37147', '37155', '37165', '37177', '37187', '37191', '37195'], // Beaufort, Bladen, Brunswick, Carteret, Columbus, Craven, Cumberland, Duplin, Greene, Harnett, Hoke, Jones, Lenoir, Martin, New Hanover, Onslow, Pamlico, Pender, Pitt, Robeson, Scotland, Tyrrell, Washington, Wayne, Wilson
     adjacentTerritories: ['nc-raleigh', 'nc-piedmont', 'nc-northeast', 'sc-lowcountry'],
   },
   'nc-northeast': {
@@ -508,7 +508,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'NC',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['37015', '37029', '37041', '37053', '37055', '37065', '37073', '37083', '37091', '37095', '37127', '37131', '37139', '37143'], // Bertie, Camden, Chowan, Currituck, Dare, Edgecombe, Gates, Halifax, Hertford, Hyde, Nash, Northampton, Pasquotank, Perquimans
+    countyFips: ['37015', '37029', '37041', '37053', '37055', '37065', '37073', '37083', '37091', '37095', '37127', '37131', '37139', '37143', '37185'], // Bertie, Camden, Chowan, Currituck, Dare, Edgecombe, Gates, Halifax, Hertford, Hyde, Nash, Northampton, Pasquotank, Perquimans, Warren
     adjacentTerritories: ['nc-raleigh', 'nc-coastal', 'va-southeast', 'va-tidewater'],
   },
   'nc-mountains': {
@@ -612,7 +612,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'GA',
     owner: 'CSA',
     pointValue: 10, // Macon
-    countyFips: ['13021', '13023', '13035', '13079', '13093', '13107', '13141', '13153', '13163', '13169', '13171', '13175', '13181', '13207', '13211', '13235', '13237', '13239', '13249', '13253', '13263', '13265', '13269', '13271', '13283', '13287', '13289', '13293', '13303', '13309', '13315', '13317', '13319', '13321'], // Bibb, Bleckley, Butts, Crawford, Dodge, Emanuel, Hancock, Houston, Jefferson, Jones, Lamar, Laurens, Lincoln, Monroe, Montgomery, Pulaski, Putnam, Quitman, Schley, Seminole, Sumter, Talbot, Taylor, Telfair, Treutlen, Turner, Twiggs, Upson, Washington, Wheeler, Wilcox, Wilkes, Wilkinson, Worth
+    countyFips: ['13003', '13009', '13021', '13023', '13035', '13043', '13079', '13093', '13107', '13109', '13141', '13153', '13163', '13165', '13167', '13169', '13171', '13175', '13181', '13205', '13207', '13211', '13225', '13235', '13237', '13239', '13243', '13249', '13251', '13253', '13263', '13265', '13269', '13271', '13273', '13283', '13287', '13289', '13293', '13303', '13307', '13309', '13315', '13317', '13319', '13321'], // Atkinson, Baldwin, Bibb, Bleckley, Butts, Candler, Crawford, Dodge, Emanuel, Evans, Hancock, Houston, Jefferson, Jenkins, Johnson, Jones, Lamar, Laurens, Lincoln, Mitchell, Monroe, Montgomery, Peach, Pulaski, Putnam, Quitman, Randolph, Schley, Screven, Seminole, Sumter, Talbot, Taylor, Telfair, Terrell, Treutlen, Turner, Twiggs, Upson, Washington, Webster, Wheeler, Wilcox, Wilkes, Wilkinson, Worth
     adjacentTerritories: ['ga-atlanta', 'ga-northeast', 'ga-coastal', 'ga-south', 'ga-west', 'ga-savannah'],
   },
   'ga-augusta': {
@@ -672,7 +672,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'FL',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['12009', '12015', '12017', '12035', '12049', '12053', '12055', '12057', '12061', '12069', '12071', '12079', '12081', '12085', '12087', '12093', '12095', '12097', '12101', '12103', '12105', '12115', '12117', '12119', '12123', '12129'], // Brevard, Charlotte, Citrus, Flagler, Hardee, Hernando, Highlands, Hillsborough, Indian River, Lake, Lee, Madison, Manatee, Martin, Monroe, Okeechobee, Orange, Osceola, Pasco, Pinellas, Polk, Sarasota, Seminole, Sumter, Volusia, Wakulla
+    countyFips: ['12009', '12011', '12015', '12017', '12021', '12027', '12035', '12043', '12049', '12051', '12053', '12055', '12057', '12061', '12069', '12071', '12079', '12081', '12085', '12086', '12087', '12093', '12095', '12097', '12099', '12101', '12103', '12105', '12111', '12115', '12117', '12119', '12123', '12129'], // Brevard, Broward, Charlotte, Citrus, Collier, DeSoto, Flagler, Glades, Hardee, Hendry, Hernando, Highlands, Hillsborough, Indian River, Lake, Lee, Madison, Manatee, Martin, Miami-Dade, Monroe, Okeechobee, Orange, Osceola, Palm Beach, Pasco, Pinellas, Polk, St. Lucie, Sarasota, Seminole, Sumter, Volusia, Wakulla
     adjacentTerritories: ['fl-north', 'fl-jacksonville'],
   },
 
@@ -732,7 +732,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'TN',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['47003', '47015', '47027', '47031', '47035', '47041', '47043', '47049', '47051', '47055', '47061', '47081', '47087', '47099', '47101', '47103', '47111', '47117', '47119', '47127', '47133', '47137', '47141', '47159', '47169', '47175', '47177', '47181', '47185'], // Bedford, Cannon, Clay, Coffee, Cumberland, DeKalb, Dickson, Fentress, Franklin, Giles, Grundy, Houston, Jackson, Lawrence, Lewis, Lincoln, Macon, Marshall, Maury, Moore, Overton, Pickett, Putnam, Smith, Trousdale, Van Buren, Warren, Wayne, White
+    countyFips: ['47003', '47015', '47027', '47031', '47035', '47041', '47043', '47049', '47051', '47055', '47061', '47081', '47087', '47099', '47101', '47103', '47111', '47117', '47119', '47127', '47133', '47135', '47137', '47141', '47159', '47169', '47175', '47177', '47181', '47185'], // Bedford, Cannon, Clay, Coffee, Cumberland, DeKalb, Dickson, Fentress, Franklin, Giles, Grundy, Houston, Jackson, Lawrence, Lewis, Lincoln, Macon, Marshall, Maury, Moore, Overton, Perry, Pickett, Putnam, Smith, Trousdale, Van Buren, Warren, Wayne, White
     adjacentTerritories: ['tn-nashville', 'tn-southeast', 'tn-chattanooga', 'tn-west', 'ky-central', 'al-north'],
   },
   'tn-west': {
@@ -784,7 +784,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'AL',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['01033', '01043', '01049', '01055', '01059', '01071', '01077', '01079', '01083', '01089', '01093', '01095', '01103', '01127', '01133'], // Colbert, Cullman, DeKalb, Etowah, Franklin, Jackson, Lauderdale, Lawrence, Limestone, Madison, Marion, Marshall, Morgan, Walker, Winston
+    countyFips: ['01033', '01043', '01049', '01055', '01059', '01071', '01075', '01077', '01079', '01083', '01089', '01093', '01095', '01103', '01127', '01133'], // Colbert, Cullman, DeKalb, Etowah, Franklin, Jackson, Lamar, Lauderdale, Lawrence, Limestone, Madison, Marion, Marshall, Morgan, Walker, Winston
     adjacentTerritories: ['al-birmingham', 'al-central', 'tn-middle', 'tn-chattanooga', 'ga-north', 'ms-north'],
   },
   'al-central': {
@@ -844,7 +844,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'MS',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['28007', '28011', '28015', '28019', '28027', '28043', '28051', '28053', '28083', '28087', '28097', '28103', '28105', '28133', '28135', '28151', '28163'], // Attala, Bolivar, Carroll, Choctaw, Coahoma, Grenada, Holmes, Humphreys, Leflore, Lowndes, Montgomery, Noxubee, Oktibbeha, Sunflower, Tallahatchie, Washington, Yazoo
+    countyFips: ['28007', '28011', '28015', '28019', '28027', '28043', '28051', '28053', '28083', '28087', '28097', '28103', '28105', '28123', '28133', '28135', '28151', '28155', '28163'], // Attala, Bolivar, Carroll, Choctaw, Coahoma, Grenada, Holmes, Humphreys, Leflore, Lowndes, Montgomery, Noxubee, Oktibbeha, Scott, Sunflower, Tallahatchie, Washington, Webster, Yazoo
     adjacentTerritories: ['ms-jackson', 'ms-vicksburg', 'ms-north', 'ms-east', 'ms-southwest', 'al-central'],
   },
   'ms-east': {
@@ -896,7 +896,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'LA',
     owner: 'CSA',
     pointValue: 5,
-    countyFips: ['22013', '22017', '22027', '22031', '22035', '22041', '22049', '22061', '22067', '22069', '22073', '22081', '22083', '22107', '22111', '22119', '22123', '22127'], // Bienville, Caddo, Claiborne, De Soto, East Carroll, Franklin, Jackson, Lincoln, Morehouse, Natchitoches, Ouachita, Red River, Richland, Tensas, Union, Webster, West Carroll, Winn
+    countyFips: ['22015', '22013', '22017', '22021', '22027', '22031', '22035', '22041', '22049', '22061', '22067', '22069', '22073', '22081', '22083', '22107', '22111', '22119', '22123', '22127'], // Bossier, Bienville, Caddo, Caldwell, Claiborne, De Soto, East Carroll, Franklin, Jackson, Lincoln, Morehouse, Natchitoches, Ouachita, Red River, Richland, Tensas, Union, Webster, West Carroll, Winn
     adjacentTerritories: ['la-central', 'la-northeast', 'ar-south', 'ms-southwest'],
   },
   'la-northeast': {
@@ -992,7 +992,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'MO',
     owner: 'NEUTRAL',
     pointValue: 15,
-    countyFips: ['29510', '29189', '29099', '29183', '29219'], // St. Louis City, St. Louis County, Jefferson, St. Charles, Warren
+    countyFips: ['29510', '29189', '29071', '29099', '29183', '29219'], // St. Louis City, St. Louis County, Franklin, Jefferson, St. Charles, Warren
     adjacentTerritories: ['mo-northeast', 'mo-central', 'mo-southeast', 'il-south'],
   },
   'mo-northeast': {
@@ -1016,7 +1016,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'MO',
     owner: 'NEUTRAL',
     pointValue: 5, // Jefferson City
-    countyFips: ['29015', '29019', '29027', '29029', '29041', '29051', '29053', '29073', '29089', '29105', '29125', '29131', '29135', '29141', '29151', '29159', '29195'], // Benton, Boone, Callaway, Camden, Chariton, Cole, Cooper, Gasconade, Howard, Laclede, Maries, Miller, Moniteau, Morgan, Osage, Pettis, Saline
+    countyFips: ['29015', '29019', '29027', '29029', '29041', '29051', '29053', '29073', '29089', '29105', '29125', '29131', '29135', '29141', '29151', '29159', '29169', '29195'], // Benton, Boone, Callaway, Camden, Chariton, Cole, Cooper, Gasconade, Howard, Laclede, Maries, Miller, Moniteau, Morgan, Osage, Pettis, Pulaski, Saline
     adjacentTerritories: ['mo-st-louis', 'mo-northeast', 'mo-kansas-city', 'mo-southwest', 'mo-southeast'],
   },
   'mo-northwest': {
@@ -1024,7 +1024,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'MO',
     owner: 'NEUTRAL',
     pointValue: 5,
-    countyFips: ['29003', '29005', '29011', '29021', '29023', '29033', '29039', '29043', '29049', '29063', '29075', '29079', '29081', '29083', '29087', '29101', '29117', '29147', '29177', '29227'], // Andrew, Atchison, Barton, Buchanan, Carroll, Cedar (dup), Clinton, Dallas, DeKalb, Gentry, Grundy, Harrison, Henry, Hickory, Holt, Johnson, Livingston, Mercer, Nodaway, Ray, Worth
+    countyFips: ['29003', '29005', '29011', '29021', '29023', '29033', '29039', '29043', '29049', '29063', '29075', '29079', '29081', '29083', '29087', '29101', '29117', '29129', '29147', '29177', '29227'], // Andrew, Atchison, Barton, Buchanan, Carroll, Cedar (dup), Clinton, Dallas, DeKalb, Gentry, Grundy, Harrison, Henry, Hickory, Holt, Johnson, Livingston, Mercer, Nodaway, Ray, Worth
     adjacentTerritories: ['mo-kansas-city', 'mo-central', 'mo-southwest'],
   },
   'mo-southwest': {
@@ -1092,7 +1092,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'KY',
     owner: 'NEUTRAL',
     pointValue: 5, // Paducah
-    countyFips: ['21001', '21007', '21009', '21027', '21031', '21033', '21035', '21039', '21045', '21047', '21055', '21059', '21061', '21075', '21083', '21091', '21099', '21101', '21105', '21107', '21139', '21143', '21145', '21149', '21155', '21157', '21171', '21177', '21183', '21213', '21219', '21221', '21225', '21227', '21231', '21233'], // Adair, Ballard, Barren, Breckinridge, Butler, Caldwell, Calloway, Carlisle, Casey, Christian, Crittenden, Daviess, Edmonson, Fulton, Graves, Hancock, Hart, Henderson, Hickman, Hopkins, Livingston, Lyon, McCracken, McLean, Marshall, Muhlenberg, Monroe, Ohio, Pulaski, Simpson, Todd, Trigg, Union, Warren, Wayne, Webster
+    countyFips: ['21001', '21007', '21009', '21027', '21031', '21033', '21035', '21039', '21045', '21047', '21055', '21059', '21061', '21075', '21083', '21091', '21099', '21101', '21105', '21107', '21139', '21143', '21145', '21149', '21155', '21157', '21171', '21177', '21183', '21199', '21213', '21219', '21221', '21225', '21227', '21231', '21233'], // Adair, Ballard, Barren, Breckinridge, Butler, Caldwell, Calloway, Carlisle, Casey, Christian, Crittenden, Daviess, Edmonson, Fulton, Graves, Hancock, Hart, Henderson, Hickman, Hopkins, Livingston, Lyon, McCracken, McLean, Marshall, Muhlenberg, Monroe, Ohio, Pulaski, Simpson, Todd, Trigg, Union, Warren, Wayne, Webster
     adjacentTerritories: ['ky-central', 'tn-nashville', 'tn-northwest', 'tn-west', 'mo-southeast', 'il-south', 'in-southern'],
   },
 
@@ -1164,7 +1164,7 @@ export const EASTERN_THEATRE_REGIONS = {
     stateAbbr: 'MI',
     owner: 'USA',
     pointValue: 5,
-    countyFips: ['26049', '26145', '26017', '26111', '26057', '26073', '26117', '26067', '26015', '26035', '26051', '26129', '26069', '26001', '26007', '26119', '26063', '26151', '26157'], // Genesee, Saginaw, Bay, Midland, Gratiot, Isabella, Montcalm, Ionia, Barry, Clare, Gladwin, Ogemaw, Iosco, Alcona, Alpena, Montmorency, Huron, Sanilac, Tuscola
+    countyFips: ['26011', '26043', '26049', '26107', '26145', '26017', '26111', '26057', '26073', '26117', '26067', '26015', '26035', '26051', '26129', '26069', '26001', '26007', '26119', '26063', '26151', '26157'], // Arenac, Dickinson, Genesee, Mecosta, Saginaw, Bay, Midland, Gratiot, Isabella, Montcalm, Ionia, Barry, Clare, Gladwin, Ogemaw, Iosco, Alcona, Alpena, Montmorency, Huron, Sanilac, Tuscola
     adjacentTerritories: ['mi-detroit', 'mi-lansing', 'mi-southeast', 'mi-southwest', 'mi-northwest', 'mi-northeast'],
   },
   'mi-southwest': {

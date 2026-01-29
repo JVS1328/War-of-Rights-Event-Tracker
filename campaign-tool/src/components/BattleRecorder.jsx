@@ -569,11 +569,23 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                             -{estimatedCPCost.attacker} CP
                           </span>
                         </div>
-                        <div className="text-xs text-slate-400">
-                          Estimated cost based on casualties
+                        <div className="text-xs text-slate-400 mb-1">
+                          {(() => {
+                            const territory = territories.find(t => t.id === selectedTerritory);
+                            const isNeutral = territory?.owner === 'NEUTRAL';
+                            const baseCP = isNeutral ? 50 : 75;
+                            const vpMultiplier = (territory?.pointValue || territory?.victoryPoints || 10) / 5;
+                            return `Base: ${baseCP} × ${vpMultiplier}× VP mult × (your casualties ÷ total casualties)`;
+                          })()}
                         </div>
-                        <div className="text-xs text-amber-400 mt-1">
-                          Maximum possible loss: {maxCPCost.attacker} CP
+                        <div className="text-xs text-amber-400">
+                          Max: {maxCPCost.attacker} CP • Attacking {(() => {
+                            const territory = territories.find(t => t.id === selectedTerritory);
+                            return territory?.owner === 'NEUTRAL' ? 'neutral' : 'enemy';
+                          })()} territory
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1 italic">
+                          Attackers pay more CP - the aggressor's burden
                         </div>
                       </div>
                       
@@ -581,9 +593,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                         const territory = territories.find(t => t.id === selectedTerritory);
                         const defender = attacker === 'USA' ? 'CSA' : 'USA';
                         
-                        const defenderWon = winner !== attacker;
                         const isNeutral = territory.owner === 'NEUTRAL';
                         const isFriendly = territory.owner === defender;
+                        const baseCP = isFriendly ? 25 : 50;
+                        const vpMultiplier = (territory?.pointValue || territory?.victoryPoints || 10) / 5;
                         
                         return (
                           <div className="bg-slate-800 rounded p-3">
@@ -597,11 +610,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                                 -{estimatedCPCost.defender} CP
                               </span>
                             </div>
-                            <div className="text-xs text-slate-400">
-                              {defenderWon
-                                ? 'Base: 25 × VP multiplier × (casualties / total casualties)'
-                                : `Max loss: ${isFriendly ? '25' : '50'} CP (${isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory)`
-                              }
+                            <div className="text-xs text-slate-400 mb-1">
+                              Base: {baseCP} × {vpMultiplier}× VP mult × (your casualties ÷ total casualties)
+                            </div>
+                            <div className="text-xs text-amber-400">
+                              Max: {maxCPCost.defender} CP • Defending {isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1 italic">
+                              {isFriendly
+                                ? 'Lower cost defending your own territory'
+                                : 'Higher cost defending neutral ground - no home advantage'}
                             </div>
                           </div>
                         );
