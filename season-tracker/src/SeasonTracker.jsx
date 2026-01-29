@@ -4751,6 +4751,17 @@ const SeasonTracker = () => {
                     </h2>
                     <button
                       onClick={() => {
+                        // Save unit counts to the week and global state when closing
+                        if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
+                          updateWeek(selectedWeek.id, {
+                            ...selectedWeek,
+                            unitPlayerCounts: { ...balancerUnitCounts }
+                          });
+                          setUnitPlayerCounts(prev => ({
+                            ...prev,
+                            ...balancerUnitCounts
+                          }));
+                        }
                         setShowBalancerModal(false);
                         setBalancerResults(null);
                       }}
