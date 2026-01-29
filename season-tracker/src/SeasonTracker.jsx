@@ -5389,7 +5389,7 @@ const SeasonTracker = () => {
                           )}
 
                           {/* Maps by Skirmish Area */}
-                          <div className="space-y-3">
+                          <div className="space-y-2">
                             {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
                               const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
                               const playedMaps = areaMaps.filter(m => byMap[m]);
@@ -5397,28 +5397,43 @@ const SeasonTracker = () => {
 
                               return (
                                 <div key={areaKey} className="bg-slate-600 rounded-lg overflow-hidden">
-                                  <div className="bg-slate-500 px-3 py-2 font-semibold text-amber-300">{areaName}</div>
-                                  <div className="p-2 space-y-2">
-                                    {playedMaps
-                                      .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
-                                      .map(mapName => {
-                                        const stats = byMap[mapName];
-                                        const avgCas = stats.plays > 0 ? (stats.totalCasualties / stats.plays).toFixed(0) : 0;
-                                        return (
-                                          <div key={mapName} className="bg-slate-700 rounded p-2">
-                                            <div className="flex justify-between items-center mb-1">
-                                              <span className="text-sm font-medium text-white">{mapName}</span>
-                                              <span className="text-xs text-slate-400">{stats.plays} rounds</span>
+                                  <button
+                                    onClick={() => toggleSection(`mapStats_${areaKey}`)}
+                                    className="w-full flex items-center justify-between bg-slate-500 px-3 py-2 hover:bg-slate-450 transition"
+                                  >
+                                    <span className="font-semibold text-amber-300">{areaName} ({playedMaps.length})</span>
+                                    {expandedSections[`mapStats_${areaKey}`] ? (
+                                      <ChevronDown className="w-4 h-4 text-slate-300" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                                    )}
+                                  </button>
+                                  {expandedSections[`mapStats_${areaKey}`] && (
+                                    <div className="p-2 space-y-2">
+                                      {playedMaps
+                                        .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
+                                        .map(mapName => {
+                                          const stats = byMap[mapName];
+                                          const avgCas = stats.plays > 0 ? (stats.totalCasualties / stats.plays).toFixed(0) : 0;
+                                          return (
+                                            <div key={mapName} className="bg-slate-700 rounded p-2">
+                                              <div className="flex justify-between items-center mb-1">
+                                                <span className="text-sm font-medium text-white">{mapName}</span>
+                                                <span className="text-xs text-slate-400">{stats.plays} rounds</span>
+                                              </div>
+                                              <div className="text-xs space-y-0.5">
+                                                <div>
+                                                  <span className="text-blue-300">USA: {stats.usaWins} ({pct(stats.usaWins, stats.plays)}%)</span>
+                                                  <span className="text-slate-500 mx-2">|</span>
+                                                  <span className="text-red-300">CSA: {stats.csaWins} ({pct(stats.csaWins, stats.plays)}%)</span>
+                                                </div>
+                                                <div className="text-slate-300">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
+                                              </div>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                                              <div className="text-blue-300">USA: {stats.usaWins} ({pct(stats.usaWins, stats.plays)}%)</div>
-                                              <div className="text-red-300">CSA: {stats.csaWins} ({pct(stats.csaWins, stats.plays)}%)</div>
-                                              <div className="text-slate-300">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                  </div>
+                                          );
+                                        })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
