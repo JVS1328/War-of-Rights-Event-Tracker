@@ -77,7 +77,7 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 10,
     countyFips: ['39035', '39055', '39085', '39093', '39103', '39133', '39153'], // Cuyahoga, Geauga, Lake, Lorain, Medina, Portage, Summit
-    adjacentTerritories: ['oh-northeast', 'oh-central', 'pa-western'],
+    adjacentTerritories: ['oh-northeast', 'oh-central', 'pa-western', 'mi-detroit'],
   },
   'oh-northeast': {
     name: 'Northeast Ohio',
@@ -101,7 +101,7 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 5,
     countyFips: ['39003', '39005', '39009', '39011', '39013', '39021', '39031', '39033', '39037', '39039', '39043', '39051', '39053', '39059', '39063', '39065', '39067', '39069', '39073', '39075', '39079', '39081', '39083', '39087', '39091', '39095', '39101', '39103', '39105', '39107', '39109', '39111', '39115', '39123', '39125', '39131', '39137', '39139', '39143', '39147', '39149', '39157', '39161', '39163', '39167', '39169', '39171', '39173', '39175'], // Allen, Ashland, Athens, Auglaize, Belmont, Champaign, Coshocton, Crawford, Darke, Defiance, Erie, Fulton, Gallia, Guernsey, Hancock, Hardin, Harrison, Henry, Hocking, Holmes, Jackson, Jefferson, Knox, Lawrence, Logan, Lucas, Marion, Meigs, Mercer, Miami, Monroe, Morgan, Muskingum, Noble, Ottawa, Paulding, Putnam, Richland, Ross, Sandusky, Scioto, Seneca, Shelby, Tuscarawas, Van Wert, Vinton, Washington, Wayne, Williams, Wood, Wyandot
-    adjacentTerritories: ['oh-cleveland', 'oh-northeast', 'oh-columbus', 'oh-southern', 'oh-southwest', 'in-eastern', 'wv-northern'],
+    adjacentTerritories: ['oh-cleveland', 'oh-northeast', 'oh-columbus', 'oh-southern', 'oh-southwest', 'in-eastern', 'wv-northern', 'mi-southeast'],
   },
   'oh-cincinnati': {
     name: 'Cincinnati',
@@ -145,7 +145,7 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 5,
     countyFips: ['18001', '18003', '18009', '18017', '18033', '18035', '18039', '18049', '18053', '18067', '18069', '18075', '18085', '18087', '18089', '18091', '18099', '18103', '18113', '18127', '18131', '18141', '18149', '18151', '18169', '18179', '18181', '18183'], // Adams, Allen, Blackford, Cass, DeKalb, Delaware, Elkhart, Fulton, Grant, Howard, Huntington, Jay, Kosciusko, LaGrange, Lake, LaPorte, Marshall, Miami, Noble, Porter, Pulaski, St. Joseph, Steuben, Tippecanoe, Wabash, Wells, White, Whitley
-    adjacentTerritories: ['in-indianapolis', 'in-eastern', 'in-western', 'oh-central', 'il-east'],
+    adjacentTerritories: ['in-indianapolis', 'in-eastern', 'in-western', 'oh-central', 'il-east', 'mi-southwest'],
   },
   'in-eastern': {
     name: 'Eastern Indiana',
@@ -189,7 +189,7 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 15,
     countyFips: ['17031', '17043', '17089', '17097', '17111'], // Cook, DuPage, Kane, Lake, McHenry
-    adjacentTerritories: ['il-north', 'il-central', 'in-northern'],
+    adjacentTerritories: ['il-north', 'il-central', 'in-northern', 'mi-southwest'],
   },
   'il-north': {
     name: 'Northern Illinois',
@@ -341,7 +341,7 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 5,
     countyFips: ['36027', '36071', '36079', '36087', '36111', '36119'], // Dutchess, Orange, Putnam, Rockland, Ulster, Westchester
-    adjacentTerritories: ['ny-nyc', 'ny-southern-tier', 'nj-north', 'pa-northeast'],
+    adjacentTerritories: ['ny-nyc', 'ny-southern-tier', 'ny-albany', 'ny-north-country', 'nj-north', 'pa-northeast'],
   },
   'ny-southern-tier': {
     name: 'Southern Tier NY',
@@ -349,7 +349,47 @@ export const EASTERN_THEATRE_REGIONS = {
     owner: 'USA',
     pointValue: 5,
     countyFips: ['36007', '36015', '36017', '36023', '36025', '36077', '36097', '36101', '36107', '36109', '36123'], // Broome, Chemung, Chenango, Cortland, Delaware, Otsego, Schuyler, Steuben, Tioga, Tompkins, Yates
-    adjacentTerritories: ['ny-hudson-valley', 'pa-central', 'pa-northeast'],
+    adjacentTerritories: ['ny-hudson-valley', 'ny-central', 'ny-western', 'pa-central', 'pa-northeast'],
+  },
+  'ny-albany': {
+    name: 'Albany',
+    stateAbbr: 'NY',
+    owner: 'USA',
+    pointValue: 10, // State capital
+    countyFips: ['36001', '36083', '36091', '36093', '36095'], // Albany, Rensselaer, Saratoga, Schenectady, Schoharie
+    adjacentTerritories: ['ny-hudson-valley', 'ny-central', 'ny-adirondacks'],
+  },
+  'ny-central': {
+    name: 'Central New York',
+    stateAbbr: 'NY',
+    owner: 'USA',
+    pointValue: 10, // Syracuse
+    countyFips: ['36011', '36043', '36053', '36065', '36067', '36075', '36099'], // Cayuga, Herkimer, Madison, Oneida, Onondaga, Oswego, Seneca
+    adjacentTerritories: ['ny-albany', 'ny-southern-tier', 'ny-western', 'ny-adirondacks', 'ny-north-country'],
+  },
+  'ny-western': {
+    name: 'Western New York',
+    stateAbbr: 'NY',
+    owner: 'USA',
+    pointValue: 10, // Buffalo/Rochester
+    countyFips: ['36003', '36009', '36013', '36029', '36037', '36051', '36055', '36063', '36069', '36073', '36117', '36121'], // Allegany, Cattaraugus, Chautauqua, Erie, Genesee, Livingston, Monroe, Niagara, Ontario, Orleans, Wayne, Wyoming
+    adjacentTerritories: ['ny-central', 'ny-southern-tier', 'pa-western'],
+  },
+  'ny-adirondacks': {
+    name: 'Adirondacks',
+    stateAbbr: 'NY',
+    owner: 'USA',
+    pointValue: 5,
+    countyFips: ['36031', '36033', '36035', '36041', '36113', '36115'], // Essex, Franklin, Fulton, Hamilton, Warren, Washington
+    adjacentTerritories: ['ny-albany', 'ny-central', 'ny-north-country'],
+  },
+  'ny-north-country': {
+    name: 'North Country NY',
+    stateAbbr: 'NY',
+    owner: 'USA',
+    pointValue: 5,
+    countyFips: ['36019', '36021', '36039', '36045', '36049', '36089', '36105'], // Clinton, Columbia, Greene, Jefferson, Lewis, St. Lawrence, Sullivan
+    adjacentTerritories: ['ny-adirondacks', 'ny-central', 'ny-hudson-valley'],
   },
 
   // ============================================================================
@@ -1090,6 +1130,82 @@ export const EASTERN_THEATRE_REGIONS = {
     pointValue: 5,
     countyFips: ['54005', '54007', '54011', '54015', '54019', '54025', '54035', '54039', '54043', '54045', '54047', '54055', '54059', '54063', '54067', '54075', '54079', '54081', '54087', '54089', '54099', '54101', '54105', '54109'], // Boone, Braxton, Cabell, Clay, Fayette, Greenbrier, Jackson, Kanawha, Lincoln, Logan, McDowell, Mercer, Mingo, Monroe, Nicholas, Pocahontas, Putnam, Raleigh, Roane, Summers, Wayne, Webster, Wirt, Wyoming
     adjacentTerritories: ['wv-northern', 'wv-eastern-panhandle', 'va-shenandoah', 'va-southwest', 'ky-eastern', 'oh-southern'],
+  },
+
+  // ============================================================================
+  // MICHIGAN (MI) - Union State
+  // ============================================================================
+  'mi-detroit': {
+    name: 'Detroit',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 15,
+    countyFips: ['26163', '26099', '26125', '26087', '26147'], // Wayne, Macomb, Oakland, Lapeer, St. Clair
+    adjacentTerritories: ['mi-southeast', 'mi-central', 'oh-cleveland'],
+  },
+  'mi-southeast': {
+    name: 'Southeast Michigan',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 10, // Ann Arbor
+    countyFips: ['26161', '26093', '26075', '26091', '26115', '26059'], // Washtenaw, Livingston, Jackson, Lenawee, Monroe, Hillsdale
+    adjacentTerritories: ['mi-detroit', 'mi-central', 'mi-southwest', 'oh-central'],
+  },
+  'mi-lansing': {
+    name: 'Lansing',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 10, // State capital
+    countyFips: ['26065', '26045', '26037', '26155'], // Ingham, Eaton, Clinton, Shiawassee
+    adjacentTerritories: ['mi-detroit', 'mi-southeast', 'mi-central', 'mi-southwest'],
+  },
+  'mi-central': {
+    name: 'Central Michigan',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 5,
+    countyFips: ['26049', '26145', '26017', '26111', '26057', '26073', '26117', '26067', '26015', '26035', '26051', '26129', '26069', '26001', '26007', '26119', '26063', '26151', '26157'], // Genesee, Saginaw, Bay, Midland, Gratiot, Isabella, Montcalm, Ionia, Barry, Clare, Gladwin, Ogemaw, Iosco, Alcona, Alpena, Montmorency, Huron, Sanilac, Tuscola
+    adjacentTerritories: ['mi-detroit', 'mi-lansing', 'mi-southeast', 'mi-southwest', 'mi-northwest', 'mi-northeast'],
+  },
+  'mi-southwest': {
+    name: 'Southwest Michigan',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 10, // Kalamazoo, Battle Creek
+    countyFips: ['26077', '26025', '26023', '26149', '26027', '26159', '26021', '26005'], // Kalamazoo, Calhoun, Branch, St. Joseph, Cass, Van Buren, Berrien, Allegan
+    adjacentTerritories: ['mi-lansing', 'mi-southeast', 'mi-central', 'mi-grand-rapids', 'in-northern'],
+  },
+  'mi-grand-rapids': {
+    name: 'Grand Rapids',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 10,
+    countyFips: ['26081', '26139', '26121', '26123', '26127', '26085', '26105', '26101'], // Kent, Ottawa, Muskegon, Newaygo, Oceana, Lake, Mason, Manistee
+    adjacentTerritories: ['mi-southwest', 'mi-central', 'mi-northwest'],
+  },
+  'mi-northwest': {
+    name: 'Northwest Lower Michigan',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 5, // Traverse City
+    countyFips: ['26055', '26089', '26019', '26079', '26113', '26165', '26133', '26039', '26137', '26029', '26009', '26047', '26031'], // Grand Traverse, Leelanau, Benzie, Kalkaska, Missaukee, Wexford, Osceola, Crawford, Otsego, Charlevoix, Antrim, Emmet, Cheboygan
+    adjacentTerritories: ['mi-grand-rapids', 'mi-central', 'mi-northeast'],
+  },
+  'mi-northeast': {
+    name: 'Northeast Lower Michigan',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 5,
+    countyFips: ['26141', '26135', '26143'], // Presque Isle, Oscoda, Roscommon
+    adjacentTerritories: ['mi-central', 'mi-northwest', 'mi-upper-peninsula'],
+  },
+  'mi-upper-peninsula': {
+    name: 'Upper Peninsula',
+    stateAbbr: 'MI',
+    owner: 'USA',
+    pointValue: 5,
+    countyFips: ['26097', '26033', '26095', '26153', '26003', '26041', '26109', '26103', '26013', '26071', '26053', '26131', '26061', '26083'], // Mackinac, Chippewa, Luce, Schoolcraft, Alger, Delta, Menominee, Marquette, Baraga, Iron, Gogebic, Ontonagon, Houghton, Keweenaw
+    adjacentTerritories: ['mi-northeast', 'mi-northwest'],
   },
 };
 
