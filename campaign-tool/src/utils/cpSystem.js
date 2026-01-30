@@ -43,9 +43,10 @@ export const DEFENDER_MAX_LOSS = {
 /**
  * Base VP value for 1x multiplier
  * VP multipliers are calculated as: pointValue / VP_BASE
- * Examples: 5 VP = 1x, 10 VP = 2x, 15 VP = 3x, 20 VP = 4x, etc.
+ * With rebalanced VP scale (1-5), minimum VP gets 1x multiplier.
+ * Examples: 1 VP = 1x, 2 VP = 2x, 3 VP = 3x, 5 VP = 5x
  */
-export const VP_BASE = 5;
+export const VP_BASE = 1;
 
 /**
  * Default starting CP for both sides
