@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit } from 'lucide-react';
+import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit, HelpCircle } from 'lucide-react';
 import MapView from './components/MapView';
 import CampaignStats from './components/CampaignStats';
 import TerritoryList from './components/TerritoryList';
@@ -7,7 +7,8 @@ import BattleHistory from './components/BattleHistory';
 import BattleRecorder from './components/BattleRecorder';
 import SettingsModal from './components/SettingsModal';
 import MapEditor from './components/MapEditor';
-import { createDefaultCampaign } from './data/defaultCampaign';
+import HelpGuide from './components/HelpGuide';
+import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
@@ -24,6 +25,8 @@ const CampaignTracker = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showVictory, setShowVictory] = useState(null);
   const [showMapEditor, setShowMapEditor] = useState(false);
+  const [showHelpGuide, setShowHelpGuide] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -152,12 +155,18 @@ const CampaignTracker = () => {
     if (!confirm('Start a new campaign? This will clear all current data. Make sure to export first!')) {
       return;
     }
+    setShowTemplateSelector(true);
+  };
 
-    // Create default campaign directly
-    const fresh = createDefaultCampaign();
-    setCampaign(fresh);
-    setSelectedTerritory(null);
-    setShowVictory(null);
+  const handleTemplateSelect = (templateKey) => {
+    const template = CAMPAIGN_TEMPLATES[templateKey];
+    if (template) {
+      const fresh = template.create();
+      setCampaign(fresh);
+      setSelectedTerritory(null);
+      setShowVictory(null);
+    }
+    setShowTemplateSelector(false);
   };
 
   const handleMapEditorSave = (modifiedTerritories) => {
@@ -340,6 +349,14 @@ const CampaignTracker = () => {
                 <Settings className="w-4 h-4" />
                 Settings
               </button>
+              <button
+                onClick={() => setShowHelpGuide(true)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg flex items-center gap-2 transition"
+                title="Help Guide"
+              >
+                <HelpCircle className="w-4 h-4" />
+                Guide
+              </button>
             </div>
           </div>
         </div>
@@ -435,6 +452,40 @@ const CampaignTracker = () => {
             onSave={handleMapEditorSave}
             existingCampaign={campaign}
           />
+        )}
+
+        {/* Help Guide Modal */}
+        <HelpGuide
+          isOpen={showHelpGuide}
+          onClose={() => setShowHelpGuide(false)}
+        />
+
+        {/* Campaign Template Selector Modal */}
+        {showTemplateSelector && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-lg w-full p-6">
+              <h2 className="text-2xl font-bold text-amber-400 mb-4">Select Campaign Template</h2>
+              <p className="text-slate-400 mb-6">Choose a map template for your new campaign:</p>
+              <div className="space-y-3">
+                {Object.entries(CAMPAIGN_TEMPLATES).map(([key, template]) => (
+                  <button
+                    key={key}
+                    onClick={() => handleTemplateSelect(key)}
+                    className="w-full p-4 bg-slate-700 hover:bg-slate-600 rounded-lg text-left transition border border-slate-600 hover:border-amber-500"
+                  >
+                    <div className="font-semibold text-white">{template.name}</div>
+                    <div className="text-sm text-slate-400 mt-1">{template.description}</div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setShowTemplateSelector(false)}
+                className="w-full mt-4 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Victory Modal */}

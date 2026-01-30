@@ -115,23 +115,46 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       } else if (existingCampaign?.territories) {
         // Check if this is a county-based map
         const hasCountyTerritories = existingCampaign.territories.some(
-          t => t.isCountyBased || t.countyPaths || t.counties
+          t => t.isCountyBased || t.countyPaths || t.counties || t.countyFips
         );
 
         if (hasCountyTerritories) {
           // COUNTY MODE: Preserve county-based territories
           const countyTerritories = existingCampaign.territories.filter(
-            t => t.isCountyBased || t.countyPaths || t.counties
+            t => t.isCountyBased || t.countyPaths || t.counties || t.countyFips
           );
 
-          // Extract unique state abbreviations from county IDs (format: STATE_CountyName)
+          // Extract unique state abbreviations from county IDs or FIPS codes
+          const stateFipsToAbbr = {
+            '01': 'AL', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT',
+            '10': 'DE', '11': 'DC', '12': 'FL', '13': 'GA', '16': 'ID', '17': 'IL',
+            '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY', '22': 'LA', '23': 'ME', '24': 'MD',
+            '25': 'MA', '26': 'MI', '27': 'MN', '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE',
+            '32': 'NV', '33': 'NH', '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND',
+            '39': 'OH', '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD',
+            '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV',
+            '55': 'WI', '56': 'WY'
+          };
           const statesSet = new Set();
           countyTerritories.forEach(t => {
+            // Handle countyFips (5-digit FIPS codes)
+            if (t.countyFips) {
+              t.countyFips.forEach(fips => {
+                const stateFips = fips.substring(0, 2);
+                const stateAbbr = stateFipsToAbbr[stateFips];
+                if (stateAbbr) statesSet.add(stateAbbr);
+              });
+            }
+            // Handle counties (STATE_CountyName format)
             if (t.counties) {
               t.counties.forEach(countyId => {
                 const stateAbbr = countyId.split('_')[0];
                 if (stateAbbr) statesSet.add(stateAbbr);
               });
+            }
+            // Handle stateAbbr directly
+            if (t.stateAbbr) {
+              statesSet.add(t.stateAbbr);
             }
           });
 
@@ -141,26 +164,47 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               const stateAbbrs = Array.from(statesSet);
               const countyDataForStates = await getCountiesForStates(stateAbbrs);
 
+              // Build FIPS to county ID mapping
+              const fipsToCountyId = {};
+              countyDataForStates.counties.forEach(county => {
+                if (county.fips) {
+                  fipsToCountyId[county.fips] = county.id;
+                }
+              });
+
               // Set up county mode
               setCountyData(countyDataForStates);
               setIsCountyMode(true);
               setMapMode('counties');
               setSelectedStatesForCounties(statesSet);
 
-              // Load territories with county data
-              setTerritories(countyTerritories.map(t => ({
-                ...t,
-                id: t.id || `territory-${Date.now()}-${Math.random()}`,
-                victoryPoints: t.victoryPoints || t.pointValue || 1,
-                owner: t.owner,
-                initialOwner: t.owner,
-                maps: t.maps || [],
-                isCountyBased: true
-              })));
+              // Load territories with county data, converting countyFips to counties
+              const loadedTerritories = countyTerritories.map(t => {
+                // Convert countyFips to counties format if needed
+                let counties = t.counties || [];
+                if (t.countyFips && t.countyFips.length > 0) {
+                  counties = t.countyFips
+                    .map(fips => fipsToCountyId[fips])
+                    .filter(Boolean); // Remove any unmapped FIPS
+                }
+
+                return {
+                  ...t,
+                  id: t.id || `territory-${Date.now()}-${Math.random()}`,
+                  counties, // Use converted counties
+                  victoryPoints: t.victoryPoints || t.pointValue || 1,
+                  owner: t.owner,
+                  initialOwner: t.owner,
+                  maps: t.maps || [],
+                  isCountyBased: true
+                };
+              });
+
+              setTerritories(loadedTerritories);
 
               // Mark counties as selected
               const allCounties = new Set();
-              countyTerritories.forEach(t => {
+              loadedTerritories.forEach(t => {
                 if (t.counties) {
                   t.counties.forEach(c => allCounties.add(c));
                 }

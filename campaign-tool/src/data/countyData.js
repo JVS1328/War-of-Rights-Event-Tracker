@@ -139,7 +139,8 @@ export const parseCountyData = async () => {
     // Try to extract state and county info from various property formats
     let stateFips = props.STATE || props.STATEFP || props.state;
     const countyName = props.NAME || props.name || props.NAMELSAD || 'Unknown County';
-    const countyFips = props.id || props.GEOID || props.fips;
+    // FIPS is at feature.id in Plotly GeoJSON, fall back to properties
+    const countyFips = feature.id || props.id || props.GEOID || props.fips;
 
     // Convert FIPS to state abbreviation
     if (stateFips && stateFips.length === 2) {

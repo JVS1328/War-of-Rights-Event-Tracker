@@ -3,6 +3,7 @@ import { getDefaultStartDate } from '../utils/dateSystem';
 import { DEFAULT_STARTING_CP } from '../utils/cpSystem';
 import { getStateByAbbr, calculateGroupCenter } from './usaStates';
 import { CAMPAIGN_VERSION } from '../utils/campaignValidation';
+import { createEasternTheatreTerritories, calculateInitialVP as calcEasternVP } from './easternTheatreCounties';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -355,16 +356,103 @@ export const getDefaultSettings = () => ({
 export const calculateTerritoryVP = (territories) => {
   let usaVP = 0;
   let csaVP = 0;
-  
+
   territories.forEach(territory => {
     const vpValue = territory.pointValue || territory.victoryPoints || 0;
-    
+
     if (territory.owner === 'USA') {
       usaVP += vpValue;
     } else if (territory.owner === 'CSA') {
       csaVP += vpValue;
     }
   });
-  
+
   return { usa: usaVP, csa: csaVP };
+};
+
+/**
+ * Create an Eastern Theatre county-based campaign
+ * This uses county groupings as territories for a more detailed map
+ */
+export const createEasternTheatreCampaign = () => {
+  const territories = createEasternTheatreTerritories();
+  const campaignDate = getDefaultStartDate();
+  const initialVP = calcEasternVP();
+
+  return {
+    // === VERSION ===
+    version: CAMPAIGN_VERSION,
+
+    // === CAMPAIGN INFO ===
+    id: Date.now().toString(),
+    name: 'Eastern Theatre Campaign',
+    startDate: new Date().toISOString(),
+    currentTurn: 1,
+    victoryPointsUSA: initialVP.usa,
+    victoryPointsCSA: initialVP.csa,
+    territories,
+    battles: [],
+    customMap: null,
+    mapTemplate: 'eastern-theatre-counties',
+    isCountyView: true,
+
+    // === CP SYSTEM FIELDS ===
+    combatPowerUSA: DEFAULT_STARTING_CP,
+    combatPowerCSA: DEFAULT_STARTING_CP,
+    campaignDate: campaignDate,
+    cpSystemEnabled: true,
+    cpHistory: [],
+
+    // === TEAM ABILITIES ===
+    abilities: {
+      USA: {
+        name: 'Special Orders 191',
+        cooldown: 0,
+        lastUsedTurn: null
+      },
+      CSA: {
+        name: 'Valley Supply Lines',
+        cooldown: 0,
+        lastUsedTurn: null
+      }
+    },
+
+    // Settings
+    settings: {
+      allowTerritoryRecapture: true,
+      requireAdjacentAttack: true, // Adjacency matters more with county-level detail
+      casualtyTracking: true,
+      instantVPGains: true,
+      captureTransitionTurns: 2,
+      failedNeutralAttackToEnemy: true,
+      startingCP: DEFAULT_STARTING_CP,
+      cpGenerationEnabled: true,
+      cpCalculationMode: 'auto',
+      campaignStartDate: getDefaultStartDate(),
+      campaignEndDate: {
+        month: 12,
+        year: 1865,
+        turn: 30,
+        displayString: 'December 1865'
+      },
+      turnsPerYear: 6,
+      abilityCooldown: 2
+    }
+  };
+};
+
+/**
+ * Available campaign templates
+ */
+export const CAMPAIGN_TEMPLATES = {
+  'civil-war-default': {
+    name: 'Civil War (State View)',
+    description: 'Classic campaign with state-level territories',
+    create: createDefaultCampaign
+  },
+  'eastern-theatre-counties': {
+    name: 'Eastern Theatre (County View)',
+    description: 'Detailed county-grouped regions for the Eastern Theatre',
+    create: createEasternTheatreCampaign
+  }
 };
