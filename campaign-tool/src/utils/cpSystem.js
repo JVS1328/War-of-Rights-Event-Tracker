@@ -59,17 +59,18 @@ export const DEFAULT_STARTING_CP = 500;
 
 /**
  * Get VP multiplier for a territory based on its point value
- * Calculates multiplier dynamically: pointValue / VP_BASE
+ * Calculates multiplier dynamically: pointValue / vpBase
  *
  * @param {number} pointValue - Territory point value (any positive number)
- * @returns {number} VP multiplier (pointValue / 5, e.g., 5=1x, 10=2x, 15=3x, 20=4x)
+ * @param {number} vpBase - Base VP value for 1x multiplier (default: VP_BASE constant)
+ * @returns {number} VP multiplier
  * @throws {Error} If territory point value is invalid
  */
-export function getVPMultiplier(pointValue) {
+export function getVPMultiplier(pointValue, vpBase = VP_BASE) {
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
   }
-  return pointValue / VP_BASE;
+  return pointValue / vpBase;
 }
 
 /**
@@ -82,37 +83,38 @@ export function getVPMultiplier(pointValue) {
  * @param {number} casualties - Attacker casualties
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} isNeutralTerritory - Whether attacking neutral (true) or enemy (false) territory
+ * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
  * @returns {number} CP loss (rounded to nearest integer)
  */
-export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties, isNeutralTerritory = false) {
+export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties, isNeutralTerritory = false, vpBase = VP_BASE) {
   // Validate inputs
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
   }
-  
+
   if (typeof casualties !== 'number' || casualties < 0) {
     throw new Error(`Invalid casualties: ${casualties}`);
   }
-  
+
   if (typeof totalCasualties !== 'number' || totalCasualties < 0) {
     throw new Error(`Invalid total casualties: ${totalCasualties}`);
   }
-  
+
   // Handle edge case of zero casualties
   if (totalCasualties === 0) {
     return 0;
   }
-  
+
   // Determine base cost based on territory ownership
   const baseCost = isNeutralTerritory ? BASE_ATTACK_COST_NEUTRAL : BASE_ATTACK_COST_ENEMY;
-  
-  const vpMultiplier = getVPMultiplier(pointValue);
+
+  const vpMultiplier = getVPMultiplier(pointValue, vpBase);
   const maxLoss = baseCost * vpMultiplier;
-  
+
   // Calculate loss based on casualty ratio (capped at 100%)
   const casualtyRatio = Math.min(1, casualties / totalCasualties);
   const cpLoss = maxLoss * casualtyRatio;
-  
+
   return Math.round(cpLoss);
 }
 
@@ -128,9 +130,10 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} defenderWon - Whether the defender won the battle (no longer affects calculation)
  * @param {boolean} isFriendlyTerritory - Whether defending friendly (true) or neutral (false) territory
+ * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
  * @returns {number} CP loss (rounded to nearest integer)
  */
-export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory) {
+export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory, vpBase = VP_BASE) {
   // Validate inputs
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
@@ -154,7 +157,7 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
   const baseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
 
   // Calculate based on casualties - proportional to casualties taken
-  const vpMultiplier = getVPMultiplier(pointValue);
+  const vpMultiplier = getVPMultiplier(pointValue, vpBase);
   const maxLoss = baseCost * vpMultiplier;
 
   // Calculate loss based on casualty ratio (capped at 100%)
@@ -185,7 +188,8 @@ export function calculateBattleCPCost({
   winner,
   attackerCasualties,
   defenderCasualties,
-  abilityActive = false
+  abilityActive = false,
+  vpBase = VP_BASE
 }) {
   // Determine defender (the side that is NOT attacking)
   // For neutral territories, the defender is the opposing side
@@ -201,7 +205,8 @@ export function calculateBattleCPCost({
     territoryPointValue,
     attackerCasualties,
     totalCasualties,
-    isNeutralTerritory
+    isNeutralTerritory,
+    vpBase
   );
 
   // Apply CSA ability: "Valley Supply Lines" - reduces attack CP loss by 50%
@@ -220,7 +225,8 @@ export function calculateBattleCPCost({
       defenderCasualties,
       totalCasualties,
       defenderWon,
-      isFriendlyTerritory
+      isFriendlyTerritory,
+      vpBase
     );
 
     // Apply USA ability: "Special Orders 191" - triples CSA CP loss on attacker victory
@@ -300,10 +306,11 @@ export function isValidPointValue(pointValue) {
  * @param {number} territoryPointValue - Territory VP value (any positive number)
  * @param {string} territoryOwner - Current territory owner
  * @param {string} defender - Defending side
+ * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
  * @returns {Object} { attackerMax: number, defenderMax: number }
  */
-export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender) {
-  const vpMultiplier = getVPMultiplier(territoryPointValue);
+export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender, vpBase = VP_BASE) {
+  const vpMultiplier = getVPMultiplier(territoryPointValue, vpBase);
 
   // Determine attacker max based on territory ownership
   const isNeutralTerritory = territoryOwner === 'NEUTRAL';

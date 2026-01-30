@@ -302,6 +302,7 @@ export const createDefaultCampaign = (customMap = null) => {
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto', // 'auto' or 'manual'
+      vpBase: 5, // VP multiplier base - state-level maps use higher VP values
       campaignStartDate: getDefaultStartDate(),
       campaignEndDate: {
         month: 12,
@@ -337,6 +338,7 @@ export const getDefaultSettings = () => ({
   startingCP: DEFAULT_STARTING_CP,
   cpGenerationEnabled: true,
   cpCalculationMode: 'auto', // 'auto' or 'manual'
+  vpBase: 5, // VP multiplier base - adjust based on map VP scale
   campaignStartDate: getDefaultStartDate(),
   campaignEndDate: {
     month: 12,
@@ -429,6 +431,7 @@ export const createEasternTheatreCampaign = () => {
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto',
+      vpBase: 1, // County-level maps use VP scale 1-5
       campaignStartDate: getDefaultStartDate(),
       campaignEndDate: {
         month: 12,
@@ -510,6 +513,7 @@ export const createMaryland1862Campaign = () => {
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto',
+      vpBase: 1, // County-level maps use VP scale 1-5
       campaignStartDate: campaignDate,
       campaignEndDate: {
         month: 10,
