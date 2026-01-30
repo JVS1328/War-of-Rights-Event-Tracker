@@ -3,7 +3,8 @@ import { X, Swords, Save, AlertCircle } from 'lucide-react';
 import { ALL_MAPS } from '../data/territories';
 import {
   calculateBattleCPCost,
-  getMaxBattleCPCosts
+  getMaxBattleCPCosts,
+  getVPMultiplier
 } from '../utils/cpSystem';
 import {
   getAvailableMapsForTerritory,
@@ -96,10 +97,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     const territory = territories.find(t => t.id === selectedTerritory);
     if (!territory) return;
 
-    // Determine defender
-    const defender = attacker === 'USA' ?
-      (territory.owner === 'CSA' ? 'CSA' : 'NEUTRAL') :
-      (territory.owner === 'USA' ? 'USA' : 'NEUTRAL');
+    // Determine defender - the opposing team always defends, even on neutral ground
+    const defender = attacker === 'USA' ? 'CSA' : 'USA';
 
     // Get casualties
     const attackerCasualties = parseInt(casualties[attacker]) || 0;
@@ -155,11 +154,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
     const attackerCP = attacker === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;
     const territory = territories.find(t => t.id === selectedTerritory);
-    const defender = attacker === 'USA' ?
-      (territory?.owner === 'CSA' ? 'CSA' : 'NEUTRAL') :
-      (territory?.owner === 'USA' ? 'USA' : 'NEUTRAL');
-    const defenderCP = defender === 'USA' ? campaign.combatPowerUSA :
-                       defender === 'CSA' ? campaign.combatPowerCSA : 0;
+    // Defender is always the opposing team, even on neutral ground
+    const defender = attacker === 'USA' ? 'CSA' : 'USA';
+    const defenderCP = defender === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;
 
     const attackerLoss = parseInt(manualCPLoss.attacker) || 0;
     const defenderLoss = parseInt(manualCPLoss.defender) || 0;
@@ -574,8 +571,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                             const territory = territories.find(t => t.id === selectedTerritory);
                             const isNeutral = territory?.owner === 'NEUTRAL';
                             const baseCP = isNeutral ? 50 : 75;
-                            const vpMultiplier = (territory?.pointValue || territory?.victoryPoints || 10) / 5;
-                            return `Base: ${baseCP} × ${vpMultiplier}× VP mult × (your casualties ÷ total casualties)`;
+                            const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10);
+                            return `Base: ${baseCP} × ${vpMultiplier} (VP mult) × (your casualties ÷ total casualties)`;
                           })()}
                         </div>
                         <div className="text-xs text-amber-400">
@@ -595,8 +592,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                         
                         const isNeutral = territory.owner === 'NEUTRAL';
                         const isFriendly = territory.owner === defender;
+                        // Defender base cost: 25 if defending own territory, 50 if defending neutral/enemy
                         const baseCP = isFriendly ? 25 : 50;
-                        const vpMultiplier = (territory?.pointValue || territory?.victoryPoints || 10) / 5;
+                        const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10);
                         
                         return (
                           <div className="bg-slate-800 rounded p-3">
@@ -611,10 +609,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                               </span>
                             </div>
                             <div className="text-xs text-slate-400 mb-1">
-                              Base: {baseCP} × {vpMultiplier}× VP mult × (your casualties ÷ total casualties)
+                              Base: {baseCP} × {vpMultiplier} (VP mult) × (your casualties ÷ total casualties)
                             </div>
                             <div className="text-xs text-amber-400">
-                              Max: {maxCPCost.defender} CP • Defending {isNeutral ? 'neutral' : isFriendly ? 'friendly' : 'enemy'} territory
+                              Max: {maxCPCost.defender} CP • Defending {isFriendly ? 'friendly' : 'neutral'} territory
                             </div>
                             <div className="text-xs text-slate-500 mt-1 italic">
                               {isFriendly
