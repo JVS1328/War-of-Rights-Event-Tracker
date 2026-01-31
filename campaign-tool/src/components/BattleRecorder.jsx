@@ -106,8 +106,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
     const territoryPointValue = territory.pointValue || territory.victoryPoints || 10;
 
+    // Get vpBase from campaign settings (default to 1 for backward compatibility)
+    const vpBase = campaign?.settings?.vpBase || 1;
+
     // Calculate maximum possible CP costs
-    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender);
+    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender, vpBase);
     setMaxCPCost({ attacker: maxCosts.attackerMax, defender: maxCosts.defenderMax });
 
     // Calculate estimated CP costs using the new system
@@ -118,7 +121,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       winner: winner || attacker, // Default to attacker if no winner selected yet
       attackerCasualties,
       defenderCasualties,
-      abilityActive: abilityActive // Pass ability state
+      abilityActive: abilityActive, // Pass ability state
+      vpBase: vpBase // Pass VP base from campaign settings
     });
 
     setEstimatedCPCost({ attacker: cpResult.attackerLoss, defender: cpResult.defenderLoss });
@@ -571,7 +575,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                             const territory = territories.find(t => t.id === selectedTerritory);
                             const isNeutral = territory?.owner === 'NEUTRAL';
                             const baseCP = isNeutral ? 50 : 75;
-                            const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10);
+                            const vpBase = campaign?.settings?.vpBase || 1;
+                            const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10, vpBase);
                             return `Base: ${baseCP} × ${vpMultiplier} (VP mult) × (your casualties ÷ total casualties)`;
                           })()}
                         </div>
@@ -594,7 +599,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                         const isFriendly = territory.owner === defender;
                         // Defender base cost: 25 if defending own territory, 50 if defending neutral/enemy
                         const baseCP = isFriendly ? 25 : 50;
-                        const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10);
+                        const vpBase = campaign?.settings?.vpBase || 1;
+                        const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10, vpBase);
                         
                         return (
                           <div className="bg-slate-800 rounded p-3">
