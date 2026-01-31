@@ -175,6 +175,22 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </label>
+                  <label className="block">
+                    <div className="text-white font-semibold mb-2 text-sm">
+                      VP Base (Multiplier)
+                    </div>
+                    <div className="text-xs text-slate-400 mb-2">
+                      Base VP for 1x multiplier (1 for county maps, 5 for state maps)
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={settings.vpBase || 1}
+                      onChange={(e) => updateSetting('vpBase', parseInt(e.target.value) || 1)}
+                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </label>
                 </div>
   
                 {/* CP Calculation Mode */}
