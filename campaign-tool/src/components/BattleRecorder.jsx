@@ -486,6 +486,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                               'text-slate-400'
                             }`}>{territory.owner}</span>
                           </span>
+                          <span className="text-amber-400 text-sm">
+                            ({allTerritoryMaps.length} maps)
+                          </span>
                           <span className="text-green-400 font-semibold text-sm">
                             {territory.victoryPoints} VP
                           </span>
