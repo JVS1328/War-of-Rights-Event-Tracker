@@ -12,6 +12,7 @@ import {
   selectMapsForPickBan
 } from '../utils/mapSelection';
 import { rollBattleConditions } from '../utils/battleConditions';
+import { isTerritorySupplied } from '../utils/supplyLines';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
   const [selectedMap, setSelectedMap] = useState('');
@@ -140,8 +141,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     // Get vpBase from campaign settings (default to 1 for backward compatibility)
     const vpBase = campaign?.settings?.vpBase || 1;
 
+    // Check if defending territory is isolated (no adjacent friendly territories)
+    // Only applies when defender owns the territory
+    const isDefenderIsolated = territory.owner === defender &&
+      !isTerritorySupplied(territory, territories);
+
     // Calculate maximum possible CP costs
-    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender, vpBase);
+    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender, vpBase, isDefenderIsolated);
     setMaxCPCost({ attacker: maxCosts.attackerMax, defender: maxCosts.defenderMax });
 
     // Calculate estimated CP costs using the new system
@@ -149,11 +155,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       territoryPointValue,
       territoryOwner: territory.owner,
       attacker: attacker,
-      winner: winner || attacker, // Default to attacker if no winner selected yet
+      winner: winner || attacker,
       attackerCasualties,
       defenderCasualties,
-      abilityActive: abilityActive, // Pass ability state
-      vpBase: vpBase // Pass VP base from campaign settings
+      abilityActive: abilityActive,
+      vpBase: vpBase,
+      isDefenderIsolated
     });
 
     setEstimatedCPCost({ attacker: cpResult.attackerLoss, defender: cpResult.defenderLoss });
@@ -483,14 +490,19 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               <div className="bg-slate-700 rounded p-3">
                 {(() => {
                   const territory = territories.find(t => t.id === selectedTerritory);
+                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
+                  const adjacentTerritories = (territory.adjacentTerritories || [])
+                    .map(id => territories.find(t => t.id === id))
+                    .filter(Boolean);
+
                   return (
                     <>
                       <div className="text-sm text-slate-400 mb-1">Selected Territory:</div>
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center mb-2">
                         <span className="text-white font-semibold">{territory.name}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-slate-400 text-sm">
-                            Current Owner: <span className={`font-semibold ${
+                            Owner: <span className={`font-semibold ${
                               territory.owner === 'USA' ? 'text-blue-400' :
                               territory.owner === 'CSA' ? 'text-red-400' :
                               'text-slate-400'
@@ -504,6 +516,40 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                           </span>
                         </div>
                       </div>
+
+                      {/* Supply Status */}
+                      {territory.owner !== 'NEUTRAL' && (
+                        <div className={`text-xs px-2 py-1 rounded inline-block mb-2 ${
+                          isSupplied
+                            ? 'bg-green-900/50 text-green-400 border border-green-700'
+                            : 'bg-red-900/50 text-red-400 border border-red-700'
+                        }`}>
+                          {isSupplied ? '✓ Supplied' : '⚠ ENCIRCLED (2x defense cost)'}
+                        </div>
+                      )}
+
+                      {/* Adjacent Territories */}
+                      {adjacentTerritories.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-600">
+                          <div className="text-xs text-slate-400 mb-1">Adjacent Territories:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {adjacentTerritories.map(adj => (
+                              <span
+                                key={adj.id}
+                                className={`text-xs px-2 py-0.5 rounded ${
+                                  adj.owner === 'USA'
+                                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                                    : adj.owner === 'CSA'
+                                    ? 'bg-red-900/50 text-red-300 border border-red-700'
+                                    : 'bg-slate-600 text-slate-300 border border-slate-500'
+                                }`}
+                              >
+                                {adj.name} ({adj.owner})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </>
                   );
                 })()}
