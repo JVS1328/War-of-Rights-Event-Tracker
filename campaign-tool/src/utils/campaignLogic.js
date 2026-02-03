@@ -2,6 +2,7 @@
 import {
   calculateBattleCPCost
 } from './cpSystem';
+import { isTerritorySupplied } from './supplyLines';
 
 /**
  * Process battle result and update campaign state
@@ -38,6 +39,11 @@ export const processBattleResult = (campaign, battle) => {
       const attackerCasualties = battle.casualties?.[battle.attacker] || 0;
       const defenderCasualties = battle.casualties?.[defender] || 0;
 
+      // Check if defending territory is isolated (no adjacent friendly territories)
+      const isDefenderIsolated = defender !== 'NEUTRAL' &&
+        previousOwner === defender &&
+        !isTerritorySupplied(territory, campaign.territories);
+
       const cpResult = calculateBattleCPCost({
         territoryPointValue: territory.pointValue || territory.victoryPoints || 10,
         territoryOwner: previousOwner,
@@ -45,7 +51,8 @@ export const processBattleResult = (campaign, battle) => {
         winner: battle.winner,
         attackerCasualties,
         defenderCasualties,
-        abilityActive: battle.abilityUsed === battle.attacker
+        abilityActive: battle.abilityUsed === battle.attacker,
+        isDefenderIsolated
       });
 
       cpCostAttacker = cpResult.attackerLoss;

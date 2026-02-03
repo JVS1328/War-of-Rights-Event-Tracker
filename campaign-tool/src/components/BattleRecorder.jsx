@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Swords, Save, AlertCircle } from 'lucide-react';
+import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon } from 'lucide-react';
 import { ALL_MAPS } from '../data/territories';
 import {
   calculateBattleCPCost,
@@ -8,8 +8,11 @@ import {
 } from '../utils/cpSystem';
 import {
   getAvailableMapsForTerritory,
-  getMapCooldownMessage
+  getMapCooldownMessage,
+  selectMapsForPickBan
 } from '../utils/mapSelection';
+import { rollBattleConditions } from '../utils/battleConditions';
+import { isTerritorySupplied } from '../utils/supplyLines';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
   const [selectedMap, setSelectedMap] = useState('');
@@ -19,15 +22,24 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [casualties, setCasualties] = useState({ USA: 0, CSA: 0 });
   const [notes, setNotes] = useState('');
 
+  // Battle conditions state
+  const [battleConditions, setBattleConditions] = useState(null);
+
   // Team ability state
   const [abilityActive, setAbilityActive] = useState(false);
 
   // Manual CP loss state
   const [manualCPLoss, setManualCPLoss] = useState({ attacker: 0, defender: 0 });
 
-  // Reset ability when attacker changes
+  // Reset ability and pick/ban when attacker changes
   useEffect(() => {
     setAbilityActive(false);
+    // Reset pick/ban since defender (who bans first) changes with attacker
+    if (pickBanMaps.length > 0 && bannedMaps.length > 0) {
+      setBannedMaps([]);
+      setPickBanActive(true);
+      setSelectedMap('');
+    }
   }, [attacker]);
 
   // Initialize abilities if they don't exist (for backward compatibility)
@@ -40,6 +52,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [availableMaps, setAvailableMaps] = useState([]);
   const [cooldownMaps, setCooldownMaps] = useState(new Map());
   const [allTerritoryMaps, setAllTerritoryMaps] = useState([]);
+
+  // Pick/ban state
+  const [pickBanMaps, setPickBanMaps] = useState([]); // 5 maps for pick/ban
+  const [bannedMaps, setBannedMaps] = useState([]); // Maps that have been banned
+  const [pickBanActive, setPickBanActive] = useState(false); // Whether pick/ban is in progress
 
   // CP cost estimation
   const [estimatedCPCost, setEstimatedCPCost] = useState({ attacker: 0, defender: 0 });
@@ -56,7 +73,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       setAvailableMaps([]);
       setCooldownMaps(new Map());
       setAllTerritoryMaps([]);
-      setSelectedMap(''); // Reset selected map when territory changes
+      setSelectedMap('');
+      setPickBanMaps([]);
+      setBannedMaps([]);
+      setPickBanActive(false);
       return;
     }
 
@@ -78,11 +98,23 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     setAvailableMaps(available);
     setCooldownMaps(cooldown);
 
-    // Clear selected map if it's no longer available
-    if (selectedMap && !available.includes(selectedMap)) {
+    // Initialize pick/ban if we have at least 5 available maps
+    if (available.length >= 5) {
+      const selectedForPickBan = selectMapsForPickBan(available, 5);
+      setPickBanMaps(selectedForPickBan);
+      setBannedMaps([]);
+      setPickBanActive(true);
       setSelectedMap('');
+    } else {
+      // Not enough maps for pick/ban, use direct selection
+      setPickBanMaps([]);
+      setBannedMaps([]);
+      setPickBanActive(false);
+      if (selectedMap && !available.includes(selectedMap)) {
+        setSelectedMap('');
+      }
     }
-  }, [selectedTerritory, territories, campaign, currentTurn, selectedMap]);
+  }, [selectedTerritory, territories, campaign, currentTurn]);
 
   // Calculate estimated CP cost whenever relevant fields change (only in auto mode)
   useEffect(() => {
@@ -109,8 +141,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     // Get vpBase from campaign settings (default to 1 for backward compatibility)
     const vpBase = campaign?.settings?.vpBase || 1;
 
+    // Check if defending territory is isolated (no adjacent friendly territories)
+    // Only applies when defender owns the territory
+    const isDefenderIsolated = territory.owner === defender &&
+      !isTerritorySupplied(territory, territories);
+
     // Calculate maximum possible CP costs
-    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender, vpBase);
+    const maxCosts = getMaxBattleCPCosts(territoryPointValue, territory.owner, defender, vpBase, isDefenderIsolated);
     setMaxCPCost({ attacker: maxCosts.attackerMax, defender: maxCosts.defenderMax });
 
     // Calculate estimated CP costs using the new system
@@ -118,11 +155,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       territoryPointValue,
       territoryOwner: territory.owner,
       attacker: attacker,
-      winner: winner || attacker, // Default to attacker if no winner selected yet
+      winner: winner || attacker,
       attackerCasualties,
       defenderCasualties,
-      abilityActive: abilityActive, // Pass ability state
-      vpBase: vpBase // Pass VP base from campaign settings
+      abilityActive: abilityActive,
+      vpBase: vpBase,
+      isDefenderIsolated
     });
 
     setEstimatedCPCost({ attacker: cpResult.attackerLoss, defender: cpResult.defenderLoss });
@@ -181,6 +219,30 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     }
   }, [manualCPLoss, selectedTerritory, attacker, campaign, territories, isManualCPMode]);
 
+  // Pick/ban logic
+  const defender = attacker === 'USA' ? 'CSA' : 'USA';
+  const remainingMaps = pickBanMaps.filter(m => !bannedMaps.includes(m));
+
+  // Ban order: Defender, Attacker, Defender, Attacker (4 bans total)
+  const getBanningTeam = () => {
+    const banCount = bannedMaps.length;
+    return banCount % 2 === 0 ? defender : attacker;
+  };
+
+  const handleBan = (mapName) => {
+    if (!pickBanActive || bannedMaps.includes(mapName)) return;
+
+    const newBannedMaps = [...bannedMaps, mapName];
+    setBannedMaps(newBannedMaps);
+
+    // After 4 bans, auto-select the remaining map
+    if (newBannedMaps.length === 4) {
+      const finalMap = pickBanMaps.find(m => !newBannedMaps.includes(m));
+      setSelectedMap(finalMap);
+      setPickBanActive(false);
+    }
+  };
+
   const handleSubmit = () => {
     if (!selectedMap || !selectedTerritory || !winner) {
       alert('Please select a map, territory, and winner');
@@ -213,11 +275,17 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         CSA: parseInt(casualties.CSA) || 0
       },
       notes: notes.trim(),
-      abilityUsed: abilityActive ? attacker : null, // Track which side used ability
+      abilityUsed: abilityActive ? attacker : null,
       manualCPLoss: isManualCPMode ? {
         attacker: parseInt(manualCPLoss.attacker) || 0,
         defender: parseInt(manualCPLoss.defender) || 0
-      } : undefined
+      } : undefined,
+      conditions: battleConditions ? {
+        weather: battleConditions.weather.condition.id,
+        weatherRoll: battleConditions.weather.roll,
+        time: battleConditions.time.condition.id,
+        timeRoll: battleConditions.time.roll
+      } : null
     };
 
     onRecordBattle(battle);
@@ -266,26 +334,133 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               </select>
             </div>
 
-            {/* Map Selection - Now filters based on selected territory */}
+            {/* Map Selection */}
             <div>
               <label className="block text-sm text-slate-300 mb-2 font-semibold">
                 Map <span className="text-red-400">*</span>
               </label>
-              <select
-                value={selectedMap}
-                onChange={(e) => setSelectedMap(e.target.value)}
-                disabled={!selectedTerritory}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {selectedTerritory
-                    ? `Select map... (${availableMaps.length} available)`
-                    : 'Select a territory first...'}
-                </option>
-                {availableMaps.map(map => (
-                  <option key={map} value={map}>{map}</option>
-                ))}
-              </select>
+
+              {/* Pick/Ban UI - shown when 5+ maps available */}
+              {selectedTerritory && pickBanMaps.length === 5 && (
+                <div className="bg-slate-700 rounded-lg p-4">
+                  {/* Pick/Ban Header */}
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="text-sm font-semibold text-amber-400">
+                      Map Pick/Ban
+                    </div>
+                    {pickBanActive && (
+                      <div className={`text-xs px-2 py-1 rounded border ${
+                        getBanningTeam() === 'USA'
+                          ? 'bg-blue-900/50 text-blue-300 border-blue-700'
+                          : 'bg-red-900/50 text-red-300 border-red-700'
+                      }`}>
+                        {getBanningTeam()} bans ({bannedMaps.length + 1}/4)
+                      </div>
+                    )}
+                    {!pickBanActive && selectedMap && (
+                      <div className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded border border-green-700">
+                        Map Selected
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pick/Ban Instructions */}
+                  {pickBanActive && (
+                    <div className="text-xs text-slate-400 mb-3">
+                      {defender} (Defender) bans first. Click a map to ban it.
+                    </div>
+                  )}
+
+                  {/* Map Grid */}
+                  <div className="space-y-2">
+                    {pickBanMaps.map((mapName) => {
+                      const isBanned = bannedMaps.includes(mapName);
+                      const isSelected = selectedMap === mapName;
+                      const banIndex = bannedMaps.indexOf(mapName);
+                      const bannedBy = banIndex >= 0
+                        ? (banIndex % 2 === 0 ? defender : attacker)
+                        : null;
+
+                      return (
+                        <button
+                          key={mapName}
+                          onClick={() => handleBan(mapName)}
+                          disabled={!pickBanActive || isBanned}
+                          className={`w-full px-3 py-2 rounded text-left text-sm transition flex justify-between items-center ${
+                            isSelected
+                              ? 'bg-green-600 text-white cursor-default'
+                              : isBanned
+                              ? 'bg-slate-800 text-slate-500 cursor-not-allowed line-through'
+                              : 'bg-slate-600 text-white hover:bg-slate-500'
+                          }`}
+                        >
+                          <span>{mapName}</span>
+                          {isBanned && (
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              bannedBy === 'USA'
+                                ? 'bg-blue-900/50 text-blue-400'
+                                : 'bg-red-900/50 text-red-400'
+                            }`}>
+                              Banned by {bannedBy}
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="text-xs bg-green-700 px-2 py-0.5 rounded">
+                              Playing
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Ban Progress */}
+                  {pickBanActive && (
+                    <div className="mt-3 flex gap-1">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className={`flex-1 h-1 rounded ${
+                            i < bannedMaps.length
+                              ? (i % 2 === 0
+                                ? (defender === 'USA' ? 'bg-blue-500' : 'bg-red-500')
+                                : (attacker === 'USA' ? 'bg-blue-500' : 'bg-red-500'))
+                              : 'bg-slate-600'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Regular dropdown - shown when <5 maps available or no territory selected */}
+              {selectedTerritory && pickBanMaps.length < 5 && (
+                <>
+                  <select
+                    value={selectedMap}
+                    onChange={(e) => setSelectedMap(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  >
+                    <option value="">Select map... ({availableMaps.length} available)</option>
+                    {availableMaps.map(map => (
+                      <option key={map} value={map}>{map}</option>
+                    ))}
+                  </select>
+                  <div className="mt-2 text-xs text-amber-400">
+                    Not enough maps for pick/ban (need 5, have {availableMaps.length})
+                  </div>
+                </>
+              )}
+
+              {!selectedTerritory && (
+                <select
+                  disabled
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 opacity-50 cursor-not-allowed"
+                >
+                  <option>Select a territory first...</option>
+                </select>
+              )}
 
               {/* Map cooldown information */}
               {selectedTerritory && cooldownMaps.size > 0 && (
@@ -296,7 +471,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {Array.from(cooldownMaps.entries())
                       .filter(([mapName]) => allTerritoryMaps.includes(mapName))
-                      .sort((a, b) => b[1] - a[1]) // Sort by turn (most recent first)
+                      .sort((a, b) => b[1] - a[1])
                       .map(([mapName, turn]) => (
                         <div key={mapName} className="text-xs text-slate-400 flex justify-between items-center">
                           <span className="truncate">{mapName}</span>
@@ -308,22 +483,6 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   </div>
                 </div>
               )}
-
-              {/* Info about map filtering */}
-              {selectedTerritory && (
-                <div className="mt-2 text-xs text-slate-400">
-                  {(() => {
-                    const territory = territories.find(t => t.id === selectedTerritory);
-                    const hasAssignedMaps = territory?.maps && territory.maps.length > 0;
-
-                    if (hasAssignedMaps) {
-                      return `Showing ${availableMaps.length} of ${territory.maps.length} assigned maps for this territory`;
-                    } else {
-                      return `No specific maps assigned - showing all available maps (${availableMaps.length} playable)`;
-                    }
-                  })()}
-                </div>
-              )}
             </div>
 
             {/* Territory Info Display */}
@@ -331,29 +490,156 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               <div className="bg-slate-700 rounded p-3">
                 {(() => {
                   const territory = territories.find(t => t.id === selectedTerritory);
+                  const adjacentIds = territory.adjacentTerritories || [];
+                  const adjacentTerritoryObjects = adjacentIds
+                    .map(id => territories.find(t => t.id === id))
+                    .filter(Boolean);
+                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
+
                   return (
                     <>
                       <div className="text-sm text-slate-400 mb-1">Selected Territory:</div>
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center mb-2">
                         <span className="text-white font-semibold">{territory.name}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-slate-400 text-sm">
-                            Current Owner: <span className={`font-semibold ${
+                            Owner: <span className={`font-semibold ${
                               territory.owner === 'USA' ? 'text-blue-400' :
                               territory.owner === 'CSA' ? 'text-red-400' :
                               'text-slate-400'
                             }`}>{territory.owner}</span>
+                          </span>
+                          <span className="text-amber-400 text-sm">
+                            ({allTerritoryMaps.length} maps)
                           </span>
                           <span className="text-green-400 font-semibold text-sm">
                             {territory.victoryPoints} VP
                           </span>
                         </div>
                       </div>
+
+                      {/* Supply Status */}
+                      {territory.owner !== 'NEUTRAL' && (
+                        <div className={`text-xs px-2 py-1 rounded inline-block mb-2 ${
+                          isSupplied
+                            ? 'bg-green-900/50 text-green-400 border border-green-700'
+                            : 'bg-red-900/50 text-red-400 border border-red-700'
+                        }`}>
+                          {isSupplied ? '✓ Supplied' : '⚠ ENCIRCLED (2x defense cost)'}
+                        </div>
+                      )}
+
+                      {/* Adjacent Territories */}
+                      <div className="mt-2 pt-2 border-t border-slate-600">
+                        <div className="text-xs text-slate-400 mb-1">
+                          Adjacent Territories ({adjacentIds.length} defined, {adjacentTerritoryObjects.length} found):
+                        </div>
+                        {adjacentTerritoryObjects.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {adjacentTerritoryObjects.map(adj => (
+                              <span
+                                key={adj.id}
+                                className={`text-xs px-2 py-0.5 rounded ${
+                                  adj.owner === 'USA'
+                                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                                    : adj.owner === 'CSA'
+                                    ? 'bg-red-900/50 text-red-300 border border-red-700'
+                                    : 'bg-slate-600 text-slate-300 border border-slate-500'
+                                }`}
+                              >
+                                {adj.name} ({adj.owner})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-500 italic">
+                            {adjacentIds.length > 0
+                              ? `IDs not found in territories: ${adjacentIds.join(', ')}`
+                              : 'No adjacencies defined for this territory'}
+                          </div>
+                        )}
+                      </div>
                     </>
                   );
                 })()}
               </div>
             )}
+
+            {/* Battle Conditions - Weather & Time Roll */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm text-slate-300 font-semibold">
+                  Battle Conditions
+                </label>
+                <button
+                  onClick={() => setBattleConditions(rollBattleConditions())}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
+                >
+                  <Dice6 className="w-4 h-4" />
+                  {battleConditions ? 'Re-roll' : 'Roll Conditions'}
+                </button>
+              </div>
+
+              {battleConditions ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Weather Result */}
+                  <div className={`p-3 rounded border ${
+                    battleConditions.weather.condition.id === 'clear'
+                      ? 'bg-yellow-900/30 border-yellow-700'
+                      : battleConditions.weather.condition.id === 'rain'
+                      ? 'bg-blue-900/30 border-blue-700'
+                      : 'bg-purple-900/30 border-purple-700'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      {battleConditions.weather.condition.id === 'clear' ? (
+                        <Sun className="w-4 h-4 text-yellow-400" />
+                      ) : battleConditions.weather.condition.id === 'rain' ? (
+                        <Cloud className="w-4 h-4 text-blue-400" />
+                      ) : (
+                        <CloudRain className="w-4 h-4 text-purple-400" />
+                      )}
+                      <span className="text-xs text-slate-400">Weather (d10: {battleConditions.weather.roll})</span>
+                    </div>
+                    <div className="font-semibold text-white text-sm">
+                      {battleConditions.weather.condition.name}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {battleConditions.weather.condition.description}
+                    </div>
+                  </div>
+
+                  {/* Time Result */}
+                  <div className={`p-3 rounded border ${
+                    battleConditions.time.condition.id === 'dawn'
+                      ? 'bg-orange-900/30 border-orange-700'
+                      : battleConditions.time.condition.id === 'standard'
+                      ? 'bg-slate-600/50 border-slate-500'
+                      : battleConditions.time.condition.id === 'dusk'
+                      ? 'bg-amber-900/30 border-amber-700'
+                      : 'bg-indigo-900/30 border-indigo-700'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Moon className={`w-4 h-4 ${
+                        battleConditions.time.condition.id === 'night'
+                          ? 'text-indigo-400'
+                          : 'text-amber-400'
+                      }`} />
+                      <span className="text-xs text-slate-400">Time of Day (d10: {battleConditions.time.roll})</span>
+                    </div>
+                    <div className="font-semibold text-white text-sm">
+                      {battleConditions.time.condition.name}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {battleConditions.time.condition.description}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-slate-400 text-sm">
+                  Roll to determine weather and time of day
+                </div>
+              )}
+            </div>
 
             {/* Attacker Selection */}
             <div>
