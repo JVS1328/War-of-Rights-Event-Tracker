@@ -70,3 +70,31 @@ export const getMapCooldownMessage = (mapName, cooldownMaps, currentTurn) => {
 
   return `(Turn ${lastPlayedTurn}, available in ${turnsUntilAvailable} turn${turnsUntilAvailable !== 1 ? 's' : ''})`;
 };
+
+/**
+ * Randomly select maps for the pick/ban phase
+ * Uses Fisher-Yates shuffle for unbiased random selection
+ *
+ * @param {string[]} availableMaps - Array of available map names
+ * @param {number} count - Number of maps to select (default 5)
+ * @returns {string[]} Array of randomly selected maps
+ */
+export const selectMapsForPickBan = (availableMaps, count = 5) => {
+  if (!availableMaps || availableMaps.length === 0) {
+    return [];
+  }
+
+  // If fewer maps available than requested, return all
+  if (availableMaps.length <= count) {
+    return [...availableMaps];
+  }
+
+  // Fisher-Yates shuffle on a copy, then take first N
+  const shuffled = [...availableMaps];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  return shuffled.slice(0, count);
+};
