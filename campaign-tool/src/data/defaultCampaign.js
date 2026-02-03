@@ -454,12 +454,12 @@ export const createMaryland1862Campaign = () => {
   const territories = createMaryland1862Territories();
   const initialVP = calcMaryland1862VP();
 
-  // Campaign starts September 1862
+  // Campaign starts August 1862
   const campaignDate = {
-    month: 9,
+    month: 8,
     year: 1862,
     turn: 1,
-    displayString: 'September 1862'
+    displayString: 'August 1862'
   };
 
   return {

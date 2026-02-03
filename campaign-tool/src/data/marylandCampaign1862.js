@@ -1,7 +1,7 @@
 /**
  * Maryland Campaign 1862 County-Based Map
  *
- * Historical campaign: September 4-20, 1862
+ * Historical campaign: August-September 1862
  * Lee's first invasion of the North, culminating in the Battle of Antietam.
  *
  * Geographic scope:
@@ -10,13 +10,10 @@
  * - Virginia (Northern Virginia and Shenandoah - Lee's route)
  * - Pennsylvania (Southern border counties - threatened by invasion)
  *
- * ALL counties in scope are assigned to regions - none left out.
- * Ownership reflects September 1862 status.
- *
- * VP BALANCE NOTES:
- * - Total VP kept low (~50-80 per side) to balance with CP system
- * - CP generation (VP/turn) should be comparable to max CP loss per battle
- * - Max CP loss attacking 5 VP enemy = 75 CP, so VP totals ~50-80 creates tension
+ * DESIGN PRINCIPLES:
+ * - Each region has 2-3 counties MAX for tactical maneuverability
+ * - More regions allow for encirclement and flanking opportunities
+ * - VP is balanced so both sides start equal
  * - Scale: 5=key objective, 3=important, 2=moderate, 1=peripheral
  */
 
@@ -74,11 +71,12 @@ export const MARYLAND_1862_MAPS = {
 
 // ============================================================================
 // MARYLAND CAMPAIGN 1862 REGIONS
+// Redesigned for tactical gameplay: 2-3 counties max per region
 // VP Scale: 5=key objective, 3=important, 2=moderate, 1=peripheral
 // ============================================================================
 export const MARYLAND_1862_REGIONS = {
   // ==========================================================================
-  // MARYLAND - Main Theater (All 24 counties)
+  // MARYLAND - Main Theater (detailed single/paired counties)
   // ==========================================================================
 
   // THE BATTLEFIELD - Washington County (Antietam, Sharpsburg)
@@ -90,7 +88,7 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: false,
     countyFips: ['24043'], // Washington County
     maps: MARYLAND_1862_MAPS.antietam,
-    adjacentTerritories: ['md-frederick', 'md-allegany', 'wv-harpers-ferry', 'pa-south-border'],
+    adjacentTerritories: ['md-frederick', 'md-allegany', 'wv-harpers-ferry', 'pa-adams', 'pa-franklin'],
   },
 
   // SOUTH MOUNTAIN - Frederick County
@@ -102,31 +100,31 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: false,
     countyFips: ['24021'], // Frederick County
     maps: MARYLAND_1862_MAPS.southMountain,
-    adjacentTerritories: ['md-antietam', 'md-carroll', 'md-howard', 'md-montgomery', 'wv-harpers-ferry', 'pa-south-border'],
+    adjacentTerritories: ['md-antietam', 'md-carroll', 'md-howard', 'md-montgomery', 'wv-harpers-ferry', 'pa-adams'],
   },
 
-  // BALTIMORE REGION - Urban center
-  'md-baltimore': {
-    name: 'Baltimore',
-    stateAbbr: 'MD',
-    owner: 'USA',
-    pointValue: 3, // Important - Major city, key Union stronghold
-    isUrban: true,
-    countyFips: ['24510', '24005'], // Baltimore City, Baltimore County
-    maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-harford', 'md-carroll', 'md-howard', 'md-anne-arundel'],
-  },
-
-  // WESTERN MARYLAND - Allegany & Garrett
+  // WESTERN MARYLAND - Allegany County
   'md-allegany': {
-    name: 'Western Maryland',
+    name: 'Allegany County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['24001', '24023'], // Allegany, Garrett
+    countyFips: ['24001'], // Allegany County
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-antietam', 'wv-interior', 'pa-west'],
+    adjacentTerritories: ['md-antietam', 'md-garrett', 'wv-mineral', 'pa-somerset'],
+  },
+
+  // FAR WESTERN MARYLAND - Garrett County
+  'md-garrett': {
+    name: 'Garrett County',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24023'], // Garrett County
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-allegany', 'wv-mineral', 'pa-somerset'],
   },
 
   // NORTHERN MARYLAND - Carroll County
@@ -134,23 +132,59 @@ export const MARYLAND_1862_REGIONS = {
     name: 'Carroll County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
     countyFips: ['24013'], // Carroll
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-frederick', 'md-baltimore', 'md-howard', 'pa-south-border'],
+    adjacentTerritories: ['md-frederick', 'md-baltimore-county', 'md-howard', 'pa-york'],
   },
 
-  // HARFORD & CECIL - Northeast MD
-  'md-harford': {
-    name: 'Harford & Cecil',
+  // BALTIMORE CITY - Major urban center
+  'md-baltimore-city': {
+    name: 'Baltimore City',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 3, // Important - Major city, key Union stronghold
+    isUrban: true,
+    countyFips: ['24510'], // Baltimore City
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['md-baltimore-county', 'md-anne-arundel'],
+  },
+
+  // BALTIMORE COUNTY
+  'md-baltimore-county': {
+    name: 'Baltimore County',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['24025', '24015'], // Harford, Cecil
+    countyFips: ['24005'], // Baltimore County
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-baltimore', 'md-kent', 'pa-southeast'],
+    adjacentTerritories: ['md-baltimore-city', 'md-harford', 'md-carroll', 'md-howard', 'md-anne-arundel'],
+  },
+
+  // HARFORD COUNTY
+  'md-harford': {
+    name: 'Harford County',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24025'], // Harford
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-baltimore-county', 'md-cecil', 'pa-chester'],
+  },
+
+  // CECIL COUNTY
+  'md-cecil': {
+    name: 'Cecil County',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24015'], // Cecil
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-harford', 'md-kent', 'pa-chester'],
   },
 
   // HOWARD COUNTY - Central
@@ -158,23 +192,35 @@ export const MARYLAND_1862_REGIONS = {
     name: 'Howard County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
     countyFips: ['24027'], // Howard
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-frederick', 'md-baltimore', 'md-carroll', 'md-montgomery', 'md-anne-arundel', 'md-prince-georges'],
+    adjacentTerritories: ['md-frederick', 'md-carroll', 'md-baltimore-county', 'md-montgomery', 'md-anne-arundel', 'md-prince-georges'],
   },
 
-  // MONTGOMERY & PRINCE GEORGE'S - Near DC
+  // MONTGOMERY COUNTY - Near DC
   'md-montgomery': {
-    name: 'Montgomery & Prince George\'s',
+    name: 'Montgomery County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 3, // Important - Near Washington DC
+    pointValue: 1, // Near Washington DC
     isUrban: true,
-    countyFips: ['24031', '24033'], // Montgomery, Prince George's
+    countyFips: ['24031'], // Montgomery
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-frederick', 'md-howard', 'md-anne-arundel', 'md-southern', 'va-loudoun', 'va-fairfax'],
+    adjacentTerritories: ['md-frederick', 'md-howard', 'md-prince-georges', 'va-loudoun', 'va-fairfax'],
+  },
+
+  // PRINCE GEORGE'S COUNTY - Near DC
+  'md-prince-georges': {
+    name: "Prince George's County",
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1, // Near Washington DC
+    isUrban: true,
+    countyFips: ['24033'], // Prince George's
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['md-howard', 'md-montgomery', 'md-anne-arundel', 'md-charles', 'va-fairfax'],
   },
 
   // ANNE ARUNDEL COUNTY - Annapolis
@@ -182,52 +228,99 @@ export const MARYLAND_1862_REGIONS = {
     name: 'Anne Arundel (Annapolis)',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 2, // Moderate - State capital
+    pointValue: 1, // State capital
     isUrban: true,
     countyFips: ['24003'], // Anne Arundel
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-baltimore', 'md-howard', 'md-montgomery', 'md-eastern-shore'],
+    adjacentTerritories: ['md-baltimore-city', 'md-baltimore-county', 'md-howard', 'md-prince-georges', 'md-calvert', 'md-eastern-upper'],
   },
 
-  // SOUTHERN MARYLAND - Charles, Calvert, St. Mary's
-  'md-southern': {
-    name: 'Southern Maryland',
+  // CHARLES COUNTY - Southern MD
+  'md-charles': {
+    name: 'Charles County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['24017', '24009', '24037'], // Charles, Calvert, St. Mary's
+    countyFips: ['24017'], // Charles
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-montgomery', 'md-anne-arundel', 'va-northern-neck'],
+    adjacentTerritories: ['md-prince-georges', 'md-calvert', 'md-st-marys', 'va-northern-neck'],
   },
 
-  // EASTERN SHORE - All eastern shore counties consolidated
-  'md-eastern-shore': {
-    name: 'Eastern Shore',
+  // CALVERT COUNTY
+  'md-calvert': {
+    name: 'Calvert County',
     stateAbbr: 'MD',
     owner: 'USA',
-    pointValue: 1, // Peripheral - far from fighting
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['24029', '24035', '24041', '24011', '24019', '24045', '24039', '24047'], // Kent, Queen Anne's, Talbot, Caroline, Dorchester, Wicomico, Somerset, Worcester
+    countyFips: ['24009'], // Calvert
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-harford', 'md-anne-arundel'],
+    adjacentTerritories: ['md-anne-arundel', 'md-charles', 'md-st-marys'],
   },
 
-  // Keeping md-kent for adjacency with harford
+  // ST. MARY'S COUNTY
+  'md-st-marys': {
+    name: "St. Mary's County",
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24037'], // St. Mary's
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-charles', 'md-calvert', 'va-northern-neck'],
+  },
+
+  // KENT COUNTY - Upper Eastern Shore
   'md-kent': {
     name: 'Kent County',
     stateAbbr: 'MD',
     owner: 'USA',
     pointValue: 1,
     isUrban: false,
-    countyFips: ['24029'],
+    countyFips: ['24029'], // Kent
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-harford', 'md-eastern-shore'],
+    adjacentTerritories: ['md-cecil', 'md-eastern-upper'],
+  },
+
+  // UPPER EASTERN SHORE - Queen Anne's, Talbot
+  'md-eastern-upper': {
+    name: 'Upper Eastern Shore',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24035', '24041'], // Queen Anne's, Talbot
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-kent', 'md-anne-arundel', 'md-eastern-mid'],
+  },
+
+  // MID EASTERN SHORE - Caroline, Dorchester
+  'md-eastern-mid': {
+    name: 'Mid Eastern Shore',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24011', '24019'], // Caroline, Dorchester
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-eastern-upper', 'md-eastern-lower'],
+  },
+
+  // LOWER EASTERN SHORE - Wicomico, Somerset, Worcester
+  'md-eastern-lower': {
+    name: 'Lower Eastern Shore',
+    stateAbbr: 'MD',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['24045', '24039', '24047'], // Wicomico, Somerset, Worcester
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-eastern-mid', 'va-eastern-shore'],
   },
 
   // ==========================================================================
   // WEST VIRGINIA - Eastern Panhandle (Key strategic area)
-  // Note: In 1862, this was still part of Virginia but Union-sympathizing
   // ==========================================================================
 
   // HARPERS FERRY - Jefferson County (Critical objective)
@@ -235,45 +328,81 @@ export const MARYLAND_1862_REGIONS = {
     name: "Harper's Ferry",
     stateAbbr: 'WV',
     owner: 'NEUTRAL',
-    pointValue: 5, // KEY OBJECTIVE - Critical strategic point, captured by Jackson
+    pointValue: 5, // KEY OBJECTIVE - Critical strategic point
     isUrban: true,
     countyFips: ['54037'], // Jefferson County
     maps: MARYLAND_1862_MAPS.harpersFerry,
     adjacentTerritories: ['md-antietam', 'md-frederick', 'wv-berkeley', 'va-loudoun', 'va-clarke'],
   },
 
-  // BERKELEY & MORGAN - Northern Panhandle
+  // BERKELEY COUNTY
   'wv-berkeley': {
-    name: 'Berkeley & Morgan',
+    name: 'Berkeley County',
     stateAbbr: 'WV',
     owner: 'NEUTRAL',
-    pointValue: 2, // Moderate
+    pointValue: 2,
     isUrban: false,
-    countyFips: ['54003', '54065'], // Berkeley, Morgan
+    countyFips: ['54003'], // Berkeley
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['wv-harpers-ferry', 'wv-interior', 'va-shenandoah'],
+    adjacentTerritories: ['wv-harpers-ferry', 'wv-morgan', 'va-clarke', 'va-frederick'],
   },
 
-  // WV INTERIOR - All other WV counties consolidated
+  // MORGAN COUNTY
+  'wv-morgan': {
+    name: 'Morgan County',
+    stateAbbr: 'WV',
+    owner: 'NEUTRAL',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['54065'], // Morgan
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['wv-berkeley', 'wv-hampshire', 'va-frederick'],
+  },
+
+  // HAMPSHIRE & HARDY - Eastern WV
+  'wv-hampshire': {
+    name: 'Hampshire & Hardy',
+    stateAbbr: 'WV',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['54027', '54031'], // Hampshire, Hardy
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['wv-morgan', 'wv-mineral', 'va-shenandoah-upper'],
+  },
+
+  // MINERAL, GRANT, PENDLETON - Mountain counties
+  'wv-mineral': {
+    name: 'Mineral Region',
+    stateAbbr: 'WV',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['54057', '54023', '54071'], // Mineral, Grant, Pendleton
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-allegany', 'md-garrett', 'wv-hampshire', 'wv-interior', 'va-shenandoah-upper'],
+  },
+
+  // WV INTERIOR - Interior counties (consolidated)
   'wv-interior': {
     name: 'West Virginia Interior',
     stateAbbr: 'WV',
-    owner: 'USA', // Strong Union sympathies
-    pointValue: 2, // Moderate - Wheeling (Unionist capital)
+    owner: 'USA',
+    pointValue: 2, // Wheeling area - Union sympathies
     isUrban: false,
     countyFips: [
-      '54027', '54031', '54057', '54023', '54071', // Hampshire, Hardy, Mineral, Grant, Pendleton
-      '54093', '54083', '54075', '54101', // Tucker, Randolph, Pocahontas, Webster
-      '54025', '54067', '54007', '54015', '54019', // Greenbrier, Nicholas, Braxton, Clay, Fayette
-      '54039', '54079', '54043', '54005', '54045', '54059', '54047', '54055', '54081', '54089', '54063', '54109', // Kanawha region
-      '54029', '54009', '54051', '54069', '54095', '54103', '54073', '54107', '54105', '54035', '54053', '54011', '54099', '54087', '54013', '54021', '54017', '54033', '54041', '54049', '54061', '54091', '54077', '54097', '54001', '54085' // Wheeling region
+      '54093', '54083', '54075', '54101', '54025', '54067', '54007', '54015', '54019',
+      '54039', '54079', '54043', '54005', '54045', '54059', '54047', '54055', '54081',
+      '54089', '54063', '54109', '54029', '54009', '54051', '54069', '54095', '54103',
+      '54073', '54107', '54105', '54035', '54053', '54011', '54099', '54087', '54013',
+      '54021', '54017', '54033', '54041', '54049', '54061', '54091', '54077', '54097', '54001', '54085'
     ],
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-allegany', 'wv-berkeley', 'va-shenandoah', 'va-southwest', 'pa-west'],
+    adjacentTerritories: ['wv-mineral', 'va-shenandoah-lower', 'va-southwest', 'pa-somerset', 'pa-fayette'],
   },
 
   // ==========================================================================
-  // VIRGINIA - Northern Region (Lee's staging area)
+  // VIRGINIA - Northern Region (Lee's staging area - detailed for maneuver)
   // ==========================================================================
 
   // LOUDOUN COUNTY - Key crossing point
@@ -281,71 +410,251 @@ export const MARYLAND_1862_REGIONS = {
     name: 'Loudoun County',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 2, // Moderate - Key Potomac crossing area
+    pointValue: 2, // Key Potomac crossing area
     isUrban: false,
     countyFips: ['51107'], // Loudoun
     maps: MARYLAND_1862_MAPS.drillCamp,
     adjacentTerritories: ['md-montgomery', 'wv-harpers-ferry', 'va-fairfax', 'va-clarke'],
   },
 
-  // FAIRFAX/ARLINGTON - Near DC
+  // FAIRFAX REGION - Arlington, Alexandria, Fairfax
   'va-fairfax': {
-    name: 'Northern Virginia',
+    name: 'Fairfax Region',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 3, // Important - Near Washington DC
+    pointValue: 3, // Near Washington DC
     isUrban: true,
-    countyFips: ['51059', '51013', '51510', '51600', '51610', '51683', '51685', '51153', '51061', '51047', '51179', '51177', '51630'], // Fairfax, Arlington, Alexandria, Fairfax City, Falls Church, Manassas, Manassas Park, Prince William, Fauquier, Culpeper, Stafford, Spotsylvania, Fredericksburg
+    countyFips: ['51059', '51013', '51510', '51600', '51610'], // Fairfax, Arlington, Alexandria, Fairfax City, Falls Church
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-montgomery', 'va-loudoun', 'va-clarke', 'va-central', 'va-northern-neck'],
+    adjacentTerritories: ['md-montgomery', 'md-prince-georges', 'va-loudoun', 'va-prince-william', 'va-fauquier'],
   },
 
-  // CLARKE & FREDERICK VA - Shenandoah entrance
-  'va-clarke': {
-    name: 'Clarke & Frederick (Winchester)',
+  // PRINCE WILLIAM & MANASSAS
+  'va-prince-william': {
+    name: 'Prince William',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 3, // Important - Winchester, entrance to Shenandoah
-    isUrban: true,
-    countyFips: ['51043', '51069', '51840', '51187'], // Clarke, Frederick, Winchester, Warren
-    maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['wv-harpers-ferry', 'wv-berkeley', 'va-loudoun', 'va-fairfax', 'va-shenandoah'],
-  },
-
-  // SHENANDOAH VALLEY - Lee's supply route
-  'va-shenandoah': {
-    name: 'Shenandoah Valley',
-    stateAbbr: 'VA',
-    owner: 'CSA',
-    pointValue: 3, // Important - Strategic valley, supply route
+    pointValue: 2,
     isUrban: false,
-    countyFips: ['51171', '51139', '51157', '51113', '51165', '51660', '51079', '51137', '51015', '51790', '51820'], // Shenandoah, Page, Rappahannock, Madison, Rockingham, Harrisonburg, Greene, Orange, Augusta, Staunton, Waynesboro
+    countyFips: ['51153', '51683', '51685'], // Prince William, Manassas, Manassas Park
     maps: MARYLAND_1862_MAPS.drillCamp,
-    adjacentTerritories: ['wv-berkeley', 'wv-interior', 'va-clarke', 'va-central', 'va-southwest'],
+    adjacentTerritories: ['va-fairfax', 'va-fauquier', 'va-stafford'],
   },
 
-  // CENTRAL VIRGINIA - Richmond approaches
-  'va-central': {
-    name: 'Central Virginia',
+  // FAUQUIER COUNTY
+  'va-fauquier': {
+    name: 'Fauquier County',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 2, // Moderate
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['51003', '51540', '51163', '51530', '51678', '51009', '51019', '51515', '51023', '51109', '51065', '51075', '51029', '51049', '51007', '51145', '51011', '51037', '51147', '51135', '51111', '51125'], // Albemarle, Charlottesville, Rockbridge, Buena Vista, Lexington, Amherst, Bedford, Bedford City, Botetourt, Louisa, Fluvanna, Goochland, Buckingham, Cumberland, Amelia, Powhatan, Appomattox, Charlotte, Prince Edward, Nottoway, Lunenburg, Nelson
+    countyFips: ['51061'], // Fauquier
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['va-fairfax', 'va-shenandoah', 'va-richmond', 'va-northern-neck', 'va-southwest'],
+    adjacentTerritories: ['va-fairfax', 'va-prince-william', 'va-clarke', 'va-rappahannock', 'va-culpeper'],
   },
 
-  // NORTHERN NECK & TIDEWATER connections
+  // CLARKE COUNTY - Winchester entrance
+  'va-clarke': {
+    name: 'Clarke County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2, // Entrance to Shenandoah
+    isUrban: false,
+    countyFips: ['51043'], // Clarke
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['wv-harpers-ferry', 'wv-berkeley', 'va-loudoun', 'va-fauquier', 'va-frederick'],
+  },
+
+  // FREDERICK COUNTY VA - Winchester
+  'va-frederick': {
+    name: 'Frederick (Winchester)',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 3, // Winchester - important supply hub
+    isUrban: true,
+    countyFips: ['51069', '51840'], // Frederick, Winchester city
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['wv-berkeley', 'wv-morgan', 'va-clarke', 'va-warren', 'va-shenandoah-upper'],
+  },
+
+  // WARREN COUNTY
+  'va-warren': {
+    name: 'Warren County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51187'], // Warren
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-frederick', 'va-rappahannock', 'va-shenandoah-upper'],
+  },
+
+  // RAPPAHANNOCK COUNTY
+  'va-rappahannock': {
+    name: 'Rappahannock County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51157'], // Rappahannock
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-fauquier', 'va-warren', 'va-culpeper', 'va-madison'],
+  },
+
+  // CULPEPER COUNTY
+  'va-culpeper': {
+    name: 'Culpeper County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51047'], // Culpeper
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-fauquier', 'va-rappahannock', 'va-madison', 'va-stafford', 'va-orange'],
+  },
+
+  // MADISON COUNTY
+  'va-madison': {
+    name: 'Madison County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51113'], // Madison
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-rappahannock', 'va-culpeper', 'va-shenandoah-upper', 'va-greene'],
+  },
+
+  // STAFFORD & SPOTSYLVANIA
+  'va-stafford': {
+    name: 'Stafford & Spotsylvania',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2,
+    isUrban: false,
+    countyFips: ['51179', '51177', '51630'], // Stafford, Spotsylvania, Fredericksburg
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['va-prince-william', 'va-culpeper', 'va-orange', 'va-northern-neck', 'va-caroline'],
+  },
+
+  // UPPER SHENANDOAH - Shenandoah, Page counties
+  'va-shenandoah-upper': {
+    name: 'Upper Shenandoah',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2, // Strategic valley
+    isUrban: false,
+    countyFips: ['51171', '51139'], // Shenandoah, Page
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['wv-hampshire', 'wv-mineral', 'va-frederick', 'va-warren', 'va-madison', 'va-shenandoah-lower'],
+  },
+
+  // LOWER SHENANDOAH - Rockingham, Augusta, Staunton, etc.
+  'va-shenandoah-lower': {
+    name: 'Lower Shenandoah',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2, // Strategic valley, Lee's supply route
+    isUrban: false,
+    countyFips: ['51165', '51660', '51015', '51790', '51820'], // Rockingham, Harrisonburg, Augusta, Staunton, Waynesboro
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['wv-interior', 'va-shenandoah-upper', 'va-greene', 'va-central', 'va-southwest'],
+  },
+
+  // GREENE COUNTY
+  'va-greene': {
+    name: 'Greene County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51079'], // Greene
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-madison', 'va-shenandoah-lower', 'va-orange', 'va-albemarle'],
+  },
+
+  // ORANGE COUNTY
+  'va-orange': {
+    name: 'Orange County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51137'], // Orange
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-culpeper', 'va-stafford', 'va-greene', 'va-albemarle', 'va-louisa'],
+  },
+
+  // NORTHERN NECK - Coastal VA
   'va-northern-neck': {
     name: 'Northern Neck',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['51099', '51193', '51133', '51103', '51159', '51057', '51119', '51097', '51101', '51033', '51085'], // King George, Westmoreland, Northumberland, Lancaster, Richmond County, Essex, Middlesex, King & Queen, King William, Caroline, Hanover
+    countyFips: ['51099', '51193', '51133', '51103'], // King George, Westmoreland, Northumberland, Lancaster
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['md-southern', 'va-fairfax', 'va-central', 'va-richmond'],
+    adjacentTerritories: ['md-charles', 'md-st-marys', 'va-stafford', 'va-caroline'],
+  },
+
+  // CAROLINE & HANOVER
+  'va-caroline': {
+    name: 'Caroline & Hanover',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51033', '51085'], // Caroline, Hanover
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-stafford', 'va-northern-neck', 'va-louisa', 'va-richmond'],
+  },
+
+  // LOUISA COUNTY
+  'va-louisa': {
+    name: 'Louisa County',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51109'], // Louisa
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-orange', 'va-caroline', 'va-albemarle', 'va-fluvanna'],
+  },
+
+  // ALBEMARLE - Charlottesville
+  'va-albemarle': {
+    name: 'Albemarle (Charlottesville)',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2,
+    isUrban: true,
+    countyFips: ['51003', '51540'], // Albemarle, Charlottesville
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['va-greene', 'va-orange', 'va-louisa', 'va-fluvanna', 'va-nelson', 'va-shenandoah-lower'],
+  },
+
+  // FLUVANNA & GOOCHLAND
+  'va-fluvanna': {
+    name: 'Fluvanna & Goochland',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51065', '51075'], // Fluvanna, Goochland
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-louisa', 'va-albemarle', 'va-richmond', 'va-central'],
+  },
+
+  // NELSON & BUCKINGHAM
+  'va-nelson': {
+    name: 'Nelson & Buckingham',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51125', '51029'], // Nelson, Buckingham
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-albemarle', 'va-central', 'va-southwest'],
   },
 
   // RICHMOND - Confederate Capital
@@ -355,33 +664,64 @@ export const MARYLAND_1862_REGIONS = {
     owner: 'CSA',
     pointValue: 5, // KEY OBJECTIVE - Confederate Capital
     isUrban: true,
-    countyFips: ['51760', '51087', '51041', '51127', '51036', '51730', '51053', '51149', '51570', '51670'], // Richmond City, Henrico, Chesterfield, New Kent, Charles City, Petersburg, Dinwiddie, Prince George, Colonial Heights, Hopewell
+    countyFips: ['51760', '51087', '51041'], // Richmond City, Henrico, Chesterfield
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['va-central', 'va-northern-neck', 'va-tidewater', 'va-southside'],
+    adjacentTerritories: ['va-caroline', 'va-fluvanna', 'va-central', 'va-petersburg', 'va-tidewater'],
   },
 
-  // SOUTHWEST VIRGINIA - Peripheral
+  // CENTRAL VIRGINIA - Interior (consolidated peripheral)
+  'va-central': {
+    name: 'Central Virginia',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['51163', '51530', '51678', '51009', '51019', '51515', '51023', '51007', '51145', '51011', '51037', '51147', '51135', '51111'],
+    // Rockbridge, Buena Vista, Lexington, Amherst, Bedford, Bedford City, Botetourt, Amelia, Powhatan, Appomattox, Charlotte, Prince Edward, Nottoway, Lunenburg
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['va-shenandoah-lower', 'va-fluvanna', 'va-nelson', 'va-richmond', 'va-petersburg', 'va-southwest', 'va-southside'],
+  },
+
+  // PETERSBURG REGION
+  'va-petersburg': {
+    name: 'Petersburg Region',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 2, // Important rail hub
+    isUrban: true,
+    countyFips: ['51730', '51053', '51149', '51570', '51670', '51036', '51127'], // Petersburg, Dinwiddie, Prince George, Colonial Heights, Hopewell, Charles City, New Kent
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['va-richmond', 'va-central', 'va-southside', 'va-tidewater'],
+  },
+
+  // SOUTHWEST VIRGINIA
   'va-southwest': {
     name: 'Southwest Virginia',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['51005', '51017', '51091', '51045', '51071', '51021', '51027', '51035', '51051', '51063', '51077', '51105', '51121', '51141', '51155', '51167', '51169', '51173', '51185', '51191', '51195', '51197', '51520', '51640', '51720', '51750', '51680', '51031', '51770', '51161', '51775', '51067'], // Alleghany, Bath, Highland, Craig, Giles, Bland, Buchanan, Carroll, Dickenson, Floyd, Grayson, Lee, Montgomery, Patrick, Pulaski, Russell, Scott, Smyth, Tazewell, Washington, Wise, Wythe, Bristol, Galax, Norton, Radford, Lynchburg, Campbell, Roanoke City, Roanoke County, Salem, Franklin
+    countyFips: [
+      '51005', '51017', '51091', '51045', '51071', '51021', '51027', '51035', '51051',
+      '51063', '51077', '51105', '51121', '51141', '51155', '51167', '51169', '51173',
+      '51185', '51191', '51195', '51197', '51520', '51640', '51720', '51750', '51680',
+      '51031', '51770', '51161', '51775', '51067'
+    ],
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['wv-interior', 'va-shenandoah', 'va-central', 'va-southside'],
+    adjacentTerritories: ['wv-interior', 'va-shenandoah-lower', 'va-nelson', 'va-central', 'va-southside'],
   },
 
-  // SOUTHSIDE VIRGINIA - Peripheral
+  // SOUTHSIDE VIRGINIA
   'va-southside': {
     name: 'Southside Virginia',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['51025', '51081', '51175', '51183', '51083', '51089', '51117', '51143', '51590', '51690'], // Brunswick, Greensville, Southampton, Sussex, Halifax, Henry, Mecklenburg, Pittsylvania, Danville, Martinsville
+    countyFips: ['51025', '51081', '51175', '51183', '51083', '51089', '51117', '51143', '51590', '51690'],
+    // Brunswick, Greensville, Southampton, Sussex, Halifax, Henry, Mecklenburg, Pittsylvania, Danville, Martinsville
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['va-richmond', 'va-southwest', 'va-tidewater'],
+    adjacentTerritories: ['va-central', 'va-petersburg', 'va-southwest', 'va-tidewater'],
   },
 
   // TIDEWATER VIRGINIA - Norfolk area
@@ -389,87 +729,239 @@ export const MARYLAND_1862_REGIONS = {
     name: 'Tidewater Virginia',
     stateAbbr: 'VA',
     owner: 'CSA',
-    pointValue: 2, // Moderate - Norfolk
+    pointValue: 2, // Norfolk - port city
     isUrban: true,
-    countyFips: ['51073', '51093', '51095', '51115', '51199', '51650', '51700', '51710', '51735', '51740', '51800', '51810', '51830', '51001', '51131', '51550', '51595'], // Gloucester, Isle of Wight, James City, Mathews, York, Hampton, Newport News, Norfolk, Poquoson, Portsmouth, Suffolk, Virginia Beach, Williamsburg, Accomack, Northampton, Chesapeake, Emporia
+    countyFips: ['51073', '51093', '51095', '51115', '51199', '51650', '51700', '51710', '51735', '51740', '51800', '51810', '51830', '51550', '51595'],
+    // Gloucester, Isle of Wight, James City, Mathews, York, Hampton, Newport News, Norfolk, Poquoson, Portsmouth, Suffolk, Virginia Beach, Williamsburg, Chesapeake, Emporia
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['va-richmond', 'va-southside'],
+    adjacentTerritories: ['va-richmond', 'va-petersburg', 'va-southside', 'va-eastern-shore'],
   },
 
-  // ==========================================================================
-  // PENNSYLVANIA - Consolidated regions (threatened by invasion)
-  // ==========================================================================
-
-  // SOUTH BORDER - Adams, Franklin, York, Cumberland (main threat area)
-  'pa-south-border': {
-    name: 'Southern Pennsylvania',
-    stateAbbr: 'PA',
-    owner: 'USA',
-    pointValue: 3, // Important - Directly threatened, Gettysburg area
+  // VIRGINIA EASTERN SHORE
+  'va-eastern-shore': {
+    name: 'Virginia Eastern Shore',
+    stateAbbr: 'VA',
+    owner: 'CSA',
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['42001', '42055', '42057', '42133', '42041'], // Adams, Franklin, Fulton, York, Cumberland
-    maps: MARYLAND_1862_MAPS.drillCamp,
-    adjacentTerritories: ['md-antietam', 'md-frederick', 'md-carroll', 'pa-harrisburg', 'pa-west'],
+    countyFips: ['51001', '51131'], // Accomack, Northampton
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-eastern-lower', 'va-tidewater'],
   },
 
-  // HARRISBURG REGION - State capital
-  'pa-harrisburg': {
-    name: 'Harrisburg Region',
+  // ==========================================================================
+  // PENNSYLVANIA - Southern border (detailed - threatened by invasion)
+  // ==========================================================================
+
+  // ADAMS COUNTY - Gettysburg area
+  'pa-adams': {
+    name: 'Adams County',
     stateAbbr: 'PA',
     owner: 'USA',
-    pointValue: 3, // Important - State capital
-    isUrban: true,
-    countyFips: ['42043', '42099', '42075', '42071', '42067', '42087'], // Dauphin, Perry, Lebanon, Lancaster, Juniata, Mifflin
-    maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['pa-south-border', 'pa-southeast', 'pa-central'],
+    pointValue: 1, // Gettysburg area
+    isUrban: false,
+    countyFips: ['42001'], // Adams
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['md-antietam', 'md-frederick', 'pa-franklin', 'pa-york', 'pa-cumberland'],
   },
 
-  // SOUTHEAST PA - Philadelphia region
-  'pa-southeast': {
+  // FRANKLIN COUNTY
+  'pa-franklin': {
+    name: 'Franklin County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42055'], // Franklin
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-antietam', 'pa-adams', 'pa-cumberland', 'pa-fulton'],
+  },
+
+  // FULTON COUNTY
+  'pa-fulton': {
+    name: 'Fulton County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42057'], // Fulton
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-franklin', 'pa-bedford', 'pa-cumberland'],
+  },
+
+  // YORK COUNTY
+  'pa-york': {
+    name: 'York County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42133'], // York
+    maps: MARYLAND_1862_MAPS.drillCamp,
+    adjacentTerritories: ['md-carroll', 'pa-adams', 'pa-cumberland', 'pa-dauphin', 'pa-lancaster'],
+  },
+
+  // CUMBERLAND COUNTY
+  'pa-cumberland': {
+    name: 'Cumberland County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42041'], // Cumberland
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-adams', 'pa-franklin', 'pa-fulton', 'pa-york', 'pa-dauphin', 'pa-perry'],
+  },
+
+  // DAUPHIN - Harrisburg (State Capital)
+  'pa-dauphin': {
+    name: 'Dauphin (Harrisburg)',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 3, // State capital
+    isUrban: true,
+    countyFips: ['42043'], // Dauphin
+    maps: MARYLAND_1862_MAPS.urban,
+    adjacentTerritories: ['pa-york', 'pa-cumberland', 'pa-perry', 'pa-lancaster', 'pa-lebanon'],
+  },
+
+  // LANCASTER COUNTY
+  'pa-lancaster': {
+    name: 'Lancaster County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42071'], // Lancaster
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-york', 'pa-dauphin', 'pa-chester', 'pa-lebanon', 'pa-berks'],
+  },
+
+  // CHESTER COUNTY
+  'pa-chester': {
+    name: 'Chester County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42029'], // Chester
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['md-harford', 'md-cecil', 'pa-lancaster', 'pa-delaware', 'pa-berks'],
+  },
+
+  // PERRY COUNTY
+  'pa-perry': {
+    name: 'Perry County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42099'], // Perry
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-cumberland', 'pa-dauphin', 'pa-interior'],
+  },
+
+  // LEBANON COUNTY
+  'pa-lebanon': {
+    name: 'Lebanon County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42075'], // Lebanon
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-dauphin', 'pa-lancaster', 'pa-berks', 'pa-interior'],
+  },
+
+  // BERKS COUNTY
+  'pa-berks': {
+    name: 'Berks County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42011'], // Berks
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-lancaster', 'pa-chester', 'pa-lebanon', 'pa-philadelphia'],
+  },
+
+  // DELAWARE COUNTY
+  'pa-delaware': {
+    name: 'Delaware County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42045'], // Delaware
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-chester', 'pa-philadelphia'],
+  },
+
+  // PHILADELPHIA - Major city
+  'pa-philadelphia': {
     name: 'Philadelphia Region',
     stateAbbr: 'PA',
     owner: 'USA',
-    pointValue: 3, // Important - Major city
+    pointValue: 3, // Major city
     isUrban: true,
-    countyFips: ['42101', '42091', '42017', '42045', '42029', '42011', '42077', '42095'], // Philadelphia, Montgomery, Bucks, Delaware, Chester, Berks, Lehigh, Northampton
+    countyFips: ['42101', '42091', '42017'], // Philadelphia, Montgomery, Bucks
     maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-harford', 'pa-harrisburg', 'pa-northeast'],
+    adjacentTerritories: ['pa-berks', 'pa-delaware', 'pa-interior'],
   },
 
-  // CENTRAL PA - Interior counties
-  'pa-central': {
-    name: 'Central Pennsylvania',
+  // BEDFORD COUNTY
+  'pa-bedford': {
+    name: 'Bedford County',
     stateAbbr: 'PA',
     owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['42027', '42061', '42013', '42021', '42009', '42111', '42063', '42065', '42005', '42033', '42047', '42023', '42053', '42035', '42081', '42113', '42037', '42079', '42131', '42109', '42097', '42093', '42119', '42107', '42025'], // Centre, Huntingdon, Blair, Cambria, Bedford, Somerset, Indiana, Jefferson, Armstrong, Clearfield, Elk, Cameron, Forest, Clinton, Lycoming, Sullivan, Columbia, Luzerne, Wyoming, Snyder, Northumberland, Montour, Union, Schuylkill, Carbon
+    countyFips: ['42009'], // Bedford
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['pa-harrisburg', 'pa-west', 'pa-northeast'],
+    adjacentTerritories: ['pa-fulton', 'pa-somerset', 'pa-interior'],
   },
 
-  // WEST PA - Pittsburgh region
-  'pa-west': {
-    name: 'Western Pennsylvania',
+  // SOMERSET COUNTY
+  'pa-somerset': {
+    name: 'Somerset County',
     stateAbbr: 'PA',
     owner: 'USA',
-    pointValue: 2, // Moderate - Pittsburgh
-    isUrban: true,
-    countyFips: ['42003', '42007', '42129', '42125', '42059', '42051', '42019', '42073', '42085', '42031', '42121', '42039', '42049', '42123', '42083', '42105', '42117', '42015', '42069'], // Allegheny, Beaver, Westmoreland, Washington, Greene, Fayette, Butler, Lawrence, Mercer, Clarion, Venango, Crawford, Erie, Warren, McKean, Potter, Tioga, Bradford, Lackawanna
-    maps: MARYLAND_1862_MAPS.urban,
-    adjacentTerritories: ['md-allegany', 'wv-interior', 'pa-south-border', 'pa-central', 'pa-northeast'],
-  },
-
-  // NORTHEAST PA - Peripheral
-  'pa-northeast': {
-    name: 'Northeast Pennsylvania',
-    stateAbbr: 'PA',
-    owner: 'USA',
-    pointValue: 1, // Peripheral
+    pointValue: 1,
     isUrban: false,
-    countyFips: ['42089', '42103', '42115', '42127'], // Monroe, Pike, Susquehanna, Wayne
+    countyFips: ['42111'], // Somerset
     maps: MARYLAND_1862_MAPS.rural,
-    adjacentTerritories: ['pa-southeast', 'pa-central', 'pa-west'],
+    adjacentTerritories: ['md-allegany', 'md-garrett', 'pa-bedford', 'pa-fayette'],
+  },
+
+  // FAYETTE COUNTY
+  'pa-fayette': {
+    name: 'Fayette County',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: ['42051'], // Fayette
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['wv-interior', 'pa-somerset', 'pa-interior'],
+  },
+
+  // PA INTERIOR - Consolidated interior counties
+  'pa-interior': {
+    name: 'Pennsylvania Interior',
+    stateAbbr: 'PA',
+    owner: 'USA',
+    pointValue: 1,
+    isUrban: false,
+    countyFips: [
+      '42027', '42061', '42013', '42021', '42063', '42065', '42005', '42033', '42047',
+      '42023', '42053', '42035', '42081', '42113', '42037', '42079', '42131', '42109',
+      '42097', '42093', '42119', '42107', '42025', '42003', '42007', '42129', '42125',
+      '42059', '42019', '42073', '42085', '42031', '42121', '42039', '42049', '42123',
+      '42083', '42105', '42117', '42015', '42069', '42089', '42103', '42115', '42127',
+      '42077', '42095'
+    ],
+    maps: MARYLAND_1862_MAPS.rural,
+    adjacentTerritories: ['pa-perry', 'pa-lebanon', 'pa-philadelphia', 'pa-bedford', 'pa-fayette'],
   },
 };
 
