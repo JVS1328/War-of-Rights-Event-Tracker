@@ -1,3 +1,8 @@
+import {
+  isTerritorySupplied,
+  ISOLATED_DEFENSE_MULTIPLIER
+} from './supplyLines';
+
 /**
  * Combat Power (CP) System Utilities
  * Based on Rising Storm 2: Vietnam mechanics
@@ -121,8 +126,9 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
 /**
  * Calculate CP loss for defender based on casualties
  *
- * Formula: BASE_DEFENSE_COST * vpMultiplier * (casualties / totalCasualties)
+ * Formula: BASE_DEFENSE_COST * vpMultiplier * (casualties / totalCasualties) * isolationMultiplier
  * Base cost is 25 for friendly territories, 50 for neutral territories
+ * Isolated territories (no adjacent friendly territories) cost 2x to defend
  * Proportional to casualties taken - the more casualties you take, the more CP you lose
  *
  * @param {number} pointValue - Territory point value (any positive number)
@@ -131,9 +137,10 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * @param {boolean} defenderWon - Whether the defender won the battle (no longer affects calculation)
  * @param {boolean} isFriendlyTerritory - Whether defending friendly (true) or neutral (false) territory
  * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
+ * @param {boolean} isIsolated - Whether the territory is isolated from supply lines
  * @returns {number} CP loss (rounded to nearest integer)
  */
-export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory, vpBase = VP_BASE) {
+export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory, vpBase = VP_BASE, isIsolated = false) {
   // Validate inputs
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
@@ -156,9 +163,12 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
   // Defending neutral territory is more costly (50) than defending friendly territory (25)
   const baseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
 
+  // Apply isolation multiplier (2x for isolated territories)
+  const isolationMultiplier = isIsolated ? ISOLATED_DEFENSE_MULTIPLIER : 1;
+
   // Calculate based on casualties - proportional to casualties taken
   const vpMultiplier = getVPMultiplier(pointValue, vpBase);
-  const maxLoss = baseCost * vpMultiplier;
+  const maxLoss = baseCost * vpMultiplier * isolationMultiplier;
 
   // Calculate loss based on casualty ratio (capped at 100%)
   const casualtyRatio = Math.min(1, casualties / totalCasualties);
@@ -179,6 +189,8 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
  * @param {number} params.attackerCasualties - Attacker casualties
  * @param {number} params.defenderCasualties - Defender casualties
  * @param {boolean} params.abilityActive - Whether the attacker's ability is active
+ * @param {number} params.vpBase - Base VP value for 1x multiplier
+ * @param {boolean} params.isDefenderIsolated - Whether the defending territory is isolated
  * @returns {Object} { attackerLoss: number, defenderLoss: number, defender: string }
  */
 export function calculateBattleCPCost({
@@ -189,7 +201,8 @@ export function calculateBattleCPCost({
   attackerCasualties,
   defenderCasualties,
   abilityActive = false,
-  vpBase = VP_BASE
+  vpBase = VP_BASE,
+  isDefenderIsolated = false
 }) {
   // Determine defender (the side that is NOT attacking)
   // For neutral territories, the defender is the opposing side
@@ -226,7 +239,8 @@ export function calculateBattleCPCost({
       totalCasualties,
       defenderWon,
       isFriendlyTerritory,
-      vpBase
+      vpBase,
+      isDefenderIsolated
     );
 
     // Apply USA ability: "Special Orders 191" - triples CSA CP loss on attacker victory
@@ -264,30 +278,41 @@ export function canAffordBattle(side, cpCost) {
 
 /**
  * Calculate CP generation for both sides based on controlled territories
- * 
+ * Isolated territories (not connected to friendly supply lines) generate 0 CP
+ *
  * @param {Array} territories - Array of all territories
- * @returns {Object} CP generation for each side { usa: number, csa: number }
+ * @returns {Object} CP generation for each side { usa: number, csa: number, isolatedUSA: Territory[], isolatedCSA: Territory[] }
  */
 export function calculateCPGeneration(territories) {
   if (!Array.isArray(territories)) {
     throw new Error('Territories must be an array');
   }
-  
+
   let usaCP = 0;
   let csaCP = 0;
-  
+  const isolatedUSA = [];
+  const isolatedCSA = [];
+
   territories.forEach(territory => {
-    const cpValue = territory.pointValue || 0;
-    
+    const cpValue = territory.pointValue || territory.victoryPoints || 0;
+
     if (territory.owner === 'USA') {
-      usaCP += cpValue;
+      if (isTerritorySupplied(territory, territories)) {
+        usaCP += cpValue;
+      } else {
+        isolatedUSA.push(territory);
+      }
     } else if (territory.owner === 'CSA') {
-      csaCP += cpValue;
+      if (isTerritorySupplied(territory, territories)) {
+        csaCP += cpValue;
+      } else {
+        isolatedCSA.push(territory);
+      }
     }
     // NEUTRAL territories generate no CP
   });
-  
-  return { usa: usaCP, csa: csaCP };
+
+  return { usa: usaCP, csa: csaCP, isolatedUSA, isolatedCSA };
 }
 
 /**
@@ -307,9 +332,10 @@ export function isValidPointValue(pointValue) {
  * @param {string} territoryOwner - Current territory owner
  * @param {string} defender - Defending side
  * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
+ * @param {boolean} isDefenderIsolated - Whether the defending territory is isolated
  * @returns {Object} { attackerMax: number, defenderMax: number }
  */
-export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender, vpBase = VP_BASE) {
+export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender, vpBase = VP_BASE, isDefenderIsolated = false) {
   const vpMultiplier = getVPMultiplier(territoryPointValue, vpBase);
 
   // Determine attacker max based on territory ownership
@@ -318,11 +344,13 @@ export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defende
   const attackerMax = attackerBaseCost * vpMultiplier;
 
   // Defender max based on whether defending friendly or neutral territory
+  // Isolated territories cost 2x to defend
   let defenderMax = 0;
   if (defender !== 'NEUTRAL') {
     const isFriendlyTerritory = territoryOwner === defender;
     const defenderBaseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
-    defenderMax = defenderBaseCost * vpMultiplier;
+    const isolationMultiplier = isDefenderIsolated ? ISOLATED_DEFENSE_MULTIPLIER : 1;
+    defenderMax = defenderBaseCost * vpMultiplier * isolationMultiplier;
   }
 
   return { attackerMax, defenderMax };

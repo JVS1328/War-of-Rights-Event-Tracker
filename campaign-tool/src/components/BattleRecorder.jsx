@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Swords, Save, AlertCircle } from 'lucide-react';
+import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon } from 'lucide-react';
 import { ALL_MAPS } from '../data/territories';
 import {
   calculateBattleCPCost,
@@ -11,6 +11,7 @@ import {
   getMapCooldownMessage,
   selectMapsForPickBan
 } from '../utils/mapSelection';
+import { rollBattleConditions } from '../utils/battleConditions';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
   const [selectedMap, setSelectedMap] = useState('');
@@ -19,6 +20,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [winner, setWinner] = useState('');
   const [casualties, setCasualties] = useState({ USA: 0, CSA: 0 });
   const [notes, setNotes] = useState('');
+
+  // Battle conditions state
+  const [battleConditions, setBattleConditions] = useState(null);
 
   // Team ability state
   const [abilityActive, setAbilityActive] = useState(false);
@@ -264,11 +268,17 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         CSA: parseInt(casualties.CSA) || 0
       },
       notes: notes.trim(),
-      abilityUsed: abilityActive ? attacker : null, // Track which side used ability
+      abilityUsed: abilityActive ? attacker : null,
       manualCPLoss: isManualCPMode ? {
         attacker: parseInt(manualCPLoss.attacker) || 0,
         defender: parseInt(manualCPLoss.defender) || 0
-      } : undefined
+      } : undefined,
+      conditions: battleConditions ? {
+        weather: battleConditions.weather.condition.id,
+        weatherRoll: battleConditions.weather.roll,
+        time: battleConditions.time.condition.id,
+        timeRoll: battleConditions.time.roll
+      } : null
     };
 
     onRecordBattle(battle);
@@ -499,6 +509,82 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                 })()}
               </div>
             )}
+
+            {/* Battle Conditions - Weather & Time Roll */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm text-slate-300 font-semibold">
+                  Battle Conditions
+                </label>
+                <button
+                  onClick={() => setBattleConditions(rollBattleConditions())}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
+                >
+                  <Dice6 className="w-4 h-4" />
+                  {battleConditions ? 'Re-roll' : 'Roll Conditions'}
+                </button>
+              </div>
+
+              {battleConditions ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Weather Result */}
+                  <div className={`p-3 rounded border ${
+                    battleConditions.weather.condition.id === 'clear'
+                      ? 'bg-yellow-900/30 border-yellow-700'
+                      : battleConditions.weather.condition.id === 'rain'
+                      ? 'bg-blue-900/30 border-blue-700'
+                      : 'bg-purple-900/30 border-purple-700'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      {battleConditions.weather.condition.id === 'clear' ? (
+                        <Sun className="w-4 h-4 text-yellow-400" />
+                      ) : battleConditions.weather.condition.id === 'rain' ? (
+                        <Cloud className="w-4 h-4 text-blue-400" />
+                      ) : (
+                        <CloudRain className="w-4 h-4 text-purple-400" />
+                      )}
+                      <span className="text-xs text-slate-400">Weather (d10: {battleConditions.weather.roll})</span>
+                    </div>
+                    <div className="font-semibold text-white text-sm">
+                      {battleConditions.weather.condition.name}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {battleConditions.weather.condition.description}
+                    </div>
+                  </div>
+
+                  {/* Time Result */}
+                  <div className={`p-3 rounded border ${
+                    battleConditions.time.condition.id === 'dawn'
+                      ? 'bg-orange-900/30 border-orange-700'
+                      : battleConditions.time.condition.id === 'standard'
+                      ? 'bg-slate-600/50 border-slate-500'
+                      : battleConditions.time.condition.id === 'dusk'
+                      ? 'bg-amber-900/30 border-amber-700'
+                      : 'bg-indigo-900/30 border-indigo-700'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Moon className={`w-4 h-4 ${
+                        battleConditions.time.condition.id === 'night'
+                          ? 'text-indigo-400'
+                          : 'text-amber-400'
+                      }`} />
+                      <span className="text-xs text-slate-400">Time of Day (d10: {battleConditions.time.roll})</span>
+                    </div>
+                    <div className="font-semibold text-white text-sm">
+                      {battleConditions.time.condition.name}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {battleConditions.time.condition.description}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-slate-400 text-sm">
+                  Roll to determine weather and time of day
+                </div>
+              )}
+            </div>
 
             {/* Attacker Selection */}
             <div>
