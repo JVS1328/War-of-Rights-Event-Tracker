@@ -4,6 +4,7 @@ import { DEFAULT_STARTING_CP } from '../utils/cpSystem';
 import { getStateByAbbr, calculateGroupCenter } from './usaStates';
 import { CAMPAIGN_VERSION } from '../utils/campaignValidation';
 import { createEasternTheatreTerritories, calculateInitialVP as calcEasternVP } from './easternTheatreCounties';
+import { createMaryland1862Territories, calculateInitialVP as calcMaryland1862VP } from './marylandCampaign1862';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -301,6 +302,7 @@ export const createDefaultCampaign = (customMap = null) => {
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto', // 'auto' or 'manual'
+      vpBase: 5, // VP multiplier base - state-level maps use higher VP values
       campaignStartDate: getDefaultStartDate(),
       campaignEndDate: {
         month: 12,
@@ -336,6 +338,7 @@ export const getDefaultSettings = () => ({
   startingCP: DEFAULT_STARTING_CP,
   cpGenerationEnabled: true,
   cpCalculationMode: 'auto', // 'auto' or 'manual'
+  vpBase: 5, // VP multiplier base - adjust based on map VP scale
   campaignStartDate: getDefaultStartDate(),
   campaignEndDate: {
     month: 12,
@@ -428,6 +431,7 @@ export const createEasternTheatreCampaign = () => {
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto',
+      vpBase: 1, // County-level maps use VP scale 1-5
       campaignStartDate: getDefaultStartDate(),
       campaignEndDate: {
         month: 12,
@@ -436,6 +440,88 @@ export const createEasternTheatreCampaign = () => {
         displayString: 'December 1865'
       },
       turnsPerYear: 6,
+      abilityCooldown: 2
+    }
+  };
+};
+
+/**
+ * Create a Maryland Campaign 1862 county-based campaign
+ * Historical campaign: September 4-20, 1862
+ * Lee's first invasion of the North, culminating in the Battle of Antietam
+ */
+export const createMaryland1862Campaign = () => {
+  const territories = createMaryland1862Territories();
+  const initialVP = calcMaryland1862VP();
+
+  // Campaign starts September 1862
+  const campaignDate = {
+    month: 9,
+    year: 1862,
+    turn: 1,
+    displayString: 'September 1862'
+  };
+
+  return {
+    // === VERSION ===
+    version: CAMPAIGN_VERSION,
+
+    // === CAMPAIGN INFO ===
+    id: Date.now().toString(),
+    name: 'Maryland Campaign 1862',
+    startDate: new Date().toISOString(),
+    currentTurn: 1,
+    victoryPointsUSA: initialVP.usa,
+    victoryPointsCSA: initialVP.csa,
+    territories,
+    battles: [],
+    customMap: null,
+    mapTemplate: 'maryland-1862',
+    isCountyView: true,
+
+    // === CP SYSTEM FIELDS ===
+    combatPowerUSA: DEFAULT_STARTING_CP,
+    combatPowerCSA: DEFAULT_STARTING_CP,
+    campaignDate: campaignDate,
+    cpSystemEnabled: true,
+    cpHistory: [],
+
+    // === TEAM ABILITIES ===
+    // Special Orders 191: Union discovered Lee's battle plans
+    // Valley Supply Lines: CSA supply through Shenandoah
+    abilities: {
+      USA: {
+        name: 'Special Orders 191',
+        cooldown: 0,
+        lastUsedTurn: null
+      },
+      CSA: {
+        name: 'Valley Supply Lines',
+        cooldown: 0,
+        lastUsedTurn: null
+      }
+    },
+
+    // Settings optimized for the Maryland Campaign
+    settings: {
+      allowTerritoryRecapture: true,
+      requireAdjacentAttack: true, // Adjacency matters with county-level detail
+      casualtyTracking: true,
+      instantVPGains: true,
+      captureTransitionTurns: 1, // Faster pace for focused campaign
+      failedNeutralAttackToEnemy: true,
+      startingCP: DEFAULT_STARTING_CP,
+      cpGenerationEnabled: true,
+      cpCalculationMode: 'auto',
+      vpBase: 1, // County-level maps use VP scale 1-5
+      campaignStartDate: campaignDate,
+      campaignEndDate: {
+        month: 10,
+        year: 1862,
+        turn: 6,
+        displayString: 'October 1862'
+      },
+      turnsPerYear: 12, // Monthly turns for focused campaign
       abilityCooldown: 2
     }
   };
@@ -454,5 +540,10 @@ export const CAMPAIGN_TEMPLATES = {
     name: 'Eastern Theatre (County View)',
     description: 'Detailed county-grouped regions for the Eastern Theatre',
     create: createEasternTheatreCampaign
+  },
+  'maryland-1862': {
+    name: 'Maryland Campaign 1862',
+    description: "Lee's first invasion of the North - Antietam, Harpers Ferry, South Mountain",
+    create: createMaryland1862Campaign
   }
 };
