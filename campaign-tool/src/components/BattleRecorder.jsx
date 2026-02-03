@@ -490,10 +490,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               <div className="bg-slate-700 rounded p-3">
                 {(() => {
                   const territory = territories.find(t => t.id === selectedTerritory);
-                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
-                  const adjacentTerritories = (territory.adjacentTerritories || [])
+                  const adjacentIds = territory.adjacentTerritories || [];
+                  const adjacentTerritoryObjects = adjacentIds
                     .map(id => territories.find(t => t.id === id))
                     .filter(Boolean);
+                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
 
                   return (
                     <>
@@ -529,11 +530,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                       )}
 
                       {/* Adjacent Territories */}
-                      {adjacentTerritories.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-slate-600">
-                          <div className="text-xs text-slate-400 mb-1">Adjacent Territories:</div>
+                      <div className="mt-2 pt-2 border-t border-slate-600">
+                        <div className="text-xs text-slate-400 mb-1">
+                          Adjacent Territories ({adjacentIds.length} defined, {adjacentTerritoryObjects.length} found):
+                        </div>
+                        {adjacentTerritoryObjects.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {adjacentTerritories.map(adj => (
+                            {adjacentTerritoryObjects.map(adj => (
                               <span
                                 key={adj.id}
                                 className={`text-xs px-2 py-0.5 rounded ${
@@ -548,8 +551,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                               </span>
                             ))}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="text-xs text-slate-500 italic">
+                            {adjacentIds.length > 0
+                              ? `IDs not found in territories: ${adjacentIds.join(', ')}`
+                              : 'No adjacencies defined for this territory'}
+                          </div>
+                        )}
+                      </div>
                     </>
                   );
                 })()}
