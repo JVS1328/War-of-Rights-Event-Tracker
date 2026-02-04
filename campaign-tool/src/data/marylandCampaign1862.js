@@ -526,7 +526,7 @@ export const MARYLAND_1862_REGIONS = {
     owner: 'USA',
     pointValue: 1,
     isUrban: false,
-    countyFips: ['54005', '54045', '54059'], // Boone, Lincoln, Logan
+    countyFips: ['54005', '54043', '54045'], // Boone, Lincoln, Logan
     maps: MARYLAND_1862_MAPS.rural,
     adjacentTerritories: ['wv-kanawha', 'wv-mason', 'wv-wayne', 'wv-wayne', 'wv-raleigh'],
   },
@@ -710,7 +710,7 @@ export const MARYLAND_1862_REGIONS = {
     owner: 'CSA',
     pointValue: 1,
     isUrban: false,
-    countyFips: ['54031'], // Highland (actually WV FIPS, but VA county)
+    countyFips: ['51091'], // Highland County VA
     maps: MARYLAND_1862_MAPS.rural,
     adjacentTerritories: ['wv-grant', 'wv-pocahontas', 'va-rockingham', 'va-augusta', 'va-bath'],
   },
@@ -1557,7 +1557,7 @@ export const MARYLAND_1862_REGIONS = {
     owner: 'USA',
     pointValue: 1,
     isUrban: false,
-    countyFips: ['42033', '42063'], // Clearfield, Jefferson
+    countyFips: ['42033', '42065'], // Clearfield, Jefferson
     maps: MARYLAND_1862_MAPS.rural,
     adjacentTerritories: ['pa-clinton-centre', 'pa-mckean-cameron', 'pa-huntingdon-blair', 'pa-cambria-indiana', 'pa-armstrong-clarion'],
   },
