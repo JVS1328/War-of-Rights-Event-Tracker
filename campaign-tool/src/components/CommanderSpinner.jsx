@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { RotateCw, User, Check } from 'lucide-react';
+import { RotateCw, User, Check, ChevronDown } from 'lucide-react';
 
 /**
  * CommanderSpinner - Animated roulette for selecting battle commanders
  *
  * Features:
- * - Visual spinning animation
+ * - Visual spinning animation OR manual dropdown selection
  * - Pool management (selected commanders removed until pool empty, then reset)
  * - Shows both USA and CSA spinners side by side
  */
@@ -135,19 +135,38 @@ const CommanderSpinner = ({
           )}
         </div>
 
-        {/* Spin Button */}
-        <button
-          onClick={() => spin(side)}
-          disabled={isSpinning || selected || disabled || available.length === 0}
-          className={`w-full px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
-            isSpinning || selected || disabled || available.length === 0
-              ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
-              : `${buttonColor} text-white`
-          }`}
-        >
-          <RotateCw className={`w-4 h-4 ${isSpinning ? 'animate-spin' : ''}`} />
-          {selected ? 'Selected' : isSpinning ? 'Spinning...' : 'Spin'}
-        </button>
+        {/* Spin Button and Manual Select */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => spin(side)}
+            disabled={isSpinning || selected || disabled || available.length === 0}
+            className={`flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
+              isSpinning || selected || disabled || available.length === 0
+                ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                : `${buttonColor} text-white`
+            }`}
+          >
+            <RotateCw className={`w-4 h-4 ${isSpinning ? 'animate-spin' : ''}`} />
+            {selected ? 'Selected' : isSpinning ? 'Spinning...' : 'Spin'}
+          </button>
+
+          {/* Manual Selection Dropdown */}
+          {!selected && !isSpinning && available.length > 0 && !disabled && (
+            <select
+              onChange={(e) => {
+                const regiment = available.find(r => r.id === e.target.value);
+                if (regiment) onSelect(side, regiment);
+              }}
+              value=""
+              className="px-2 py-2 rounded bg-slate-700 border border-slate-600 text-white text-sm cursor-pointer hover:bg-slate-600 transition"
+            >
+              <option value="" disabled>Pick</option>
+              {available.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
     );
   };
