@@ -468,21 +468,16 @@ export const createEasternTheatreCampaign = () => {
 };
 
 /**
- * Create a Maryland Campaign 1862 county-based campaign
- * Historical campaign: September 4-20, 1862
- * Lee's first invasion of the North, culminating in the Battle of Antietam
+ * Create the Eastern Theatre of the War campaign
+ * Full Civil War campaign: April 1861 - December 1865
+ * County-based map covering MD, WV, VA, and PA
  */
 export const createMaryland1862Campaign = () => {
   const territories = createMaryland1862Territories();
   const initialVP = calcMaryland1862VP();
 
-  // Campaign starts September 1862
-  const campaignDate = {
-    month: 9,
-    year: 1862,
-    turn: 1,
-    displayString: 'September 1862'
-  };
+  // Campaign starts April 1861
+  const campaignDate = getDefaultStartDate();
 
   return {
     // === VERSION ===
@@ -490,7 +485,7 @@ export const createMaryland1862Campaign = () => {
 
     // === CAMPAIGN INFO ===
     id: Date.now().toString(),
-    name: 'Maryland Campaign 1862',
+    name: 'Eastern Theatre of the War',
     startDate: new Date().toISOString(),
     currentTurn: 1,
     victoryPointsUSA: initialVP.usa,
@@ -498,7 +493,7 @@ export const createMaryland1862Campaign = () => {
     territories,
     battles: [],
     customMap: null,
-    mapTemplate: 'maryland-1862',
+    mapTemplate: 'eastern-theatre',
     isCountyView: true,
 
     // === CP SYSTEM FIELDS ===
@@ -535,26 +530,26 @@ export const createMaryland1862Campaign = () => {
     },
     regimentStats: {},
 
-    // Settings optimized for the Maryland Campaign
+    // Settings for the Eastern Theatre Campaign
     settings: {
       allowTerritoryRecapture: true,
       requireAdjacentAttack: true, // Adjacency matters with county-level detail
       casualtyTracking: true,
       instantVPGains: true,
-      captureTransitionTurns: 1, // Faster pace for focused campaign
+      captureTransitionTurns: 1,
       failedNeutralAttackToEnemy: true,
       startingCP: DEFAULT_STARTING_CP,
       cpGenerationEnabled: true,
       cpCalculationMode: 'auto',
-      vpBase: 1, // County-level maps use VP scale 1-5
+      vpBase: 1, // County-level maps use VP scale 1-7
       campaignStartDate: campaignDate,
       campaignEndDate: {
-        month: 10,
-        year: 1862,
-        turn: 6,
-        displayString: 'October 1862'
+        month: 12,
+        year: 1865,
+        turn: 30,
+        displayString: 'December 1865'
       },
-      turnsPerYear: 12, // Monthly turns for focused campaign
+      turnsPerYear: 6, // 2 months per turn
       abilityCooldown: 2
     }
   };
@@ -574,9 +569,9 @@ export const CAMPAIGN_TEMPLATES = {
     description: 'Detailed county-grouped regions for the Eastern Theatre',
     create: createEasternTheatreCampaign
   },
-  'maryland-1862': {
-    name: 'Maryland Campaign 1862',
-    description: "Lee's first invasion of the North - Antietam, Harpers Ferry, South Mountain",
+  'eastern-theatre': {
+    name: 'Eastern Theatre of the War',
+    description: 'Full Civil War campaign (April 1861 - December 1865) with county-based regions across MD, WV, VA, and PA',
     create: createMaryland1862Campaign
   }
 };

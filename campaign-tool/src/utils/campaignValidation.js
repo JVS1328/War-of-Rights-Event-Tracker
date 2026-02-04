@@ -93,11 +93,18 @@ export const validateCampaignState = (data) => {
         errors.push(`Territory ${index}: Invalid adjacent territories (must be array if present)`);
       }
 
-      if (!territory.svgPath || typeof territory.svgPath !== 'string') {
-        errors.push(`Territory ${index}: Missing or invalid SVG path`);
+      // For rendering, territory needs EITHER:
+      // 1. svgPath + center (state-based territories), OR
+      // 2. countyFips (county-based territories - paths generated at runtime)
+      const hasCountyFips = Array.isArray(territory.countyFips) && territory.countyFips.length > 0;
+      const hasSvgPath = territory.svgPath && typeof territory.svgPath === 'string';
+      const hasCenter = territory.center && typeof territory.center.x === 'number' && typeof territory.center.y === 'number';
+
+      if (!hasCountyFips && !hasSvgPath) {
+        errors.push(`Territory ${index}: Missing SVG path or county FIPS codes`);
       }
-      if (!territory.center || typeof territory.center.x !== 'number' || typeof territory.center.y !== 'number') {
-        errors.push(`Territory ${index}: Missing or invalid center coordinates`);
+      if (!hasCountyFips && !hasCenter) {
+        errors.push(`Territory ${index}: Missing center coordinates (required for non-county territories)`);
       }
     });
   }
@@ -145,39 +152,39 @@ export const validateCampaignState = (data) => {
   }
 
   // === SETTINGS ===
+  // Settings validation is lenient - missing values will be normalized with defaults
   if (!data.settings || typeof data.settings !== 'object') {
     errors.push('Missing settings object');
   } else {
+    // Core boolean settings - only error if present but wrong type
     const { allowTerritoryRecapture, requireAdjacentAttack, casualtyTracking } = data.settings;
 
-    if (typeof allowTerritoryRecapture !== 'boolean') {
-      errors.push('Settings: Invalid allowTerritoryRecapture flag');
+    if (allowTerritoryRecapture !== undefined && typeof allowTerritoryRecapture !== 'boolean') {
+      errors.push('Settings: Invalid allowTerritoryRecapture flag (must be boolean)');
     }
-    if (typeof requireAdjacentAttack !== 'boolean') {
-      errors.push('Settings: Invalid requireAdjacentAttack flag');
+    if (requireAdjacentAttack !== undefined && typeof requireAdjacentAttack !== 'boolean') {
+      errors.push('Settings: Invalid requireAdjacentAttack flag (must be boolean)');
     }
-    if (typeof casualtyTracking !== 'boolean') {
-      errors.push('Settings: Invalid casualtyTracking flag');
+    if (casualtyTracking !== undefined && typeof casualtyTracking !== 'boolean') {
+      errors.push('Settings: Invalid casualtyTracking flag (must be boolean)');
     }
 
-    // Validate CP system settings
+    // CP system settings - only validate if cpSystemEnabled and values are present
+    // Missing values will be normalized with defaults during import
     if (data.cpSystemEnabled) {
-      if (typeof data.settings.startingCP !== 'number' || data.settings.startingCP < 0) {
-        errors.push('Settings: Invalid starting CP value');
-      }
-      if (typeof data.settings.cpGenerationEnabled !== 'boolean') {
-        errors.push('Settings: Invalid CP generation enabled flag');
-      }
-      if (typeof data.settings.turnsPerYear !== 'number' || data.settings.turnsPerYear < 1) {
-        errors.push('Settings: Invalid turns per year');
-      }
+      const { startingCP, turnsPerYear, campaignStartDate, campaignEndDate } = data.settings;
 
-      // Validate campaign date settings
-      if (!data.settings.campaignStartDate || typeof data.settings.campaignStartDate !== 'object') {
-        errors.push('Settings: Missing campaign start date');
+      if (startingCP !== undefined && (typeof startingCP !== 'number' || startingCP < 0)) {
+        errors.push('Settings: Invalid starting CP value (must be >= 0)');
       }
-      if (!data.settings.campaignEndDate || typeof data.settings.campaignEndDate !== 'object') {
-        errors.push('Settings: Missing campaign end date');
+      if (turnsPerYear !== undefined && (typeof turnsPerYear !== 'number' || turnsPerYear < 1)) {
+        errors.push('Settings: Invalid turns per year (must be >= 1)');
+      }
+      if (campaignStartDate !== undefined && typeof campaignStartDate !== 'object') {
+        errors.push('Settings: Invalid campaign start date (must be object)');
+      }
+      if (campaignEndDate !== undefined && typeof campaignEndDate !== 'object') {
+        errors.push('Settings: Invalid campaign end date (must be object)');
       }
     }
   }
@@ -262,6 +269,57 @@ const normalizeCampaignData = (campaign) => {
         ? t.adjacentTerritories
         : adjacencyMap[t.id] || []
     }));
+  }
+
+  // Normalize settings with defaults for missing values
+  if (normalized.settings) {
+    normalized.settings = {
+      // Core settings with defaults
+      allowTerritoryRecapture: normalized.settings.allowTerritoryRecapture ?? true,
+      requireAdjacentAttack: normalized.settings.requireAdjacentAttack ?? false,
+      casualtyTracking: normalized.settings.casualtyTracking ?? true,
+      instantVPGains: normalized.settings.instantVPGains ?? true,
+      captureTransitionTurns: normalized.settings.captureTransitionTurns ?? 2,
+      failedNeutralAttackToEnemy: normalized.settings.failedNeutralAttackToEnemy ?? true,
+
+      // CP system settings with defaults
+      startingCP: normalized.settings.startingCP ?? 500,
+      cpGenerationEnabled: normalized.settings.cpGenerationEnabled ?? true,
+      cpCalculationMode: normalized.settings.cpCalculationMode ?? 'auto',
+      vpBase: normalized.settings.vpBase ?? 1,
+      turnsPerYear: normalized.settings.turnsPerYear ?? 6,
+      abilityCooldown: normalized.settings.abilityCooldown ?? 2,
+
+      // Base SP cost settings with defaults
+      baseAttackCostEnemy: normalized.settings.baseAttackCostEnemy ?? 75,
+      baseAttackCostNeutral: normalized.settings.baseAttackCostNeutral ?? 50,
+      baseDefenseCostFriendly: normalized.settings.baseDefenseCostFriendly ?? 25,
+      baseDefenseCostNeutral: normalized.settings.baseDefenseCostNeutral ?? 50,
+
+      // Campaign date settings (preserve existing if present)
+      campaignStartDate: normalized.settings.campaignStartDate ?? {
+        month: 4,
+        year: 1861,
+        turn: 1,
+        displayString: 'April 1861'
+      },
+      campaignEndDate: normalized.settings.campaignEndDate ?? {
+        month: 12,
+        year: 1865,
+        turn: 30,
+        displayString: 'December 1865'
+      }
+    };
+  }
+
+  // Ensure cpHistory exists
+  if (!Array.isArray(normalized.cpHistory)) {
+    normalized.cpHistory = [];
+  }
+
+  // Ensure battles exists
+  if (!Array.isArray(normalized.battles)) {
+    normalized.battles = [];
   }
 
   return normalized;

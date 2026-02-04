@@ -81,7 +81,7 @@ export function getVPMultiplier(pointValue, vpBase = VP_BASE) {
 /**
  * Calculate CP loss for attacker based on casualties and territory ownership
  * Formula: BASE_ATTACK_COST * vpMultiplier * (casualties / totalCasualties)
- * Base cost is 50 for neutral territories, 75 for enemy territories
+ * Base cost is 50 for neutral territories, 75 for enemy territories (configurable)
  * Maximum possible: BASE_ATTACK_COST * vpMultiplier
  *
  * @param {number} pointValue - Territory point value (any positive number)
@@ -89,9 +89,10 @@ export function getVPMultiplier(pointValue, vpBase = VP_BASE) {
  * @param {number} totalCasualties - Total casualties in the battle (both sides)
  * @param {boolean} isNeutralTerritory - Whether attacking neutral (true) or enemy (false) territory
  * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
+ * @param {Object} baseCosts - Optional custom base costs { attackNeutral, attackEnemy }
  * @returns {number} CP loss (rounded to nearest integer)
  */
-export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties, isNeutralTerritory = false, vpBase = VP_BASE) {
+export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties, isNeutralTerritory = false, vpBase = VP_BASE, baseCosts = {}) {
   // Validate inputs
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
@@ -110,8 +111,10 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
     return 0;
   }
 
-  // Determine base cost based on territory ownership
-  const baseCost = isNeutralTerritory ? BASE_ATTACK_COST_NEUTRAL : BASE_ATTACK_COST_ENEMY;
+  // Determine base cost based on territory ownership (use custom values if provided)
+  const attackNeutral = baseCosts.attackNeutral ?? BASE_ATTACK_COST_NEUTRAL;
+  const attackEnemy = baseCosts.attackEnemy ?? BASE_ATTACK_COST_ENEMY;
+  const baseCost = isNeutralTerritory ? attackNeutral : attackEnemy;
 
   const vpMultiplier = getVPMultiplier(pointValue, vpBase);
   const maxLoss = baseCost * vpMultiplier;
@@ -127,7 +130,7 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * Calculate CP loss for defender based on casualties
  *
  * Formula: BASE_DEFENSE_COST * vpMultiplier * (casualties / totalCasualties) * isolationMultiplier
- * Base cost is 25 for friendly territories, 50 for neutral territories
+ * Base cost is 25 for friendly territories, 50 for neutral territories (configurable)
  * Isolated territories (no adjacent friendly territories) cost 2x to defend
  * Proportional to casualties taken - the more casualties you take, the more CP you lose
  *
@@ -138,9 +141,10 @@ export function calculateAttackerCPLoss(pointValue, casualties, totalCasualties,
  * @param {boolean} isFriendlyTerritory - Whether defending friendly (true) or neutral (false) territory
  * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
  * @param {boolean} isIsolated - Whether the territory is isolated from supply lines
+ * @param {Object} baseCosts - Optional custom base costs { defenseFriendly, defenseNeutral }
  * @returns {number} CP loss (rounded to nearest integer)
  */
-export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory, vpBase = VP_BASE, isIsolated = false) {
+export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties, defenderWon, isFriendlyTerritory, vpBase = VP_BASE, isIsolated = false, baseCosts = {}) {
   // Validate inputs
   if (typeof pointValue !== 'number' || pointValue <= 0) {
     throw new Error(`Invalid territory point value: ${pointValue}. Must be a positive number.`);
@@ -159,9 +163,10 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
     return 0;
   }
 
-  // Determine base cost based on territory ownership
-  // Defending neutral territory is more costly (50) than defending friendly territory (25)
-  const baseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
+  // Determine base cost based on territory ownership (use custom values if provided)
+  const defenseFriendly = baseCosts.defenseFriendly ?? BASE_DEFENSE_COST;
+  const defenseNeutral = baseCosts.defenseNeutral ?? BASE_DEFENSE_COST_NEUTRAL;
+  const baseCost = isFriendlyTerritory ? defenseFriendly : defenseNeutral;
 
   // Apply isolation multiplier (2x for isolated territories)
   const isolationMultiplier = isIsolated ? ISOLATED_DEFENSE_MULTIPLIER : 1;
@@ -191,6 +196,7 @@ export function calculateDefenderCPLoss(pointValue, casualties, totalCasualties,
  * @param {boolean} params.abilityActive - Whether the attacker's ability is active
  * @param {number} params.vpBase - Base VP value for 1x multiplier
  * @param {boolean} params.isDefenderIsolated - Whether the defending territory is isolated
+ * @param {Object} params.baseCosts - Custom base costs { attackNeutral, attackEnemy, defenseFriendly, defenseNeutral }
  * @returns {Object} { attackerLoss: number, defenderLoss: number, defender: string }
  */
 export function calculateBattleCPCost({
@@ -202,7 +208,8 @@ export function calculateBattleCPCost({
   defenderCasualties,
   abilityActive = false,
   vpBase = VP_BASE,
-  isDefenderIsolated = false
+  isDefenderIsolated = false,
+  baseCosts = {}
 }) {
   // Determine defender (the side that is NOT attacking)
   // For neutral territories, the defender is the opposing side
@@ -219,7 +226,8 @@ export function calculateBattleCPCost({
     attackerCasualties,
     totalCasualties,
     isNeutralTerritory,
-    vpBase
+    vpBase,
+    baseCosts
   );
 
   // Apply CSA ability: "Valley Supply Lines" - reduces attack CP loss by 50%
@@ -240,7 +248,8 @@ export function calculateBattleCPCost({
       defenderWon,
       isFriendlyTerritory,
       vpBase,
-      isDefenderIsolated
+      isDefenderIsolated,
+      baseCosts
     );
 
     // Apply USA ability: "Special Orders 191" - triples CSA CP loss on attacker victory
@@ -333,14 +342,17 @@ export function isValidPointValue(pointValue) {
  * @param {string} defender - Defending side
  * @param {number} vpBase - Base VP value for 1x multiplier (from campaign settings)
  * @param {boolean} isDefenderIsolated - Whether the defending territory is isolated
+ * @param {Object} baseCosts - Custom base costs { attackNeutral, attackEnemy, defenseFriendly, defenseNeutral }
  * @returns {Object} { attackerMax: number, defenderMax: number }
  */
-export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender, vpBase = VP_BASE, isDefenderIsolated = false) {
+export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defender, vpBase = VP_BASE, isDefenderIsolated = false, baseCosts = {}) {
   const vpMultiplier = getVPMultiplier(territoryPointValue, vpBase);
 
-  // Determine attacker max based on territory ownership
+  // Determine attacker max based on territory ownership (use custom values if provided)
   const isNeutralTerritory = territoryOwner === 'NEUTRAL';
-  const attackerBaseCost = isNeutralTerritory ? BASE_ATTACK_COST_NEUTRAL : BASE_ATTACK_COST_ENEMY;
+  const attackNeutral = baseCosts.attackNeutral ?? BASE_ATTACK_COST_NEUTRAL;
+  const attackEnemy = baseCosts.attackEnemy ?? BASE_ATTACK_COST_ENEMY;
+  const attackerBaseCost = isNeutralTerritory ? attackNeutral : attackEnemy;
   const attackerMax = attackerBaseCost * vpMultiplier;
 
   // Defender max based on whether defending friendly or neutral territory
@@ -348,7 +360,9 @@ export function getMaxBattleCPCosts(territoryPointValue, territoryOwner, defende
   let defenderMax = 0;
   if (defender !== 'NEUTRAL') {
     const isFriendlyTerritory = territoryOwner === defender;
-    const defenderBaseCost = isFriendlyTerritory ? BASE_DEFENSE_COST : BASE_DEFENSE_COST_NEUTRAL;
+    const defenseFriendly = baseCosts.defenseFriendly ?? BASE_DEFENSE_COST;
+    const defenseNeutral = baseCosts.defenseNeutral ?? BASE_DEFENSE_COST_NEUTRAL;
+    const defenderBaseCost = isFriendlyTerritory ? defenseFriendly : defenseNeutral;
     const isolationMultiplier = isDefenderIsolated ? ISOLATED_DEFENSE_MULTIPLIER : 1;
     defenderMax = defenderBaseCost * vpMultiplier * isolationMultiplier;
   }
