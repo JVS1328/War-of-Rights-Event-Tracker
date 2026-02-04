@@ -222,7 +222,69 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                     />
                   </label>
                 </div>
-  
+
+                {/* Base SP Cost Settings */}
+                <div>
+                  <div className="text-white font-semibold mb-2">Base SP Loss Values</div>
+                  <div className="text-xs text-slate-400 mb-3">
+                    Configure the base SP loss values before VP multipliers are applied
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <div className="text-amber-300 font-semibold mb-1 text-sm">
+                        Attack Enemy Territory
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="5"
+                        value={settings.baseAttackCostEnemy ?? 75}
+                        onChange={(e) => updateSetting('baseAttackCostEnemy', parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-amber-300 font-semibold mb-1 text-sm">
+                        Attack Neutral Territory
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="5"
+                        value={settings.baseAttackCostNeutral ?? 50}
+                        onChange={(e) => updateSetting('baseAttackCostNeutral', parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-amber-300 font-semibold mb-1 text-sm">
+                        Defend Friendly Territory
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="5"
+                        value={settings.baseDefenseCostFriendly ?? 25}
+                        onChange={(e) => updateSetting('baseDefenseCostFriendly', parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-amber-300 font-semibold mb-1 text-sm">
+                        Defend Neutral Territory
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="5"
+                        value={settings.baseDefenseCostNeutral ?? 50}
+                        onChange={(e) => updateSetting('baseDefenseCostNeutral', parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 {/* SP Calculation Mode */}
                 <div>
                   <label className="block">

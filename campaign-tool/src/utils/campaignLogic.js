@@ -48,6 +48,14 @@ export const processBattleResult = (campaign, battle) => {
         previousOwner === territoryDefender &&
         !isTerritorySupplied(territory, campaign.territories);
 
+      // Build baseCosts from campaign settings
+      const baseCosts = {
+        attackEnemy: campaign.settings?.baseAttackCostEnemy ?? 75,
+        attackNeutral: campaign.settings?.baseAttackCostNeutral ?? 50,
+        defenseFriendly: campaign.settings?.baseDefenseCostFriendly ?? 25,
+        defenseNeutral: campaign.settings?.baseDefenseCostNeutral ?? 50
+      };
+
       const cpResult = calculateBattleCPCost({
         territoryPointValue: territory.pointValue || territory.victoryPoints || 10,
         territoryOwner: previousOwner,
@@ -56,7 +64,8 @@ export const processBattleResult = (campaign, battle) => {
         attackerCasualties,
         defenderCasualties: opposingCasualties,
         abilityActive: battle.abilityUsed === battle.attacker,
-        isDefenderIsolated
+        isDefenderIsolated,
+        baseCosts
       });
 
       cpCostAttacker = cpResult.attackerLoss;
@@ -65,12 +74,13 @@ export const processBattleResult = (campaign, battle) => {
       if (previousOwner !== 'NEUTRAL') {
         cpCostDefender = cpResult.defenderLoss;
       } else {
-        // Neutral territory: opposing team still has SP costs (base 50, scaled by VP and casualties)
+        // Neutral territory: opposing team still has SP costs (base from settings, scaled by VP and casualties)
         if (totalCasualties > 0) {
           const vpBase = campaign.settings?.vpBase || 1;
           const vpMultiplier = (territory.pointValue || territory.victoryPoints || 1) / vpBase;
           const casualtyRatio = opposingCasualties / totalCasualties;
-          cpCostDefender = Math.round(50 * vpMultiplier * casualtyRatio);
+          const baseDefenseNeutral = campaign.settings?.baseDefenseCostNeutral ?? 50;
+          cpCostDefender = Math.round(baseDefenseNeutral * vpMultiplier * casualtyRatio);
         }
       }
     }
