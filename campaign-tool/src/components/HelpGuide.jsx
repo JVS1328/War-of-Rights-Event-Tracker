@@ -5,7 +5,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
   const [expandedSections, setExpandedSections] = useState({
     overview: true,
     howToPlay: false,
-    cpSystem: false,
+    spSystem: false,
     battles: false,
     abilities: false,
     victory: false,
@@ -81,9 +81,9 @@ const HelpGuide = ({ isOpen, onClose }) => {
               <p className="text-amber-400 font-semibold mb-2">Key Concepts:</p>
               <ul className="list-disc list-inside space-y-1">
                 <li><strong>Territories</strong> - Regions on the map worth Victory Points (VP)</li>
-                <li><strong>Combat Power (CP)</strong> - Your strategic resource for fighting battles</li>
+                <li><strong>Supply Points (SP)</strong> - Your strategic resource for fighting battles</li>
                 <li><strong>Turns</strong> - Campaign time advances in 2-month increments</li>
-                <li><strong>Victory</strong> - Achieved by depleting enemy CP, controlling all territories, or having the most VP at war's end</li>
+                <li><strong>Victory</strong> - Achieved by depleting enemy SP, controlling all territories, or having the most VP at war's end</li>
               </ul>
             </div>
           </Section>
@@ -102,7 +102,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
               </div>
               <div>
                 <p className="text-amber-400 font-semibold mb-2">3. Record the Battle</p>
-                <p>Use the "Record Battle" button to log the results. The tracker will calculate CP costs for both sides
+                <p>Use the "Record Battle" button to log the results. The tracker will calculate SP costs for both sides
                 based on the territory value, casualties, and outcome.</p>
               </div>
               <div>
@@ -110,23 +110,23 @@ const HelpGuide = ({ isOpen, onClose }) => {
                 <p>When ready to move to the next campaign phase, click "Advance Turn". This:</p>
                 <ul className="list-disc list-inside ml-4 mt-1">
                   <li>Moves the campaign date forward 2 months</li>
-                  <li>Generates CP for each side based on controlled territories</li>
+                  <li>Generates SP for each side based on controlled territories</li>
                   <li>Reduces ability cooldowns</li>
                 </ul>
               </div>
             </div>
           </Section>
 
-          <Section id="cpSystem" title="Combat Power (CP) System" icon={Zap}>
+          <Section id="spSystem" title="Supply Points (SP) System" icon={Zap}>
             <p className="mb-3">
-              CP represents your army's strategic strength and ability to wage war. Running out of CP means defeat!
+              SP represents your army's strategic strength and ability to wage war. Running out of SP means defeat!
             </p>
 
             <div className="space-y-3">
               <div className="bg-blue-900 bg-opacity-30 p-3 rounded-lg border border-blue-700">
                 <p className="text-blue-400 font-semibold mb-2">📊 Understanding VP Multiplier</p>
                 <p className="mb-2">
-                  The VP Multiplier dynamically scales CP costs based on territory value:
+                  The VP Multiplier dynamically scales SP costs based on territory value:
                 </p>
                 <div className="bg-slate-800 p-2 rounded mt-2 font-mono text-xs">
                   <p className="text-amber-400 mb-1">Formula: VP Multiplier = Territory VP ÷ 5</p>
@@ -147,10 +147,10 @@ const HelpGuide = ({ isOpen, onClose }) => {
               </div>
 
               <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">CP Costs (Attackers)</p>
+                <p className="text-amber-400 font-semibold mb-2">SP Costs (Attackers)</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong>Attacking Neutral:</strong> Base 50 CP × VP multiplier × (your casualties ÷ total casualties)</li>
-                  <li><strong>Attacking Enemy:</strong> Base 75 CP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Attacking Neutral:</strong> Base 50 SP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Attacking Enemy:</strong> Base 75 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
                 <p className="text-slate-400 text-xs mt-2">
                   VP Multiplier = Territory VP ÷ 5 (e.g., 10 VP = 2x multiplier)
@@ -162,13 +162,13 @@ const HelpGuide = ({ isOpen, onClose }) => {
               </div>
 
               <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">CP Costs (Defenders)</p>
+                <p className="text-amber-400 font-semibold mb-2">SP Costs (Defenders)</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong>Defending Friendly Territory:</strong> Base 25 CP × VP multiplier × (your casualties ÷ total casualties)</li>
-                  <li><strong>Defending Neutral Territory:</strong> Base 50 CP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Defending Friendly Territory:</strong> Base 25 SP × VP multiplier × (your casualties ÷ total casualties)</li>
+                  <li><strong>Defending Neutral Territory:</strong> Base 50 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
                 <p className="text-slate-400 text-xs mt-2">
-                  Defender CP loss scales with their proportion of total casualties - the more you bleed, the more CP you lose.
+                  Defender SP loss scales with their proportion of total casualties - the more you bleed, the more SP you lose.
                 </p>
                 <p className="text-green-400 text-xs mt-2 italic">
                   💡 Why? Defending your own territory is cheaper (25) because you have home advantage, supply lines, and fortifications.
@@ -179,12 +179,12 @@ const HelpGuide = ({ isOpen, onClose }) => {
               <div className="bg-slate-700 p-3 rounded-lg">
                 <p className="text-amber-400 font-semibold mb-2">Casualty Ratio Matters!</p>
                 <p className="mb-2">
-                  Both attackers and defenders pay CP based on the proportion of casualties they take:
+                  Both attackers and defenders pay SP based on the proportion of casualties they take:
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>If you take 50% of total casualties, you pay 50% of max CP cost</li>
-                  <li>If you take 80% of total casualties, you pay 80% of max CP cost</li>
-                  <li>Win or lose, heavy casualties mean heavy CP losses</li>
+                  <li>If you take 50% of total casualties, you pay 50% of max SP cost</li>
+                  <li>If you take 80% of total casualties, you pay 80% of max SP cost</li>
+                  <li>Win or lose, heavy casualties mean heavy SP losses</li>
                 </ul>
                 <p className="text-orange-400 text-xs mt-2 italic">
                   ⚠️ Pyrrhic victories hurt! Even if you win, taking massive casualties can cripple your campaign.
@@ -192,8 +192,8 @@ const HelpGuide = ({ isOpen, onClose }) => {
               </div>
 
               <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">CP Generation</p>
-                <p>Each turn, you gain CP equal to the total VP of territories you control.
+                <p className="text-amber-400 font-semibold mb-2">SP Generation</p>
+                <p>Each turn, you gain SP equal to the total VP of territories you control.
                 Holding valuable territories is crucial for sustaining your war effort!</p>
               </div>
             </div>
@@ -206,7 +206,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
                 <ul className="list-disc list-inside space-y-1">
                   <li>The territory changes ownership to the attacker</li>
                   <li>VP is transferred immediately (or gradually, depending on settings)</li>
-                  <li>Both sides pay CP based on casualties</li>
+                  <li>Both sides pay SP based on casualties</li>
                 </ul>
               </div>
 
@@ -215,7 +215,7 @@ const HelpGuide = ({ isOpen, onClose }) => {
                 <ul className="list-disc list-inside space-y-1">
                   <li>The territory remains with its current owner</li>
                   <li>If it was neutral: may flip to the defender (configurable)</li>
-                  <li>Both sides still pay CP based on casualties</li>
+                  <li>Both sides still pay SP based on casualties</li>
                 </ul>
               </div>
 
@@ -233,13 +233,13 @@ const HelpGuide = ({ isOpen, onClose }) => {
             <div className="space-y-3">
               <div className="bg-blue-900 bg-opacity-30 p-3 rounded-lg border border-blue-700">
                 <p className="text-blue-400 font-semibold mb-2">USA: Special Orders 191</p>
-                <p>When activated during an attack, if USA wins, the CSA defender loses <strong>3× their normal CP cost</strong>.
+                <p>When activated during an attack, if USA wins, the CSA defender loses <strong>3× their normal SP cost</strong>.
                 Represents capturing Confederate battle plans, as happened before Antietam.</p>
               </div>
 
               <div className="bg-red-900 bg-opacity-30 p-3 rounded-lg border border-red-700">
                 <p className="text-red-400 font-semibold mb-2">CSA: Valley Supply Lines</p>
-                <p>When activated during an attack, the CSA attacker pays <strong>only 50% of normal CP cost</strong>.
+                <p>When activated during an attack, the CSA attacker pays <strong>only 50% of normal SP cost</strong>.
                 Represents efficient use of the Shenandoah Valley for logistics.</p>
               </div>
 
@@ -254,8 +254,8 @@ const HelpGuide = ({ isOpen, onClose }) => {
 
             <div className="space-y-3">
               <div className="bg-amber-900 bg-opacity-30 p-3 rounded-lg border border-amber-700">
-                <p className="text-amber-400 font-semibold mb-2">1. CP Depletion (Immediate Victory)</p>
-                <p>If either side's CP drops to 0 or below, they immediately lose.
+                <p className="text-amber-400 font-semibold mb-2">1. SP Depletion (Immediate Victory)</p>
+                <p>If either side's SP drops to 0 or below, they immediately lose.
                 This represents their army's collapse from exhaustion and attrition.</p>
               </div>
 
@@ -277,15 +277,15 @@ const HelpGuide = ({ isOpen, onClose }) => {
             <ul className="space-y-2">
               <li className="flex items-start gap-2">
                 <span className="text-amber-400">•</span>
-                <span><strong>Manage CP carefully</strong> - Aggressive campaigns can deplete your CP quickly. Balance offense with defense.</span>
+                <span><strong>Manage SP carefully</strong> - Aggressive campaigns can deplete your SP quickly. Balance offense with defense.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400">•</span>
-                <span><strong>High-value territories matter</strong> - They give more VP and generate more CP per turn. Prioritize them.</span>
+                <span><strong>High-value territories matter</strong> - They give more VP and generate more SP per turn. Prioritize them.</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400">•</span>
-                <span><strong>Casualties affect CP loss</strong> - Even if you win, taking heavy casualties costs you more CP. Fight smart!</span>
+                <span><strong>Casualties affect SP loss</strong> - Even if you win, taking heavy casualties costs you more SP. Fight smart!</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-amber-400">•</span>

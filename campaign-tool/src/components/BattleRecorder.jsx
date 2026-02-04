@@ -172,16 +172,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
     // BLOCKING ERROR: Check if attacker can afford maximum possible CP loss
     if (attackerCP < maxCosts.attackerMax) {
-      setCpBlockingError(`Attack impossible! ${attacker} needs ${maxCosts.attackerMax} CP to attack this territory but only has ${attackerCP} CP available.`);
+      setCpBlockingError(`Attack impossible! ${attacker} needs ${maxCosts.attackerMax} SP to attack this territory but only has ${attackerCP} SP available.`);
       setCpWarning('');
     } else {
       setCpBlockingError('');
       
       // Non-blocking warnings for estimated costs
       if (attackerCP < cpResult.attackerLoss) {
-        setCpWarning(`Warning: Estimated CP cost (${cpResult.attackerLoss}) exceeds available CP (${attackerCP})`);
+        setCpWarning(`Warning: Estimated SP cost (${cpResult.attackerLoss}) exceeds available SP (${attackerCP})`);
       } else if (defender !== 'NEUTRAL' && defenderCP < cpResult.defenderLoss) {
-        setCpWarning(`Warning: ${defender} has insufficient CP. Required: ${cpResult.defenderLoss}, Available: ${defenderCP}`);
+        setCpWarning(`Warning: ${defender} has insufficient SP. Required: ${cpResult.defenderLoss}, Available: ${defenderCP}`);
       } else {
         setCpWarning('');
       }
@@ -205,14 +205,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
     // Check if attacker can afford the specified CP loss
     if (attackerCP < attackerLoss) {
-      setCpBlockingError(`Attack impossible! ${attacker} needs ${attackerLoss} CP but only has ${attackerCP} CP available.`);
+      setCpBlockingError(`Attack impossible! ${attacker} needs ${attackerLoss} SP but only has ${attackerCP} SP available.`);
       setCpWarning('');
     } else {
       setCpBlockingError('');
       
       // Non-blocking warning for defender
       if (defender !== 'NEUTRAL' && defenderCP < defenderLoss) {
-        setCpWarning(`Warning: ${defender} has insufficient CP. Required: ${defenderLoss}, Available: ${defenderCP}`);
+        setCpWarning(`Warning: ${defender} has insufficient SP. Required: ${defenderLoss}, Available: ${defenderCP}`);
       } else {
         setCpWarning('');
       }
@@ -257,7 +257,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
     // Non-blocking warning for estimated costs
     if (campaign?.cpSystemEnabled && cpWarning) {
-      if (!confirm(`${cpWarning}\n\nProceed anyway? (Battle will use available CP)`)) {
+      if (!confirm(`${cpWarning}\n\nProceed anyway? (Battle will use available SP)`)) {
         return;
       }
     }
@@ -679,8 +679,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   </div>
                   <div className="text-xs text-slate-400">
                     {attacker === 'USA'
-                      ? 'Failed attacks keep territory neutral, wins triple CSA CP loss'
-                      : 'Reduces attack CP loss by 50%'}
+                      ? 'Failed attacks keep territory neutral, wins triple CSA SP loss'
+                      : 'Reduces attack SP loss by 50%'}
                   </div>
                 </div>
                 {abilities[attacker]?.cooldown > 0 && (
@@ -773,11 +773,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               </div>
             </div>
 
-            {/* CP Cost Display */}
+            {/* SP Cost Display */}
             {campaign?.cpSystemEnabled && selectedTerritory && (
               <div className="bg-slate-700 rounded-lg p-4">
                 <div className="text-sm font-semibold text-amber-400 mb-3 flex items-center justify-between">
-                  <span>Combat Power Costs</span>
+                  <span>Supply Point Costs</span>
                   {isManualCPMode && (
                     <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-1 rounded border border-purple-700">
                       Manual Mode
@@ -786,30 +786,30 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                 </div>
                 
                 <div className="space-y-3">
-                  {/* Current CP Pools */}
+                  {/* Current SP Pools */}
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="bg-slate-800 rounded p-2">
-                      <div className="text-slate-400 text-xs mb-1">USA CP Pool</div>
+                      <div className="text-slate-400 text-xs mb-1">USA SP Pool</div>
                       <div className="text-blue-400 font-bold text-lg">{campaign.combatPowerUSA || 0}</div>
                     </div>
                     <div className="bg-slate-800 rounded p-2">
-                      <div className="text-slate-400 text-xs mb-1">CSA CP Pool</div>
+                      <div className="text-slate-400 text-xs mb-1">CSA SP Pool</div>
                       <div className="text-red-400 font-bold text-lg">{campaign.combatPowerCSA || 0}</div>
                     </div>
                   </div>
                   
                   <div className="border-t border-slate-600"></div>
                   
-                  {/* Battle CP Costs - Manual Mode */}
+                  {/* Battle SP Costs - Manual Mode */}
                   {isManualCPMode && (
                     <div className="space-y-3">
                       <div className="text-xs text-slate-400 mb-2">
-                        Enter CP loss for each side:
+                        Enter SP loss for each side:
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs text-amber-400 mb-1 font-semibold">
-                            {attacker} (Attacker) CP Loss
+                            {attacker} (Attacker) SP Loss
                           </label>
                           <input
                             type="number"
@@ -827,7 +827,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                               return attacker === 'USA' ?
                                 (territory?.owner === 'CSA' ? 'CSA' : 'Defender') :
                                 (territory?.owner === 'USA' ? 'USA' : 'Defender');
-                            })()} CP Loss
+                            })()} SP Loss
                           </label>
                           <input
                             type="number"
@@ -842,7 +842,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                     </div>
                   )}
 
-                  {/* Battle CP Costs - Auto Mode */}
+                  {/* Battle SP Costs - Auto Mode */}
                   {!isManualCPMode && (
                     <div className="space-y-2 text-sm">
                       <div className="bg-slate-800 rounded p-3">
@@ -853,7 +853,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                           <span className={`font-bold text-lg ${
                             attacker === 'USA' ? 'text-blue-400' : 'text-red-400'
                           }`}>
-                            -{estimatedCPCost.attacker} CP
+                            -{estimatedCPCost.attacker} SP
                           </span>
                         </div>
                         <div className="text-xs text-slate-400 mb-1">
@@ -867,13 +867,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                           })()}
                         </div>
                         <div className="text-xs text-amber-400">
-                          Max: {maxCPCost.attacker} CP • Attacking {(() => {
+                          Max: {maxCPCost.attacker} SP • Attacking {(() => {
                             const territory = territories.find(t => t.id === selectedTerritory);
                             return territory?.owner === 'NEUTRAL' ? 'neutral' : 'enemy';
                           })()} territory
                         </div>
                         <div className="text-xs text-slate-500 mt-1 italic">
-                          Attackers pay more CP - the aggressor's burden
+                          Attackers pay more SP - the aggressor's burden
                         </div>
                       </div>
                       
@@ -897,14 +897,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                               <span className={`font-bold text-lg ${
                                 defender === 'USA' ? 'text-blue-400' : 'text-red-400'
                               }`}>
-                                -{estimatedCPCost.defender} CP
+                                -{estimatedCPCost.defender} SP
                               </span>
                             </div>
                             <div className="text-xs text-slate-400 mb-1">
                               Base: {baseCP} × {vpMultiplier} (VP mult) × (your casualties ÷ total casualties)
                             </div>
                             <div className="text-xs text-amber-400">
-                              Max: {maxCPCost.defender} CP • Defending {isFriendly ? 'friendly' : 'neutral'} territory
+                              Max: {maxCPCost.defender} SP • Defending {isFriendly ? 'friendly' : 'neutral'} territory
                             </div>
                             <div className="text-xs text-slate-500 mt-1 italic">
                               {isFriendly
@@ -969,7 +969,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
             >
               <Save className="w-4 h-4" />
               {campaign?.cpSystemEnabled && cpBlockingError
-                ? 'Attack Blocked - Insufficient CP'
+                ? 'Attack Blocked - Insufficient SP'
                 : campaign?.cpSystemEnabled && cpWarning
                 ? 'Record Battle (Warning)'
                 : 'Record Battle'}
