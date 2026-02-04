@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Settings, Save } from 'lucide-react';
+import { X, Settings, Save, Plus, Trash2, Users } from 'lucide-react';
 
 const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [settings, setSettings] = useState({
@@ -7,12 +7,42 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
     ...campaign.settings
   });
 
+  // Regiment management state
+  const [regiments, setRegiments] = useState({
+    USA: campaign.regiments?.USA || [],
+    CSA: campaign.regiments?.CSA || []
+  });
+  const [newRegimentName, setNewRegimentName] = useState({ USA: '', CSA: '' });
+
   const handleSubmit = () => {
-    onSave(settings);
+    onSave({ ...settings, regiments });
   };
 
   const updateSetting = (key, value) => {
     setSettings({ ...settings, [key]: value });
+  };
+
+  const addRegiment = (side) => {
+    const name = newRegimentName[side].trim();
+    if (!name) return;
+
+    const newRegiment = {
+      id: `${side.toLowerCase()}-${Date.now()}`,
+      name: name
+    };
+
+    setRegiments({
+      ...regiments,
+      [side]: [...regiments[side], newRegiment]
+    });
+    setNewRegimentName({ ...newRegimentName, [side]: '' });
+  };
+
+  const removeRegiment = (side, regimentId) => {
+    setRegiments({
+      ...regiments,
+      [side]: regiments[side].filter(r => r.id !== regimentId)
+    });
   };
 
   return (
@@ -153,18 +183,18 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
               </div>
             </div>
   
-            {/* Combat Power System */}
+            {/* Supply Points System */}
             <div className="bg-slate-700 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-amber-300 mb-4">Combat Power (CP) System</h3>
+              <h3 className="text-lg font-semibold text-amber-300 mb-4">Supply Points (SP) System</h3>
               <div className="space-y-4">
-                {/* Starting CP/VP */}
+                {/* Starting SP/VP */}
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <div className="text-white font-semibold mb-2 text-sm">
-                      Starting CP per side
+                      Starting SP per side
                     </div>
                     <div className="text-xs text-slate-400 mb-2">
-                      Initial Combat Power pool for each faction
+                      Initial Supply Points pool for each faction
                     </div>
                     <input
                       type="number"
@@ -193,14 +223,14 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   </label>
                 </div>
   
-                {/* CP Calculation Mode */}
+                {/* SP Calculation Mode */}
                 <div>
                   <label className="block">
                     <div className="text-white font-semibold mb-2">
-                      CP Loss Calculation Mode
+                      SP Loss Calculation Mode
                     </div>
                     <div className="text-xs text-slate-400 mb-2">
-                      Choose how CP losses are calculated during battles
+                      Choose how SP losses are calculated during battles
                     </div>
                     <div className="flex gap-3">
                       <button
@@ -223,7 +253,7 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                         }`}
                       >
                         <div className="text-sm font-bold">Manual Entry</div>
-                        <div className="text-xs mt-1 opacity-80">Enter CP loss manually</div>
+                        <div className="text-xs mt-1 opacity-80">Enter SP loss manually</div>
                       </button>
                     </div>
                   </label>
@@ -255,15 +285,108 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   <div className="bg-slate-800 rounded p-3">
                     <div className="text-red-400 font-semibold mb-1">Valley Supply Lines (CSA)</div>
                     <div className="text-slate-300 text-xs">
-                      When attacking: Attack CP loss reduced by 50%
+                      When attacking: Attack SP loss reduced by 50%
                     </div>
                   </div>
                   <div className="bg-slate-800 rounded p-3">
                     <div className="text-blue-400 font-semibold mb-1">Special Orders 191 (USA)</div>
                     <div className="text-slate-300 text-xs">
                       When attacking: Failed attacks on neutral territories keep them neutral (if setting enabled),
-                      successful attacks triple CSA CP loss
+                      successful attacks triple CSA SP loss
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Regiment Management */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-amber-300 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Regiment Management
+              </h3>
+              <p className="text-xs text-slate-400 mb-4">
+                Add regiments for each side. Commanders will be randomly selected from these lists for each battle.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* USA Regiments */}
+                <div>
+                  <div className="text-blue-400 font-semibold mb-2 text-sm">USA Regiments ({regiments.USA.length})</div>
+                  <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
+                    {regiments.USA.length === 0 ? (
+                      <div className="text-xs text-slate-500 italic">No regiments added</div>
+                    ) : (
+                      regiments.USA.map(regiment => (
+                        <div key={regiment.id} className="flex items-center justify-between bg-slate-800 rounded px-2 py-1">
+                          <span className="text-white text-sm truncate">{regiment.name}</span>
+                          <button
+                            onClick={() => removeRegiment('USA', regiment.id)}
+                            className="p-1 hover:bg-red-600 rounded transition"
+                            title="Remove regiment"
+                          >
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Regiment name..."
+                      value={newRegimentName.USA}
+                      onChange={(e) => setNewRegimentName({ ...newRegimentName, USA: e.target.value })}
+                      onKeyPress={(e) => e.key === 'Enter' && addRegiment('USA')}
+                      className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-600 focus:border-blue-500 outline-none text-sm"
+                    />
+                    <button
+                      onClick={() => addRegiment('USA')}
+                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
+                      title="Add regiment"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* CSA Regiments */}
+                <div>
+                  <div className="text-red-400 font-semibold mb-2 text-sm">CSA Regiments ({regiments.CSA.length})</div>
+                  <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
+                    {regiments.CSA.length === 0 ? (
+                      <div className="text-xs text-slate-500 italic">No regiments added</div>
+                    ) : (
+                      regiments.CSA.map(regiment => (
+                        <div key={regiment.id} className="flex items-center justify-between bg-slate-800 rounded px-2 py-1">
+                          <span className="text-white text-sm truncate">{regiment.name}</span>
+                          <button
+                            onClick={() => removeRegiment('CSA', regiment.id)}
+                            className="p-1 hover:bg-red-600 rounded transition"
+                            title="Remove regiment"
+                          >
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Regiment name..."
+                      value={newRegimentName.CSA}
+                      onChange={(e) => setNewRegimentName({ ...newRegimentName, CSA: e.target.value })}
+                      onKeyPress={(e) => e.key === 'Enter' && addRegiment('CSA')}
+                      className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-600 focus:border-red-500 outline-none text-sm"
+                    />
+                    <button
+                      onClick={() => addRegiment('CSA')}
+                      className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition"
+                      title="Add regiment"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </div>

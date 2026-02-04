@@ -61,8 +61,8 @@ const checkCPDepletion = (campaign) => {
   if (campaign.combatPowerUSA <= 0) {
     return {
       winner: 'CSA',
-      type: 'Combat Power Depletion',
-      description: 'USA has exhausted their combat power and can no longer sustain the war effort',
+      type: 'Supply Point Depletion',
+      description: 'USA has exhausted their supply points and can no longer sustain the war effort',
       cpUSA: campaign.combatPowerUSA,
       cpCSA: campaign.combatPowerCSA
     };
@@ -71,8 +71,8 @@ const checkCPDepletion = (campaign) => {
   if (campaign.combatPowerCSA <= 0) {
     return {
       winner: 'USA',
-      type: 'Combat Power Depletion',
-      description: 'CSA has exhausted their combat power and can no longer sustain the war effort',
+      type: 'Supply Point Depletion',
+      description: 'CSA has exhausted their supply points and can no longer sustain the war effort',
       cpUSA: campaign.combatPowerUSA,
       cpCSA: campaign.combatPowerCSA
     };

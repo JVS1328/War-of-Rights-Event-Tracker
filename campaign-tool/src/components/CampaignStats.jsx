@@ -118,7 +118,7 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
             <button
               onClick={handleOpenCPEditor}
               className="ml-auto p-1.5 hover:bg-slate-700 rounded transition"
-              title="Edit CP Values"
+              title="Edit SP Values"
             >
               <Edit2 className="w-4 h-4 text-slate-400 hover:text-amber-400" />
             </button>
@@ -136,14 +136,14 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
               {campaign.cpSystemEnabled && (
                 <span className="text-blue-300 text-lg font-semibold flex items-center gap-1">
                   <Zap className="w-4 h-4" />
-                  {campaign.combatPowerUSA || 0} CP
+                  {campaign.combatPowerUSA || 0} SP
                 </span>
               )}
             </div>
           </div>
           {campaign.cpSystemEnabled && (
             <div className="text-xs text-slate-400 mt-1">
-              +{usaTerritoryVP} CP per turn from territories
+              +{usaTerritoryVP} SP per turn from territories
             </div>
           )}
         </div>
@@ -159,14 +159,14 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
               {campaign.cpSystemEnabled && (
                 <span className="text-red-300 text-lg font-semibold flex items-center gap-1">
                   <Zap className="w-4 h-4" />
-                  {campaign.combatPowerCSA || 0} CP
+                  {campaign.combatPowerCSA || 0} SP
                 </span>
               )}
             </div>
           </div>
           {campaign.cpSystemEnabled && (
             <div className="text-xs text-slate-400 mt-1">
-              +{csaTerritoryVP} CP per turn from territories
+              +{csaTerritoryVP} SP per turn from territories
             </div>
           )}
         </div>
@@ -255,7 +255,7 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2">
                   <Zap className="w-5 h-5" />
-                  Edit Combat Power
+                  Edit Supply Points
                 </h3>
                 <button
                   onClick={() => setShowCPEditor(false)}
@@ -269,7 +269,7 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-blue-400 mb-2 font-semibold">
-                    USA Combat Power
+                    USA Supply Points
                   </label>
                   <input
                     type="number"
@@ -280,13 +280,13 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
                     className="w-full px-4 py-3 bg-slate-700 text-white rounded border border-slate-600 focus:border-blue-500 outline-none text-lg font-bold"
                   />
                   <div className="text-xs text-slate-400 mt-1">
-                    Current: {campaign.combatPowerUSA || 0} CP
+                    Current: {campaign.combatPowerUSA || 0} SP
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-sm text-red-400 mb-2 font-semibold">
-                    CSA Combat Power
+                    CSA Supply Points
                   </label>
                   <input
                     type="number"
@@ -297,13 +297,13 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
                     className="w-full px-4 py-3 bg-slate-700 text-white rounded border border-slate-600 focus:border-red-500 outline-none text-lg font-bold"
                   />
                   <div className="text-xs text-slate-400 mt-1">
-                    Current: {campaign.combatPowerCSA || 0} CP
+                    Current: {campaign.combatPowerCSA || 0} SP
                   </div>
                 </div>
 
                 <div className="bg-amber-900/20 border border-amber-700 rounded-lg p-3 mt-4">
                   <div className="text-xs text-amber-300">
-                    <strong>Note:</strong> Manual CP adjustments will be logged in CP history.
+                    <strong>Note:</strong> Manual SP adjustments will be logged in SP history.
                     Use this to correct errors or apply custom modifiers.
                   </div>
                 </div>
