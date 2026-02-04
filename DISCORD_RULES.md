@@ -4,6 +4,19 @@ Welcome to the War of Rights Campaign! This document explains everything you nee
 
 ---
 
+## Team Assignment
+
+**Teams are assigned before the campaign season begins.** Regiments will be placed on either USA or CSA based on preferences and balance needs.
+
+**Key Points:**
+- Teams should remain **consistent throughout the campaign** - you fight for your assigned side
+- **Numbers may vary** from event to event based on attendance
+- If numbers are unbalanced, **units may need to balance over** to the other side
+- When balancing over, **play as if you were fighting for your own team** - give it your all!
+- We want competitive, close fights - not steamrolls
+
+---
+
 ## The Basics
 
 **Each turn represents ~2 months** of the Civil War campaign. Both sides (USA and CSA) make strategic decisions that determine where battles are fought.
@@ -72,11 +85,43 @@ Before the battle begins, roll for **weather** and **time of day** using d10 dic
 
 Play the War of Rights match! Record casualties for both sides.
 
-### Step 4: Record Results
+### Step 4: Select Battle Commanders
+
+Before each battle, **commanders are randomly selected** using the spinner:
+
+1. Each side spins the roulette to select their commanding regiment
+2. Once selected, that regiment **cannot be picked again** until everyone has had a turn
+3. When the pool is empty, it resets and all regiments are available again
+
+This ensures **every regiment gets leadership opportunities** and keeps engagement high across all participating units.
+
+### Step 5: Record Results
 
 The winner captures (or holds) the territory. Both sides pay Supply Points (SP) based on:
 - Territory value (higher VP = higher stakes)
 - Casualties taken (more blood = more SP lost)
+
+**Commander stats are tracked automatically:**
+- Win/Loss record
+- Total casualties under their command
+- SP spent
+- VP gained/lost
+
+---
+
+## Regiment Leaderboard
+
+The campaign tracks performance for each regiment:
+
+| Stat | Description |
+|------|-------------|
+| W-L | Wins and losses as battle commander |
+| Casualties | Total casualties taken under their command |
+| SP Lost | Total Supply Points spent in their battles |
+| VP Gained | Victory Points captured while commanding |
+| VP Lost | Victory Points lost while commanding |
+
+Click on any regiment to see their full battle history!
 
 ---
 

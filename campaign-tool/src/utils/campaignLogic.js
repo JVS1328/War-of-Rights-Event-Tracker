@@ -18,16 +18,19 @@ export const processBattleResult = (campaign, battle) => {
 
   // Store previous owner for CP calculations
   const previousOwner = territory.owner;
-  
-  // Determine defender (could be NEUTRAL)
-  const defender = battle.attacker === 'USA' ?
+
+  // Determine territory-based defender (could be NEUTRAL for territory ownership)
+  const territoryDefender = battle.attacker === 'USA' ?
     (previousOwner === 'CSA' ? 'CSA' : 'NEUTRAL') :
     (previousOwner === 'USA' ? 'USA' : 'NEUTRAL');
 
+  // Opposing team is always the other faction (never NEUTRAL) - used for SP tracking
+  const opposingTeam = battle.attacker === 'USA' ? 'CSA' : 'USA';
+
   // === CP SYSTEM PROCESSING (if enabled) ===
   let cpCostAttacker = 0;
-  let cpCostDefender = 0;
-  
+  let cpCostDefender = 0;  // Cost for the opposing team (whoever shows up to fight)
+
   if (campaign.cpSystemEnabled) {
     // Check if manual CP loss was provided
     if (battle.manualCPLoss) {
@@ -37,11 +40,12 @@ export const processBattleResult = (campaign, battle) => {
     } else {
       // Auto mode: calculate CP costs
       const attackerCasualties = battle.casualties?.[battle.attacker] || 0;
-      const defenderCasualties = battle.casualties?.[defender] || 0;
+      const opposingCasualties = battle.casualties?.[opposingTeam] || 0;
+      const totalCasualties = attackerCasualties + opposingCasualties;
 
       // Check if defending territory is isolated (no adjacent friendly territories)
-      const isDefenderIsolated = defender !== 'NEUTRAL' &&
-        previousOwner === defender &&
+      const isDefenderIsolated = territoryDefender !== 'NEUTRAL' &&
+        previousOwner === territoryDefender &&
         !isTerritorySupplied(territory, campaign.territories);
 
       const cpResult = calculateBattleCPCost({
@@ -50,29 +54,39 @@ export const processBattleResult = (campaign, battle) => {
         attacker: battle.attacker,
         winner: battle.winner,
         attackerCasualties,
-        defenderCasualties,
+        defenderCasualties: opposingCasualties,
         abilityActive: battle.abilityUsed === battle.attacker,
         isDefenderIsolated
       });
 
       cpCostAttacker = cpResult.attackerLoss;
-      cpCostDefender = cpResult.defenderLoss;
+
+      // For defender SP cost: use calculated value if territory owned, otherwise calculate for neutral
+      if (previousOwner !== 'NEUTRAL') {
+        cpCostDefender = cpResult.defenderLoss;
+      } else {
+        // Neutral territory: opposing team still has SP costs (base 50, scaled by VP and casualties)
+        if (totalCasualties > 0) {
+          const vpBase = campaign.settings?.vpBase || 1;
+          const vpMultiplier = (territory.pointValue || territory.victoryPoints || 1) / vpBase;
+          const casualtyRatio = opposingCasualties / totalCasualties;
+          cpCostDefender = Math.round(50 * vpMultiplier * casualtyRatio);
+        }
+      }
     }
 
     // Validate CP availability (should have been checked in UI, but validate here)
     const attackerCP = battle.attacker === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;
-    const defenderCP = defender === 'USA' ? campaign.combatPowerUSA :
-                       defender === 'CSA' ? campaign.combatPowerCSA : 0;
+    const opposingCP = opposingTeam === 'USA' ? campaign.combatPowerUSA : campaign.combatPowerCSA;
 
     if (attackerCP < cpCostAttacker) {
       console.warn(`Insufficient CP for attacker. Required: ${cpCostAttacker}, Available: ${attackerCP}`);
-      // Allow battle but cap cost at available CP
       cpCostAttacker = Math.max(0, attackerCP);
     }
 
-    if (defender !== 'NEUTRAL' && defenderCP < cpCostDefender) {
-      console.warn(`Insufficient CP for defender. Required: ${cpCostDefender}, Available: ${defenderCP}`);
-      cpCostDefender = Math.max(0, defenderCP);
+    if (opposingCP < cpCostDefender) {
+      console.warn(`Insufficient CP for defender. Required: ${cpCostDefender}, Available: ${opposingCP}`);
+      cpCostDefender = Math.max(0, opposingCP);
     }
   }
 
@@ -142,7 +156,7 @@ export const processBattleResult = (campaign, battle) => {
   // Update battle record with CP data
   battle.cpCostAttacker = cpCostAttacker;
   battle.cpCostDefender = cpCostDefender;
-  battle.defender = defender;
+  battle.defender = opposingTeam;
 
   // === UPDATE VP BASED ON TERRITORY OWNERSHIP ===
   // Recalculate VP totals from all territories
@@ -178,16 +192,16 @@ export const processBattleResult = (campaign, battle) => {
       updatedCampaign.combatPowerCSA = Math.max(0, campaign.combatPowerCSA - cpCostAttacker);
     }
 
-    // Deduct defender CP (if not NEUTRAL)
-    if (defender === 'USA') {
+    // Deduct opposing team CP (they always show up to fight)
+    if (opposingTeam === 'USA') {
       updatedCampaign.combatPowerUSA = Math.max(0, campaign.combatPowerUSA - cpCostDefender);
-    } else if (defender === 'CSA') {
+    } else {
       updatedCampaign.combatPowerCSA = Math.max(0, campaign.combatPowerCSA - cpCostDefender);
     }
 
     // Add CP history entries
     const cpHistory = [...(campaign.cpHistory || [])];
-    
+
     // Attacker CP history
     cpHistory.push({
       turn: battle.turn,
@@ -199,18 +213,16 @@ export const processBattleResult = (campaign, battle) => {
       battleId: battle.id
     });
 
-    // Defender CP history (if not NEUTRAL)
-    if (defender !== 'NEUTRAL') {
-      cpHistory.push({
-        turn: battle.turn,
-        date: battle.date,
-        action: `Battle: ${territory.name} (Defender)`,
-        side: defender,
-        cpChange: -cpCostDefender,
-        newBalance: defender === 'USA' ? updatedCampaign.combatPowerUSA : updatedCampaign.combatPowerCSA,
-        battleId: battle.id
-      });
-    }
+    // Defender CP history (opposing team always has SP costs)
+    cpHistory.push({
+      turn: battle.turn,
+      date: battle.date,
+      action: `Battle: ${territory.name} (Defender)`,
+      side: opposingTeam,
+      cpChange: -cpCostDefender,
+      newBalance: opposingTeam === 'USA' ? updatedCampaign.combatPowerUSA : updatedCampaign.combatPowerCSA,
+      battleId: battle.id
+    });
 
     updatedCampaign.cpHistory = cpHistory;
   }
