@@ -176,6 +176,7 @@ Each side has a unique ability with a cooldown:
 ### USA: Special Orders 191
 *"Finding Lee's battle plans"*
 - When USA **attacks and wins**, the CSA defender loses **3x their normal SP**
+- Neutral territories, if **attacked and lost by the USA**, remain neutral.
 - Devastating when used on high-value territories
 
 ### CSA: Valley Supply Lines
