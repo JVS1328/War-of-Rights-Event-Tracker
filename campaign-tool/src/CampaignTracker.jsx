@@ -8,6 +8,7 @@ import BattleRecorder from './components/BattleRecorder';
 import SettingsModal from './components/SettingsModal';
 import MapEditor from './components/MapEditor';
 import HelpGuide from './components/HelpGuide';
+import RegimentStats from './components/RegimentStats';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
@@ -266,14 +267,28 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
-    // Extract campaign name and settings
-    const { name, ...settings } = newSettings;
+    // Extract campaign name, regiments, and settings
+    const { name, regiments, ...settings } = newSettings;
 
-    setCampaign({
+    // Update commander pool when regiments change
+    const updatedCampaign = {
       ...campaign,
       name: name,
       settings: settings
-    });
+    };
+
+    // Update regiments if provided
+    if (regiments) {
+      updatedCampaign.regiments = regiments;
+
+      // Reset commander pools to include all regiments
+      updatedCampaign.commanderPool = {
+        USA: regiments.USA.map(r => r.id),
+        CSA: regiments.CSA.map(r => r.id)
+      };
+    }
+
+    setCampaign(updatedCampaign);
     setShowSettings(false);
   };
 
@@ -380,6 +395,13 @@ const CampaignTracker = () => {
             />
           </div>
         </div>
+
+        {/* Regiment Leaderboard - Shows if regiments are configured */}
+        {(campaign.regiments?.USA?.length > 0 || campaign.regiments?.CSA?.length > 0) && (
+          <div className="mb-6">
+            <RegimentStats campaign={campaign} />
+          </div>
+        )}
 
         {/* Bottom Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -284,6 +284,17 @@ export const createDefaultCampaign = (customMap = null) => {
       }
     },
 
+    // === REGIMENT SYSTEM ===
+    regiments: {
+      USA: [],  // Array of { id, name }
+      CSA: []   // Array of { id, name }
+    },
+    commanderPool: {
+      USA: [],  // IDs of regiments still available for selection
+      CSA: []   // IDs of regiments still available for selection
+    },
+    regimentStats: {}, // { regimentId: { wins, losses, casualties, spLost, vpGained, vpLost, battles: [] } }
+
     // Settings with both old and new fields
     settings: {
       // Core settings
@@ -420,6 +431,17 @@ export const createEasternTheatreCampaign = () => {
       }
     },
 
+    // === REGIMENT SYSTEM ===
+    regiments: {
+      USA: [],
+      CSA: []
+    },
+    commanderPool: {
+      USA: [],
+      CSA: []
+    },
+    regimentStats: {},
+
     // Settings
     settings: {
       allowTerritoryRecapture: true,
@@ -501,6 +523,17 @@ export const createMaryland1862Campaign = () => {
         lastUsedTurn: null
       }
     },
+
+    // === REGIMENT SYSTEM ===
+    regiments: {
+      USA: [],
+      CSA: []
+    },
+    commanderPool: {
+      USA: [],
+      CSA: []
+    },
+    regimentStats: {},
 
     // Settings optimized for the Maryland Campaign
     settings: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon } from 'lucide-react';
+import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon, Users } from 'lucide-react';
 import { ALL_MAPS } from '../data/territories';
 import {
   calculateBattleCPCost,
@@ -13,6 +13,7 @@ import {
 } from '../utils/mapSelection';
 import { rollBattleConditions } from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
+import CommanderSpinner from './CommanderSpinner';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
   const [selectedMap, setSelectedMap] = useState('');
@@ -24,6 +25,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
   // Battle conditions state
   const [battleConditions, setBattleConditions] = useState(null);
+
+  // Commander selection state
+  const [selectedCommanders, setSelectedCommanders] = useState({ USA: null, CSA: null });
 
   // Team ability state
   const [abilityActive, setAbilityActive] = useState(false);
@@ -243,6 +247,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     }
   };
 
+  // Handle commander selection from spinner
+  const handleCommanderSelect = (side, regiment) => {
+    setSelectedCommanders(prev => ({ ...prev, [side]: regiment }));
+  };
+
   const handleSubmit = () => {
     if (!selectedMap || !selectedTerritory || !winner) {
       alert('Please select a map, territory, and winner');
@@ -285,7 +294,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         weatherRoll: battleConditions.weather.roll,
         time: battleConditions.time.condition.id,
         timeRoll: battleConditions.time.roll
-      } : null
+      } : null,
+      commanders: {
+        USA: selectedCommanders.USA ? { id: selectedCommanders.USA.id, name: selectedCommanders.USA.name } : null,
+        CSA: selectedCommanders.CSA ? { id: selectedCommanders.CSA.id, name: selectedCommanders.CSA.name } : null
+      }
     };
 
     onRecordBattle(battle);
@@ -640,6 +653,27 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                 </div>
               )}
             </div>
+
+            {/* Commander Selection */}
+            {(campaign?.regiments?.USA?.length > 0 || campaign?.regiments?.CSA?.length > 0) && (
+              <div className="bg-slate-700 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="w-5 h-5 text-amber-400" />
+                  <label className="text-sm text-slate-300 font-semibold">
+                    Battle Commanders
+                  </label>
+                </div>
+                <div className="text-xs text-slate-400 mb-3">
+                  Spin to randomly select the commanding regiment for each side
+                </div>
+                <CommanderSpinner
+                  regiments={campaign.regiments}
+                  commanderPool={campaign.commanderPool}
+                  selectedCommanders={selectedCommanders}
+                  onSelect={handleCommanderSelect}
+                />
+              </div>
+            )}
 
             {/* Attacker Selection */}
             <div>

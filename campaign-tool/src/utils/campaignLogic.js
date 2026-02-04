@@ -248,6 +248,86 @@ export const processBattleResult = (campaign, battle) => {
     };
   }
 
+  // === HANDLE COMMANDER SYSTEM ===
+  if (battle.commanders) {
+    // Initialize regiment structures if needed
+    if (!updatedCampaign.regimentStats) {
+      updatedCampaign.regimentStats = {};
+    }
+    if (!updatedCampaign.commanderPool) {
+      updatedCampaign.commanderPool = { USA: [], CSA: [] };
+    }
+
+    // Calculate VP change for each side
+    const vpGainedUSA = ownershipChanged && battle.winner === 'USA' ? territoryVP : 0;
+    const vpGainedCSA = ownershipChanged && battle.winner === 'CSA' ? territoryVP : 0;
+    const vpLostUSA = ownershipChanged && previousOwner === 'USA' ? territoryVP : 0;
+    const vpLostCSA = ownershipChanged && previousOwner === 'CSA' ? territoryVP : 0;
+
+    // Process each side's commander
+    ['USA', 'CSA'].forEach(side => {
+      const commander = battle.commanders[side];
+      if (!commander) return;
+
+      const regimentId = commander.id;
+
+      // Initialize stats for this regiment if needed
+      if (!updatedCampaign.regimentStats[regimentId]) {
+        updatedCampaign.regimentStats[regimentId] = {
+          wins: 0,
+          losses: 0,
+          casualties: 0,
+          spLost: 0,
+          vpGained: 0,
+          vpLost: 0,
+          battles: []
+        };
+      }
+
+      const stats = updatedCampaign.regimentStats[regimentId];
+      const isWinner = battle.winner === side;
+      const sideCasualties = battle.casualties?.[side] || 0;
+      const sideSpLost = side === battle.attacker ? cpCostAttacker : cpCostDefender;
+      const sideVpGained = side === 'USA' ? vpGainedUSA : vpGainedCSA;
+      const sideVpLost = side === 'USA' ? vpLostUSA : vpLostCSA;
+
+      // Update stats
+      if (isWinner) {
+        stats.wins += 1;
+      } else {
+        stats.losses += 1;
+      }
+      stats.casualties += sideCasualties;
+      stats.spLost += sideSpLost;
+      stats.vpGained += sideVpGained;
+      stats.vpLost += sideVpLost;
+
+      // Add battle to regiment history
+      stats.battles.push({
+        battleId: battle.id,
+        turn: battle.turn,
+        territoryName: territory.name,
+        mapName: battle.mapName,
+        role: side === battle.attacker ? 'Attacker' : 'Defender',
+        won: isWinner,
+        casualties: sideCasualties,
+        spLost: sideSpLost,
+        vpGained: sideVpGained,
+        vpLost: sideVpLost
+      });
+
+      // Remove commander from pool
+      const pool = updatedCampaign.commanderPool[side] || [];
+      updatedCampaign.commanderPool[side] = pool.filter(id => id !== regimentId);
+
+      // Reset pool if empty
+      const regiments = updatedCampaign.regiments?.[side] || [];
+      if (updatedCampaign.commanderPool[side].length === 0 && regiments.length > 0) {
+        updatedCampaign.commanderPool[side] = regiments.map(r => r.id);
+      }
+    });
+  }
+
   return updatedCampaign;
 };
 
