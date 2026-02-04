@@ -5,6 +5,7 @@ import { getStateByAbbr, calculateGroupCenter } from './usaStates';
 import { CAMPAIGN_VERSION } from '../utils/campaignValidation';
 import { createEasternTheatreTerritories, calculateInitialVP as calcEasternVP } from './easternTheatreCounties';
 import { createMaryland1862Territories, calculateInitialVP as calcMaryland1862VP } from './marylandCampaign1862';
+import { createEasternCivilWarTerritories, calculateInitialVP as calcEasternCivilWarVP } from './easternCivilWar';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -528,6 +529,89 @@ export const createMaryland1862Campaign = () => {
 };
 
 /**
+ * Create an Eastern Civil War regional campaign
+ * Strategic campaign spanning Virginia, Maryland, West Virginia, and Pennsylvania.
+ * Designed for maneuver warfare with many small regions (1-3 counties each).
+ *
+ * Campaign period: April 1861 - December 1865
+ * Turn length: 2 months (6 turns per year)
+ */
+export const createEasternCivilWarCampaign = () => {
+  const territories = createEasternCivilWarTerritories();
+  const initialVP = calcEasternCivilWarVP();
+
+  // Campaign starts April 1861
+  const campaignDate = {
+    month: 4,
+    year: 1861,
+    turn: 1,
+    displayString: 'April 1861'
+  };
+
+  return {
+    // === VERSION ===
+    version: CAMPAIGN_VERSION,
+
+    // === CAMPAIGN INFO ===
+    id: Date.now().toString(),
+    name: 'Eastern Civil War',
+    startDate: new Date().toISOString(),
+    currentTurn: 1,
+    victoryPointsUSA: initialVP.usa,
+    victoryPointsCSA: initialVP.csa,
+    territories,
+    battles: [],
+    customMap: null,
+    mapTemplate: 'eastern-civil-war',
+    isCountyView: true,
+
+    // === CP SYSTEM FIELDS ===
+    combatPowerUSA: DEFAULT_STARTING_CP,
+    combatPowerCSA: DEFAULT_STARTING_CP,
+    campaignDate: campaignDate,
+    cpSystemEnabled: true,
+    cpHistory: [],
+
+    // === TEAM ABILITIES ===
+    abilities: {
+      USA: {
+        name: 'Special Orders 191',
+        cooldown: 0,
+        lastUsedTurn: null
+      },
+      CSA: {
+        name: 'Valley Supply Lines',
+        cooldown: 0,
+        lastUsedTurn: null
+      }
+    },
+
+    // Settings for the Eastern Civil War campaign
+    settings: {
+      allowTerritoryRecapture: true,
+      requireAdjacentAttack: true, // Adjacency matters with regional detail
+      casualtyTracking: true,
+      instantVPGains: true,
+      captureTransitionTurns: 1,
+      failedNeutralAttackToEnemy: true,
+      startingCP: DEFAULT_STARTING_CP,
+      cpGenerationEnabled: true,
+      cpCalculationMode: 'auto',
+      vpBase: 1, // Regional maps use VP scale 1-6
+      campaignStartDate: campaignDate,
+      campaignEndDate: {
+        month: 12,
+        year: 1865,
+        turn: 30,
+        displayString: 'December 1865'
+      },
+      turnsPerYear: 6, // 2-month turns
+      abilityCooldown: 2
+    }
+  };
+};
+
+/**
  * Available campaign templates
  */
 export const CAMPAIGN_TEMPLATES = {
@@ -545,5 +629,10 @@ export const CAMPAIGN_TEMPLATES = {
     name: 'Maryland Campaign 1862',
     description: "Lee's first invasion of the North - Antietam, Harpers Ferry, South Mountain",
     create: createMaryland1862Campaign
+  },
+  'eastern-civil-war': {
+    name: 'Eastern Civil War',
+    description: 'Strategic regional campaign (VA, MD, WV, PA) with 78 regions for maneuver warfare',
+    create: createEasternCivilWarCampaign
   }
 };
