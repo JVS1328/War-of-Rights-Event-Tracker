@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RotateCw, User, Check, ChevronDown } from 'lucide-react';
+import { RotateCw, User, Check, X } from 'lucide-react';
 
 /**
  * CommanderSpinner - Animated roulette for selecting battle commanders
@@ -137,18 +137,31 @@ const CommanderSpinner = ({
 
         {/* Spin Button and Manual Select */}
         <div className="flex gap-2">
-          <button
-            onClick={() => spin(side)}
-            disabled={isSpinning || selected || disabled || available.length === 0}
-            className={`flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
-              isSpinning || selected || disabled || available.length === 0
-                ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
-                : `${buttonColor} text-white`
-            }`}
-          >
-            <RotateCw className={`w-4 h-4 ${isSpinning ? 'animate-spin' : ''}`} />
-            {selected ? 'Selected' : isSpinning ? 'Spinning...' : 'Spin'}
-          </button>
+          {selected ? (
+            /* Change button when commander is selected */
+            <button
+              onClick={() => onSelect(side, null)}
+              disabled={disabled}
+              className="flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-500 text-white"
+            >
+              <X className="w-4 h-4" />
+              Change
+            </button>
+          ) : (
+            /* Spin button when no commander selected */
+            <button
+              onClick={() => spin(side)}
+              disabled={isSpinning || disabled || available.length === 0}
+              className={`flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
+                isSpinning || disabled || available.length === 0
+                  ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                  : `${buttonColor} text-white`
+              }`}
+            >
+              <RotateCw className={`w-4 h-4 ${isSpinning ? 'animate-spin' : ''}`} />
+              {isSpinning ? 'Spinning...' : 'Spin'}
+            </button>
+          )}
 
           {/* Manual Selection Dropdown */}
           {!selected && !isSpinning && available.length > 0 && !disabled && (
