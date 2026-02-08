@@ -233,7 +233,7 @@ const SharedMapView = ({ shareData }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto items-start">
             {sortedTerritories.map(territory => {
               const supplied = isTerritorySupplied(territory, territories);
               const isNeutral = territory.owner === 'NEUTRAL';
