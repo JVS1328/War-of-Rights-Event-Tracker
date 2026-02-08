@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit, HelpCircle } from 'lucide-react';
+import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit, HelpCircle, Share2 } from 'lucide-react';
 import MapView from './components/MapView';
 import CampaignStats from './components/CampaignStats';
 import TerritoryList from './components/TerritoryList';
@@ -15,6 +15,7 @@ import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
 import { validateImportedCampaign, prepareCampaignExport, formatImportError } from './utils/campaignValidation';
+import { generateShareUrl } from './utils/shareMap';
 
 const STORAGE_KEY = 'WarOfRightsCampaignTracker';
 
@@ -312,6 +313,17 @@ const CampaignTracker = () => {
     event.target.value = '';
   };
 
+  const shareCampaignMap = () => {
+    if (!campaign) return;
+    const url = generateShareUrl(campaign);
+    navigator.clipboard.writeText(url).then(() => {
+      alert('Share link copied to clipboard! Anyone with this link can view your campaign map.');
+    }).catch(() => {
+      // Fallback: show the URL for manual copy
+      prompt('Copy this link to share your campaign map:', url);
+    });
+  };
+
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
@@ -400,6 +412,14 @@ const CampaignTracker = () => {
               >
                 <Plus className="w-4 h-4" />
                 New
+              </button>
+              <button
+                onClick={shareCampaignMap}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-2 transition"
+                title="Share Campaign Map"
+              >
+                <Share2 className="w-4 h-4" />
+                Share
               </button>
               <button
                 onClick={exportCampaign}
