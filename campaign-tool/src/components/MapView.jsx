@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Map, Loader } from 'lucide-react';
 import { usaStates } from '../data/usaStates';
 
@@ -104,7 +104,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyView = false, pendingBattleTerritoryIds = [] }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [] }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -117,6 +117,30 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Click timeout ref to distinguish single-click from double-click
+  const clickTimeoutRef = useRef(null);
+
+  // Unified click handler: single-click pins tooltip, double-click opens battle recorder
+  const handleTerritoryPathClick = useCallback((territory) => {
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+      onTerritoryDoubleClick?.(territory);
+    } else {
+      clickTimeoutRef.current = setTimeout(() => {
+        clickTimeoutRef.current = null;
+        onTerritoryClick(territory);
+      }, 250);
+    }
+  }, [onTerritoryClick, onTerritoryDoubleClick]);
+
+  // Cleanup click timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+    };
+  }, []);
 
   // Check if any territory has countyFips
   const hasCountyData = useMemo(() => {
@@ -340,7 +364,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => onTerritoryClick(territory)}
+                        onClick={() => handleTerritoryPathClick(territory)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
@@ -365,7 +389,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                           stroke={getTerritoryStroke(territory)}
                           strokeWidth={getStrokeWidth(territory)}
                           className="cursor-pointer hover:opacity-80 transition-all"
-                          onClick={() => onTerritoryClick(territory)}
+                          onClick={() => handleTerritoryPathClick(territory)}
                           onMouseEnter={() => setHoveredTerritory(territory)}
                           onMouseLeave={() => setHoveredTerritory(null)}
                         />
@@ -398,7 +422,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => onTerritoryClick(territory)}
+                        onClick={() => handleTerritoryPathClick(territory)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
@@ -430,7 +454,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                     stroke={getTerritoryStroke(territory)}
                     strokeWidth={getStrokeWidth(territory)}
                     className="cursor-pointer hover:opacity-80 transition-all"
-                    onClick={() => onTerritoryClick(territory)}
+                    onClick={() => handleTerritoryPathClick(territory)}
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
                   />
@@ -474,49 +498,64 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
           </g>
         </svg>
 
-        {/* Tooltip */}
-        {hoveredTerritory && (
-          <div className="absolute top-4 right-4 bg-slate-800 border border-amber-500 rounded-lg p-3 shadow-xl pointer-events-none">
-            <div className="text-amber-400 font-bold mb-1">{hoveredTerritory.name}</div>
-            <div className="text-sm text-slate-300 space-y-1">
-              <div>Owner: <span className={`font-semibold ${
-                hoveredTerritory.owner === 'USA' ? 'text-blue-400' :
-                hoveredTerritory.owner === 'CSA' ? 'text-red-400' :
-                'text-orange-400'
-              }`}>{hoveredTerritory.owner}</span></div>
-              <div>VP Value: <span className="text-green-400 font-semibold">{hoveredTerritory.pointValue || hoveredTerritory.victoryPoints}</span></div>
-              {hoveredTerritory.stateAbbr && (
-                <div>State: <span className="text-slate-400">{hoveredTerritory.stateAbbr}</span></div>
-              )}
-              {hoveredTerritory.transitionState?.isTransitioning && (
-                <div className="mt-2 pt-2 border-t border-slate-600">
-                  <div className="text-orange-400 font-semibold mb-1">Capturing...</div>
-                  <div className="text-xs">
-                    <div>Turns Remaining: <span className="text-yellow-400 font-semibold">{hoveredTerritory.transitionState.turnsRemaining}</span></div>
-                    <div>From: <span className={`font-semibold ${
-                      hoveredTerritory.transitionState.previousOwner === 'USA' ? 'text-blue-400' :
-                      hoveredTerritory.transitionState.previousOwner === 'CSA' ? 'text-red-400' :
-                      'text-slate-400'
-                    }`}>{hoveredTerritory.transitionState.previousOwner}</span></div>
+        {/* Tooltip - shows for hovered territory, or pinned (selected) territory */}
+        {(() => {
+          const tooltipTerritory = hoveredTerritory || selectedTerritory;
+          if (!tooltipTerritory) return null;
+          const isPinned = !hoveredTerritory && selectedTerritory;
+          return (
+            <div className={`absolute top-4 right-4 bg-slate-800 border rounded-lg p-3 shadow-xl pointer-events-none ${
+              isPinned ? 'border-amber-400' : 'border-amber-500'
+            }`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-amber-400 font-bold">{tooltipTerritory.name}</span>
+                {isPinned && <span className="text-[10px] text-slate-500 bg-slate-700 px-1.5 py-0.5 rounded">pinned</span>}
+              </div>
+              <div className="text-sm text-slate-300 space-y-1">
+                <div>Owner: <span className={`font-semibold ${
+                  tooltipTerritory.owner === 'USA' ? 'text-blue-400' :
+                  tooltipTerritory.owner === 'CSA' ? 'text-red-400' :
+                  'text-orange-400'
+                }`}>{tooltipTerritory.owner}</span></div>
+                <div>VP Value: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span></div>
+                {tooltipTerritory.stateAbbr && (
+                  <div>State: <span className="text-slate-400">{tooltipTerritory.stateAbbr}</span></div>
+                )}
+                {tooltipTerritory.transitionState?.isTransitioning && (
+                  <div className="mt-2 pt-2 border-t border-slate-600">
+                    <div className="text-orange-400 font-semibold mb-1">Capturing...</div>
+                    <div className="text-xs">
+                      <div>Turns Remaining: <span className="text-yellow-400 font-semibold">{tooltipTerritory.transitionState.turnsRemaining}</span></div>
+                      <div>From: <span className={`font-semibold ${
+                        tooltipTerritory.transitionState.previousOwner === 'USA' ? 'text-blue-400' :
+                        tooltipTerritory.transitionState.previousOwner === 'CSA' ? 'text-red-400' :
+                        'text-slate-400'
+                      }`}>{tooltipTerritory.transitionState.previousOwner}</span></div>
+                    </div>
                   </div>
+                )}
+                {pendingBattleTerritoryIds.includes(tooltipTerritory.id) && (
+                  <div className="mt-2 pt-2 border-t border-slate-600">
+                    <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
+                  </div>
+                )}
+                {tooltipTerritory.countyFips && (
+                  <div className="text-xs text-slate-500">Counties: {tooltipTerritory.countyFips.length}</div>
+                )}
+              </div>
+              {isPinned && (
+                <div className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">
+                  Click to deselect · Double-click to record battle
                 </div>
-              )}
-              {pendingBattleTerritoryIds.includes(hoveredTerritory.id) && (
-                <div className="mt-2 pt-2 border-t border-slate-600">
-                  <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
-                </div>
-              )}
-              {hoveredTerritory.countyFips && (
-                <div className="text-xs text-slate-500">Counties: {hoveredTerritory.countyFips.length}</div>
               )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Zoom/Pan hint */}
       <div className="mt-2 text-xs text-slate-500 text-center">
-        Shift+scroll to zoom | Shift+drag or middle-click to pan
+        Click to pin info | Double-click to record battle | Shift+scroll to zoom | Shift+drag to pan
       </div>
     </div>
   );

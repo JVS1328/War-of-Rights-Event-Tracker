@@ -24,11 +24,11 @@ import {
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
 
-const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle }) => {
+const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId }) => {
   const isEditMode = !!editingBattle;
 
   const [selectedMap, setSelectedMap] = useState(editingBattle?.mapName || '');
-  const [selectedTerritory, setSelectedTerritory] = useState(editingBattle?.territoryId || '');
+  const [selectedTerritory, setSelectedTerritory] = useState(editingBattle?.territoryId || initialTerritoryId || '');
   const [attacker, setAttacker] = useState(editingBattle?.attacker || 'USA');
   const [winner, setWinner] = useState(editingBattle?.winner || '');
   const [casualties, setCasualties] = useState(editingBattle?.casualties || { USA: 0, CSA: 0 });
@@ -448,8 +448,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
