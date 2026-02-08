@@ -1,16 +1,45 @@
 import { ALL_MAPS } from '../data/territories';
 
 /**
+ * Roll a weighted random terrain type from a territory's terrain weights.
+ *
+ * @param {Object} terrainWeights - e.g. { Woods: 4, Farmland: 1, Urban: 1 }
+ * @returns {{ terrainType: string, roll: number, total: number }}
+ */
+export const rollTerrainType = (terrainWeights) => {
+  const entries = Object.entries(terrainWeights);
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  const roll = Math.random() * total;
+  let cumulative = 0;
+  for (const [terrain, weight] of entries) {
+    cumulative += weight;
+    if (roll < cumulative) {
+      return { terrainType: terrain, roll, total };
+    }
+  }
+  // Fallback (shouldn't happen with valid weights)
+  return { terrainType: entries[entries.length - 1][0], roll, total };
+};
+
+/**
  * Resolve the map pool for a territory.
  * Priority: territory.maps > territory.terrainGroup (from settings) > ALL_MAPS
  *
+ * For territories with terrainWeights, the caller must roll first and pass
+ * the result as rolledTerrainType. This keeps the roll visible to the UI.
+ *
  * @param {Object} territory - The territory object
  * @param {Object} terrainGroups - Terrain group definitions from campaign settings
+ * @param {string} [rolledTerrainType] - Result of a terrain roll (if applicable)
  * @returns {string[]} Array of map names
  */
-export const resolveTerrainMaps = (territory, terrainGroups = {}) => {
+export const resolveTerrainMaps = (territory, terrainGroups = {}, rolledTerrainType = null) => {
   if (territory?.maps && territory.maps.length > 0) {
     return territory.maps;
+  }
+  // Weighted roll result takes priority over static terrainGroup
+  if (rolledTerrainType && terrainGroups[rolledTerrainType]) {
+    return terrainGroups[rolledTerrainType];
   }
   if (territory?.terrainGroup && terrainGroups[territory.terrainGroup]) {
     return terrainGroups[territory.terrainGroup];
