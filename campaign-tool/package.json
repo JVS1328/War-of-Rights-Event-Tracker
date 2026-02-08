@@ -12,6 +12,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.16",
     "lucide-react": "^0.547.0",
+    "lz-string": "^1.5.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
