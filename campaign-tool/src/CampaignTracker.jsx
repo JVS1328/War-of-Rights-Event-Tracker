@@ -23,6 +23,7 @@ const CampaignTracker = () => {
   const [campaign, setCampaign] = useState(null);
   const [selectedTerritory, setSelectedTerritory] = useState(null);
   const [showBattleRecorder, setShowBattleRecorder] = useState(false);
+  const [editingBattle, setEditingBattle] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showVictory, setShowVictory] = useState(null);
   const [showMapEditor, setShowMapEditor] = useState(false);
@@ -61,14 +62,58 @@ const CampaignTracker = () => {
   const recordBattle = (battleData) => {
     if (!campaign) return;
 
-    const battle = {
-      ...battleData
-    };
+    const battle = { ...battleData };
 
-    // Process battle result and update campaign
-    const updatedCampaign = processBattleResult(campaign, battle);
-    setCampaign(updatedCampaign);
+    if (battle.status === 'pending') {
+      // Pending battle: just add to history, no territory/VP/CP processing
+      const updatedCampaign = {
+        ...campaign,
+        battles: [...campaign.battles, battle]
+      };
+      setCampaign(updatedCampaign);
+    } else {
+      // Completed battle: process territory changes, VP, CP
+      const updatedCampaign = processBattleResult(campaign, battle);
+      setCampaign(updatedCampaign);
+    }
+
     setShowBattleRecorder(false);
+    setEditingBattle(null);
+  };
+
+  const updateBattle = (battleData) => {
+    if (!campaign) return;
+
+    const battle = { ...battleData };
+    const oldBattle = campaign.battles.find(b => b.id === battle.id);
+    if (!oldBattle) return;
+
+    const wasPending = oldBattle.status === 'pending' || !oldBattle.winner;
+    const isNowCompleted = battle.status === 'completed' && battle.winner;
+
+    if (wasPending && isNowCompleted) {
+      // Pending → completed: process territory/VP/CP changes now
+      const campaignWithoutOld = {
+        ...campaign,
+        battles: campaign.battles.filter(b => b.id !== battle.id)
+      };
+      const updatedCampaign = processBattleResult(campaignWithoutOld, battle);
+      setCampaign(updatedCampaign);
+    } else {
+      // Metadata-only update (casualties, notes, etc.) or still pending
+      const updatedBattles = campaign.battles.map(b =>
+        b.id === battle.id ? { ...b, ...battle } : b
+      );
+      setCampaign({ ...campaign, battles: updatedBattles });
+    }
+
+    setShowBattleRecorder(false);
+    setEditingBattle(null);
+  };
+
+  const handleEditBattle = (battle) => {
+    setEditingBattle(battle);
+    setShowBattleRecorder(true);
   };
 
   const advanceTurn = () => {
@@ -322,7 +367,10 @@ const CampaignTracker = () => {
                   {campaign.name}
                 </h1>
                 <p className="text-slate-400 text-sm mt-1">
-                  Turn {campaign.currentTurn} • {campaign.battles.length} battles fought
+                  Turn {campaign.currentTurn} • {campaign.battles.filter(b => b.status !== 'pending' && b.winner).length} battles fought
+                  {campaign.battles.some(b => b.status === 'pending' || !b.winner) && (
+                    <span className="text-amber-400"> • {campaign.battles.filter(b => b.status === 'pending' || !b.winner).length} pending</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -389,6 +437,11 @@ const CampaignTracker = () => {
               territories={campaign.territories}
               selectedTerritory={selectedTerritory}
               onTerritoryClick={handleTerritoryClick}
+              pendingBattleTerritoryIds={
+                campaign.battles
+                  .filter(b => b.status === 'pending' || !b.winner)
+                  .map(b => b.territoryId)
+              }
             />
           </div>
 
@@ -447,6 +500,7 @@ const CampaignTracker = () => {
             <BattleHistory
               battles={campaign.battles}
               territories={campaign.territories}
+              onEditBattle={handleEditBattle}
             />
           </div>
         </div>
@@ -458,7 +512,9 @@ const CampaignTracker = () => {
             currentTurn={campaign.currentTurn}
             campaign={campaign}
             onRecordBattle={recordBattle}
-            onClose={() => setShowBattleRecorder(false)}
+            onUpdateBattle={updateBattle}
+            onClose={() => { setShowBattleRecorder(false); setEditingBattle(null); }}
+            editingBattle={editingBattle}
           />
         )}
 

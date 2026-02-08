@@ -195,7 +195,14 @@ const CampaignStats = ({ campaign, onUpdateCampaign }) => {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Battles Fought:</span>
-            <span className="text-white font-semibold">{campaign.battles.length}</span>
+            <span className="text-white font-semibold">
+              {campaign.battles.filter(b => b.status !== 'pending' && b.winner).length}
+              {campaign.battles.some(b => b.status === 'pending' || !b.winner) && (
+                <span className="text-amber-400 text-xs ml-1">
+                  (+{campaign.battles.filter(b => b.status === 'pending' || !b.winner).length} pending)
+                </span>
+              )}
+            </span>
           </div>
           
           {/* Casualty Statistics */}
