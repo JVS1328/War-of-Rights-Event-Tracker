@@ -24,11 +24,11 @@ import {
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
 
-const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle }) => {
+const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId }) => {
   const isEditMode = !!editingBattle;
 
   const [selectedMap, setSelectedMap] = useState(editingBattle?.mapName || '');
-  const [selectedTerritory, setSelectedTerritory] = useState(editingBattle?.territoryId || '');
+  const [selectedTerritory, setSelectedTerritory] = useState(editingBattle?.territoryId || initialTerritoryId || '');
   const [attacker, setAttacker] = useState(editingBattle?.attacker || 'USA');
   const [winner, setWinner] = useState(editingBattle?.winner || '');
   const [casualties, setCasualties] = useState(editingBattle?.casualties || { USA: 0, CSA: 0 });
@@ -129,11 +129,22 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
       return;
     }
 
-    if (available.length >= 5) {
-      setPickBanMaps(selectMapsForPickBan(available, 5));
+    // Determine pick/ban pool size: 5 (5+), 3 (3-4), 2 (2), auto-select (1), none (0)
+    let poolSize = 0;
+    if (available.length >= 5) poolSize = 5;
+    else if (available.length >= 3) poolSize = 3;
+    else if (available.length === 2) poolSize = 2;
+
+    if (poolSize >= 2) {
+      setPickBanMaps(selectMapsForPickBan(available, poolSize));
       setBannedMaps([]);
       setPickBanActive(true);
       setSelectedMap('');
+    } else if (available.length === 1) {
+      setPickBanMaps([]);
+      setBannedMaps([]);
+      setPickBanActive(false);
+      setSelectedMap(available[0]);
     } else {
       setPickBanMaps([]);
       setBannedMaps([]);
@@ -367,8 +378,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
     const newBannedMaps = [...bannedMaps, mapName];
     setBannedMaps(newBannedMaps);
 
-    // After 4 bans, auto-select the remaining map
-    if (newBannedMaps.length === 4) {
+    // Auto-select when only 1 map remains
+    if (newBannedMaps.length === pickBanMaps.length - 1) {
       const finalMap = pickBanMaps.find(m => !newBannedMaps.includes(m));
       setSelectedMap(finalMap);
       setPickBanActive(false);
@@ -448,8 +459,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
@@ -568,13 +579,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 Map <span className="text-red-400">*</span>
               </label>
 
-              {/* Pick/Ban UI - shown when 5+ maps available */}
-              {selectedTerritory && pickBanMaps.length === 5 && (
+              {/* Pick/Ban UI - shown when 2+ maps in pool */}
+              {selectedTerritory && pickBanMaps.length >= 2 && (
                 <div className="bg-slate-700 rounded-lg p-4">
                   {/* Pick/Ban Header */}
                   <div className="flex justify-between items-center mb-3">
                     <div className="text-sm font-semibold text-amber-400">
-                      Map Pick/Ban
+                      Map Pick/Ban ({pickBanMaps.length} maps)
                     </div>
                     {pickBanActive && (
                       <div className={`text-xs px-2 py-1 rounded border ${
@@ -582,7 +593,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           ? 'bg-blue-900/50 text-blue-300 border-blue-700'
                           : 'bg-red-900/50 text-red-300 border-red-700'
                       }`}>
-                        {getBanningTeam()} bans ({bannedMaps.length + 1}/4)
+                        {getBanningTeam()} bans ({bannedMaps.length + 1}/{pickBanMaps.length - 1})
                       </div>
                     )}
                     {!pickBanActive && selectedMap && (
@@ -645,7 +656,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   {/* Ban Progress */}
                   {pickBanActive && (
                     <div className="mt-3 flex gap-1">
-                      {[0, 1, 2, 3].map((i) => (
+                      {Array.from({ length: pickBanMaps.length - 1 }, (_, i) => (
                         <div
                           key={i}
                           className={`flex-1 h-1 rounded ${
@@ -662,23 +673,36 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 </div>
               )}
 
-              {/* Regular dropdown - shown when <5 maps available or no territory selected */}
-              {selectedTerritory && pickBanMaps.length < 5 && (
-                <>
-                  <select
-                    value={selectedMap}
-                    onChange={(e) => setSelectedMap(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
-                  >
-                    <option value="">Select map... ({availableMaps.length} available)</option>
-                    {availableMaps.map(map => (
-                      <option key={map} value={map}>{map}</option>
-                    ))}
-                  </select>
-                  <div className="mt-2 text-xs text-amber-400">
-                    Not enough maps for pick/ban (need 5, have {availableMaps.length})
+              {/* Fallback dropdown - shown when no pick/ban (0 available or auto-selected) */}
+              {selectedTerritory && pickBanMaps.length === 0 && !selectedMap && (
+                <select
+                  value={selectedMap}
+                  onChange={(e) => setSelectedMap(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                >
+                  <option value="">Select map... ({availableMaps.length} available)</option>
+                  {availableMaps.map(map => (
+                    <option key={map} value={map}>{map}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Auto-selected single map indicator */}
+              {selectedTerritory && pickBanMaps.length === 0 && selectedMap && (
+                <div className="bg-slate-700 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm font-semibold text-amber-400">Map</div>
+                    <div className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded border border-green-700">
+                      Auto-Selected
+                    </div>
                   </div>
-                </>
+                  <div className="mt-2 px-3 py-2 bg-green-600 text-white rounded text-sm font-medium">
+                    {selectedMap}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-400">
+                    Only 1 map available for this territory
+                  </div>
+                </div>
               )}
 
               {!selectedTerritory && (

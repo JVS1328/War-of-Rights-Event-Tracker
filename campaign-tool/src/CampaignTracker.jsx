@@ -29,6 +29,7 @@ const CampaignTracker = () => {
   const [showMapEditor, setShowMapEditor] = useState(false);
   const [showHelpGuide, setShowHelpGuide] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -79,6 +80,7 @@ const CampaignTracker = () => {
 
     setShowBattleRecorder(false);
     setEditingBattle(null);
+    setBattleRecorderInitialTerritory(null);
   };
 
   const updateBattle = (battleData) => {
@@ -109,6 +111,7 @@ const CampaignTracker = () => {
 
     setShowBattleRecorder(false);
     setEditingBattle(null);
+    setBattleRecorderInitialTerritory(null);
   };
 
   const handleEditBattle = (battle) => {
@@ -343,7 +346,14 @@ const CampaignTracker = () => {
   };
 
   const handleTerritoryClick = (territory) => {
+    setSelectedTerritory(prev => prev?.id === territory.id ? null : territory);
+  };
+
+  const handleTerritoryDoubleClick = (territory) => {
     setSelectedTerritory(territory);
+    setEditingBattle(null);
+    setBattleRecorderInitialTerritory(territory.id);
+    setShowBattleRecorder(true);
   };
 
   if (!campaign) {
@@ -437,6 +447,7 @@ const CampaignTracker = () => {
               territories={campaign.territories}
               selectedTerritory={selectedTerritory}
               onTerritoryClick={handleTerritoryClick}
+              onTerritoryDoubleClick={handleTerritoryDoubleClick}
               pendingBattleTerritoryIds={
                 campaign.battles
                   .filter(b => b.status === 'pending' || !b.winner)
@@ -513,8 +524,9 @@ const CampaignTracker = () => {
             campaign={campaign}
             onRecordBattle={recordBattle}
             onUpdateBattle={updateBattle}
-            onClose={() => { setShowBattleRecorder(false); setEditingBattle(null); }}
+            onClose={() => { setShowBattleRecorder(false); setEditingBattle(null); setBattleRecorderInitialTerritory(null); }}
             editingBattle={editingBattle}
+            initialTerritoryId={battleRecorderInitialTerritory}
           />
         )}
 
