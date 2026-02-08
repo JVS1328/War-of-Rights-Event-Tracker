@@ -65,6 +65,13 @@ export const createSharePayload = (campaign) => {
     cpEnabled: campaign.cpSystemEnabled || false,
     cpUSA: campaign.combatPowerUSA || 0,
     cpCSA: campaign.combatPowerCSA || 0,
+    spSettings: campaign.cpSystemEnabled ? {
+      vpBase: campaign.settings?.vpBase || 1,
+      attackEnemy: campaign.settings?.baseAttackCostEnemy ?? 75,
+      attackNeutral: campaign.settings?.baseAttackCostNeutral ?? 50,
+      defenseFriendly: campaign.settings?.baseDefenseCostFriendly ?? 25,
+      defenseNeutral: campaign.settings?.baseDefenseCostNeutral ?? 50,
+    } : undefined,
     instantVP: instantVPGains,
     battleCount: (campaign.battles || []).filter(b => b.status !== 'pending' && b.winner).length,
     pendingCount: pendingTerritoryIds.length || undefined,

@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Map, Loader } from 'lucide-react';
 import { usaStates } from '../data/usaStates';
+import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
+import { isTerritorySupplied } from '../utils/supplyLines';
 
 // Cache for county GeoJSON data
 let countyGeoJsonCache = null;
@@ -104,7 +106,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [] }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -542,6 +544,31 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                 {tooltipTerritory.countyFips && (
                   <div className="text-xs text-slate-500">Counties: {tooltipTerritory.countyFips.length}</div>
                 )}
+                {spSettings && (() => {
+                  const vp = tooltipTerritory.pointValue || tooltipTerritory.victoryPoints || 1;
+                  const isNeutral = tooltipTerritory.owner === 'NEUTRAL';
+                  const attacker = isNeutral ? 'USA' : (tooltipTerritory.owner === 'USA' ? 'CSA' : 'USA');
+                  const defender = attacker === 'USA' ? 'CSA' : 'USA';
+                  const isIsolated = !isNeutral && !isTerritorySupplied(tooltipTerritory, territories);
+                  const { attackerMax, defenderMax } = getMaxBattleCPCosts(
+                    vp, tooltipTerritory.owner, defender,
+                    spSettings.vpBase, isIsolated, {
+                      attackNeutral: spSettings.attackNeutral,
+                      attackEnemy: spSettings.attackEnemy,
+                      defenseFriendly: spSettings.defenseFriendly,
+                      defenseNeutral: spSettings.defenseNeutral,
+                    }
+                  );
+                  return (
+                    <div className="mt-2 pt-2 border-t border-slate-600">
+                      <div className="text-amber-400 font-semibold text-xs mb-1">Max SP Loss</div>
+                      <div className="text-xs">
+                        <div>Attacker: <span className="text-orange-400 font-semibold">-{attackerMax} SP</span></div>
+                        <div>Defender: <span className="text-orange-400 font-semibold">-{defenderMax} SP</span>{isIsolated && <span className="text-red-400 ml-1">(2x isolated)</span>}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               {isPinned && (
                 <div className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">
