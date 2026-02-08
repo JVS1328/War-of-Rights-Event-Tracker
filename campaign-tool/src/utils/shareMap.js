@@ -1,120 +1,93 @@
 /**
  * Shareable Campaign Map Utility
  *
- * Encodes campaign state into a compressed URL-safe string for sharing,
- * and decodes it back. Only includes data needed for the read-only map view.
+ * Encodes campaign state into a compressed URL-safe string for sharing.
  *
- * V2 uses template-based encoding: stores only the template ID + per-territory
- * dynamic state (owner, VP changes, transitions). The viewer reconstructs the
- * full map from the template. Falls back to full (optimized) data for custom maps.
+ * For template-based campaigns: stores template ID + a single owner string
+ * ("UUCNNC...") where each char's position maps to the template territory
+ * array index. VP overrides and transitions stored as sparse index maps.
  *
- * Uses lz-string for compression to keep URLs manageable.
+ * For custom maps: stores optimized territory data (SVG paths stripped when
+ * MapView can resolve them from usaStates).
  */
 
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { CAMPAIGN_TEMPLATES } from '../data/defaultCampaign';
 
-const SHARE_VERSION = 2;
+const V = 2;
+const O2C = { 'USA': 'U', 'CSA': 'C', 'NEUTRAL': 'N' };
+const C2O = { 'U': 'USA', 'C': 'CSA', 'N': 'NEUTRAL' };
 
-const OWNER_TO_CHAR = { 'USA': 'U', 'CSA': 'C', 'NEUTRAL': 'N' };
-const CHAR_TO_OWNER = { 'U': 'USA', 'C': 'CSA', 'N': 'NEUTRAL' };
-
-/**
- * Build the common (non-territory) share payload fields.
- */
-const buildBasePayload = (campaign) => {
-  const instantVPGains = campaign.settings?.instantVPGains !== false;
-  const pendingTerritoryIds = (campaign.battles || [])
-    .filter(b => b.status === 'pending' || !b.winner)
-    .map(b => b.territoryId);
-
-  return {
-    v: SHARE_VERSION,
-    name: campaign.name,
-    turn: campaign.currentTurn,
-    date: campaign.campaignDate?.displayString || null,
-    cpEnabled: campaign.cpSystemEnabled || false,
-    cpUSA: campaign.combatPowerUSA || 0,
-    cpCSA: campaign.combatPowerCSA || 0,
-    spSettings: campaign.cpSystemEnabled ? {
-      vpBase: campaign.settings?.vpBase || 1,
-      attackEnemy: campaign.settings?.baseAttackCostEnemy ?? 75,
-      attackNeutral: campaign.settings?.baseAttackCostNeutral ?? 50,
-      defenseFriendly: campaign.settings?.baseDefenseCostFriendly ?? 25,
-      defenseNeutral: campaign.settings?.baseDefenseCostNeutral ?? 50,
-    } : undefined,
-    instantVP: instantVPGains,
-    battleCount: (campaign.battles || []).filter(b => b.status !== 'pending' && b.winner).length,
-    pendingCount: pendingTerritoryIds.length || undefined,
-    _pendingTerritoryIds: pendingTerritoryIds,
-  };
-};
-
-/**
- * Encode a single territory's transition state compactly.
- */
-const encodeTransition = (ts) => ({
-  r: ts.turnsRemaining,
-  t: ts.totalTurns,
-  p: OWNER_TO_CHAR[ts.previousOwner] || 'N',
-});
-
-/**
- * Decode a compact transition state back to full form.
- */
-const decodeTransition = (ts) => ({
-  isTransitioning: true,
-  turnsRemaining: ts.r,
-  totalTurns: ts.t,
-  previousOwner: CHAR_TO_OWNER[ts.p] || 'NEUTRAL',
-});
+const encodeTransition = (ts) => [ts.turnsRemaining, ts.totalTurns, O2C[ts.previousOwner] || 'N'];
+const decodeTransition = ([r, t, p]) => ({ isTransitioning: true, turnsRemaining: r, totalTurns: t, previousOwner: C2O[p] || 'NEUTRAL' });
 
 /**
  * Create a minimal share payload from the full campaign state.
- * Uses template-based compact encoding when possible.
  */
 export const createSharePayload = (campaign) => {
-  const base = buildBasePayload(campaign);
-  const pendingTerritoryIds = base._pendingTerritoryIds;
-  delete base._pendingTerritoryIds;
+  const pending = (campaign.battles || [])
+    .filter(b => b.status === 'pending' || !b.winner)
+    .map(b => b.territoryId);
+
+  const base = {
+    v: V,
+    n: campaign.name,
+    tn: campaign.currentTurn,
+    d: campaign.campaignDate?.displayString || null,
+    iv: campaign.settings?.instantVPGains !== false ? 1 : 0,
+    bc: (campaign.battles || []).filter(b => b.status !== 'pending' && b.winner).length,
+  };
+
+  if (campaign.cpSystemEnabled) {
+    base.cp = 1;
+    base.cU = campaign.combatPowerUSA || 0;
+    base.cC = campaign.combatPowerCSA || 0;
+    base.sp = {
+      v: campaign.settings?.vpBase || 1,
+      aE: campaign.settings?.baseAttackCostEnemy ?? 75,
+      aN: campaign.settings?.baseAttackCostNeutral ?? 50,
+      dF: campaign.settings?.baseDefenseCostFriendly ?? 25,
+      dN: campaign.settings?.baseDefenseCostNeutral ?? 50,
+    };
+  }
 
   const tplKey = campaign.mapTemplate;
   const template = tplKey && tplKey !== 'custom' && CAMPAIGN_TEMPLATES[tplKey];
 
-  // Template-based compact encoding
+  // Template-based: owner string + sparse overrides
   if (template) {
-    const freshCampaign = template.create();
-    const templateMap = new Map(freshCampaign.territories.map(t => [t.id, t]));
+    const fresh = template.create();
+    const campaignMap = new Map(campaign.territories.map(t => [t.id, t]));
+    const idToIndex = new Map(fresh.territories.map((t, i) => [t.id, i]));
 
-    const td = {};
-    campaign.territories.forEach(t => {
-      const ownerChar = OWNER_TO_CHAR[t.owner] || 'N';
-      const vp = t.victoryPoints ?? t.pointValue ?? 0;
-      const tmpl = templateMap.get(t.id);
-      const tmplVP = tmpl ? (tmpl.victoryPoints ?? tmpl.pointValue ?? 0) : null;
-      const hasVPChange = tmpl && vp !== tmplVP;
-      const hasTransition = t.transitionState?.isTransitioning;
+    let o = '';
+    const vp = {};  // index -> changed VP
+    const ts = {};  // index -> [turnsRemaining, totalTurns, prevOwnerChar]
 
-      if (!hasVPChange && !hasTransition) {
-        td[t.id] = ownerChar;
-      } else {
-        const entry = { o: ownerChar };
-        if (hasVPChange) entry.vp = vp;
-        if (hasTransition) entry.ts = encodeTransition(t.transitionState);
-        td[t.id] = entry;
-      }
+    fresh.territories.forEach((tmpl, i) => {
+      const t = campaignMap.get(tmpl.id);
+      if (!t) { o += 'N'; return; }
+
+      o += O2C[t.owner] || 'N';
+
+      const curVP = t.victoryPoints ?? t.pointValue ?? 0;
+      const tplVP = tmpl.victoryPoints ?? tmpl.pointValue ?? 0;
+      if (curVP !== tplVP) vp[i] = curVP;
+
+      if (t.transitionState?.isTransitioning) ts[i] = encodeTransition(t.transitionState);
     });
 
-    return {
-      ...base,
-      tpl: tplKey,
-      td,
-      pending: pendingTerritoryIds.length > 0 ? pendingTerritoryIds : undefined,
-    };
+    base.tpl = tplKey;
+    base.o = o;
+    if (Object.keys(vp).length) base.vp = vp;
+    if (Object.keys(ts).length) base.ts = ts;
+    if (pending.length) base.p = pending.map(id => idToIndex.get(id)).filter(i => i != null);
+
+    return base;
   }
 
-  // Fallback: full territory data (strip svgPath when states exist - MapView resolves those)
-  const territories = campaign.territories.map(t => {
+  // Custom map fallback: optimized full territory data
+  base.territories = campaign.territories.map(t => {
     const entry = {
       id: t.id,
       name: t.name,
@@ -122,15 +95,12 @@ export const createSharePayload = (campaign) => {
       victoryPoints: t.victoryPoints ?? t.pointValue ?? 0,
       adjacentTerritories: t.adjacentTerritories || [],
     };
-
-    // Only include svgPath when there's no states array (MapView looks up state paths from usaStates)
     if (t.svgPath && !t.states?.length) entry.svgPath = t.svgPath;
     if (t.center) entry.center = t.center;
     if (t.labelPosition) entry.labelPosition = t.labelPosition;
     if (t.countyFips?.length) entry.countyFips = t.countyFips;
     if (t.states?.length) entry.states = t.states;
     if (t.isCapital) entry.isCapital = true;
-
     if (t.transitionState?.isTransitioning) {
       entry.transitionState = {
         isTransitioning: true,
@@ -139,84 +109,107 @@ export const createSharePayload = (campaign) => {
         previousOwner: t.transitionState.previousOwner,
       };
     }
-
     return entry;
   });
+  if (pending.length) base.pendingTerritoryIds = pending;
 
-  return {
-    ...base,
-    territories,
-    pendingTerritoryIds: pendingTerritoryIds.length > 0 ? pendingTerritoryIds : undefined,
-  };
+  return base;
 };
 
 /**
- * Reconstruct full share data from a template-based compact payload.
+ * Normalize a decoded payload into the shape SharedMapView expects.
  */
-const reconstructFromTemplate = (payload) => {
+const normalize = (raw, territories, pendingTerritoryIds) => ({
+  name: raw.n ?? raw.name,
+  turn: raw.tn ?? raw.turn,
+  date: raw.d ?? raw.date,
+  instantVP: raw.iv != null ? !!raw.iv : raw.instantVP,
+  battleCount: raw.bc ?? raw.battleCount ?? 0,
+  pendingCount: pendingTerritoryIds.length || undefined,
+  cpEnabled: raw.cp ? true : (raw.cpEnabled || false),
+  cpUSA: raw.cU ?? raw.cpUSA ?? 0,
+  cpCSA: raw.cC ?? raw.cpCSA ?? 0,
+  spSettings: raw.sp ? {
+    vpBase: raw.sp.v,
+    attackEnemy: raw.sp.aE,
+    attackNeutral: raw.sp.aN,
+    defenseFriendly: raw.sp.dF,
+    defenseNeutral: raw.sp.dN,
+  } : raw.spSettings,
+  territories,
+  pendingTerritoryIds,
+});
+
+/**
+ * Reconstruct from template + owner string (v2 compact).
+ */
+const reconstructFromOwnerString = (payload) => {
   const template = CAMPAIGN_TEMPLATES[payload.tpl];
   if (!template) return null;
 
-  const freshCampaign = template.create();
+  const fresh = template.create();
+  const vpOverrides = payload.vp || {};
+  const tsOverrides = payload.ts || {};
 
-  const territories = freshCampaign.territories.map(t => {
-    const dynamic = payload.td[t.id];
-    if (!dynamic) return t;
-
-    // String = just owner change
-    if (typeof dynamic === 'string') {
-      return { ...t, owner: CHAR_TO_OWNER[dynamic] || 'NEUTRAL' };
+  const territories = fresh.territories.map((t, i) => {
+    const owner = C2O[payload.o[i]] || 'NEUTRAL';
+    const result = { ...t, owner };
+    if (vpOverrides[i] != null) {
+      result.victoryPoints = vpOverrides[i];
+      result.pointValue = vpOverrides[i];
     }
-
-    // Object = owner + optional VP override + optional transition
-    const result = { ...t, owner: CHAR_TO_OWNER[dynamic.o] || 'NEUTRAL' };
-    if (dynamic.vp != null) {
-      result.victoryPoints = dynamic.vp;
-      result.pointValue = dynamic.vp;
-    }
-    if (dynamic.ts) {
-      result.transitionState = decodeTransition(dynamic.ts);
-    }
+    if (tsOverrides[i]) result.transitionState = decodeTransition(tsOverrides[i]);
     return result;
   });
 
-  return {
-    ...payload,
-    territories,
-    pendingTerritoryIds: payload.pending || [],
-  };
+  const pendingTerritoryIds = (payload.p || []).map(i => fresh.territories[i]?.id).filter(Boolean);
+  return normalize(payload, territories, pendingTerritoryIds);
 };
 
 /**
- * Encode a share payload into a URL-safe compressed string.
+ * Reconstruct from template + td object (v2 legacy dict format).
  */
-export const encodeSharePayload = (payload) => {
-  const json = JSON.stringify(payload);
-  return compressToEncodedURIComponent(json);
+const reconstructFromTd = (payload) => {
+  const template = CAMPAIGN_TEMPLATES[payload.tpl];
+  if (!template) return null;
+
+  const fresh = template.create();
+  const territories = fresh.territories.map(t => {
+    const dynamic = payload.td[t.id];
+    if (!dynamic) return t;
+    if (typeof dynamic === 'string') return { ...t, owner: C2O[dynamic] || 'NEUTRAL' };
+    const result = { ...t, owner: C2O[dynamic.o] || 'NEUTRAL' };
+    if (dynamic.vp != null) { result.victoryPoints = dynamic.vp; result.pointValue = dynamic.vp; }
+    if (dynamic.ts) result.transitionState = { isTransitioning: true, turnsRemaining: dynamic.ts.r, totalTurns: dynamic.ts.t, previousOwner: C2O[dynamic.ts.p] || 'NEUTRAL' };
+    return result;
+  });
+
+  return normalize(payload, territories, payload.pending || []);
 };
 
+export const encodeSharePayload = (payload) => compressToEncodedURIComponent(JSON.stringify(payload));
+
 /**
- * Decode a compressed share string back into a payload.
- * Supports both v1 (full territory data) and v2 (template-based compact).
- * Returns null if decoding fails.
+ * Decode a compressed share string. Supports v1 (full), v2 td (dict), v2 o (owner string).
  */
 export const decodeSharePayload = (encoded) => {
   try {
     const json = decompressFromEncodedURIComponent(encoded);
     if (!json) return null;
-    const payload = JSON.parse(json);
-    if (!payload?.v) return null;
+    const p = JSON.parse(json);
+    if (!p?.v) return null;
 
-    // V1 legacy: full territory data, return as-is
-    if (payload.v === 1 && payload.territories) return payload;
+    // V1: full territory data
+    if (p.v === 1 && p.territories) return normalize(p, p.territories, p.pendingTerritoryIds || []);
 
-    // V2 template-based: reconstruct from template
-    if (payload.v === 2 && payload.tpl && payload.td) {
-      return reconstructFromTemplate(payload);
-    }
+    // V2 compact: template + owner string
+    if (p.v === 2 && p.tpl && p.o) return reconstructFromOwnerString(p);
 
-    // V2 custom maps: full territory data
-    if (payload.v === 2 && payload.territories) return payload;
+    // V2 legacy: template + td dict
+    if (p.v === 2 && p.tpl && p.td) return reconstructFromTd(p);
+
+    // V2 custom: full territory data
+    if (p.v === 2 && p.territories) return normalize(p, p.territories, p.pendingTerritoryIds || []);
 
     return null;
   } catch {
@@ -224,23 +217,13 @@ export const decodeSharePayload = (encoded) => {
   }
 };
 
-/**
- * Generate a full shareable URL for the current page with the encoded campaign.
- */
 export const generateShareUrl = (campaign) => {
-  const payload = createSharePayload(campaign);
-  const encoded = encodeSharePayload(payload);
-  const base = window.location.origin + window.location.pathname;
-  return `${base}#share=${encoded}`;
+  const encoded = encodeSharePayload(createSharePayload(campaign));
+  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
 };
 
-/**
- * Check if the current URL contains a share hash.
- * Returns the decoded payload or null.
- */
 export const getShareFromUrl = () => {
   const hash = window.location.hash;
   if (!hash.startsWith('#share=')) return null;
-  const encoded = hash.slice('#share='.length);
-  return decodeSharePayload(encoded);
+  return decodeSharePayload(hash.slice(7));
 };
