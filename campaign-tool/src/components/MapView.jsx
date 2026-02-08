@@ -104,7 +104,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyView = false }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyView = false, pendingBattleTerritoryIds = [] }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -325,6 +325,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
             {territories.map(territory => {
               const labelX = territory.center?.x || territory.labelPosition?.x;
               const labelY = territory.center?.y || territory.labelPosition?.y;
+              const hasPendingBattle = pendingBattleTerritoryIds.includes(territory.id);
 
               // For county-based territories, render each county
               if (territory.countyFips && countyPaths[territory.id]) {
@@ -444,6 +445,29 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                       className="pointer-events-none"
                     />
                   )}
+                  {hasPendingBattle && labelX && labelY && (
+                    <g className="pointer-events-none">
+                      <circle
+                        cx={labelX}
+                        cy={labelY - 15}
+                        r="8"
+                        fill="#f59e0b"
+                        opacity="0.7"
+                      >
+                        <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
+                      </circle>
+                      <text
+                        x={labelX}
+                        y={labelY - 12}
+                        textAnchor="middle"
+                        fill="#1e293b"
+                        fontSize="7"
+                        fontWeight="bold"
+                      >
+                        !
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}
@@ -475,6 +499,11 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, isCountyVie
                       'text-slate-400'
                     }`}>{hoveredTerritory.transitionState.previousOwner}</span></div>
                   </div>
+                </div>
+              )}
+              {pendingBattleTerritoryIds.includes(hoveredTerritory.id) && (
+                <div className="mt-2 pt-2 border-t border-slate-600">
+                  <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
                 </div>
               )}
               {hoveredTerritory.countyFips && (

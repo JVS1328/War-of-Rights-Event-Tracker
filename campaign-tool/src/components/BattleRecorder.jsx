@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon, Users } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Swords, Save, AlertCircle, Dice6, Cloud, Sun, CloudRain, Moon, Users, RotateCw, Clock, Edit3 } from 'lucide-react';
 import { ALL_MAPS } from '../data/territories';
 import {
   calculateBattleCPCost,
@@ -13,29 +13,52 @@ import {
   resolveTerrainMaps,
   rollTerrainType
 } from '../utils/mapSelection';
-import { rollBattleConditions } from '../utils/battleConditions';
+import {
+  rollWeatherCondition,
+  rollTimeCondition,
+  WEATHER_CONDITIONS,
+  TIME_CONDITIONS,
+  DEFAULT_WEATHER_WEIGHTS,
+  DEFAULT_TIME_WEIGHTS
+} from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
 
-const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, campaign }) => {
-  const [selectedMap, setSelectedMap] = useState('');
-  const [selectedTerritory, setSelectedTerritory] = useState('');
-  const [attacker, setAttacker] = useState('USA');
-  const [winner, setWinner] = useState('');
-  const [casualties, setCasualties] = useState({ USA: 0, CSA: 0 });
-  const [notes, setNotes] = useState('');
+const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle }) => {
+  const isEditMode = !!editingBattle;
 
-  // Battle conditions state
-  const [battleConditions, setBattleConditions] = useState(null);
+  const [selectedMap, setSelectedMap] = useState(editingBattle?.mapName || '');
+  const [selectedTerritory, setSelectedTerritory] = useState(editingBattle?.territoryId || '');
+  const [attacker, setAttacker] = useState(editingBattle?.attacker || 'USA');
+  const [winner, setWinner] = useState(editingBattle?.winner || '');
+  const [casualties, setCasualties] = useState(editingBattle?.casualties || { USA: 0, CSA: 0 });
+  const [notes, setNotes] = useState(editingBattle?.notes || '');
+
+  // Battle conditions state (separate weather and time)
+  const [weatherResult, setWeatherResult] = useState(
+    editingBattle?.conditions?.weather
+      ? { condition: WEATHER_CONDITIONS[editingBattle.conditions.weather] || { id: editingBattle.conditions.weather, name: editingBattle.conditions.weather, description: '' }, weight: 0, total: 0 }
+      : null
+  );
+  const [timeResult, setTimeResult] = useState(
+    editingBattle?.conditions?.time
+      ? { condition: TIME_CONDITIONS[editingBattle.conditions.time] || { id: editingBattle.conditions.time, name: editingBattle.conditions.time, description: '' }, weight: 0, total: 0 }
+      : null
+  );
 
   // Commander selection state
-  const [selectedCommanders, setSelectedCommanders] = useState({ USA: null, CSA: null });
+  const [selectedCommanders, setSelectedCommanders] = useState(editingBattle?.commanders || { USA: null, CSA: null });
 
   // Team ability state
-  const [abilityActive, setAbilityActive] = useState(false);
+  const [abilityActive, setAbilityActive] = useState(editingBattle?.abilityUsed ? true : false);
 
   // Manual CP loss state
-  const [manualCPLoss, setManualCPLoss] = useState({ attacker: 0, defender: 0 });
+  const [manualCPLoss, setManualCPLoss] = useState(editingBattle?.manualCPLoss || { attacker: 0, defender: 0 });
+
+  // Terrain roll spinning animation state
+  const [terrainSpinning, setTerrainSpinning] = useState(false);
+  const [terrainDisplayName, setTerrainDisplayName] = useState(null);
+  const terrainSpinIntervalRef = useRef(null);
 
   // Reset ability and pick/ban when attacker changes
   useEffect(() => {
@@ -65,7 +88,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [pickBanActive, setPickBanActive] = useState(false); // Whether pick/ban is in progress
 
   // Terrain roll state
-  const [terrainRollResult, setTerrainRollResult] = useState(null); // { terrainType, roll, total }
+  const [terrainRollResult, setTerrainRollResult] = useState(
+    editingBattle?.terrainType ? { terrainType: editingBattle.terrainType, roll: 0, total: 0 } : null
+  );
   const [needsTerrainRoll, setNeedsTerrainRoll] = useState(false);
 
   // CP cost estimation
@@ -96,6 +121,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     setAvailableMaps(available);
     setCooldownMaps(cooldown);
 
+    // In edit mode, keep the existing map selection and skip pick/ban setup
+    if (isEditMode && editingBattle?.mapName) {
+      setPickBanMaps([]);
+      setBannedMaps([]);
+      setPickBanActive(false);
+      return;
+    }
+
     if (available.length >= 5) {
       setPickBanMaps(selectMapsForPickBan(available, 5));
       setBannedMaps([]);
@@ -115,7 +148,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       setAvailableMaps([]);
       setCooldownMaps(new Map());
       setAllTerritoryMaps([]);
-      setSelectedMap('');
+      if (!isEditMode) setSelectedMap('');
       setPickBanMaps([]);
       setBannedMaps([]);
       setPickBanActive(false);
@@ -130,6 +163,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     // Check if this territory uses weighted terrain rolls
     const hasWeights = territory.terrainWeights && Object.keys(territory.terrainWeights).length > 0;
     if (hasWeights) {
+      // In edit mode with an existing terrain type, use it directly
+      if (isEditMode && editingBattle?.terrainType) {
+        setNeedsTerrainRoll(true);
+        initializeMaps(territory, editingBattle.terrainType);
+        return;
+      }
       // Pause for terrain roll - don't resolve maps yet
       setNeedsTerrainRoll(true);
       setTerrainRollResult(null);
@@ -138,7 +177,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       setPickBanMaps([]);
       setBannedMaps([]);
       setPickBanActive(false);
-      setSelectedMap('');
+      if (!isEditMode) setSelectedMap('');
       return;
     }
 
@@ -148,15 +187,57 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     initializeMaps(territory);
   }, [selectedTerritory, territories, campaign, currentTurn]);
 
-  // Handle terrain type roll
+  // Handle terrain type roll with spinning animation
   const handleTerrainRoll = () => {
     const territory = territories.find(t => t.id === selectedTerritory);
-    if (!territory?.terrainWeights) return;
+    if (!territory?.terrainWeights || terrainSpinning) return;
 
+    const terrainTypes = Object.keys(territory.terrainWeights);
+    if (terrainTypes.length === 0) return;
+
+    // Pre-calculate the final result
     const result = rollTerrainType(territory.terrainWeights);
-    setTerrainRollResult(result);
-    initializeMaps(territory, result.terrainType);
+
+    setTerrainSpinning(true);
+    setTerrainRollResult(null);
+
+    let iterations = 0;
+    const maxIterations = 20 + Math.floor(Math.random() * 10);
+
+    if (terrainSpinIntervalRef.current) {
+      clearInterval(terrainSpinIntervalRef.current);
+    }
+
+    const runIteration = () => {
+      const randomIndex = Math.floor(Math.random() * terrainTypes.length);
+      setTerrainDisplayName(terrainTypes[randomIndex]);
+      iterations++;
+
+      if (iterations >= maxIterations) {
+        clearInterval(terrainSpinIntervalRef.current);
+        terrainSpinIntervalRef.current = null;
+
+        // Land on the actual result
+        setTerrainDisplayName(result.terrainType);
+        setTerrainSpinning(false);
+        setTerrainRollResult(result);
+        initializeMaps(territory, result.terrainType);
+      } else {
+        // Gradual slowdown: reschedule with increasing delay
+        clearInterval(terrainSpinIntervalRef.current);
+        terrainSpinIntervalRef.current = setInterval(runIteration, 50 + (iterations * 8));
+      }
+    };
+
+    terrainSpinIntervalRef.current = setInterval(runIteration, 50);
   };
+
+  // Cleanup terrain spin interval on unmount
+  useEffect(() => {
+    return () => {
+      if (terrainSpinIntervalRef.current) clearInterval(terrainSpinIntervalRef.current);
+    };
+  }, []);
 
   // Calculate estimated CP cost whenever relevant fields change (only in auto mode)
   useEffect(() => {
@@ -300,32 +381,38 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   };
 
   const handleSubmit = () => {
-    if (!selectedMap || !selectedTerritory || !winner) {
-      alert('Please select a map, territory, and winner');
+    if (!selectedMap || !selectedTerritory) {
+      alert('Please select a territory and map');
       return;
     }
 
-    // HARD BLOCK: Prevent battle if attacker cannot afford maximum possible CP loss
-    if (campaign?.cpSystemEnabled && cpBlockingError) {
-      alert(cpBlockingError);
-      return;
-    }
+    const isPending = !winner;
 
-    // Non-blocking warning for estimated costs
-    if (campaign?.cpSystemEnabled && cpWarning) {
-      if (!confirm(`${cpWarning}\n\nProceed anyway? (Battle will use available SP)`)) {
+    // Only enforce CP checks for completed battles (with a winner)
+    if (!isPending) {
+      // HARD BLOCK: Prevent battle if attacker cannot afford maximum possible CP loss
+      if (campaign?.cpSystemEnabled && cpBlockingError) {
+        alert(cpBlockingError);
         return;
+      }
+
+      // Non-blocking warning for estimated costs
+      if (campaign?.cpSystemEnabled && cpWarning) {
+        if (!confirm(`${cpWarning}\n\nProceed anyway? (Battle will use available SP)`)) {
+          return;
+        }
       }
     }
 
     const battle = {
-      id: Date.now().toString(),
-      turn: currentTurn,
-      date: new Date().toISOString(),
+      id: isEditMode ? editingBattle.id : Date.now().toString(),
+      turn: isEditMode ? editingBattle.turn : currentTurn,
+      date: isEditMode ? editingBattle.date : new Date().toISOString(),
       territoryId: selectedTerritory,
       mapName: selectedMap,
       attacker,
-      winner,
+      winner: winner || null,
+      status: isPending ? 'pending' : 'completed',
       casualties: {
         USA: parseInt(casualties.USA) || 0,
         CSA: parseInt(casualties.CSA) || 0
@@ -336,20 +423,24 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         attacker: parseInt(manualCPLoss.attacker) || 0,
         defender: parseInt(manualCPLoss.defender) || 0
       } : undefined,
-      terrainType: terrainRollResult?.terrainType || null,
-      conditions: battleConditions ? {
-        weather: battleConditions.weather.condition.id,
-        weatherRoll: battleConditions.weather.roll,
-        time: battleConditions.time.condition.id,
-        timeRoll: battleConditions.time.roll
-      } : null,
+      terrainType: terrainRollResult?.terrainType || (isEditMode ? editingBattle.terrainType : null),
+      conditions: (weatherResult || timeResult) ? {
+        weather: weatherResult?.condition?.id || null,
+        weatherRoll: 0,
+        time: timeResult?.condition?.id || null,
+        timeRoll: 0
+      } : (isEditMode ? editingBattle.conditions : null),
       commanders: {
         USA: selectedCommanders.USA ? { id: selectedCommanders.USA.id, name: selectedCommanders.USA.name } : null,
         CSA: selectedCommanders.CSA ? { id: selectedCommanders.CSA.id, name: selectedCommanders.CSA.name } : null
       }
     };
 
-    onRecordBattle(battle);
+    if (isEditMode) {
+      onUpdateBattle(battle);
+    } else {
+      onRecordBattle(battle);
+    }
   };
 
   const getWinnerColor = (side) => {
@@ -363,8 +454,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-              <Swords className="w-6 h-6" />
-              Record Battle - Turn {currentTurn}
+              {isEditMode ? <Edit3 className="w-6 h-6" /> : <Swords className="w-6 h-6" />}
+              {isEditMode ? `Edit Battle - Turn ${editingBattle.turn}` : `Record Battle - Turn ${currentTurn}`}
             </h2>
             <button
               onClick={onClose}
@@ -402,13 +493,6 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               const weights = territory.terrainWeights;
               const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
 
-              const terrainColors = {
-                Urban: { bg: 'bg-amber-600', ring: 'ring-amber-400', text: 'text-amber-300' },
-                Woods: { bg: 'bg-green-700', ring: 'ring-green-400', text: 'text-green-300' },
-                Farmland: { bg: 'bg-orange-700', ring: 'ring-orange-400', text: 'text-orange-300' },
-              };
-              const defaultColor = { bg: 'bg-slate-600', ring: 'ring-slate-400', text: 'text-slate-300' };
-
               return (
                 <div className="bg-slate-700 rounded-lg p-4">
                   <div className="flex justify-between items-center mb-3">
@@ -417,47 +501,63 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                     </label>
                     <button
                       onClick={handleTerrainRoll}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
+                      disabled={terrainSpinning}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-white rounded text-sm font-semibold transition ${
+                        terrainSpinning
+                          ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                          : 'bg-amber-600 hover:bg-amber-500'
+                      }`}
                     >
-                      <Dice6 className="w-4 h-4" />
-                      {terrainRollResult ? 'Re-roll' : 'Roll Terrain'}
+                      {terrainSpinning ? (
+                        <RotateCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Dice6 className="w-4 h-4" />
+                      )}
+                      {terrainSpinning ? 'Rolling...' : terrainRollResult ? 'Re-roll' : 'Roll Terrain'}
                     </button>
                   </div>
 
-                  {/* Weight Bar */}
-                  <div className="flex rounded overflow-hidden h-8 mb-2">
-                    {Object.entries(weights).map(([type, weight]) => {
-                      const colors = terrainColors[type] || defaultColor;
-                      const isRolled = terrainRollResult?.terrainType === type;
-                      return (
-                        <div
-                          key={type}
-                          style={{ flex: weight }}
-                          className={`flex items-center justify-center text-xs font-semibold text-white ${colors.bg} ${
-                            isRolled ? `ring-2 ${colors.ring} z-10` : ''
-                          } ${terrainRollResult && !isRolled ? 'opacity-40' : ''}`}
-                        >
-                          {type} {weight}/{totalWeight}
-                        </div>
-                      );
-                    })}
+                  {/* Weight Distribution */}
+                  <div className="flex rounded overflow-hidden h-6 mb-3">
+                    {Object.entries(weights).map(([type, weight]) => (
+                      <div
+                        key={type}
+                        style={{ flex: weight }}
+                        className={`flex items-center justify-center text-xs font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
+                          terrainRollResult?.terrainType === type ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                        } ${terrainRollResult && terrainRollResult.terrainType !== type ? 'opacity-40' : ''}`}
+                      >
+                        {type} {weight}/{totalWeight}
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Roll Result */}
-                  {terrainRollResult ? (
-                    <div className={`text-center py-2 rounded ${(terrainColors[terrainRollResult.terrainType] || defaultColor).bg} bg-opacity-30 border border-slate-600`}>
-                      <span className={`font-bold text-sm ${(terrainColors[terrainRollResult.terrainType] || defaultColor).text}`}>
-                        Terrain: {terrainRollResult.terrainType}
+                  {/* Spinner Display */}
+                  <div className={`bg-slate-800 rounded-lg p-4 min-h-[56px] flex items-center justify-center border-2 transition-colors ${
+                    terrainSpinning ? 'border-amber-500' : terrainRollResult ? 'border-slate-500' : 'border-slate-600'
+                  }`}>
+                    {terrainSpinning ? (
+                      <div className="flex items-center gap-3">
+                        <RotateCw className="w-5 h-5 text-slate-400 animate-spin" />
+                        <span className="text-white font-bold text-lg animate-pulse">
+                          {terrainDisplayName || '...'}
+                        </span>
+                      </div>
+                    ) : terrainRollResult ? (
+                      <div className="text-center">
+                        <span className="text-white font-bold text-lg">
+                          {terrainRollResult.terrainType}
+                        </span>
+                        <span className="text-xs text-slate-400 ml-3">
+                          ({availableMaps.length} maps available)
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-sm">
+                        Roll to determine the terrain type for this battle
                       </span>
-                      <span className="text-xs text-slate-400 ml-2">
-                        ({availableMaps.length} maps available)
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-center py-2 text-slate-400 text-sm">
-                      Roll to determine the terrain type for this battle
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })()}
@@ -693,80 +793,138 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
               </div>
             )}
 
-            {/* Battle Conditions - Weather & Time Roll */}
+            {/* Battle Conditions - Separate Weather & Time Rolls */}
             <div className="bg-slate-700 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-sm text-slate-300 font-semibold">
-                  Battle Conditions
-                </label>
-                <button
-                  onClick={() => setBattleConditions(rollBattleConditions())}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
-                >
-                  <Dice6 className="w-4 h-4" />
-                  {battleConditions ? 'Re-roll' : 'Roll Conditions'}
-                </button>
+              <label className="text-sm text-slate-300 font-semibold block mb-3">
+                Battle Conditions
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Weather Roll */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-400 font-semibold">Weather</span>
+                    <button
+                      onClick={() => setWeatherResult(rollWeatherCondition(campaign?.settings?.weatherWeights))}
+                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                    >
+                      <Dice6 className="w-3 h-3" />
+                      {weatherResult ? 'Re-roll' : 'Roll'}
+                    </button>
+                  </div>
+                  {/* Weather weight bar */}
+                  {(() => {
+                    const weights = campaign?.settings?.weatherWeights || DEFAULT_WEATHER_WEIGHTS;
+                    const total = Object.values(weights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-4 mb-2">
+                        {Object.entries(weights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
+                              weatherResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            } ${weatherResult && weatherResult.condition?.id !== id ? 'opacity-40' : ''}`}
+                          >
+                            {Math.round(weight / total * 100)}%
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {weatherResult ? (
+                    <div className={`p-3 rounded border ${
+                      weatherResult.condition.id === 'clear'
+                        ? 'bg-yellow-900/30 border-yellow-700'
+                        : weatherResult.condition.id === 'rain'
+                        ? 'bg-blue-900/30 border-blue-700'
+                        : 'bg-purple-900/30 border-purple-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        {weatherResult.condition.id === 'clear' ? (
+                          <Sun className="w-4 h-4 text-yellow-400" />
+                        ) : weatherResult.condition.id === 'rain' ? (
+                          <Cloud className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <CloudRain className="w-4 h-4 text-purple-400" />
+                        )}
+                        <span className="font-semibold text-white text-sm">
+                          {weatherResult.condition.name}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {weatherResult.condition.description}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                      Roll to determine weather
+                    </div>
+                  )}
+                </div>
+
+                {/* Time of Day Roll */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-400 font-semibold">Time of Day</span>
+                    <button
+                      onClick={() => setTimeResult(rollTimeCondition(campaign?.settings?.timeWeights))}
+                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                    >
+                      <Dice6 className="w-3 h-3" />
+                      {timeResult ? 'Re-roll' : 'Roll'}
+                    </button>
+                  </div>
+                  {/* Time weight bar */}
+                  {(() => {
+                    const weights = campaign?.settings?.timeWeights || DEFAULT_TIME_WEIGHTS;
+                    const total = Object.values(weights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-4 mb-2">
+                        {Object.entries(weights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
+                              timeResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            } ${timeResult && timeResult.condition?.id !== id ? 'opacity-40' : ''}`}
+                          >
+                            {Math.round(weight / total * 100)}%
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {timeResult ? (
+                    <div className={`p-3 rounded border ${
+                      timeResult.condition.id === 'dawn'
+                        ? 'bg-orange-900/30 border-orange-700'
+                        : timeResult.condition.id === 'standard'
+                        ? 'bg-slate-600/50 border-slate-500'
+                        : timeResult.condition.id === 'dusk'
+                        ? 'bg-amber-900/30 border-amber-700'
+                        : 'bg-indigo-900/30 border-indigo-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Moon className={`w-4 h-4 ${
+                          timeResult.condition.id === 'night'
+                            ? 'text-indigo-400'
+                            : 'text-amber-400'
+                        }`} />
+                        <span className="font-semibold text-white text-sm">
+                          {timeResult.condition.name}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {timeResult.condition.description}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                      Roll to determine time of day
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {battleConditions ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Weather Result */}
-                  <div className={`p-3 rounded border ${
-                    battleConditions.weather.condition.id === 'clear'
-                      ? 'bg-yellow-900/30 border-yellow-700'
-                      : battleConditions.weather.condition.id === 'rain'
-                      ? 'bg-blue-900/30 border-blue-700'
-                      : 'bg-purple-900/30 border-purple-700'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      {battleConditions.weather.condition.id === 'clear' ? (
-                        <Sun className="w-4 h-4 text-yellow-400" />
-                      ) : battleConditions.weather.condition.id === 'rain' ? (
-                        <Cloud className="w-4 h-4 text-blue-400" />
-                      ) : (
-                        <CloudRain className="w-4 h-4 text-purple-400" />
-                      )}
-                      <span className="text-xs text-slate-400">Weather (d10: {battleConditions.weather.roll})</span>
-                    </div>
-                    <div className="font-semibold text-white text-sm">
-                      {battleConditions.weather.condition.name}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {battleConditions.weather.condition.description}
-                    </div>
-                  </div>
-
-                  {/* Time Result */}
-                  <div className={`p-3 rounded border ${
-                    battleConditions.time.condition.id === 'dawn'
-                      ? 'bg-orange-900/30 border-orange-700'
-                      : battleConditions.time.condition.id === 'standard'
-                      ? 'bg-slate-600/50 border-slate-500'
-                      : battleConditions.time.condition.id === 'dusk'
-                      ? 'bg-amber-900/30 border-amber-700'
-                      : 'bg-indigo-900/30 border-indigo-700'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Moon className={`w-4 h-4 ${
-                        battleConditions.time.condition.id === 'night'
-                          ? 'text-indigo-400'
-                          : 'text-amber-400'
-                      }`} />
-                      <span className="text-xs text-slate-400">Time of Day (d10: {battleConditions.time.roll})</span>
-                    </div>
-                    <div className="font-semibold text-white text-sm">
-                      {battleConditions.time.condition.name}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {battleConditions.time.condition.description}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-4 text-slate-400 text-sm">
-                  Roll to determine weather and time of day
-                </div>
-              )}
             </div>
 
             {/* Commander Selection */}
@@ -865,7 +1023,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
             {/* Winner Selection */}
             <div>
               <label className="block text-sm text-slate-300 mb-2 font-semibold">
-                Winner <span className="text-red-400">*</span>
+                Winner
               </label>
               <div className="flex gap-3">
                 <button
@@ -889,6 +1047,20 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                   CSA Victory
                 </button>
               </div>
+              {winner && (
+                <button
+                  onClick={() => setWinner('')}
+                  className="mt-2 text-xs text-slate-400 hover:text-slate-300 transition"
+                >
+                  Clear winner (save as pending)
+                </button>
+              )}
+              {!winner && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-amber-400">
+                  <Clock className="w-3 h-3" />
+                  No winner selected - battle will be saved as pending
+                </div>
+              )}
             </div>
 
             {/* Casualties */}
@@ -1111,21 +1283,37 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
           <div className="flex gap-3 mt-6">
             <button
               onClick={handleSubmit}
-              disabled={campaign?.cpSystemEnabled && cpBlockingError}
+              disabled={winner && campaign?.cpSystemEnabled && cpBlockingError}
               className={`flex-1 px-4 py-3 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2 ${
-                campaign?.cpSystemEnabled && cpBlockingError
+                winner && campaign?.cpSystemEnabled && cpBlockingError
                   ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                  : !winner
+                  ? 'bg-amber-600 hover:bg-amber-700'
                   : campaign?.cpSystemEnabled && cpWarning
                   ? 'bg-orange-600 hover:bg-orange-700'
                   : 'bg-green-600 hover:bg-green-700'
               }`}
             >
-              <Save className="w-4 h-4" />
-              {campaign?.cpSystemEnabled && cpBlockingError
-                ? 'Attack Blocked - Insufficient SP'
-                : campaign?.cpSystemEnabled && cpWarning
-                ? 'Record Battle (Warning)'
-                : 'Record Battle'}
+              {!winner ? (
+                <>
+                  <Clock className="w-4 h-4" />
+                  {isEditMode ? 'Update as Pending' : 'Save as Pending'}
+                </>
+              ) : isEditMode ? (
+                <>
+                  <Edit3 className="w-4 h-4" />
+                  Update Battle
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {winner && campaign?.cpSystemEnabled && cpBlockingError
+                    ? 'Attack Blocked - Insufficient SP'
+                    : campaign?.cpSystemEnabled && cpWarning
+                    ? 'Record Battle (Warning)'
+                    : 'Record Battle'}
+                </>
+              )}
             </button>
             <button
               onClick={onClose}

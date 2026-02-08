@@ -1,6 +1,12 @@
 import { useState } from 'react';
-import { X, Settings, Save, Plus, Trash2, Users, MapPin, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Settings, Save, Plus, Trash2, Users, MapPin, ChevronDown, ChevronRight, Cloud, Sun, CloudRain, Moon } from 'lucide-react';
 import { ALL_MAPS, DEFAULT_TERRAIN_GROUPS } from '../data/territories';
+import {
+  WEATHER_CONDITIONS,
+  TIME_CONDITIONS,
+  DEFAULT_WEATHER_WEIGHTS,
+  DEFAULT_TIME_WEIGHTS
+} from '../utils/battleConditions';
 
 const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [settings, setSettings] = useState({
@@ -22,8 +28,16 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [newGroupName, setNewGroupName] = useState('');
   const [expandedGroup, setExpandedGroup] = useState(null);
 
+  // Battle conditions weights state
+  const [weatherWeights, setWeatherWeights] = useState(
+    campaign.settings?.weatherWeights || { ...DEFAULT_WEATHER_WEIGHTS }
+  );
+  const [timeWeights, setTimeWeights] = useState(
+    campaign.settings?.timeWeights || { ...DEFAULT_TIME_WEIGHTS }
+  );
+
   const handleSubmit = () => {
-    onSave({ ...settings, terrainGroups, regiments });
+    onSave({ ...settings, terrainGroups, regiments, weatherWeights, timeWeights });
   };
 
   const updateSetting = (key, value) => {
@@ -389,6 +403,116 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                       successful attacks triple CSA SP loss
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Battle Conditions Weights */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-amber-300 mb-2">Battle Conditions</h3>
+              <p className="text-xs text-slate-400 mb-4">
+                Adjust the roll weights for weather and time of day. Higher weight = more likely to be rolled.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Weather Weights */}
+                <div>
+                  <div className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-slate-400" />
+                    Weather
+                  </div>
+                  {/* Preview bar */}
+                  {(() => {
+                    const total = Object.values(weatherWeights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-5 mb-3">
+                        {Object.entries(weatherWeights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className="flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0"
+                          >
+                            {total > 0 ? `${Math.round(weight / total * 100)}%` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div className="space-y-2">
+                    {Object.entries(WEATHER_CONDITIONS).map(([key, cond]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          {cond.id === 'clear' ? <Sun className="w-3.5 h-3.5 text-yellow-400 shrink-0" /> :
+                           cond.id === 'rain' ? <Cloud className="w-3.5 h-3.5 text-blue-400 shrink-0" /> :
+                           <CloudRain className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                          <span className="text-white text-xs truncate">{cond.name}</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="20"
+                          value={weatherWeights[cond.id] ?? 0}
+                          onChange={(e) => setWeatherWeights({ ...weatherWeights, [cond.id]: Math.max(0, parseInt(e.target.value) || 0) })}
+                          className="w-14 px-2 py-1 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none text-xs text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setWeatherWeights({ ...DEFAULT_WEATHER_WEIGHTS })}
+                    className="mt-2 text-xs text-slate-400 hover:text-slate-300 transition"
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
+
+                {/* Time Weights */}
+                <div>
+                  <div className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                    <Moon className="w-4 h-4 text-slate-400" />
+                    Time of Day
+                  </div>
+                  {/* Preview bar */}
+                  {(() => {
+                    const total = Object.values(timeWeights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-5 mb-3">
+                        {Object.entries(timeWeights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className="flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0"
+                          >
+                            {total > 0 ? `${Math.round(weight / total * 100)}%` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <div className="space-y-2">
+                    {Object.entries(TIME_CONDITIONS).map(([key, cond]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <Moon className={`w-3.5 h-3.5 shrink-0 ${cond.id === 'night' ? 'text-indigo-400' : 'text-amber-400'}`} />
+                          <span className="text-white text-xs truncate">{cond.name}</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="20"
+                          value={timeWeights[cond.id] ?? 0}
+                          onChange={(e) => setTimeWeights({ ...timeWeights, [cond.id]: Math.max(0, parseInt(e.target.value) || 0) })}
+                          className="w-14 px-2 py-1 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none text-xs text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setTimeWeights({ ...DEFAULT_TIME_WEIGHTS })}
+                    className="mt-2 text-xs text-slate-400 hover:text-slate-300 transition"
+                  >
+                    Reset to defaults
+                  </button>
                 </div>
               </div>
             </div>
