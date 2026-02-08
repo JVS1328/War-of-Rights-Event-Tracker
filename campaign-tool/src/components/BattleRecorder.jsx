@@ -13,7 +13,14 @@ import {
   resolveTerrainMaps,
   rollTerrainType
 } from '../utils/mapSelection';
-import { rollBattleConditions } from '../utils/battleConditions';
+import {
+  rollWeatherCondition,
+  rollTimeCondition,
+  WEATHER_CONDITIONS,
+  TIME_CONDITIONS,
+  DEFAULT_WEATHER_WEIGHTS,
+  DEFAULT_TIME_WEIGHTS
+} from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
 
@@ -27,12 +34,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
   const [casualties, setCasualties] = useState(editingBattle?.casualties || { USA: 0, CSA: 0 });
   const [notes, setNotes] = useState(editingBattle?.notes || '');
 
-  // Battle conditions state
-  const [battleConditions, setBattleConditions] = useState(
-    editingBattle?.conditions ? {
-      weather: { roll: editingBattle.conditions.weatherRoll, condition: { id: editingBattle.conditions.weather, name: editingBattle.conditions.weather.charAt(0).toUpperCase() + editingBattle.conditions.weather.slice(1), description: '' } },
-      time: { roll: editingBattle.conditions.timeRoll, condition: { id: editingBattle.conditions.time, name: editingBattle.conditions.time.charAt(0).toUpperCase() + editingBattle.conditions.time.slice(1), description: '' } }
-    } : null
+  // Battle conditions state (separate weather and time)
+  const [weatherResult, setWeatherResult] = useState(
+    editingBattle?.conditions?.weather
+      ? { condition: WEATHER_CONDITIONS[editingBattle.conditions.weather] || { id: editingBattle.conditions.weather, name: editingBattle.conditions.weather, description: '' }, weight: 0, total: 0 }
+      : null
+  );
+  const [timeResult, setTimeResult] = useState(
+    editingBattle?.conditions?.time
+      ? { condition: TIME_CONDITIONS[editingBattle.conditions.time] || { id: editingBattle.conditions.time, name: editingBattle.conditions.time, description: '' }, weight: 0, total: 0 }
+      : null
   );
 
   // Commander selection state
@@ -413,11 +424,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
         defender: parseInt(manualCPLoss.defender) || 0
       } : undefined,
       terrainType: terrainRollResult?.terrainType || (isEditMode ? editingBattle.terrainType : null),
-      conditions: battleConditions ? {
-        weather: battleConditions.weather.condition.id,
-        weatherRoll: battleConditions.weather.roll,
-        time: battleConditions.time.condition.id,
-        timeRoll: battleConditions.time.roll
+      conditions: (weatherResult || timeResult) ? {
+        weather: weatherResult?.condition?.id || null,
+        weatherRoll: 0,
+        time: timeResult?.condition?.id || null,
+        timeRoll: 0
       } : (isEditMode ? editingBattle.conditions : null),
       commanders: {
         USA: selectedCommanders.USA ? { id: selectedCommanders.USA.id, name: selectedCommanders.USA.name } : null,
@@ -782,80 +793,138 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
               </div>
             )}
 
-            {/* Battle Conditions - Weather & Time Roll */}
+            {/* Battle Conditions - Separate Weather & Time Rolls */}
             <div className="bg-slate-700 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-3">
-                <label className="text-sm text-slate-300 font-semibold">
-                  Battle Conditions
-                </label>
-                <button
-                  onClick={() => setBattleConditions(rollBattleConditions())}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
-                >
-                  <Dice6 className="w-4 h-4" />
-                  {battleConditions ? 'Re-roll' : 'Roll Conditions'}
-                </button>
+              <label className="text-sm text-slate-300 font-semibold block mb-3">
+                Battle Conditions
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Weather Roll */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-400 font-semibold">Weather</span>
+                    <button
+                      onClick={() => setWeatherResult(rollWeatherCondition(campaign?.settings?.weatherWeights))}
+                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                    >
+                      <Dice6 className="w-3 h-3" />
+                      {weatherResult ? 'Re-roll' : 'Roll'}
+                    </button>
+                  </div>
+                  {/* Weather weight bar */}
+                  {(() => {
+                    const weights = campaign?.settings?.weatherWeights || DEFAULT_WEATHER_WEIGHTS;
+                    const total = Object.values(weights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-4 mb-2">
+                        {Object.entries(weights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
+                              weatherResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            } ${weatherResult && weatherResult.condition?.id !== id ? 'opacity-40' : ''}`}
+                          >
+                            {Math.round(weight / total * 100)}%
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {weatherResult ? (
+                    <div className={`p-3 rounded border ${
+                      weatherResult.condition.id === 'clear'
+                        ? 'bg-yellow-900/30 border-yellow-700'
+                        : weatherResult.condition.id === 'rain'
+                        ? 'bg-blue-900/30 border-blue-700'
+                        : 'bg-purple-900/30 border-purple-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        {weatherResult.condition.id === 'clear' ? (
+                          <Sun className="w-4 h-4 text-yellow-400" />
+                        ) : weatherResult.condition.id === 'rain' ? (
+                          <Cloud className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <CloudRain className="w-4 h-4 text-purple-400" />
+                        )}
+                        <span className="font-semibold text-white text-sm">
+                          {weatherResult.condition.name}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {weatherResult.condition.description}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                      Roll to determine weather
+                    </div>
+                  )}
+                </div>
+
+                {/* Time of Day Roll */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-slate-400 font-semibold">Time of Day</span>
+                    <button
+                      onClick={() => setTimeResult(rollTimeCondition(campaign?.settings?.timeWeights))}
+                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                    >
+                      <Dice6 className="w-3 h-3" />
+                      {timeResult ? 'Re-roll' : 'Roll'}
+                    </button>
+                  </div>
+                  {/* Time weight bar */}
+                  {(() => {
+                    const weights = campaign?.settings?.timeWeights || DEFAULT_TIME_WEIGHTS;
+                    const total = Object.values(weights).reduce((s, w) => s + w, 0);
+                    return (
+                      <div className="flex rounded overflow-hidden h-4 mb-2">
+                        {Object.entries(weights).filter(([,w]) => w > 0).map(([id, weight]) => (
+                          <div
+                            key={id}
+                            style={{ flex: weight }}
+                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
+                              timeResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            } ${timeResult && timeResult.condition?.id !== id ? 'opacity-40' : ''}`}
+                          >
+                            {Math.round(weight / total * 100)}%
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {timeResult ? (
+                    <div className={`p-3 rounded border ${
+                      timeResult.condition.id === 'dawn'
+                        ? 'bg-orange-900/30 border-orange-700'
+                        : timeResult.condition.id === 'standard'
+                        ? 'bg-slate-600/50 border-slate-500'
+                        : timeResult.condition.id === 'dusk'
+                        ? 'bg-amber-900/30 border-amber-700'
+                        : 'bg-indigo-900/30 border-indigo-700'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Moon className={`w-4 h-4 ${
+                          timeResult.condition.id === 'night'
+                            ? 'text-indigo-400'
+                            : 'text-amber-400'
+                        }`} />
+                        <span className="font-semibold text-white text-sm">
+                          {timeResult.condition.name}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {timeResult.condition.description}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                      Roll to determine time of day
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {battleConditions ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Weather Result */}
-                  <div className={`p-3 rounded border ${
-                    battleConditions.weather.condition.id === 'clear'
-                      ? 'bg-yellow-900/30 border-yellow-700'
-                      : battleConditions.weather.condition.id === 'rain'
-                      ? 'bg-blue-900/30 border-blue-700'
-                      : 'bg-purple-900/30 border-purple-700'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      {battleConditions.weather.condition.id === 'clear' ? (
-                        <Sun className="w-4 h-4 text-yellow-400" />
-                      ) : battleConditions.weather.condition.id === 'rain' ? (
-                        <Cloud className="w-4 h-4 text-blue-400" />
-                      ) : (
-                        <CloudRain className="w-4 h-4 text-purple-400" />
-                      )}
-                      <span className="text-xs text-slate-400">Weather (d10: {battleConditions.weather.roll})</span>
-                    </div>
-                    <div className="font-semibold text-white text-sm">
-                      {battleConditions.weather.condition.name}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {battleConditions.weather.condition.description}
-                    </div>
-                  </div>
-
-                  {/* Time Result */}
-                  <div className={`p-3 rounded border ${
-                    battleConditions.time.condition.id === 'dawn'
-                      ? 'bg-orange-900/30 border-orange-700'
-                      : battleConditions.time.condition.id === 'standard'
-                      ? 'bg-slate-600/50 border-slate-500'
-                      : battleConditions.time.condition.id === 'dusk'
-                      ? 'bg-amber-900/30 border-amber-700'
-                      : 'bg-indigo-900/30 border-indigo-700'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Moon className={`w-4 h-4 ${
-                        battleConditions.time.condition.id === 'night'
-                          ? 'text-indigo-400'
-                          : 'text-amber-400'
-                      }`} />
-                      <span className="text-xs text-slate-400">Time of Day (d10: {battleConditions.time.roll})</span>
-                    </div>
-                    <div className="font-semibold text-white text-sm">
-                      {battleConditions.time.condition.name}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {battleConditions.time.condition.description}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-4 text-slate-400 text-sm">
-                  Roll to determine weather and time of day
-                </div>
-              )}
             </div>
 
             {/* Commander Selection */}
