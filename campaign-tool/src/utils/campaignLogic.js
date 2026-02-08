@@ -69,20 +69,7 @@ export const processBattleResult = (campaign, battle) => {
       });
 
       cpCostAttacker = cpResult.attackerLoss;
-
-      // For defender SP cost: use calculated value if territory owned, otherwise calculate for neutral
-      if (previousOwner !== 'NEUTRAL') {
-        cpCostDefender = cpResult.defenderLoss;
-      } else {
-        // Neutral territory: opposing team still has SP costs (base from settings, scaled by VP and casualties)
-        if (totalCasualties > 0) {
-          const vpBase = campaign.settings?.vpBase || 1;
-          const vpMultiplier = (territory.pointValue || territory.victoryPoints || 1) / vpBase;
-          const casualtyRatio = opposingCasualties / totalCasualties;
-          const baseDefenseNeutral = campaign.settings?.baseDefenseCostNeutral ?? 50;
-          cpCostDefender = Math.round(baseDefenseNeutral * vpMultiplier * casualtyRatio);
-        }
-      }
+      cpCostDefender = cpResult.defenderLoss;
     }
 
     // Validate CP availability (should have been checked in UI, but validate here)

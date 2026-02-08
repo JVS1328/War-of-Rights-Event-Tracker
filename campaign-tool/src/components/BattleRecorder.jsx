@@ -9,7 +9,9 @@ import {
 import {
   getAvailableMapsForTerritory,
   getMapCooldownMessage,
-  selectMapsForPickBan
+  selectMapsForPickBan,
+  resolveTerrainMaps,
+  rollTerrainType
 } from '../utils/mapSelection';
 import { rollBattleConditions } from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
@@ -62,6 +64,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
   const [bannedMaps, setBannedMaps] = useState([]); // Maps that have been banned
   const [pickBanActive, setPickBanActive] = useState(false); // Whether pick/ban is in progress
 
+  // Terrain roll state
+  const [terrainRollResult, setTerrainRollResult] = useState(null); // { terrainType, roll, total }
+  const [needsTerrainRoll, setNeedsTerrainRoll] = useState(false);
+
   // CP cost estimation
   const [estimatedCPCost, setEstimatedCPCost] = useState({ attacker: 0, defender: 0 });
   const [maxCPCost, setMaxCPCost] = useState({ attacker: 0, defender: 0 });
@@ -70,6 +76,38 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
 
   // Check if manual CP mode is enabled
   const isManualCPMode = campaign?.settings?.cpCalculationMode === 'manual';
+
+  // Resolve maps and initialize pick/ban for a given territory + optional rolled terrain
+  const initializeMaps = (territory, rolledTerrainType = null) => {
+    const terrainGroups = campaign?.settings?.terrainGroups || {};
+
+    const territoryMaps = resolveTerrainMaps(territory, terrainGroups, rolledTerrainType);
+    setAllTerritoryMaps(territoryMaps);
+
+    // Build cooldown-filtered list using the resolved maps
+    const { availableMaps: available, cooldownMaps: cooldown } = getAvailableMapsForTerritory(
+      // Pass a virtual territory with the resolved maps so cooldown filtering works
+      { ...territory, maps: territoryMaps },
+      campaign?.battles || [],
+      currentTurn,
+      {} // terrainGroups already resolved above
+    );
+
+    setAvailableMaps(available);
+    setCooldownMaps(cooldown);
+
+    if (available.length >= 5) {
+      setPickBanMaps(selectMapsForPickBan(available, 5));
+      setBannedMaps([]);
+      setPickBanActive(true);
+      setSelectedMap('');
+    } else {
+      setPickBanMaps([]);
+      setBannedMaps([]);
+      setPickBanActive(false);
+      setSelectedMap('');
+    }
+  };
 
   // Calculate available maps when territory changes
   useEffect(() => {
@@ -81,44 +119,44 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
       setPickBanMaps([]);
       setBannedMaps([]);
       setPickBanActive(false);
+      setNeedsTerrainRoll(false);
+      setTerrainRollResult(null);
       return;
     }
 
     const territory = territories.find(t => t.id === selectedTerritory);
     if (!territory) return;
 
-    const { availableMaps: available, cooldownMaps: cooldown } = getAvailableMapsForTerritory(
-      territory,
-      campaign?.battles || [],
-      currentTurn
-    );
-
-    // Store all maps for this territory (for showing cooldown info)
-    const territoryMaps = territory?.maps && territory.maps.length > 0
-      ? territory.maps
-      : ALL_MAPS;
-
-    setAllTerritoryMaps(territoryMaps);
-    setAvailableMaps(available);
-    setCooldownMaps(cooldown);
-
-    // Initialize pick/ban if we have at least 5 available maps
-    if (available.length >= 5) {
-      const selectedForPickBan = selectMapsForPickBan(available, 5);
-      setPickBanMaps(selectedForPickBan);
-      setBannedMaps([]);
-      setPickBanActive(true);
-      setSelectedMap('');
-    } else {
-      // Not enough maps for pick/ban, use direct selection
+    // Check if this territory uses weighted terrain rolls
+    const hasWeights = territory.terrainWeights && Object.keys(territory.terrainWeights).length > 0;
+    if (hasWeights) {
+      // Pause for terrain roll - don't resolve maps yet
+      setNeedsTerrainRoll(true);
+      setTerrainRollResult(null);
+      setAvailableMaps([]);
+      setAllTerritoryMaps([]);
       setPickBanMaps([]);
       setBannedMaps([]);
       setPickBanActive(false);
-      if (selectedMap && !available.includes(selectedMap)) {
-        setSelectedMap('');
-      }
+      setSelectedMap('');
+      return;
     }
+
+    // No weights - resolve maps directly
+    setNeedsTerrainRoll(false);
+    setTerrainRollResult(null);
+    initializeMaps(territory);
   }, [selectedTerritory, territories, campaign, currentTurn]);
+
+  // Handle terrain type roll
+  const handleTerrainRoll = () => {
+    const territory = territories.find(t => t.id === selectedTerritory);
+    if (!territory?.terrainWeights) return;
+
+    const result = rollTerrainType(territory.terrainWeights);
+    setTerrainRollResult(result);
+    initializeMaps(territory, result.terrainType);
+  };
 
   // Calculate estimated CP cost whenever relevant fields change (only in auto mode)
   useEffect(() => {
@@ -298,6 +336,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
         attacker: parseInt(manualCPLoss.attacker) || 0,
         defender: parseInt(manualCPLoss.defender) || 0
       } : undefined,
+      terrainType: terrainRollResult?.terrainType || null,
       conditions: battleConditions ? {
         weather: battleConditions.weather.condition.id,
         weatherRoll: battleConditions.weather.roll,
@@ -355,6 +394,73 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
                 ))}
               </select>
             </div>
+
+            {/* Terrain Type Roll */}
+            {needsTerrainRoll && selectedTerritory && (() => {
+              const territory = territories.find(t => t.id === selectedTerritory);
+              if (!territory?.terrainWeights) return null;
+              const weights = territory.terrainWeights;
+              const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
+
+              const terrainColors = {
+                Urban: { bg: 'bg-amber-600', ring: 'ring-amber-400', text: 'text-amber-300' },
+                Woods: { bg: 'bg-green-700', ring: 'ring-green-400', text: 'text-green-300' },
+                Farmland: { bg: 'bg-orange-700', ring: 'ring-orange-400', text: 'text-orange-300' },
+              };
+              const defaultColor = { bg: 'bg-slate-600', ring: 'ring-slate-400', text: 'text-slate-300' };
+
+              return (
+                <div className="bg-slate-700 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="text-sm text-slate-300 font-semibold">
+                      Terrain Type
+                    </label>
+                    <button
+                      onClick={handleTerrainRoll}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-semibold transition"
+                    >
+                      <Dice6 className="w-4 h-4" />
+                      {terrainRollResult ? 'Re-roll' : 'Roll Terrain'}
+                    </button>
+                  </div>
+
+                  {/* Weight Bar */}
+                  <div className="flex rounded overflow-hidden h-8 mb-2">
+                    {Object.entries(weights).map(([type, weight]) => {
+                      const colors = terrainColors[type] || defaultColor;
+                      const isRolled = terrainRollResult?.terrainType === type;
+                      return (
+                        <div
+                          key={type}
+                          style={{ flex: weight }}
+                          className={`flex items-center justify-center text-xs font-semibold text-white ${colors.bg} ${
+                            isRolled ? `ring-2 ${colors.ring} z-10` : ''
+                          } ${terrainRollResult && !isRolled ? 'opacity-40' : ''}`}
+                        >
+                          {type} {weight}/{totalWeight}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Roll Result */}
+                  {terrainRollResult ? (
+                    <div className={`text-center py-2 rounded ${(terrainColors[terrainRollResult.terrainType] || defaultColor).bg} bg-opacity-30 border border-slate-600`}>
+                      <span className={`font-bold text-sm ${(terrainColors[terrainRollResult.terrainType] || defaultColor).text}`}>
+                        Terrain: {terrainRollResult.terrainType}
+                      </span>
+                      <span className="text-xs text-slate-400 ml-2">
+                        ({availableMaps.length} maps available)
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-center py-2 text-slate-400 text-sm">
+                      Roll to determine the terrain type for this battle
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Map Selection */}
             <div>

@@ -43,22 +43,6 @@ export const MARYLAND_1862_MAPS = {
     "Garland's Stand", "Cox's Push", "Hatch's Attack",
     "Anderson's Counterattack", "Reno's Fall", "Colquitt's Defense"
   ],
-  drillCamp: [
-    "Alexander Farm", "Crossroads", "Smith Field",
-    "Crecy's Cornfield", "Crossley Creek", "Larsen Homestead",
-    "South Woodlot", "Flemming's Meadow", "Wagon Road",
-    "Union Camp", "Pat's Turnpike", "Stefan's Lot",
-    "Confederate Encampment"
-  ],
-  rural: [
-    "Alexander Farm", "Smith Field", "Crecy's Cornfield",
-    "Crossley Creek", "Larsen Homestead", "South Woodlot",
-    "Flemming's Meadow", "Wagon Road"
-  ],
-  urban: [
-    "Downtown", "High Street", "Washington Street",
-    "Union Camp", "Confederate Encampment"
-  ]
 };
 
 // ============================================================================
@@ -79,7 +63,7 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: true,
     isCapital: true,
     countyFips: ['24031', '24033'], // Montgomery, Prince George's
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['md-frederick', 'md-howard', 'md-anne-arundel', 'md-charles', 'va-loudoun', 'va-fairfax'],
   },
 
@@ -91,7 +75,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['24001', '24023'], // Allegany, Garrett
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-washington-county', 'wv-mineral', 'pa-somerset-bedford'],
   },
 
@@ -127,7 +111,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['24013'], // Carroll
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-frederick', 'md-baltimore', 'md-howard', 'pa-cumberland-franklin'],
   },
 
@@ -139,7 +123,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 4, // MAJOR - Key port city
     isUrban: true,
     countyFips: ['24510', '24005'], // Baltimore City, Baltimore County
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['md-carroll', 'md-harford-cecil', 'md-howard', 'md-anne-arundel'],
   },
 
@@ -151,7 +135,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['24025', '24015'], // Harford, Cecil
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-baltimore', 'md-kent', 'pa-chester-delaware'],
   },
 
@@ -163,7 +147,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['24027'], // Howard
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-frederick', 'md-carroll', 'md-baltimore', 'md-anne-arundel', 'md-washington-dc'],
   },
 
@@ -175,7 +159,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - State capital
     isUrban: true,
     countyFips: ['24003'], // Anne Arundel
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['md-baltimore', 'md-howard', 'md-washington-dc', 'md-calvert', 'md-queen-annes'],
   },
 
@@ -187,7 +171,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['24017'], // Charles
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-washington-dc', 'md-calvert', 'md-st-marys', 'va-king-george'],
   },
 
@@ -199,7 +183,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24009'], // Calvert
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-anne-arundel', 'md-charles', 'md-st-marys'],
   },
 
@@ -211,7 +195,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24037'], // St. Mary's
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-charles', 'md-calvert', 'va-northumberland'],
   },
 
@@ -223,7 +207,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24029'], // Kent
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-harford-cecil', 'md-queen-annes'],
   },
 
@@ -235,7 +219,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24035', '24011'], // Queen Anne's, Caroline
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-anne-arundel', 'md-kent', 'md-talbot'],
   },
 
@@ -247,7 +231,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24041', '24019'], // Talbot, Dorchester
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-queen-annes', 'md-wicomico'],
   },
 
@@ -259,7 +243,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['24045', '24039', '24047'], // Wicomico, Somerset, Worcester
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-talbot', 'va-accomack'],
   },
 
@@ -287,7 +271,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3,
     isUrban: false,
     countyFips: ['54003', '54065'], // Berkeley, Morgan
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-jefferson', 'wv-hampshire', 'va-clarke', 'va-shenandoah-county'],
   },
 
@@ -299,7 +283,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54027', '54031'], // Hampshire, Hardy
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-berkeley', 'wv-mineral', 'wv-grant', 'wv-grant', 'va-shenandoah-county'],
   },
 
@@ -311,7 +295,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54057'], // Mineral
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-western', 'wv-hampshire', 'wv-grant', 'wv-tucker'],
   },
 
@@ -323,7 +307,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54023', '54071'], // Grant, Pendleton
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-hampshire', 'wv-mineral', 'wv-tucker', 'wv-tucker', 'wv-pocahontas', 'va-highland'],
   },
 
@@ -335,7 +319,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54093', '54083'], // Tucker, Randolph
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-mineral', 'wv-grant', 'wv-upshur', 'wv-upshur', 'wv-pocahontas', 'wv-monongalia'],
   },
 
@@ -347,7 +331,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54075', '54101'], // Pocahontas, Webster
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-grant', 'wv-tucker', 'wv-upshur', 'wv-nicholas', 'wv-greenbrier', 'va-highland'],
   },
 
@@ -359,7 +343,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54025'], // Greenbrier
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-pocahontas', 'wv-nicholas', 'wv-kanawha', 'wv-summers', 'wv-summers', 'va-bath'],
   },
 
@@ -371,7 +355,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54067', '54015'], // Nicholas, Clay
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-pocahontas', 'wv-upshur', 'wv-braxton', 'wv-kanawha', 'wv-kanawha', 'wv-greenbrier'],
   },
 
@@ -383,7 +367,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54007', '54021'], // Braxton, Gilmer
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-upshur', 'wv-nicholas', 'wv-kanawha', 'wv-doddridge', 'wv-lewis'],
   },
 
@@ -395,7 +379,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54097', '54001'], // Upshur, Barbour
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-tucker', 'wv-pocahontas', 'wv-nicholas', 'wv-braxton', 'wv-lewis', 'wv-taylor'],
   },
 
@@ -407,7 +391,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54041', '54033'], // Lewis, Harrison
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-upshur', 'wv-braxton', 'wv-doddridge', 'wv-doddridge', 'wv-taylor', 'wv-taylor'],
   },
 
@@ -419,7 +403,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54091', '54049'], // Taylor, Marion
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-upshur', 'wv-lewis', 'wv-monongalia', 'wv-monongalia'],
   },
 
@@ -431,7 +415,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54061', '54077'], // Monongalia, Preston
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-taylor', 'pa-fayette-greene'],
   },
 
@@ -443,7 +427,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54017', '54085', '54013'], // Doddridge, Ritchie, Calhoun
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-lewis', 'wv-braxton', 'wv-wood', 'wv-wood', 'wv-tyler'],
   },
 
@@ -455,7 +439,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54095', '54103', '54073'], // Tyler, Pleasants, Wetzel
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-doddridge', 'wv-wood', 'wv-wheeling', 'wv-taylor'],
   },
 
@@ -467,7 +451,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2, // Unionist capital of WV
     isUrban: true,
     countyFips: ['54051', '54069', '54009', '54029'], // Marshall, Ohio, Brooke, Hancock
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['wv-tyler', 'pa-washington'],
   },
 
@@ -479,7 +463,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54107', '54105', '54035'], // Wood, Wirt, Jackson
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-doddridge', 'wv-tyler', 'wv-kanawha', 'wv-mason', 'wv-roane'],
   },
 
@@ -491,7 +475,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2, // Charleston area
     isUrban: true,
     countyFips: ['54039', '54019'], // Kanawha, Fayette
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['wv-nicholas', 'wv-braxton', 'wv-wood', 'wv-roane', 'wv-boone', 'wv-greenbrier', 'wv-raleigh'],
   },
 
@@ -503,7 +487,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54087', '54079'], // Roane, Putnam
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-wood', 'wv-kanawha', 'wv-mason', 'wv-mason'],
   },
 
@@ -515,7 +499,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54053', '54011'], // Mason, Cabell
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-wood', 'wv-roane', 'wv-kanawha', 'wv-wayne', 'wv-boone'],
   },
 
@@ -527,7 +511,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54005', '54043', '54045'], // Boone, Lincoln, Logan
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-kanawha', 'wv-mason', 'wv-wayne', 'wv-wayne', 'wv-raleigh'],
   },
 
@@ -539,7 +523,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54099', '54059'], // Wayne, Mingo
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-mason', 'wv-boone', 'wv-raleigh'],
   },
 
@@ -551,7 +535,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['54081', '54109', '54047'], // Raleigh, Wyoming, McDowell
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-kanawha', 'wv-boone', 'wv-wayne', 'wv-summers', 'wv-mercer'],
   },
 
@@ -563,7 +547,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54089', '54063'], // Summers, Monroe
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-greenbrier', 'wv-raleigh', 'wv-mercer', 'va-bath'],
   },
 
@@ -575,7 +559,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['54055'], // Mercer
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-raleigh', 'wv-summers', 'va-tazewell', 'va-giles'],
   },
 
@@ -591,7 +575,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Key crossing
     isUrban: false,
     countyFips: ['51107'], // Loudoun
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['md-washington-dc', 'wv-jefferson', 'va-fairfax', 'va-clarke'],
   },
 
@@ -603,7 +587,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 4, // MAJOR - Near DC
     isUrban: true,
     countyFips: ['51059', '51013', '51510', '51600', '51610'], // Fairfax, Arlington, Alexandria City, Fairfax City, Falls Church
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['md-washington-dc', 'va-loudoun', 'va-prince-william', 'va-clarke'],
   },
 
@@ -615,7 +599,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 5, // KEY OBJECTIVE - Bull Run battles
     isUrban: true,
     countyFips: ['51153', '51683', '51685'], // Prince William, Manassas, Manassas Park
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['va-fairfax', 'va-fauquier', 'va-stafford'],
   },
 
@@ -627,7 +611,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3,
     isUrban: false,
     countyFips: ['51061', '51047'], // Fauquier, Culpeper
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['va-prince-william', 'va-loudoun', 'va-page', 'va-stafford', 'va-orange'],
   },
 
@@ -639,7 +623,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 4, // MAJOR - Winchester
     isUrban: true,
     countyFips: ['51043', '51069', '51840'], // Clarke, Frederick, Winchester
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['wv-jefferson', 'wv-berkeley', 'va-loudoun', 'va-fairfax', 'va-warren', 'va-shenandoah-county'],
   },
 
@@ -651,7 +635,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51187'], // Warren
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-clarke', 'va-shenandoah-county', 'va-page', 'va-page'],
   },
 
@@ -663,7 +647,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Valley
     isUrban: false,
     countyFips: ['51171'], // Shenandoah
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['wv-berkeley', 'wv-hampshire', 'va-clarke', 'va-warren', 'va-page', 'va-rockingham'],
   },
 
@@ -675,7 +659,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51139', '51157'], // Page, Rappahannock
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-shenandoah-county', 'va-warren', 'va-rockingham', 'va-madison', 'va-fauquier'],
   },
 
@@ -687,7 +671,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51113', '51079'], // Madison, Greene
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-page', 'va-orange', 'va-albemarle', 'va-rockingham'],
   },
 
@@ -699,7 +683,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Valley
     isUrban: true,
     countyFips: ['51165', '51660'], // Rockingham, Harrisonburg
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-shenandoah-county', 'va-page', 'va-madison', 'va-augusta', 'va-highland'],
   },
 
@@ -711,7 +695,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51091'], // Highland County VA
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['wv-grant', 'wv-pocahontas', 'va-rockingham', 'va-augusta', 'va-bath'],
   },
 
@@ -723,7 +707,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Valley hub
     isUrban: true,
     countyFips: ['51015', '51790', '51820'], // Augusta, Staunton, Waynesboro
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-rockingham', 'va-highland', 'va-bath', 'va-rockbridge', 'va-albemarle', 'va-nelson'],
   },
 
@@ -735,7 +719,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51017', '51005'], // Bath, Alleghany
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-highland', 'va-augusta', 'va-rockbridge', 'wv-greenbrier', 'wv-summers'],
   },
 
@@ -747,7 +731,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51137', '51109'], // Orange, Louisa
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-fauquier', 'va-madison', 'va-albemarle', 'va-stafford', 'va-caroline'],
   },
 
@@ -759,7 +743,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 5, // KEY OBJECTIVE - Fredericksburg battles
     isUrban: true,
     countyFips: ['51179', '51177', '51630'], // Stafford, Spotsylvania, Fredericksburg
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-prince-william', 'va-fauquier', 'va-orange', 'va-caroline', 'va-king-george'],
   },
 
@@ -771,7 +755,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51099', '51193'], // King George, Westmoreland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-charles', 'va-stafford', 'va-caroline', 'va-northumberland', 'va-richmond-county'],
   },
 
@@ -783,7 +767,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51133', '51103'], // Northumberland, Lancaster
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-st-marys', 'va-king-george', 'va-richmond-county', 'va-middlesex'],
   },
 
@@ -795,7 +779,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51159', '51057'], // Richmond County, Essex
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-king-george', 'va-northumberland', 'va-caroline', 'va-king-queen'],
   },
 
@@ -807,7 +791,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51119', '51115'], // Middlesex, Mathews
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-northumberland', 'va-king-queen', 'va-gloucester'],
   },
 
@@ -819,7 +803,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51097', '51101'], // King & Queen, King William
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-richmond-county', 'va-middlesex', 'va-caroline', 'va-caroline', 'va-new-kent'],
   },
 
@@ -831,7 +815,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51033', '51085'], // Caroline, Hanover
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-stafford', 'va-king-george', 'va-richmond-county', 'va-king-queen', 'va-orange', 'va-richmond'],
   },
 
@@ -843,7 +827,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3,
     isUrban: true,
     countyFips: ['51003', '51540'], // Albemarle, Charlottesville
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-madison', 'va-orange', 'va-augusta', 'va-nelson', 'va-fluvanna', 'va-buckingham'],
   },
 
@@ -855,7 +839,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51125', '51009'], // Nelson, Amherst
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-augusta', 'va-albemarle', 'va-rockbridge', 'va-bedford', 'va-buckingham', 'va-appomattox'],
   },
 
@@ -867,7 +851,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51163', '51678', '51530'], // Rockbridge, Lexington, Buena Vista
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-augusta', 'va-bath', 'va-nelson', 'va-botetourt', 'va-bedford'],
   },
 
@@ -879,7 +863,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51023', '51045'], // Botetourt, Craig
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-rockbridge', 'va-bath', 'va-roanoke', 'va-giles'],
   },
 
@@ -891,7 +875,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51019', '51515'], // Bedford, Bedford City
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-rockbridge', 'va-nelson', 'va-botetourt', 'va-roanoke', 'va-appomattox', 'va-campbell'],
   },
 
@@ -903,7 +887,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51065', '51075'], // Fluvanna, Goochland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-albemarle', 'va-orange', 'va-buckingham', 'va-powhatan', 'va-richmond'],
   },
 
@@ -915,7 +899,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51029', '51049'], // Buckingham, Cumberland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-albemarle', 'va-nelson', 'va-fluvanna', 'va-appomattox', 'va-appomattox', 'va-powhatan'],
   },
 
@@ -927,7 +911,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Surrender site
     isUrban: false,
     countyFips: ['51011', '51147'], // Appomattox, Prince Edward
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['va-nelson', 'va-bedford', 'va-buckingham', 'va-campbell', 'va-charlotte', 'va-nottoway'],
   },
 
@@ -939,7 +923,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51145', '51007'], // Powhatan, Amelia
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-fluvanna', 'va-buckingham', 'va-richmond', 'va-chesterfield', 'va-nottoway'],
   },
 
@@ -952,7 +936,7 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: true,
     isCapital: true,
     countyFips: ['51760', '51087'], // Richmond City, Henrico
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-caroline', 'va-fluvanna', 'va-powhatan', 'va-chesterfield', 'va-new-kent', 'va-new-kent'],
   },
 
@@ -964,7 +948,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51127', '51036'], // New Kent, Charles City
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-king-queen', 'va-richmond', 'va-james-city', 'va-gloucester'],
   },
 
@@ -976,7 +960,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51073', '51199'], // Gloucester, York
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-middlesex', 'va-new-kent', 'va-james-city', 'va-hampton'],
   },
 
@@ -988,7 +972,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51095', '51830'], // James City, Williamsburg
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-new-kent', 'va-gloucester', 'va-gloucester', 'va-hampton', 'va-isle-of-wight'],
   },
 
@@ -1001,7 +985,7 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: true,
     isCapital: true,
     countyFips: ['51730', '51149', '51570', '51670'], // Petersburg, Prince George, Colonial Heights, Hopewell
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-richmond', 'va-chesterfield', 'va-chesterfield', 'va-sussex', 'va-new-kent'],
   },
 
@@ -1013,7 +997,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51041', '51053'], // Chesterfield, Dinwiddie
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-richmond', 'va-powhatan', 'va-petersburg', 'va-nottoway', 'va-brunswick'],
   },
 
@@ -1025,7 +1009,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51135', '51111'], // Nottoway, Lunenburg
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-powhatan', 'va-appomattox', 'va-chesterfield', 'va-charlotte', 'va-brunswick', 'va-mecklenburg'],
   },
 
@@ -1037,7 +1021,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51037', '51083'], // Charlotte, Halifax
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-appomattox', 'va-nottoway', 'va-campbell', 'va-pittsylvania', 'va-mecklenburg'],
   },
 
@@ -1049,7 +1033,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 4, // Lynchburg - key supply hub
     isUrban: true,
     countyFips: ['51031', '51680'], // Campbell, Lynchburg
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-bedford', 'va-appomattox', 'va-charlotte', 'va-pittsylvania', 'va-roanoke'],
   },
 
@@ -1061,7 +1045,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT
     isUrban: true,
     countyFips: ['51161', '51775', '51770'], // Roanoke County, Salem, Roanoke City
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-botetourt', 'va-bedford', 'va-campbell', 'va-franklin', 'va-montgomery', 'va-franklin'],
   },
 
@@ -1073,7 +1057,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51067', '51063'], // Franklin, Floyd
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-roanoke', 'va-pittsylvania', 'va-henry', 'va-montgomery', 'va-carroll'],
   },
 
@@ -1085,7 +1069,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51143', '51590'], // Pittsylvania, Danville
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-campbell', 'va-charlotte', 'va-franklin', 'va-henry', 'va-charlotte'],
   },
 
@@ -1097,7 +1081,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51089', '51690', '51141'], // Henry, Martinsville, Patrick
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-pittsylvania', 'va-franklin', 'va-carroll'],
   },
 
@@ -1109,7 +1093,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51035', '51077', '51640'], // Carroll, Grayson, Galax
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-franklin', 'va-franklin', 'va-henry', 'va-wythe', 'va-wythe'],
   },
 
@@ -1121,7 +1105,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51121', '51750', '51155'], // Montgomery, Radford, Pulaski
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-roanoke', 'va-franklin', 'va-franklin', 'va-giles', 'va-wythe', 'va-giles'],
   },
 
@@ -1133,7 +1117,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51071', '51021'], // Giles, Bland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-botetourt', 'va-montgomery', 'wv-mercer', 'va-tazewell'],
   },
 
@@ -1145,7 +1129,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['51197', '51173'], // Wythe, Smyth
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-montgomery', 'va-carroll', 'va-giles', 'va-tazewell', 'va-washington-va'],
   },
 
@@ -1157,7 +1141,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51185', '51167'], // Tazewell, Russell
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-giles', 'va-wythe', 'wv-mercer', 'va-buchanan', 'va-washington-va'],
   },
 
@@ -1169,7 +1153,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51191', '51520'], // Washington, Bristol
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-wythe', 'va-wythe', 'va-tazewell', 'va-scott', 'va-scott'],
   },
 
@@ -1181,7 +1165,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51169', '51105'], // Scott, Lee
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-washington-va', 'va-wise'],
   },
 
@@ -1193,7 +1177,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51195', '51051', '51720'], // Wise, Dickenson, Norton
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-scott', 'va-buchanan', 'va-tazewell'],
   },
 
@@ -1205,7 +1189,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51027'], // Buchanan
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-tazewell', 'va-wise', 'wv-raleigh'],
   },
 
@@ -1217,7 +1201,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51025', '51081'], // Brunswick, Greensville
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-chesterfield', 'va-nottoway', 'va-mecklenburg', 'va-sussex', 'va-sussex'],
   },
 
@@ -1229,7 +1213,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51117'], // Mecklenburg
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-nottoway', 'va-charlotte', 'va-brunswick', 'va-charlotte'],
   },
 
@@ -1241,7 +1225,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51183', '51175'], // Sussex, Southampton
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-petersburg', 'va-brunswick', 'va-isle-of-wight', 'va-suffolk'],
   },
 
@@ -1253,7 +1237,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51093', '51181'], // Isle of Wight, Surry (Note: 51181 is Surry)
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['va-james-city', 'va-sussex', 'va-suffolk', 'va-hampton'],
   },
 
@@ -1265,7 +1249,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 4, // Fort Monroe area
     isUrban: true,
     countyFips: ['51650', '51735', '51700'], // Hampton, Poquoson, Newport News
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-gloucester', 'va-james-city', 'va-norfolk'],
   },
 
@@ -1277,7 +1261,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 5, // KEY OBJECTIVE - Naval base
     isUrban: true,
     countyFips: ['51710', '51740', '51810', '51550'], // Norfolk, Portsmouth, Virginia Beach, Chesapeake
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-hampton', 'va-isle-of-wight', 'va-suffolk'],
   },
 
@@ -1289,7 +1273,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['51800', '51595'], // Suffolk, Emporia
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['va-sussex', 'va-isle-of-wight', 'va-norfolk'],
   },
 
@@ -1301,7 +1285,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['51001', '51131'], // Accomack, Northampton
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['md-wicomico', 'va-norfolk'],
   },
 
@@ -1318,7 +1302,7 @@ export const MARYLAND_1862_REGIONS = {
     isUrban: true,
     isCapital: true,
     countyFips: ['42101', '42045'], // Philadelphia, Delaware
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-montgomery-bucks', 'pa-chester-delaware'],
   },
 
@@ -1330,7 +1314,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['42091', '42017'], // Montgomery, Bucks
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-philadelphia', 'pa-lehigh-northampton', 'pa-berks'],
   },
 
@@ -1342,7 +1326,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42029', '42071'], // Chester, Lancaster
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-philadelphia', 'md-harford-cecil', 'pa-berks', 'pa-york'],
   },
 
@@ -1354,7 +1338,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42011'], // Berks
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-montgomery-bucks', 'pa-chester-delaware', 'pa-lehigh-northampton', 'pa-schuylkill', 'pa-lebanon-dauphin'],
   },
 
@@ -1366,7 +1350,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['42077', '42095'], // Lehigh, Northampton
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-montgomery-bucks', 'pa-berks', 'pa-carbon-monroe', 'pa-schuylkill'],
   },
 
@@ -1378,7 +1362,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42025', '42089'], // Carbon, Monroe
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-lehigh-northampton', 'pa-schuylkill', 'pa-luzerne', 'pa-pike-wayne'],
   },
 
@@ -1390,7 +1374,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42103', '42127'], // Pike, Wayne
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-carbon-monroe', 'pa-lackawanna-susquehanna'],
   },
 
@@ -1402,7 +1386,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['42069', '42115'], // Lackawanna, Susquehanna
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-pike-wayne', 'pa-luzerne', 'pa-wyoming-bradford'],
   },
 
@@ -1414,7 +1398,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['42079'], // Luzerne
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-carbon-monroe', 'pa-lackawanna-susquehanna', 'pa-schuylkill', 'pa-columbia-montour', 'pa-wyoming-bradford'],
   },
 
@@ -1426,7 +1410,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42131', '42015'], // Wyoming, Bradford
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-lackawanna-susquehanna', 'pa-luzerne', 'pa-columbia-montour', 'pa-sullivan-lycoming', 'pa-tioga'],
   },
 
@@ -1438,7 +1422,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42107'], // Schuylkill
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-berks', 'pa-lehigh-northampton', 'pa-carbon-monroe', 'pa-luzerne', 'pa-columbia-montour', 'pa-lebanon-dauphin'],
   },
 
@@ -1450,7 +1434,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42037', '42093', '42097'], // Columbia, Montour, Northumberland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-schuylkill', 'pa-luzerne', 'pa-wyoming-bradford', 'pa-sullivan-lycoming', 'pa-snyder-union', 'pa-lebanon-dauphin'],
   },
 
@@ -1462,7 +1446,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42113', '42081'], // Sullivan, Lycoming
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-columbia-montour', 'pa-wyoming-bradford', 'pa-tioga', 'pa-clinton-centre', 'pa-snyder-union'],
   },
 
@@ -1474,7 +1458,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42117', '42105'], // Tioga, Potter
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-wyoming-bradford', 'pa-sullivan-lycoming', 'pa-clinton-centre', 'pa-mckean-cameron'],
   },
 
@@ -1486,7 +1470,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // State capital
     isUrban: true,
     countyFips: ['42075', '42043'], // Lebanon, Dauphin
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-berks', 'pa-schuylkill', 'pa-columbia-montour', 'pa-snyder-union', 'pa-perry-juniata', 'pa-york', 'pa-chester-delaware'],
   },
 
@@ -1498,7 +1482,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42109', '42119', '42087'], // Snyder, Union, Mifflin
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-columbia-montour', 'pa-sullivan-lycoming', 'pa-clinton-centre', 'pa-perry-juniata', 'pa-lebanon-dauphin'],
   },
 
@@ -1510,7 +1494,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42035', '42027'], // Clinton, Centre
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-sullivan-lycoming', 'pa-tioga', 'pa-snyder-union', 'pa-huntingdon-blair', 'pa-clearfield-elk', 'pa-mckean-cameron'],
   },
 
@@ -1522,7 +1506,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42083', '42023', '42047'], // McKean, Cameron, Elk
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-tioga', 'pa-clinton-centre', 'pa-clearfield-elk', 'pa-warren-forest'],
   },
 
@@ -1534,7 +1518,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42099', '42067'], // Perry, Juniata
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-lebanon-dauphin', 'pa-snyder-union', 'pa-huntingdon-blair', 'pa-cumberland-franklin'],
   },
 
@@ -1546,7 +1530,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42061', '42013'], // Huntingdon, Blair
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-snyder-union', 'pa-clinton-centre', 'pa-perry-juniata', 'pa-clearfield-elk', 'pa-cambria-indiana', 'pa-somerset-bedford'],
   },
 
@@ -1558,7 +1542,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42033', '42065'], // Clearfield, Jefferson
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-clinton-centre', 'pa-mckean-cameron', 'pa-huntingdon-blair', 'pa-cambria-indiana', 'pa-armstrong-clarion'],
   },
 
@@ -1570,7 +1554,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42123', '42053', '42121'], // Warren, Forest, Venango
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-mckean-cameron', 'pa-armstrong-clarion', 'pa-erie-crawford', 'pa-mercer'],
   },
 
@@ -1582,7 +1566,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42005', '42031'], // Armstrong, Clarion
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-clearfield-elk', 'pa-warren-forest', 'pa-cambria-indiana', 'pa-butler', 'pa-allegheny'],
   },
 
@@ -1594,7 +1578,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: true,
     countyFips: ['42049', '42039'], // Erie, Crawford
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-warren-forest', 'pa-mercer'],
   },
 
@@ -1606,7 +1590,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42085', '42073'], // Mercer, Lawrence
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-warren-forest', 'pa-erie-crawford', 'pa-butler', 'pa-beaver'],
   },
 
@@ -1618,7 +1602,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42019'], // Butler
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-armstrong-clarion', 'pa-mercer', 'pa-allegheny', 'pa-beaver'],
   },
 
@@ -1630,7 +1614,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 1,
     isUrban: false,
     countyFips: ['42007'], // Beaver
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-mercer', 'pa-butler', 'pa-allegheny', 'wv-wheeling'],
   },
 
@@ -1642,7 +1626,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // Industrial center
     isUrban: true,
     countyFips: ['42003'], // Allegheny
-    maps: MARYLAND_1862_MAPS.urban,
+    terrainWeights: { Urban: 4, Farmland: 1, Woods: 1 },
     adjacentTerritories: ['pa-armstrong-clarion', 'pa-butler', 'pa-beaver', 'pa-washington', 'pa-fayette-greene'],
   },
 
@@ -1654,7 +1638,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42125', '42059'], // Washington, Greene
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-allegheny', 'pa-fayette-greene', 'wv-wheeling'],
   },
 
@@ -1666,7 +1650,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42051', '42129'], // Fayette, Westmoreland
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-allegheny', 'pa-washington', 'pa-somerset-bedford', 'pa-cambria-indiana', 'wv-monongalia'],
   },
 
@@ -1678,7 +1662,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42021', '42063'], // Cambria, Indiana
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-huntingdon-blair', 'pa-clearfield-elk', 'pa-armstrong-clarion', 'pa-fayette-greene', 'pa-somerset-bedford'],
   },
 
@@ -1690,7 +1674,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42111', '42009'], // Somerset, Bedford
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-huntingdon-blair', 'pa-cambria-indiana', 'pa-fayette-greene', 'pa-fulton-franklin', 'md-western'],
   },
 
@@ -1702,7 +1686,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42057', '42055'], // Fulton, Franklin
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-somerset-bedford', 'pa-cumberland-franklin', 'md-washington-county'],
   },
 
@@ -1714,7 +1698,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 3, // IMPORTANT - Gettysburg area
     isUrban: false,
     countyFips: ['42041', '42001'], // Cumberland, Adams
-    maps: MARYLAND_1862_MAPS.drillCamp,
+    terrainWeights: { Farmland: 2, Woods: 2, Urban: 2 },
     adjacentTerritories: ['pa-perry-juniata', 'pa-fulton-franklin', 'pa-york', 'md-frederick', 'md-carroll'],
   },
 
@@ -1726,7 +1710,7 @@ export const MARYLAND_1862_REGIONS = {
     pointValue: 2,
     isUrban: false,
     countyFips: ['42133'], // York
-    maps: MARYLAND_1862_MAPS.rural,
+    terrainWeights: { Farmland: 3, Woods: 2, Urban: 1 },
     adjacentTerritories: ['pa-lebanon-dauphin', 'pa-cumberland-franklin', 'pa-chester-delaware', 'md-harford-cecil'],
   },
 };
@@ -1756,7 +1740,7 @@ export const getMaryland1862States = () => {
 export const getMapsForRegion = (regionId) => {
   const region = MARYLAND_1862_REGIONS[regionId];
   if (!region) return [];
-  return region.maps || MARYLAND_1862_MAPS.drillCamp;
+  return region.maps || [];
 };
 
 export const getRandomMapForRegion = (regionId) => {
@@ -1779,6 +1763,7 @@ export const createMaryland1862Territories = () => {
     isUrban: region.isUrban || false,
     isCapital: region.isCapital || false,
     maps: region.maps,
+    terrainWeights: region.terrainWeights,
   }));
 };
 

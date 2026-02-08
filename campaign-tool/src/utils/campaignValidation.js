@@ -296,6 +296,9 @@ const normalizeCampaignData = (campaign) => {
       baseDefenseCostFriendly: normalized.settings.baseDefenseCostFriendly ?? 25,
       baseDefenseCostNeutral: normalized.settings.baseDefenseCostNeutral ?? 50,
 
+      // Terrain map groups (preserve existing if present)
+      terrainGroups: normalized.settings.terrainGroups ?? undefined,
+
       // Campaign date settings (preserve existing if present)
       campaignStartDate: normalized.settings.campaignStartDate ?? {
         month: 4,
