@@ -267,8 +267,13 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
-    // Extract campaign name, regiments, and settings
-    const { name, regiments, ...settings } = newSettings;
+    // Extract campaign name, regiments, terrain groups, and settings
+    const { name, regiments, terrainGroups, ...settings } = newSettings;
+
+    // Persist terrain groups inside settings
+    if (terrainGroups) {
+      settings.terrainGroups = terrainGroups;
+    }
 
     // Update commander pool when regiments change
     const updatedCampaign = {

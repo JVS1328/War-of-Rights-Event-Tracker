@@ -1,20 +1,37 @@
 import { ALL_MAPS } from '../data/territories';
 
 /**
+ * Resolve the map pool for a territory.
+ * Priority: territory.maps > territory.terrainGroup (from settings) > ALL_MAPS
+ *
+ * @param {Object} territory - The territory object
+ * @param {Object} terrainGroups - Terrain group definitions from campaign settings
+ * @returns {string[]} Array of map names
+ */
+export const resolveTerrainMaps = (territory, terrainGroups = {}) => {
+  if (territory?.maps && territory.maps.length > 0) {
+    return territory.maps;
+  }
+  if (territory?.terrainGroup && terrainGroups[territory.terrainGroup]) {
+    return terrainGroups[territory.terrainGroup];
+  }
+  return ALL_MAPS;
+};
+
+/**
  * Get available maps for a territory, considering:
- * 1. Maps assigned to the territory (or all maps if none assigned)
+ * 1. Maps assigned to the territory, or resolved from terrain group, or all maps
  * 2. Cooldown period - maps played in the last 2 turns cannot be played
  *
- * @param {Object} territory - The territory object with optional 'maps' array
+ * @param {Object} territory - The territory object with optional 'maps' array or 'terrainGroup' string
  * @param {Array} battles - All battles in the campaign
  * @param {number} currentTurn - The current turn number
+ * @param {Object} terrainGroups - Terrain group definitions from campaign settings
  * @returns {Object} { availableMaps: string[], cooldownMaps: Map<string, number> }
  */
-export const getAvailableMapsForTerritory = (territory, battles = [], currentTurn = 1) => {
+export const getAvailableMapsForTerritory = (territory, battles = [], currentTurn = 1, terrainGroups = {}) => {
   // Determine base map pool for this territory
-  const territoryMaps = territory?.maps && territory.maps.length > 0
-    ? territory.maps
-    : ALL_MAPS;
+  const territoryMaps = resolveTerrainMaps(territory, terrainGroups);
 
   // Find maps on cooldown (played in last 2 turns for this territory)
   const cooldownMaps = new Map(); // Map name -> turn it was last played

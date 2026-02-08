@@ -201,3 +201,26 @@ export const ALL_MAPS = [
   "Union Camp", "Pat's Turnpike", "Stefan's Lot",
   "Confederate Encampment"
 ].sort();
+
+// ============================================================================
+// DEFAULT TERRAIN TYPE MAP GROUPINGS
+// These are configurable via campaign settings. Maps can appear in multiple groups.
+// Location-specific mapsets (Antietam, Harpers Ferry, South Mountain) remain
+// on territories directly via the 'maps' array and are NOT terrain groups.
+// ============================================================================
+
+export const DEFAULT_TERRAIN_GROUPS = {
+  'Urban': [
+    'Downtown', 'High Street', 'Washington Street', 'Shenandoah Street',
+    'Union Camp', 'Confederate Encampment', 'Crossroads'
+  ],
+  'Woods': [
+    'East Woods Skirmish', 'East Woods', 'West Woods',
+    'South Woodlot', 'Crossley Creek'
+  ],
+  'Farmland': [
+    'Alexander Farm', 'Smith Field', "Crecy's Cornfield",
+    'Larsen Homestead', "Flemming's Meadow", "Miller's Cornfield",
+    'Otto and Sherrick Farms', 'Piper Farm', 'Wagon Road'
+  ]
+};

@@ -9,7 +9,8 @@ import {
 import {
   getAvailableMapsForTerritory,
   getMapCooldownMessage,
-  selectMapsForPickBan
+  selectMapsForPickBan,
+  resolveTerrainMaps
 } from '../utils/mapSelection';
 import { rollBattleConditions } from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
@@ -87,16 +88,17 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onClose, cam
     const territory = territories.find(t => t.id === selectedTerritory);
     if (!territory) return;
 
+    const terrainGroups = campaign?.settings?.terrainGroups || {};
+
     const { availableMaps: available, cooldownMaps: cooldown } = getAvailableMapsForTerritory(
       territory,
       campaign?.battles || [],
-      currentTurn
+      currentTurn,
+      terrainGroups
     );
 
     // Store all maps for this territory (for showing cooldown info)
-    const territoryMaps = territory?.maps && territory.maps.length > 0
-      ? territory.maps
-      : ALL_MAPS;
+    const territoryMaps = resolveTerrainMaps(territory, terrainGroups);
 
     setAllTerritoryMaps(territoryMaps);
     setAvailableMaps(available);
