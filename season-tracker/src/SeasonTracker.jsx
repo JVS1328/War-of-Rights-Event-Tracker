@@ -276,6 +276,8 @@ const SeasonTracker = () => {
       r2CasualtiesA: 0,
       r2CasualtiesB: 0,
       unitPlayerCounts: inheritedUnitPlayerCounts,
+      mapBiases: { ...mapBiases },
+      eloBiasPercentages: { ...eloBiasPercentages },
       weeklyCasualties: {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
@@ -1124,17 +1126,20 @@ const SeasonTracker = () => {
         let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
 
         // Apply map bias if map is selected
+        // Use per-week snapshots if available, fall back to global state for backward compatibility
         const mapName = week[`round${roundNum}Map`];
         if (mapName) {
-          const mapBiasLevel = mapBiases[mapName] ?? 0;
-          
+          const weekMapBiases = week.mapBiases || mapBiases;
+          const weekEloBiasPercentages = week.eloBiasPercentages || eloBiasPercentages;
+          const mapBiasLevel = weekMapBiases[mapName] ?? 0;
+
           // Build bias multiplier map from percentages
           const biasPercentMap = {
             0: 1.00,
-            1: 1.0 + (eloBiasPercentages.lightAttacker / 100.0),
-            1.5: 1.0 + (eloBiasPercentages.heavyAttacker / 100.0),
-            2: 1.0 - (eloBiasPercentages.lightDefender / 100.0),
-            2.5: 1.0 - (eloBiasPercentages.heavyDefender / 100.0)
+            1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
+            1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
+            2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
+            2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
           };
           const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
 
