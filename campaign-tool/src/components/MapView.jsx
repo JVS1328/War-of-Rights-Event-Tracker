@@ -320,6 +320,45 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     );
   }
 
+  // Compute bounding box center from SVG path data (for territories without explicit center)
+  const getPathsCenter = (pathsArray) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const { svgPath } of pathsArray) {
+      const re = /[ML]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/gi;
+      let match;
+      while ((match = re.exec(svgPath)) !== null) {
+        const x = parseFloat(match[1]);
+        const y = parseFloat(match[2]);
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (minX === Infinity) return null;
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  };
+
+  // Resolve center for any territory type, falling back to SVG path computation
+  const getTerritoryCenter = (territory) => {
+    if (territory.center) return territory.center;
+    if (territory.labelPosition) return territory.labelPosition;
+    if (territory.countyFips && countyPaths[territory.id]) {
+      return getPathsCenter(countyPaths[territory.id]);
+    }
+    if (territory.countyPaths?.length > 0) {
+      return getPathsCenter(territory.countyPaths);
+    }
+    if (territory.states?.length > 0) {
+      const statePaths = territory.states
+        .map(abbr => usaStates.find(s => s.abbreviation === abbr))
+        .filter(Boolean)
+        .map(s => ({ svgPath: s.svgPath }));
+      if (statePaths.length > 0) return getPathsCenter(statePaths);
+    }
+    return null;
+  };
+
   // Battle smoke & cannon flash effect for pending battles
   const renderBattleSmoke = (cx, cy) => (
     <g className="pointer-events-none">
@@ -389,8 +428,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
-              const labelX = territory.center?.x || territory.labelPosition?.x;
-              const labelY = territory.center?.y || territory.labelPosition?.y;
+              const center = getTerritoryCenter(territory);
+              const labelX = center?.x;
+              const labelY = center?.y;
               const hasPendingBattle = pendingBattleTerritoryIds.includes(territory.id);
 
               // For county-based territories, render each county
