@@ -86,6 +86,14 @@ const getDefaultMapBiases = () => ({
   "Confederate Encampment": 2
 });
 
+// Ensure all weeks have bias snapshots, stamping with fallback values where missing
+const stampWeekBiases = (weeksList, fallbackMapBiases, fallbackEloBiasPercentages) =>
+  weeksList.map(week => (week.mapBiases && week.eloBiasPercentages) ? week : {
+    ...week,
+    mapBiases: week.mapBiases || { ...fallbackMapBiases },
+    eloBiasPercentages: week.eloBiasPercentages || { ...fallbackEloBiasPercentages },
+  });
+
 const SeasonTracker = () => {
   // Load initial state from localStorage
   const loadFromStorage = () => {
@@ -102,10 +110,18 @@ const SeasonTracker = () => {
 
   const savedState = loadFromStorage();
 
+  // Resolve initial bias values (used for both state init and stamping old weeks)
+  const initialMapBiases = savedState?.mapBiases || getDefaultMapBiases();
+  const initialEloBiasPercentages = savedState?.eloBiasPercentages || {
+    lightAttacker: 15, heavyAttacker: 30, lightDefender: 15, heavyDefender: 30
+  };
+
   // State management
   const [units, setUnits] = useState(savedState?.units || []);
   const [nonTokenUnits, setNonTokenUnits] = useState(savedState?.nonTokenUnits || []);
-  const [weeks, setWeeks] = useState(savedState?.weeks || []);
+  const [weeks, setWeeks] = useState(() =>
+    stampWeekBiases(savedState?.weeks || [], initialMapBiases, initialEloBiasPercentages)
+  );
   const [selectedWeek, setSelectedWeek] = useState(savedState?.selectedWeek || null);
   const [teamNames, setTeamNames] = useState(savedState?.teamNames || { A: 'USA', B: 'CSA' });
   const [pointSystem, setPointSystem] = useState(savedState?.pointSystem || {
@@ -126,16 +142,11 @@ const SeasonTracker = () => {
     sizeInfluence: 1.0,
     playoffMultiplier: 1.25
   });
-  const [eloBiasPercentages, setEloBiasPercentages] = useState(savedState?.eloBiasPercentages || {
-    lightAttacker: 15,
-    heavyAttacker: 30,
-    lightDefender: 15,
-    heavyDefender: 30
-  });
+  const [eloBiasPercentages, setEloBiasPercentages] = useState(initialEloBiasPercentages);
   const [unitPlayerCounts, setUnitPlayerCounts] = useState(savedState?.unitPlayerCounts || {});
   const [manualAdjustments, setManualAdjustments] = useState(savedState?.manualAdjustments || {});
   const [divisions, setDivisions] = useState(savedState?.divisions || []);
-  const [mapBiases, setMapBiases] = useState(savedState?.mapBiases || getDefaultMapBiases());
+  const [mapBiases, setMapBiases] = useState(initialMapBiases);
   const [showSettings, setShowSettings] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
@@ -276,6 +287,8 @@ const SeasonTracker = () => {
       r2CasualtiesA: 0,
       r2CasualtiesB: 0,
       unitPlayerCounts: inheritedUnitPlayerCounts,
+      mapBiases: { ...mapBiases },
+      eloBiasPercentages: { ...eloBiasPercentages },
       weeklyCasualties: {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
@@ -1124,17 +1137,20 @@ const SeasonTracker = () => {
         let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
 
         // Apply map bias if map is selected
+        // Use per-week snapshots if available, fall back to global state for backward compatibility
         const mapName = week[`round${roundNum}Map`];
         if (mapName) {
-          const mapBiasLevel = mapBiases[mapName] ?? 0;
-          
+          const weekMapBiases = week.mapBiases || mapBiases;
+          const weekEloBiasPercentages = week.eloBiasPercentages || eloBiasPercentages;
+          const mapBiasLevel = weekMapBiases[mapName] ?? 0;
+
           // Build bias multiplier map from percentages
           const biasPercentMap = {
             0: 1.00,
-            1: 1.0 + (eloBiasPercentages.lightAttacker / 100.0),
-            1.5: 1.0 + (eloBiasPercentages.heavyAttacker / 100.0),
-            2: 1.0 - (eloBiasPercentages.lightDefender / 100.0),
-            2.5: 1.0 - (eloBiasPercentages.heavyDefender / 100.0)
+            1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
+            1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
+            2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
+            2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
           };
           const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
 
@@ -1720,26 +1736,27 @@ const SeasonTracker = () => {
           };
         });
         
-        setUnits(data.units || []);
-        setNonTokenUnits(data.nonTokenUnits || data.non_token_units || []);
-        setWeeks(importedWeeks);
-        setTeamNames(importedTeamNames);
-        setPointSystem(importedPointSystem);
-        setManualAdjustments(importedManualAdjustments);
-        setEloSystem(importedEloSystem);
-        setEloBiasPercentages(importedEloBiasPercentages);
-        setUnitPlayerCounts(importedUnitPlayerCounts);
-        
-        // Handle divisions
-        const importedDivisions = data.divisions || [];
-        setDivisions(importedDivisions);
-        
         // Handle map biases - convert string values to numbers
         let importedMapBiases = getDefaultMapBiases();
         const rawMapBiases = data.mapBiases || data.map_biases || {};
         Object.entries(rawMapBiases).forEach(([mapName, biasValue]) => {
           importedMapBiases[mapName] = parseFloat(biasValue) || 0;
         });
+
+        setUnits(data.units || []);
+        setNonTokenUnits(data.nonTokenUnits || data.non_token_units || []);
+        setWeeks(stampWeekBiases(importedWeeks, importedMapBiases, importedEloBiasPercentages));
+        setTeamNames(importedTeamNames);
+        setPointSystem(importedPointSystem);
+        setManualAdjustments(importedManualAdjustments);
+        setEloSystem(importedEloSystem);
+        setEloBiasPercentages(importedEloBiasPercentages);
+        setUnitPlayerCounts(importedUnitPlayerCounts);
+
+        // Handle divisions
+        const importedDivisions = data.divisions || [];
+        setDivisions(importedDivisions);
+
         setMapBiases(importedMapBiases);
         
         // Handle playoff configuration - always use default if not present
