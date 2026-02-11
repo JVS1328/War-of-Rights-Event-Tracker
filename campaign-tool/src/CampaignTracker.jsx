@@ -329,12 +329,15 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
-    // Extract campaign name, regiments, terrain groups, and settings
-    const { name, regiments, terrainGroups, ...settings } = newSettings;
+    // Extract campaign name, regiments, terrain groups, viz, and settings
+    const { name, regiments, terrainGroups, terrainViz, ...settings } = newSettings;
 
-    // Persist terrain groups inside settings
+    // Persist terrain groups & visualization config inside settings
     if (terrainGroups) {
       settings.terrainGroups = terrainGroups;
+    }
+    if (terrainViz) {
+      settings.terrainViz = terrainViz;
     }
 
     // Update commander pool when regiments change
@@ -498,7 +501,13 @@ const CampaignTracker = () => {
                   .filter(b => b.status === 'pending' || !b.winner)
                   .map(b => b.territoryId)
               }
+              recentBattleTerritoryIds={
+                campaign.battles
+                  .filter(b => b.status === 'completed' && b.winner && b.turn >= campaign.currentTurn - 1)
+                  .map(b => b.territoryId)
+              }
               spSettings={spSettings}
+              terrainViz={campaign.settings?.terrainViz}
             />
           </div>
 

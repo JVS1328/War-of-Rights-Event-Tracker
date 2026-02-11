@@ -104,6 +104,7 @@ const SharedMapView = ({ shareData }) => {
               onTerritoryDoubleClick={handleTerritoryClick}
               pendingBattleTerritoryIds={pendingTerritoryIds}
               spSettings={shareData.spSettings}
+              terrainViz={shareData.terrainViz}
             />
           </div>
 

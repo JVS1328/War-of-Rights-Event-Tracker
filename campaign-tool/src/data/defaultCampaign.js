@@ -6,6 +6,7 @@ import { CAMPAIGN_VERSION } from '../utils/campaignValidation';
 import { createEasternTheatreTerritories, calculateInitialVP as calcEasternVP } from './easternTheatreCounties';
 import { createMaryland1862Territories, calculateInitialVP as calcMaryland1862VP } from './marylandCampaign1862';
 import { DEFAULT_TERRAIN_GROUPS } from './territories';
+import { DEFAULT_TERRAIN_VIZ } from '../utils/terrainPatterns.jsx';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -328,7 +329,8 @@ export const createDefaultCampaign = (customMap = null) => {
       abilityCooldown: 2,
 
       // Terrain map groups
-      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS }
+      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },
+      terrainViz: { ...DEFAULT_TERRAIN_VIZ }
     }
   };
 };
@@ -367,7 +369,8 @@ export const getDefaultSettings = () => ({
   abilityCooldown: 2,
 
   // Terrain map groups
-  terrainGroups: { ...DEFAULT_TERRAIN_GROUPS }
+  terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },
+  terrainViz: { ...DEFAULT_TERRAIN_VIZ }
 });
 
 /**
@@ -470,7 +473,8 @@ export const createEasternTheatreCampaign = () => {
       },
       turnsPerYear: 6,
       abilityCooldown: 2,
-      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS }
+      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },
+      terrainViz: { ...DEFAULT_TERRAIN_VIZ }
     }
   };
 };
@@ -559,7 +563,8 @@ export const createMaryland1862Campaign = () => {
       },
       turnsPerYear: 6, // 2 months per turn
       abilityCooldown: 2,
-      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS }
+      terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },
+      terrainViz: { ...DEFAULT_TERRAIN_VIZ }
     }
   };
 };

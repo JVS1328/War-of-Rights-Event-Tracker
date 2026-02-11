@@ -3,6 +3,7 @@ import { Map, Loader } from 'lucide-react';
 import { usaStates } from '../data/usaStates';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
 import { isTerritorySupplied } from '../utils/supplyLines';
+import { generateTerrainPatterns, resolvePatternId, DEFAULT_TERRAIN_VIZ } from '../utils/terrainPatterns.jsx';
 
 // Cache for county GeoJSON data
 let countyGeoJsonCache = null;
@@ -106,7 +107,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null, terrainViz = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -157,6 +158,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
   const hasCountyData = useMemo(() => {
     return territories.some(t => t.countyFips && t.countyFips.length > 0);
   }, [territories]);
+
+  // Merge provided viz with defaults so every terrain group has a pattern definition
+  const vizConfig = useMemo(() => ({ ...DEFAULT_TERRAIN_VIZ, ...terrainViz }), [terrainViz]);
 
   // Load county data when needed
   useEffect(() => {
@@ -359,36 +363,101 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     return null;
   };
 
-  // Battle smoke & cannon flash effect for pending battles
-  const renderBattleSmoke = (cx, cy) => (
-    <g className="pointer-events-none">
-      {/* Smoke puffs drifting upward */}
-      <circle cx={cx - 5} cy={cy} fill="#94a3b8" opacity="0">
-        <animate attributeName="opacity" values="0;0.35;0.2;0" dur="3.5s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy};${cy - 20}`} dur="3.5s" repeatCount="indefinite" />
-        <animate attributeName="r" values="4;12" dur="3.5s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx + 4} cy={cy} fill="#64748b" opacity="0">
-        <animate attributeName="opacity" values="0;0.3;0.15;0" dur="4s" begin="1.3s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy};${cy - 18}`} dur="4s" begin="1.3s" repeatCount="indefinite" />
-        <animate attributeName="r" values="3;10" dur="4s" begin="1.3s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx} cy={cy + 3} fill="#94a3b8" opacity="0">
-        <animate attributeName="opacity" values="0;0.25;0.1;0" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy + 3};${cy - 16}`} dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-        <animate attributeName="r" values="3;11" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-      </circle>
-      {/* Cannon flashes */}
-      <circle cx={cx - 3} cy={cy} fill="#fbbf24" opacity="0">
-        <animate attributeName="opacity" values="0;0;0.9;0;0;0;0;0;0;0" dur="3s" repeatCount="indefinite" />
-        <animate attributeName="r" values="1;1;6;2;1;1;1;1;1;1" dur="3s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx + 4} cy={cy - 1} fill="#fb923c" opacity="0">
-        <animate attributeName="opacity" values="0;0;0;0;0;0.8;0;0;0;0" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
-        <animate attributeName="r" values="1;1;1;1;1;5;1;1;1;1" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
-      </circle>
-    </g>
-  );
+  // Smoke layer configs for battle effects (top-down battlefield view)
+  // Active: dense rolling musket clouds with wind drift
+  // Aftermath: lighter dissipating smoke, no flashes
+  const SMOKE_LAYERS = {
+    active: [
+      { dx: -2, dy: 1, rx: 20, ry: 15, dur: '6s', delay: '0s', peak: 0.45, color: '#6b7280' },
+      { dx: 3, dy: -2, rx: 18, ry: 13, dur: '7s', delay: '1.2s', peak: 0.4, color: '#78716c' },
+      { dx: -5, dy: -3, rx: 16, ry: 14, dur: '6.5s', delay: '2.5s', peak: 0.38, color: '#6b7280' },
+      { dx: 4, dy: 4, rx: 17, ry: 12, dur: '7.5s', delay: '0.7s', peak: 0.35, color: '#9ca3af' },
+      { dx: 8, dy: -2, rx: 14, ry: 10, dur: '5.5s', delay: '1.8s', peak: 0.28, color: '#9ca3af' },
+      { dx: -6, dy: 5, rx: 15, ry: 11, dur: '8s', delay: '3.2s', peak: 0.3, color: '#78716c' },
+      { dx: 12, dy: -5, rx: 10, ry: 8, dur: '5s', delay: '0.4s', peak: 0.18, color: '#d1d5db' },
+    ],
+    aftermath: [
+      { dx: 0, dy: 0, rx: 16, ry: 12, dur: '9s', delay: '0s', peak: 0.2, color: '#9ca3af' },
+      { dx: -4, dy: -3, rx: 13, ry: 10, dur: '10s', delay: '2.5s', peak: 0.15, color: '#d1d5db' },
+      { dx: 5, dy: 2, rx: 12, ry: 9, dur: '11s', delay: '5s', peak: 0.15, color: '#9ca3af' },
+    ],
+  };
+
+  const WIND = { active: { dx: 15, dy: -6 }, aftermath: { dx: 8, dy: -3 } };
+
+  // Unified battle effects renderer — 'active' for ongoing, 'aftermath' for recently fought
+  const renderBattleEffects = (cx, cy, intensity = 'active') => {
+    const layers = SMOKE_LAYERS[intensity];
+    const wind = WIND[intensity];
+    const isActive = intensity === 'active';
+
+    return (
+      <g className="pointer-events-none" filter="url(#battle-smoke)">
+        {layers.map((layer, i) => (
+          <ellipse
+            key={i}
+            cx={cx + layer.dx}
+            cy={cy + layer.dy}
+            rx="0"
+            ry="0"
+            fill={layer.color}
+            opacity="0"
+          >
+            <animate attributeName="opacity" values={`0;${layer.peak};${layer.peak * 0.8};${layer.peak * 0.5};0`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="rx" values={`${layer.rx * 0.2};${layer.rx * 0.6};${layer.rx}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="ry" values={`${layer.ry * 0.2};${layer.ry * 0.6};${layer.ry}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="cx" values={`${cx + layer.dx};${cx + layer.dx + wind.dx}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="cy" values={`${cy + layer.dy};${cy + layer.dy + wind.dy}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+          </ellipse>
+        ))}
+        {isActive && (
+          <>
+            <circle cx={cx - 6} cy={cy - 2} fill="#fbbf24" opacity="0">
+              <animate attributeName="opacity" values="0;0;0.9;0.4;0;0;0;0;0;0" dur="2.5s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;7;3;1;1;1;1;1;1" dur="2.5s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={cx + 5} cy={cy + 3} fill="#fb923c" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0;0;0.85;0.3;0;0;0" dur="3.5s" begin="1.2s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;1;1;1;6;2;1;1;1" dur="3.5s" begin="1.2s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={cx + 1} cy={cy - 5} fill="#fde68a" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0.95;0;0;0;0" dur="4s" begin="2.5s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;1;5;1;1;1;1" dur="4s" begin="2.5s" repeatCount="indefinite" />
+            </circle>
+          </>
+        )}
+      </g>
+    );
+  };
+
+  // Terrain overlay — returns pattern ID + opacity for a territory's dominant terrain
+  const getTerrainOverlay = (territory) => {
+    const weights = territory.terrainWeights;
+    if (!weights) return null;
+    const entries = Object.entries(weights);
+    if (entries.length === 0) return null;
+
+    const [dominant, dominantWeight] = entries.reduce((best, curr) => curr[1] > best[1] ? curr : best);
+    const total = entries.reduce((sum, [, w]) => sum + w, 0);
+    const dominance = dominantWeight / total;
+
+    return { patternId: resolvePatternId(dominant, dominance, vizConfig), opacity: 0.08 + dominance * 0.14 };
+  };
+
+  // Render terrain pattern overlay on territory paths (DRY across all 4 rendering modes)
+  const renderTerrainOverlay = (svgPaths, territory) => {
+    const overlay = getTerrainOverlay(territory);
+    if (!overlay) return null;
+    return svgPaths.map((path, i) => (
+      <path
+        key={`terrain-${i}`}
+        d={typeof path === 'string' ? path : path.svgPath}
+        fill={`url(#${overlay.patternId})`}
+        opacity={overlay.opacity}
+        className="pointer-events-none"
+      />
+    ));
+  };
 
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
@@ -425,6 +494,17 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
+          <defs>
+            <filter id="battle-smoke" x="-100%" y="-100%" width="300%" height="300%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="3" result="noise">
+                <animate attributeName="seed" values="1;2;3;4;5;6;7;8;9;10" dur="8s" repeatCount="indefinite" />
+              </feTurbulence>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+              <feGaussianBlur in="displaced" stdDeviation="1.5" />
+            </filter>
+            {/* Terrain patterns — generated from vizConfig for all terrain groups */}
+            {Object.entries(vizConfig).flatMap(([name, cfg]) => generateTerrainPatterns(name, cfg))}
+          </defs>
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
@@ -432,6 +512,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               const labelX = center?.x;
               const labelY = center?.y;
               const hasPendingBattle = pendingBattleTerritoryIds.includes(territory.id);
+              const hasRecentBattle = !hasPendingBattle && recentBattleTerritoryIds.includes(territory.id);
 
               // For county-based territories, render each county
               if (territory.countyFips && countyPaths[territory.id]) {
@@ -451,7 +532,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {renderTerrainOverlay(paths, territory)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -478,6 +561,10 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         />
                       );
                     })}
+                    {renderTerrainOverlay(
+                      territory.states.map(a => usaStates.find(s => s.abbreviation === a)).filter(Boolean),
+                      territory
+                    )}
                     {territory.isCapital && (
                       <circle
                         cx={labelX}
@@ -489,7 +576,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -511,6 +599,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
+                    {renderTerrainOverlay(territory.countyPaths, territory)}
                     {territory.isCapital && (
                       <circle
                         cx={labelX}
@@ -522,7 +611,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -543,6 +633,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
                   />
+                  {renderTerrainOverlay([pathData], territory)}
                   {territory.isCapital && (
                     <circle
                       cx={labelX}
@@ -554,7 +645,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                       className="pointer-events-none"
                     />
                   )}
-                  {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                  {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                 </g>
               );
             })}
@@ -581,6 +673,18 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                   'text-orange-400'
                 }`}>{tooltipTerritory.owner}</span></div>
                 <div>VP Value: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span></div>
+                {tooltipTerritory.terrainWeights && (() => {
+                  const entries = Object.entries(tooltipTerritory.terrainWeights);
+                  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+                  return (
+                    <div>Terrain: {entries.map(([type, w], i) => (
+                      <span key={type}>
+                        {i > 0 && ' · '}
+                        <span style={{ color: vizConfig[type]?.color || '#94a3b8' }}>{type} {Math.round(w / total * 100)}%</span>
+                      </span>
+                    ))}</div>
+                  );
+                })()}
                 {tooltipTerritory.stateAbbr && (
                   <div>State: <span className="text-slate-400">{tooltipTerritory.stateAbbr}</span></div>
                 )}
@@ -600,6 +704,11 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                 {pendingBattleTerritoryIds.includes(tooltipTerritory.id) && (
                   <div className="mt-2 pt-2 border-t border-slate-600">
                     <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
+                  </div>
+                )}
+                {!pendingBattleTerritoryIds.includes(tooltipTerritory.id) && recentBattleTerritoryIds.includes(tooltipTerritory.id) && (
+                  <div className="mt-2 pt-2 border-t border-slate-600">
+                    <div className="text-slate-400 font-semibold text-xs">Battle Recently Fought</div>
                   </div>
                 )}
                 {tooltipTerritory.countyFips && (
