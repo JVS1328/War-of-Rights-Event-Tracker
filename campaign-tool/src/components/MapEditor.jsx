@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, RotateCcw, Plus, Trash2, MapPin, Map, Edit, GitMerge } from 'lucide-react';
 import { usaStates, getStatesByAbbrs, calculateGroupCenter, combineStatePaths } from '../data/usaStates';
 import { getCountiesForStates, calculateCountyGroupCenter, combineCountyPaths, getAvailableStates, getCountyCount } from '../data/countyData';
+import { MAPS_BY_MAPSET } from '../data/territories';
 
 const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [selectedStates, setSelectedStates] = useState(new Set());
@@ -36,67 +37,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   const [draggedItems, setDraggedItems] = useState(new Set());
   const [justDragged, setJustDragged] = useState(false);
 
-  // Available War of Rights maps organized by mapset
-  const mapsByMapset = {
-    'Antietam': [
-      "East Woods Skirmish",
-      "Hooker's Push",
-      "Hagerstown Turnpike",
-      "Miller's Cornfield",
-      "East Woods",
-      "Nicodemus Hill",
-      "Bloody Lane",
-      "Pry Ford",
-      "Pry Grist Mill",
-      "Pry House",
-      "West Woods",
-      "Dunker Church",
-      "Burnside's Bridge",
-      "Cooke's Countercharge",
-      "Otto and Sherrick Farms",
-      "Roulette Lane",
-      "Piper Farm",
-      "Hill's Counterattack"
-    ],
-    'Harpers Ferry': [
-      "Maryland Heights",
-      "River Crossing",
-      "Downtown",
-      "School House Ridge",
-      "Bolivar Heights Camp",
-      "High Street",
-      "Shenandoah Street",
-      "Harpers Ferry Graveyard",
-      "Washington Street",
-      "Bolivar Heights Redoubt"
-    ],
-    'South Mountain': [
-      "Garland's Stand",
-      "Cox's Push",
-      "Hatch's Attack",
-      "Anderson's Counterattack",
-      "Reno's Fall",
-      "Colquitt's Defense"
-    ],
-    'Drill Camp': [
-      "Alexander Farm",
-      "Crossroads",
-      "Smith Field",
-      "Crecy's Cornfield",
-      "Crossley Creek",
-      "Larsen Homestead",
-      "South Woodlot",
-      "Flemming's Meadow",
-      "Wagon Road",
-      "Union Camp",
-      "Pat's Turnpike",
-      "Stefan's Lot",
-      "Confederate Encampment"
-    ]
-  };
+  const mapsByMapset = MAPS_BY_MAPSET;
 
   // Flatten all maps for the select dropdown
-  const allMaps = Object.entries(mapsByMapset).flatMap(([mapset, maps]) => 
+  const allMaps = Object.entries(mapsByMapset).flatMap(([mapset, maps]) =>
     maps.map(map => ({ name: map, mapset }))
   );
 

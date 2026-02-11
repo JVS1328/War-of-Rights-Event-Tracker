@@ -23,6 +23,7 @@ import {
 } from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
+import TerritorySpinner from './TerritorySpinner';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId }) => {
   const isEditMode = !!editingBattle;
@@ -478,23 +479,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
           {/* Form */}
           <div className="space-y-4">
-            {/* Territory Selection - Moved before Map Selection */}
+            {/* Territory Selection - Spinner + Manual Pick */}
             <div>
               <label className="block text-sm text-slate-300 mb-2 font-semibold">
                 Territory <span className="text-red-400">*</span>
               </label>
-              <select
-                value={selectedTerritory}
-                onChange={(e) => setSelectedTerritory(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
-              >
-                <option value="">Select territory...</option>
-                {territories.map(territory => (
-                  <option key={territory.id} value={territory.id}>
-                    {territory.name} ({territory.owner}) - {territory.victoryPoints} VP
-                  </option>
-                ))}
-              </select>
+              <TerritorySpinner
+                territories={territories}
+                selectedTerritoryId={selectedTerritory}
+                onSelect={(id) => setSelectedTerritory(id)}
+              />
             </div>
 
             {/* Terrain Type Roll */}

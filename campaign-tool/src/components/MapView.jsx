@@ -106,7 +106,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -122,20 +122,29 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
   // Click timeout ref to distinguish single-click from double-click
   const clickTimeoutRef = useRef(null);
+  const lastClickEventRef = useRef(null);
 
-  // Unified click handler: single-click pins tooltip, double-click opens battle recorder
-  const handleTerritoryPathClick = useCallback((territory) => {
+  // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
+  const handleTerritoryPathClick = useCallback((territory, e) => {
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
-      onTerritoryDoubleClick?.(territory);
+      if ((lastClickEventRef.current?.ctrlKey || lastClickEventRef.current?.metaKey) &&
+          (e?.ctrlKey || e?.metaKey)) {
+        onTerritoryCtrlDoubleClick?.(territory);
+      } else {
+        onTerritoryDoubleClick?.(territory);
+      }
+      lastClickEventRef.current = null;
     } else {
+      lastClickEventRef.current = e;
       clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
+        lastClickEventRef.current = null;
         onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -366,7 +375,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => handleTerritoryPathClick(territory)}
+                        onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
@@ -391,7 +400,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                           stroke={getTerritoryStroke(territory)}
                           strokeWidth={getStrokeWidth(territory)}
                           className="cursor-pointer hover:opacity-80 transition-all"
-                          onClick={() => handleTerritoryPathClick(territory)}
+                          onClick={(e) => handleTerritoryPathClick(territory, e)}
                           onMouseEnter={() => setHoveredTerritory(territory)}
                           onMouseLeave={() => setHoveredTerritory(null)}
                         />
@@ -424,7 +433,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => handleTerritoryPathClick(territory)}
+                        onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
@@ -456,7 +465,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     stroke={getTerritoryStroke(territory)}
                     strokeWidth={getStrokeWidth(territory)}
                     className="cursor-pointer hover:opacity-80 transition-all"
-                    onClick={() => handleTerritoryPathClick(territory)}
+                    onClick={(e) => handleTerritoryPathClick(territory, e)}
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
                   />
@@ -572,7 +581,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               </div>
               {isPinned && (
                 <div className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">
-                  Click to deselect · Double-click to record battle
+                  Click to deselect · Double-click to record battle · Ctrl+dbl-click to edit
                 </div>
               )}
             </div>
@@ -582,7 +591,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
       {/* Zoom/Pan hint */}
       <div className="mt-2 text-xs text-slate-500 text-center">
-        Click to pin info | Double-click to record battle | Shift+scroll to zoom | Shift+drag to pan
+        Click to pin info | Double-click to record battle | Ctrl+double-click to edit territory | Shift+scroll to zoom | Shift+drag to pan
       </div>
     </div>
   );

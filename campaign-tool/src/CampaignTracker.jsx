@@ -7,6 +7,7 @@ import BattleHistory from './components/BattleHistory';
 import BattleRecorder from './components/BattleRecorder';
 import SettingsModal from './components/SettingsModal';
 import MapEditor from './components/MapEditor';
+import TerritoryEditor from './components/TerritoryEditor';
 import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
@@ -31,6 +32,7 @@ const CampaignTracker = () => {
   const [showHelpGuide, setShowHelpGuide] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
+  const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -368,6 +370,20 @@ const CampaignTracker = () => {
     setShowBattleRecorder(true);
   };
 
+  const handleTerritoryCtrlDoubleClick = (territory) => {
+    setTerritoryEditorTarget(territory);
+  };
+
+  const handleTerritoryEditorSave = (updatedTerritory) => {
+    setCampaign(prev => ({
+      ...prev,
+      territories: prev.territories.map(t =>
+        t.id === updatedTerritory.id ? { ...t, ...updatedTerritory } : t
+      ),
+    }));
+    setTerritoryEditorTarget(null);
+  };
+
   if (!campaign) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 flex items-center justify-center">
@@ -476,6 +492,7 @@ const CampaignTracker = () => {
               selectedTerritory={selectedTerritory}
               onTerritoryClick={handleTerritoryClick}
               onTerritoryDoubleClick={handleTerritoryDoubleClick}
+              onTerritoryCtrlDoubleClick={handleTerritoryCtrlDoubleClick}
               pendingBattleTerritoryIds={
                 campaign.battles
                   .filter(b => b.status === 'pending' || !b.winner)
@@ -576,6 +593,16 @@ const CampaignTracker = () => {
             onClose={handleMapEditorClose}
             onSave={handleMapEditorSave}
             existingCampaign={campaign}
+          />
+        )}
+
+        {/* Territory Editor Modal (Ctrl+double-click) */}
+        {territoryEditorTarget && (
+          <TerritoryEditor
+            territory={territoryEditorTarget}
+            terrainGroups={campaign.settings?.terrainGroups || {}}
+            onSave={handleTerritoryEditorSave}
+            onClose={() => setTerritoryEditorTarget(null)}
           />
         )}
 
