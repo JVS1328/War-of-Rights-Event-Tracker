@@ -376,6 +376,14 @@ const CampaignTracker = () => {
     );
   }
 
+  const spSettings = campaign.cpSystemEnabled ? {
+    vpBase: campaign.settings?.vpBase || 1,
+    attackEnemy: campaign.settings?.baseAttackCostEnemy ?? 75,
+    attackNeutral: campaign.settings?.baseAttackCostNeutral ?? 50,
+    defenseFriendly: campaign.settings?.baseDefenseCostFriendly ?? 25,
+    defenseNeutral: campaign.settings?.baseDefenseCostNeutral ?? 50,
+  } : null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
@@ -473,6 +481,7 @@ const CampaignTracker = () => {
                   .filter(b => b.status === 'pending' || !b.winner)
                   .map(b => b.territoryId)
               }
+              spSettings={spSettings}
             />
           </div>
 
@@ -499,6 +508,7 @@ const CampaignTracker = () => {
             <TerritoryList
               territories={campaign.territories}
               onTerritorySelect={handleTerritoryClick}
+              spSettings={spSettings}
             />
           </div>
 

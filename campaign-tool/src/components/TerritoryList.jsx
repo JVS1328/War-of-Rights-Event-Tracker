@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { MapPin, ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
+import { isTerritorySupplied } from '../utils/supplyLines';
 
-const TerritoryList = ({ territories, onTerritorySelect }) => {
+const TerritoryList = ({ territories, onTerritorySelect, spSettings = null }) => {
   const [expandedTerritory, setExpandedTerritory] = useState(null);
   const [filterOwner, setFilterOwner] = useState('ALL');
 
@@ -167,6 +169,69 @@ const TerritoryList = ({ territories, onTerritorySelect }) => {
                       </div>
                     </div>
                   )}
+
+                  {/* SP Cost Info */}
+                  {spSettings && (() => {
+                    const vp = territory.victoryPoints || 1;
+                    const isNeutral = territory.owner === 'NEUTRAL';
+                    const vpMult = getVPMultiplier(vp, spSettings.vpBase);
+                    const attacker = isNeutral ? 'Either side' : (territory.owner === 'USA' ? 'CSA' : 'USA');
+                    const defender = isNeutral ? 'Opposing side' : territory.owner;
+                    const defenderSide = isNeutral ? 'USA' : territory.owner;
+                    const isIsolated = !isNeutral && !isTerritorySupplied(territory, territories);
+                    const attackBase = isNeutral ? spSettings.attackNeutral : spSettings.attackEnemy;
+                    const defenseBase = isNeutral ? spSettings.defenseNeutral : spSettings.defenseFriendly;
+                    const { attackerMax, defenderMax } = getMaxBattleCPCosts(
+                      vp, territory.owner, defenderSide,
+                      spSettings.vpBase, isIsolated, {
+                        attackNeutral: spSettings.attackNeutral,
+                        attackEnemy: spSettings.attackEnemy,
+                        defenseFriendly: spSettings.defenseFriendly,
+                        defenseNeutral: spSettings.defenseNeutral,
+                      }
+                    );
+
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <div className="text-amber-400 font-semibold text-xs mb-2">Max SP Loss</div>
+                        <div className="space-y-2">
+                          <div className="bg-slate-700 rounded p-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-300">{attacker} (Attacker)</span>
+                              <span className="text-orange-400 font-bold">-{attackerMax} SP</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1">
+                              {attackBase} base x {vpMult} VP mult • Attacking {isNeutral ? 'neutral' : 'enemy'} territory
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-300">{defender} (Defender)</span>
+                              <span className="text-orange-400 font-bold">-{defenderMax} SP</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1">
+                              {defenseBase} base x {vpMult} VP mult{isIsolated ? ' x 2 (isolated)' : ''} • Defending {isNeutral ? 'neutral' : 'friendly'} territory
+                            </div>
+                            {isIsolated && (
+                              <div className="text-[10px] text-red-400 mt-0.5">
+                                2x cost - territory is isolated from supply lines
+                              </div>
+                            )}
+                            {!isNeutral && !isIsolated && (
+                              <div className="text-[10px] text-slate-500 mt-0.5 italic">
+                                Lower cost defending your own territory
+                              </div>
+                            )}
+                            {isNeutral && (
+                              <div className="text-[10px] text-slate-500 mt-0.5 italic">
+                                Higher cost defending neutral ground - no home advantage
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
