@@ -159,6 +159,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     return territories.some(t => t.countyFips && t.countyFips.length > 0);
   }, [territories]);
 
+  // Merge provided viz with defaults so every terrain group has a pattern definition
+  const vizConfig = useMemo(() => ({ ...DEFAULT_TERRAIN_VIZ, ...terrainViz }), [terrainViz]);
+
   // Load county data when needed
   useEffect(() => {
     if (!hasCountyData) return;
@@ -426,9 +429,6 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
       </g>
     );
   };
-
-  // Merge provided viz with defaults so every terrain group has a pattern definition
-  const vizConfig = useMemo(() => ({ ...DEFAULT_TERRAIN_VIZ, ...terrainViz }), [terrainViz]);
 
   // Terrain overlay — returns pattern ID + opacity for a territory's dominant terrain
   const getTerrainOverlay = (territory) => {
