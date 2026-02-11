@@ -23,7 +23,6 @@ import {
 } from '../utils/battleConditions';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
-import TerritorySpinner from './TerritorySpinner';
 
 const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId }) => {
   const isEditMode = !!editingBattle;
@@ -242,6 +241,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
     };
 
     terrainSpinIntervalRef.current = setInterval(runIteration, 50);
+  };
+
+  const handleTerrainManualSelect = (terrainType) => {
+    const territory = territories.find(t => t.id === selectedTerritory);
+    if (!territory) return;
+    const result = { terrainType, roll: 0, total: 0 };
+    setTerrainRollResult(result);
+    setTerrainDisplayName(terrainType);
+    initializeMaps(territory, terrainType);
   };
 
   // Cleanup terrain spin interval on unmount
@@ -479,16 +487,23 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
           {/* Form */}
           <div className="space-y-4">
-            {/* Territory Selection - Spinner + Manual Pick */}
+            {/* Territory Selection */}
             <div>
               <label className="block text-sm text-slate-300 mb-2 font-semibold">
                 Territory <span className="text-red-400">*</span>
               </label>
-              <TerritorySpinner
-                territories={territories}
-                selectedTerritoryId={selectedTerritory}
-                onSelect={(id) => setSelectedTerritory(id)}
-              />
+              <select
+                value={selectedTerritory}
+                onChange={(e) => setSelectedTerritory(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+              >
+                <option value="">Select territory...</option>
+                {territories.map(territory => (
+                  <option key={territory.id} value={territory.id}>
+                    {territory.name} ({territory.owner}) - {territory.victoryPoints} VP
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Terrain Type Roll */}
@@ -504,22 +519,36 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                     <label className="text-sm text-slate-300 font-semibold">
                       Terrain Type
                     </label>
-                    <button
-                      onClick={handleTerrainRoll}
-                      disabled={terrainSpinning}
-                      className={`flex items-center gap-2 px-3 py-1.5 text-white rounded text-sm font-semibold transition ${
-                        terrainSpinning
-                          ? 'bg-slate-600 cursor-not-allowed opacity-50'
-                          : 'bg-amber-600 hover:bg-amber-500'
-                      }`}
-                    >
-                      {terrainSpinning ? (
-                        <RotateCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Dice6 className="w-4 h-4" />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleTerrainRoll}
+                        disabled={terrainSpinning}
+                        className={`flex items-center gap-2 px-3 py-1.5 text-white rounded text-sm font-semibold transition ${
+                          terrainSpinning
+                            ? 'bg-slate-600 cursor-not-allowed opacity-50'
+                            : 'bg-amber-600 hover:bg-amber-500'
+                        }`}
+                      >
+                        {terrainSpinning ? (
+                          <RotateCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Dice6 className="w-4 h-4" />
+                        )}
+                        {terrainSpinning ? 'Rolling...' : terrainRollResult ? 'Re-roll' : 'Roll'}
+                      </button>
+                      {!terrainSpinning && (
+                        <select
+                          value={terrainRollResult?.terrainType || ''}
+                          onChange={(e) => handleTerrainManualSelect(e.target.value)}
+                          className="px-2 py-1.5 rounded bg-slate-600 border border-slate-500 text-white text-sm cursor-pointer hover:bg-slate-500 transition"
+                        >
+                          <option value="" disabled>Pick</option>
+                          {Object.keys(weights).map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
                       )}
-                      {terrainSpinning ? 'Rolling...' : terrainRollResult ? 'Re-roll' : 'Roll Terrain'}
-                    </button>
+                    </div>
                   </div>
 
                   {/* Weight Distribution */}
