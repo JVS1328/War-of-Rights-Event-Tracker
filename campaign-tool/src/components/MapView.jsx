@@ -106,7 +106,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -122,20 +122,29 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
   // Click timeout ref to distinguish single-click from double-click
   const clickTimeoutRef = useRef(null);
+  const lastClickEventRef = useRef(null);
 
-  // Unified click handler: single-click pins tooltip, double-click opens battle recorder
-  const handleTerritoryPathClick = useCallback((territory) => {
+  // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
+  const handleTerritoryPathClick = useCallback((territory, e) => {
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
-      onTerritoryDoubleClick?.(territory);
+      if ((lastClickEventRef.current?.ctrlKey || lastClickEventRef.current?.metaKey) &&
+          (e?.ctrlKey || e?.metaKey)) {
+        onTerritoryCtrlDoubleClick?.(territory);
+      } else {
+        onTerritoryDoubleClick?.(territory);
+      }
+      lastClickEventRef.current = null;
     } else {
+      lastClickEventRef.current = e;
       clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
+        lastClickEventRef.current = null;
         onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -311,6 +320,76 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     );
   }
 
+  // Compute bounding box center from SVG path data (for territories without explicit center)
+  const getPathsCenter = (pathsArray) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const { svgPath } of pathsArray) {
+      const re = /[ML]\s*(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/gi;
+      let match;
+      while ((match = re.exec(svgPath)) !== null) {
+        const x = parseFloat(match[1]);
+        const y = parseFloat(match[2]);
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (minX === Infinity) return null;
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  };
+
+  // Resolve center for any territory type, falling back to SVG path computation
+  const getTerritoryCenter = (territory) => {
+    if (territory.center) return territory.center;
+    if (territory.labelPosition) return territory.labelPosition;
+    if (territory.countyFips && countyPaths[territory.id]) {
+      return getPathsCenter(countyPaths[territory.id]);
+    }
+    if (territory.countyPaths?.length > 0) {
+      return getPathsCenter(territory.countyPaths);
+    }
+    if (territory.states?.length > 0) {
+      const statePaths = territory.states
+        .map(abbr => usaStates.find(s => s.abbreviation === abbr))
+        .filter(Boolean)
+        .map(s => ({ svgPath: s.svgPath }));
+      if (statePaths.length > 0) return getPathsCenter(statePaths);
+    }
+    return null;
+  };
+
+  // Battle smoke & cannon flash effect for pending battles
+  const renderBattleSmoke = (cx, cy) => (
+    <g className="pointer-events-none">
+      {/* Smoke puffs drifting upward */}
+      <circle cx={cx - 5} cy={cy} fill="#94a3b8" opacity="0">
+        <animate attributeName="opacity" values="0;0.35;0.2;0" dur="3.5s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy};${cy - 20}`} dur="3.5s" repeatCount="indefinite" />
+        <animate attributeName="r" values="4;12" dur="3.5s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx + 4} cy={cy} fill="#64748b" opacity="0">
+        <animate attributeName="opacity" values="0;0.3;0.15;0" dur="4s" begin="1.3s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy};${cy - 18}`} dur="4s" begin="1.3s" repeatCount="indefinite" />
+        <animate attributeName="r" values="3;10" dur="4s" begin="1.3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx} cy={cy + 3} fill="#94a3b8" opacity="0">
+        <animate attributeName="opacity" values="0;0.25;0.1;0" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy + 3};${cy - 16}`} dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+        <animate attributeName="r" values="3;11" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+      </circle>
+      {/* Cannon flashes */}
+      <circle cx={cx - 3} cy={cy} fill="#fbbf24" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.9;0;0;0;0;0;0;0" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="r" values="1;1;6;2;1;1;1;1;1;1" dur="3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx + 4} cy={cy - 1} fill="#fb923c" opacity="0">
+        <animate attributeName="opacity" values="0;0;0;0;0;0.8;0;0;0;0" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
+        <animate attributeName="r" values="1;1;1;1;1;5;1;1;1;1" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
       <div className="flex justify-between items-center mb-4">
@@ -349,8 +428,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
-              const labelX = territory.center?.x || territory.labelPosition?.x;
-              const labelY = territory.center?.y || territory.labelPosition?.y;
+              const center = getTerritoryCenter(territory);
+              const labelX = center?.x;
+              const labelY = center?.y;
               const hasPendingBattle = pendingBattleTerritoryIds.includes(territory.id);
 
               // For county-based territories, render each county
@@ -366,11 +446,12 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => handleTerritoryPathClick(territory)}
+                        onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -391,7 +472,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                           stroke={getTerritoryStroke(territory)}
                           strokeWidth={getStrokeWidth(territory)}
                           className="cursor-pointer hover:opacity-80 transition-all"
-                          onClick={() => handleTerritoryPathClick(territory)}
+                          onClick={(e) => handleTerritoryPathClick(territory, e)}
                           onMouseEnter={() => setHoveredTerritory(territory)}
                           onMouseLeave={() => setHoveredTerritory(null)}
                         />
@@ -408,6 +489,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -424,7 +506,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         stroke={getTerritoryStroke(territory)}
                         strokeWidth={getStrokeWidth(territory)}
                         className="cursor-pointer hover:opacity-80 transition-all"
-                        onClick={() => handleTerritoryPathClick(territory)}
+                        onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
@@ -440,6 +522,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -456,7 +539,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     stroke={getTerritoryStroke(territory)}
                     strokeWidth={getStrokeWidth(territory)}
                     className="cursor-pointer hover:opacity-80 transition-all"
-                    onClick={() => handleTerritoryPathClick(territory)}
+                    onClick={(e) => handleTerritoryPathClick(territory, e)}
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
                   />
@@ -471,29 +554,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                       className="pointer-events-none"
                     />
                   )}
-                  {hasPendingBattle && labelX && labelY && (
-                    <g className="pointer-events-none">
-                      <circle
-                        cx={labelX}
-                        cy={labelY - 15}
-                        r="8"
-                        fill="#f59e0b"
-                        opacity="0.7"
-                      >
-                        <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
-                      </circle>
-                      <text
-                        x={labelX}
-                        y={labelY - 12}
-                        textAnchor="middle"
-                        fill="#1e293b"
-                        fontSize="7"
-                        fontWeight="bold"
-                      >
-                        !
-                      </text>
-                    </g>
-                  )}
+                  {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                 </g>
               );
             })}
@@ -572,7 +633,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               </div>
               {isPinned && (
                 <div className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">
-                  Click to deselect · Double-click to record battle
+                  Click to deselect · Double-click to record battle · Ctrl+dbl-click to edit
                 </div>
               )}
             </div>
@@ -582,7 +643,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
       {/* Zoom/Pan hint */}
       <div className="mt-2 text-xs text-slate-500 text-center">
-        Click to pin info | Double-click to record battle | Shift+scroll to zoom | Shift+drag to pan
+        Click to pin info | Double-click to record battle | Ctrl+double-click to edit territory | Shift+scroll to zoom | Shift+drag to pan
       </div>
     </div>
   );

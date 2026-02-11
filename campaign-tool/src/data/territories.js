@@ -224,3 +224,32 @@ export const DEFAULT_TERRAIN_GROUPS = {
     'Otto and Sherrick Farms', 'Piper Farm', 'Wagon Road'
   ]
 };
+
+// War of Rights maps organized by mapset
+export const MAPS_BY_MAPSET = {
+  'Antietam': [
+    "East Woods Skirmish", "Hooker's Push", "Hagerstown Turnpike",
+    "Miller's Cornfield", "East Woods", "Nicodemus Hill",
+    "Bloody Lane", "Pry Ford", "Pry Grist Mill", "Pry House",
+    "West Woods", "Dunker Church", "Burnside's Bridge",
+    "Cooke's Countercharge", "Otto and Sherrick Farms",
+    "Roulette Lane", "Piper Farm", "Hill's Counterattack"
+  ],
+  'Harpers Ferry': [
+    "Maryland Heights", "River Crossing", "Downtown",
+    "School House Ridge", "Bolivar Heights Camp", "High Street",
+    "Shenandoah Street", "Harpers Ferry Graveyard", "Washington Street",
+    "Bolivar Heights Redoubt"
+  ],
+  'South Mountain': [
+    "Garland's Stand", "Cox's Push", "Hatch's Attack",
+    "Anderson's Counterattack", "Reno's Fall", "Colquitt's Defense"
+  ],
+  'Drill Camp': [
+    "Alexander Farm", "Crossroads", "Smith Field",
+    "Crecy's Cornfield", "Crossley Creek", "Larsen Homestead",
+    "South Woodlot", "Flemming's Meadow", "Wagon Road",
+    "Union Camp", "Pat's Turnpike", "Stefan's Lot",
+    "Confederate Encampment"
+  ]
+};
