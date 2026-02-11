@@ -498,6 +498,11 @@ const CampaignTracker = () => {
                   .filter(b => b.status === 'pending' || !b.winner)
                   .map(b => b.territoryId)
               }
+              recentBattleTerritoryIds={
+                campaign.battles
+                  .filter(b => b.status === 'completed' && b.winner && b.turn >= campaign.currentTurn - 1)
+                  .map(b => b.territoryId)
+              }
               spSettings={spSettings}
             />
           </div>

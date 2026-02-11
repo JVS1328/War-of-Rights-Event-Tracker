@@ -106,7 +106,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], spSettings = null }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -359,36 +359,72 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     return null;
   };
 
-  // Battle smoke & cannon flash effect for pending battles
-  const renderBattleSmoke = (cx, cy) => (
-    <g className="pointer-events-none">
-      {/* Smoke puffs drifting upward */}
-      <circle cx={cx - 5} cy={cy} fill="#94a3b8" opacity="0">
-        <animate attributeName="opacity" values="0;0.35;0.2;0" dur="3.5s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy};${cy - 20}`} dur="3.5s" repeatCount="indefinite" />
-        <animate attributeName="r" values="4;12" dur="3.5s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx + 4} cy={cy} fill="#64748b" opacity="0">
-        <animate attributeName="opacity" values="0;0.3;0.15;0" dur="4s" begin="1.3s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy};${cy - 18}`} dur="4s" begin="1.3s" repeatCount="indefinite" />
-        <animate attributeName="r" values="3;10" dur="4s" begin="1.3s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx} cy={cy + 3} fill="#94a3b8" opacity="0">
-        <animate attributeName="opacity" values="0;0.25;0.1;0" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-        <animate attributeName="cy" values={`${cy + 3};${cy - 16}`} dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-        <animate attributeName="r" values="3;11" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
-      </circle>
-      {/* Cannon flashes */}
-      <circle cx={cx - 3} cy={cy} fill="#fbbf24" opacity="0">
-        <animate attributeName="opacity" values="0;0;0.9;0;0;0;0;0;0;0" dur="3s" repeatCount="indefinite" />
-        <animate attributeName="r" values="1;1;6;2;1;1;1;1;1;1" dur="3s" repeatCount="indefinite" />
-      </circle>
-      <circle cx={cx + 4} cy={cy - 1} fill="#fb923c" opacity="0">
-        <animate attributeName="opacity" values="0;0;0;0;0;0.8;0;0;0;0" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
-        <animate attributeName="r" values="1;1;1;1;1;5;1;1;1;1" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
-      </circle>
-    </g>
-  );
+  // Smoke layer configs for battle effects (top-down battlefield view)
+  // Active: dense rolling musket clouds with wind drift
+  // Aftermath: lighter dissipating smoke, no flashes
+  const SMOKE_LAYERS = {
+    active: [
+      { dx: -2, dy: 1, rx: 20, ry: 15, dur: '6s', delay: '0s', peak: 0.45, color: '#6b7280' },
+      { dx: 3, dy: -2, rx: 18, ry: 13, dur: '7s', delay: '1.2s', peak: 0.4, color: '#78716c' },
+      { dx: -5, dy: -3, rx: 16, ry: 14, dur: '6.5s', delay: '2.5s', peak: 0.38, color: '#6b7280' },
+      { dx: 4, dy: 4, rx: 17, ry: 12, dur: '7.5s', delay: '0.7s', peak: 0.35, color: '#9ca3af' },
+      { dx: 8, dy: -2, rx: 14, ry: 10, dur: '5.5s', delay: '1.8s', peak: 0.28, color: '#9ca3af' },
+      { dx: -6, dy: 5, rx: 15, ry: 11, dur: '8s', delay: '3.2s', peak: 0.3, color: '#78716c' },
+      { dx: 12, dy: -5, rx: 10, ry: 8, dur: '5s', delay: '0.4s', peak: 0.18, color: '#d1d5db' },
+    ],
+    aftermath: [
+      { dx: 0, dy: 0, rx: 16, ry: 12, dur: '9s', delay: '0s', peak: 0.2, color: '#9ca3af' },
+      { dx: -4, dy: -3, rx: 13, ry: 10, dur: '10s', delay: '2.5s', peak: 0.15, color: '#d1d5db' },
+      { dx: 5, dy: 2, rx: 12, ry: 9, dur: '11s', delay: '5s', peak: 0.15, color: '#9ca3af' },
+    ],
+  };
+
+  const WIND = { active: { dx: 15, dy: -6 }, aftermath: { dx: 8, dy: -3 } };
+
+  // Unified battle effects renderer — 'active' for ongoing, 'aftermath' for recently fought
+  const renderBattleEffects = (cx, cy, intensity = 'active') => {
+    const layers = SMOKE_LAYERS[intensity];
+    const wind = WIND[intensity];
+    const isActive = intensity === 'active';
+
+    return (
+      <g className="pointer-events-none" filter="url(#battle-smoke)">
+        {layers.map((layer, i) => (
+          <ellipse
+            key={i}
+            cx={cx + layer.dx}
+            cy={cy + layer.dy}
+            rx="0"
+            ry="0"
+            fill={layer.color}
+            opacity="0"
+          >
+            <animate attributeName="opacity" values={`0;${layer.peak};${layer.peak * 0.8};${layer.peak * 0.5};0`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="rx" values={`${layer.rx * 0.2};${layer.rx * 0.6};${layer.rx}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="ry" values={`${layer.ry * 0.2};${layer.ry * 0.6};${layer.ry}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="cx" values={`${cx + layer.dx};${cx + layer.dx + wind.dx}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+            <animate attributeName="cy" values={`${cy + layer.dy};${cy + layer.dy + wind.dy}`} dur={layer.dur} begin={layer.delay} repeatCount="indefinite" />
+          </ellipse>
+        ))}
+        {isActive && (
+          <>
+            <circle cx={cx - 6} cy={cy - 2} fill="#fbbf24" opacity="0">
+              <animate attributeName="opacity" values="0;0;0.9;0.4;0;0;0;0;0;0" dur="2.5s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;7;3;1;1;1;1;1;1" dur="2.5s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={cx + 5} cy={cy + 3} fill="#fb923c" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0;0;0.85;0.3;0;0;0" dur="3.5s" begin="1.2s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;1;1;1;6;2;1;1;1" dur="3.5s" begin="1.2s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={cx + 1} cy={cy - 5} fill="#fde68a" opacity="0">
+              <animate attributeName="opacity" values="0;0;0;0.95;0;0;0;0" dur="4s" begin="2.5s" repeatCount="indefinite" />
+              <animate attributeName="r" values="1;1;1;5;1;1;1;1" dur="4s" begin="2.5s" repeatCount="indefinite" />
+            </circle>
+          </>
+        )}
+      </g>
+    );
+  };
 
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
@@ -425,6 +461,15 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
+          <defs>
+            <filter id="battle-smoke" x="-100%" y="-100%" width="300%" height="300%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="3" result="noise">
+                <animate attributeName="seed" values="1;2;3;4;5;6;7;8;9;10" dur="8s" repeatCount="indefinite" />
+              </feTurbulence>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+              <feGaussianBlur in="displaced" stdDeviation="1.5" />
+            </filter>
+          </defs>
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
@@ -432,6 +477,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               const labelX = center?.x;
               const labelY = center?.y;
               const hasPendingBattle = pendingBattleTerritoryIds.includes(territory.id);
+              const hasRecentBattle = !hasPendingBattle && recentBattleTerritoryIds.includes(territory.id);
 
               // For county-based territories, render each county
               if (territory.countyFips && countyPaths[territory.id]) {
@@ -451,7 +497,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -489,7 +536,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -522,7 +570,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
-                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                    {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
                 );
               }
@@ -554,7 +603,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                       className="pointer-events-none"
                     />
                   )}
-                  {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
+                  {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
+                    {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                 </g>
               );
             })}
@@ -600,6 +650,11 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                 {pendingBattleTerritoryIds.includes(tooltipTerritory.id) && (
                   <div className="mt-2 pt-2 border-t border-slate-600">
                     <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
+                  </div>
+                )}
+                {!pendingBattleTerritoryIds.includes(tooltipTerritory.id) && recentBattleTerritoryIds.includes(tooltipTerritory.id) && (
+                  <div className="mt-2 pt-2 border-t border-slate-600">
+                    <div className="text-slate-400 font-semibold text-xs">Battle Recently Fought</div>
                   </div>
                 )}
                 {tooltipTerritory.countyFips && (
