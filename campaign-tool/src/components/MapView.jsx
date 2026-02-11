@@ -121,6 +121,10 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
+  // Mouse position relative to map container (for tooltip placement)
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const mapContainerRef = useRef(null);
+
   // Click timeout ref to distinguish single-click from double-click
   const clickTimeoutRef = useRef(null);
   const lastClickEventRef = useRef(null);
@@ -277,6 +281,11 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     if (isPanning) {
       setPanX(e.clientX - panStart.x);
       setPanY(e.clientY - panStart.y);
+    }
+    // Track mouse position relative to map container for tooltip placement
+    if (mapContainerRef.current) {
+      const rect = mapContainerRef.current.getBoundingClientRect();
+      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     }
   };
 
@@ -483,14 +492,13 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
         </div>
       </div>
 
-      <div className="relative bg-slate-900 rounded-lg p-4">
+      <div ref={mapContainerRef} className="relative bg-slate-900 rounded-lg p-4" onMouseMove={handleMouseMove}>
         <svg
           viewBox="0 0 1000 589"
           className="w-full h-full"
           style={{ cursor: isPanning ? 'grabbing' : 'default' }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
@@ -653,26 +661,49 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
           </g>
         </svg>
 
-        {/* Tooltip - shows for hovered territory, or pinned (selected) territory */}
+        {/* Tooltip - follows cursor, flips quadrant to stay visible */}
         {(() => {
           const tooltipTerritory = hoveredTerritory || selectedTerritory;
           if (!tooltipTerritory) return null;
           const isPinned = !hoveredTerritory && selectedTerritory;
+
+          // Compute dynamic position: offset from cursor, flip to stay in-bounds
+          const tooltipOffset = 16;
+          const containerEl = mapContainerRef.current;
+          const containerW = containerEl?.clientWidth || 800;
+          const containerH = containerEl?.clientHeight || 500;
+          const placeLeft = mousePos.x > containerW / 2;
+          const placeAbove = mousePos.y > containerH / 2;
+
+          const style = {
+            ...(placeLeft
+              ? { right: Math.max(0, containerW - mousePos.x + tooltipOffset) }
+              : { left: mousePos.x + tooltipOffset }),
+            ...(placeAbove
+              ? { bottom: Math.max(0, containerH - mousePos.y + tooltipOffset) }
+              : { top: mousePos.y + tooltipOffset }),
+            maxWidth: '260px',
+          };
+
           return (
-            <div className={`absolute top-4 right-4 bg-slate-800 border rounded-lg p-3 shadow-xl pointer-events-none ${
-              isPinned ? 'border-amber-400' : 'border-amber-500'
-            }`}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-amber-400 font-bold">{tooltipTerritory.name}</span>
-                {isPinned && <span className="text-[10px] text-slate-500 bg-slate-700 px-1.5 py-0.5 rounded">pinned</span>}
+            <div
+              className={`absolute z-10 bg-slate-800/95 backdrop-blur-sm border rounded p-2 shadow-lg pointer-events-none ${
+                isPinned ? 'border-amber-400' : 'border-amber-500/60'
+              }`}
+              style={style}
+            >
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-amber-400 font-semibold text-xs">{tooltipTerritory.name}</span>
+                {isPinned && <span className="text-[9px] text-slate-500 bg-slate-700 px-1 py-0.5 rounded leading-none">pinned</span>}
               </div>
-              <div className="text-sm text-slate-300 space-y-1">
+              <div className="text-xs text-slate-300 space-y-0.5">
                 <div>Owner: <span className={`font-semibold ${
                   tooltipTerritory.owner === 'USA' ? 'text-blue-400' :
                   tooltipTerritory.owner === 'CSA' ? 'text-red-400' :
                   'text-orange-400'
-                }`}>{tooltipTerritory.owner}</span></div>
-                <div>VP Value: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span></div>
+                }`}>{tooltipTerritory.owner}</span>
+                  {' · '}VP: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span>
+                </div>
                 {tooltipTerritory.terrainWeights && (() => {
                   const entries = Object.entries(tooltipTerritory.terrainWeights);
                   const total = entries.reduce((sum, [, w]) => sum + w, 0);
@@ -689,30 +720,30 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                   <div>State: <span className="text-slate-400">{tooltipTerritory.stateAbbr}</span></div>
                 )}
                 {tooltipTerritory.transitionState?.isTransitioning && (
-                  <div className="mt-2 pt-2 border-t border-slate-600">
-                    <div className="text-orange-400 font-semibold mb-1">Capturing...</div>
-                    <div className="text-xs">
-                      <div>Turns Remaining: <span className="text-yellow-400 font-semibold">{tooltipTerritory.transitionState.turnsRemaining}</span></div>
-                      <div>From: <span className={`font-semibold ${
+                  <div className="mt-1 pt-1 border-t border-slate-600">
+                    <div className="text-orange-400 font-semibold text-[10px]">Capturing...</div>
+                    <div className="text-[10px]">
+                      <span>Turns Left: <span className="text-yellow-400 font-semibold">{tooltipTerritory.transitionState.turnsRemaining}</span></span>
+                      {' · '}From: <span className={`font-semibold ${
                         tooltipTerritory.transitionState.previousOwner === 'USA' ? 'text-blue-400' :
                         tooltipTerritory.transitionState.previousOwner === 'CSA' ? 'text-red-400' :
                         'text-slate-400'
-                      }`}>{tooltipTerritory.transitionState.previousOwner}</span></div>
+                      }`}>{tooltipTerritory.transitionState.previousOwner}</span>
                     </div>
                   </div>
                 )}
                 {pendingBattleTerritoryIds.includes(tooltipTerritory.id) && (
-                  <div className="mt-2 pt-2 border-t border-slate-600">
-                    <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
+                  <div className="mt-1 pt-1 border-t border-slate-600">
+                    <div className="text-amber-400 font-semibold text-[10px]">Battle Ongoing</div>
                   </div>
                 )}
                 {!pendingBattleTerritoryIds.includes(tooltipTerritory.id) && recentBattleTerritoryIds.includes(tooltipTerritory.id) && (
-                  <div className="mt-2 pt-2 border-t border-slate-600">
-                    <div className="text-slate-400 font-semibold text-xs">Battle Recently Fought</div>
+                  <div className="mt-1 pt-1 border-t border-slate-600">
+                    <div className="text-slate-400 font-semibold text-[10px]">Battle Recently Fought</div>
                   </div>
                 )}
                 {tooltipTerritory.countyFips && (
-                  <div className="text-xs text-slate-500">Counties: {tooltipTerritory.countyFips.length}</div>
+                  <div className="text-[10px] text-slate-500">Counties: {tooltipTerritory.countyFips.length}</div>
                 )}
                 {spSettings && (() => {
                   const vp = tooltipTerritory.pointValue || tooltipTerritory.victoryPoints || 1;
@@ -730,19 +761,20 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     }
                   );
                   return (
-                    <div className="mt-2 pt-2 border-t border-slate-600">
-                      <div className="text-amber-400 font-semibold text-xs mb-1">Max SP Loss</div>
-                      <div className="text-xs">
-                        <div>Attacker: <span className="text-orange-400 font-semibold">-{attackerMax} SP</span></div>
-                        <div>Defender: <span className="text-orange-400 font-semibold">-{defenderMax} SP</span>{isIsolated && <span className="text-red-400 ml-1">(2x isolated)</span>}</div>
+                    <div className="mt-1 pt-1 border-t border-slate-600">
+                      <div className="text-amber-400 font-semibold text-[10px] mb-0.5">Max SP Loss</div>
+                      <div className="text-[10px]">
+                        <span>Atk: <span className="text-orange-400 font-semibold">-{attackerMax}</span></span>
+                        {' · '}Def: <span className="text-orange-400 font-semibold">-{defenderMax}</span>
+                        {isIsolated && <span className="text-red-400 ml-1">(2x iso)</span>}
                       </div>
                     </div>
                   );
                 })()}
               </div>
               {isPinned && (
-                <div className="text-[10px] text-slate-500 mt-2 pt-1 border-t border-slate-700">
-                  Click to deselect · Double-click to record battle · Ctrl+dbl-click to edit
+                <div className="text-[9px] text-slate-500 mt-1 pt-0.5 border-t border-slate-700">
+                  Click deselect · Dbl-click battle · Ctrl+dbl edit
                 </div>
               )}
             </div>
