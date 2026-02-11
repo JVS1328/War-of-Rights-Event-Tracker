@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Settings, Save, Plus, Trash2, Users, MapPin, ChevronDown, ChevronRight, Cloud, Sun, CloudRain, Moon } from 'lucide-react';
+import { X, Settings, Save, Plus, Trash2, Users, MapPin, ChevronDown, ChevronRight, Cloud, Sun, CloudRain, Moon, Eye } from 'lucide-react';
 import { ALL_MAPS, DEFAULT_TERRAIN_GROUPS } from '../data/territories';
 import {
   WEATHER_CONDITIONS,
@@ -7,6 +7,7 @@ import {
   DEFAULT_WEATHER_WEIGHTS,
   DEFAULT_TIME_WEIGHTS
 } from '../utils/battleConditions';
+import { PATTERN_TYPES, DEFAULT_TERRAIN_VIZ, defaultVizEntry, generateTerrainPatterns } from '../utils/terrainPatterns.jsx';
 
 const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [settings, setSettings] = useState({
@@ -28,6 +29,11 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [newGroupName, setNewGroupName] = useState('');
   const [expandedGroup, setExpandedGroup] = useState(null);
 
+  // Terrain visualization config — per-group pattern type, colors, density scaling
+  const [terrainViz, setTerrainViz] = useState(
+    campaign.settings?.terrainViz || { ...DEFAULT_TERRAIN_VIZ }
+  );
+
   // Battle conditions weights state
   const [weatherWeights, setWeatherWeights] = useState(
     campaign.settings?.weatherWeights || { ...DEFAULT_WEATHER_WEIGHTS }
@@ -37,7 +43,7 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
   );
 
   const handleSubmit = () => {
-    onSave({ ...settings, terrainGroups, regiments, weatherWeights, timeWeights });
+    onSave({ ...settings, terrainGroups, terrainViz, regiments, weatherWeights, timeWeights });
   };
 
   const updateSetting = (key, value) => {
@@ -72,15 +78,24 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
     const name = newGroupName.trim();
     if (!name || terrainGroups[name]) return;
     setTerrainGroups({ ...terrainGroups, [name]: [] });
+    setTerrainViz({ ...terrainViz, [name]: defaultVizEntry() });
     setNewGroupName('');
     setExpandedGroup(name);
   };
 
   const removeTerrainGroup = (groupName) => {
-    const updated = { ...terrainGroups };
-    delete updated[groupName];
-    setTerrainGroups(updated);
+    const updatedGroups = { ...terrainGroups };
+    delete updatedGroups[groupName];
+    setTerrainGroups(updatedGroups);
+    const updatedViz = { ...terrainViz };
+    delete updatedViz[groupName];
+    setTerrainViz(updatedViz);
     if (expandedGroup === groupName) setExpandedGroup(null);
+  };
+
+  // Terrain viz helpers
+  const updateVizField = (groupName, field, value) => {
+    setTerrainViz({ ...terrainViz, [groupName]: { ...(terrainViz[groupName] || defaultVizEntry()), [field]: value } });
   };
 
   const toggleMapInGroup = (groupName, mapName) => {
@@ -558,10 +573,77 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                         </button>
                       </div>
 
-                      {/* Expanded Map Checklist */}
+                      {/* Expanded: Visualization + Map Checklist */}
                       {expandedGroup === groupName && (
                         <div className="px-3 pb-3 border-t border-slate-700">
-                          <div className="text-xs text-slate-400 mt-2 mb-2">
+                          {/* Visualization Editor */}
+                          {(() => {
+                            const viz = terrainViz[groupName] || defaultVizEntry();
+                            return (
+                              <div className="mt-2 mb-3 bg-slate-900 rounded p-2.5 border border-slate-600">
+                                <div className="text-xs text-slate-400 font-semibold mb-2 flex items-center gap-1.5">
+                                  <Eye className="w-3 h-3" /> Map Visualization
+                                </div>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  {/* Pattern type */}
+                                  <label className="flex items-center gap-1.5">
+                                    <span className="text-xs text-slate-400">Pattern</span>
+                                    <select
+                                      value={viz.patternType}
+                                      onChange={(e) => updateVizField(groupName, 'patternType', e.target.value)}
+                                      className="px-1.5 py-0.5 bg-slate-700 text-white rounded border border-slate-600 text-xs outline-none focus:border-amber-500"
+                                    >
+                                      {Object.entries(PATTERN_TYPES).map(([key, label]) => (
+                                        <option key={key} value={key}>{label}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  {/* Colors */}
+                                  <label className="flex items-center gap-1.5">
+                                    <span className="text-xs text-slate-400">Color</span>
+                                    <input
+                                      type="color"
+                                      value={viz.color}
+                                      onChange={(e) => updateVizField(groupName, 'color', e.target.value)}
+                                      className="w-6 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                                    />
+                                  </label>
+                                  <label className="flex items-center gap-1.5">
+                                    <span className="text-xs text-slate-400">Alt</span>
+                                    <input
+                                      type="color"
+                                      value={viz.colorAlt}
+                                      onChange={(e) => updateVizField(groupName, 'colorAlt', e.target.value)}
+                                      className="w-6 h-6 rounded border border-slate-600 cursor-pointer bg-transparent"
+                                    />
+                                  </label>
+                                  {/* Density scaling toggle */}
+                                  <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={viz.densityScaling}
+                                      onChange={(e) => updateVizField(groupName, 'densityScaling', e.target.checked)}
+                                      className="w-3.5 h-3.5 rounded border-slate-500 bg-slate-700 text-amber-500 focus:ring-amber-500"
+                                    />
+                                    <span className="text-xs text-slate-400">Density scaling</span>
+                                  </label>
+                                  {/* Live preview */}
+                                  <svg width="48" height="24" className="rounded border border-slate-600 bg-slate-800 shrink-0">
+                                    <defs>
+                                      {generateTerrainPatterns(`preview-${groupName}`, viz)}
+                                    </defs>
+                                    <rect
+                                      width="48" height="24"
+                                      fill={`url(#terrain-preview-${groupName}${viz.densityScaling ? '-dense' : ''})`}
+                                      opacity="0.6"
+                                    />
+                                  </svg>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {/* Map Checklist */}
+                          <div className="text-xs text-slate-400 mb-2">
                             Select maps for this terrain group:
                           </div>
                           <div className="max-h-48 overflow-y-auto space-y-1">

@@ -3,6 +3,7 @@ import { Map, Loader } from 'lucide-react';
 import { usaStates } from '../data/usaStates';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
 import { isTerritorySupplied } from '../utils/supplyLines';
+import { generateTerrainPatterns, resolvePatternId, DEFAULT_TERRAIN_VIZ } from '../utils/terrainPatterns.jsx';
 
 // Cache for county GeoJSON data
 let countyGeoJsonCache = null;
@@ -106,7 +107,7 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null }) => {
+const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null, terrainViz = null }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -426,6 +427,9 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     );
   };
 
+  // Merge provided viz with defaults so every terrain group has a pattern definition
+  const vizConfig = useMemo(() => ({ ...DEFAULT_TERRAIN_VIZ, ...terrainViz }), [terrainViz]);
+
   // Terrain overlay — returns pattern ID + opacity for a territory's dominant terrain
   const getTerrainOverlay = (territory) => {
     const weights = territory.terrainWeights;
@@ -437,12 +441,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     const total = entries.reduce((sum, [, w]) => sum + w, 0);
     const dominance = dominantWeight / total;
 
-    // Urban uses density-scaled patterns: city (>=50%) vs town (<50%)
-    const patternId = dominant === 'Urban'
-      ? (dominance >= 0.5 ? 'terrain-Urban-city' : 'terrain-Urban-town')
-      : `terrain-${dominant}`;
-
-    return { patternId, opacity: 0.08 + dominance * 0.14 };
+    return { patternId: resolvePatternId(dominant, dominance, vizConfig), opacity: 0.08 + dominance * 0.14 };
   };
 
   // Render terrain pattern overlay on territory paths (DRY across all 4 rendering modes)
@@ -503,33 +502,8 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
               <feGaussianBlur in="displaced" stdDeviation="1.5" />
             </filter>
-            {/* Terrain patterns — tiling textures for top-down terrain visualization */}
-            <pattern id="terrain-Woods" width="14" height="14" patternUnits="userSpaceOnUse">
-              <circle cx="4" cy="4" r="2.5" fill="#15803d" />
-              <circle cx="11" cy="10" r="2" fill="#166534" />
-              <circle cx="8" cy="2" r="1.5" fill="#14532d" />
-            </pattern>
-            <pattern id="terrain-Farmland" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
-              <line x1="0" y1="0" x2="0" y2="8" stroke="#a16207" strokeWidth="1.5" />
-            </pattern>
-            <pattern id="terrain-Urban-city" width="16" height="16" patternUnits="userSpaceOnUse">
-              <rect x="1" y="1" width="5" height="3.5" fill="#6b7280" rx="0.3" />
-              <rect x="7.5" y="0.5" width="3.5" height="4" fill="#4b5563" rx="0.3" />
-              <rect x="12" y="1.5" width="3" height="2.5" fill="#6b7280" rx="0.3" />
-              <rect x="0.5" y="6" width="4" height="3" fill="#4b5563" rx="0.3" />
-              <rect x="6" y="6.5" width="5.5" height="2.5" fill="#6b7280" rx="0.3" />
-              <rect x="13" y="5.5" width="2.5" height="3.5" fill="#4b5563" rx="0.3" />
-              <rect x="1" y="10.5" width="3.5" height="4" fill="#6b7280" rx="0.3" />
-              <rect x="5.5" y="11" width="4" height="3.5" fill="#4b5563" rx="0.3" />
-              <rect x="10.5" y="10" width="3" height="4.5" fill="#6b7280" rx="0.3" />
-              <rect x="14" y="11" width="1.5" height="2" fill="#4b5563" rx="0.2" />
-            </pattern>
-            <pattern id="terrain-Urban-town" width="22" height="22" patternUnits="userSpaceOnUse">
-              <rect x="2" y="2" width="4.5" height="3" fill="#6b7280" rx="0.3" />
-              <rect x="13" y="3.5" width="3" height="2.5" fill="#4b5563" rx="0.3" />
-              <rect x="5" y="12" width="3.5" height="3" fill="#6b7280" rx="0.3" />
-              <rect x="15" y="15" width="2.5" height="2" fill="#4b5563" rx="0.3" />
-            </pattern>
+            {/* Terrain patterns — generated from vizConfig for all terrain groups */}
+            {Object.entries(vizConfig).flatMap(([name, cfg]) => generateTerrainPatterns(name, cfg))}
           </defs>
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
@@ -702,12 +676,11 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                 {tooltipTerritory.terrainWeights && (() => {
                   const entries = Object.entries(tooltipTerritory.terrainWeights);
                   const total = entries.reduce((sum, [, w]) => sum + w, 0);
-                  const terrainColors = { Woods: 'text-green-400', Farmland: 'text-amber-400', Urban: 'text-slate-300' };
                   return (
                     <div>Terrain: {entries.map(([type, w], i) => (
                       <span key={type}>
                         {i > 0 && ' · '}
-                        <span className={terrainColors[type] || 'text-slate-400'}>{type} {Math.round(w / total * 100)}%</span>
+                        <span style={{ color: vizConfig[type]?.color || '#94a3b8' }}>{type} {Math.round(w / total * 100)}%</span>
                       </span>
                     ))}</div>
                   );
