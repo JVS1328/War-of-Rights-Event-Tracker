@@ -320,6 +320,37 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     );
   }
 
+  // Battle smoke & cannon flash effect for pending battles
+  const renderBattleSmoke = (cx, cy) => (
+    <g className="pointer-events-none">
+      {/* Smoke puffs drifting upward */}
+      <circle cx={cx - 5} cy={cy} fill="#94a3b8" opacity="0">
+        <animate attributeName="opacity" values="0;0.35;0.2;0" dur="3.5s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy};${cy - 20}`} dur="3.5s" repeatCount="indefinite" />
+        <animate attributeName="r" values="4;12" dur="3.5s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx + 4} cy={cy} fill="#64748b" opacity="0">
+        <animate attributeName="opacity" values="0;0.3;0.15;0" dur="4s" begin="1.3s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy};${cy - 18}`} dur="4s" begin="1.3s" repeatCount="indefinite" />
+        <animate attributeName="r" values="3;10" dur="4s" begin="1.3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx} cy={cy + 3} fill="#94a3b8" opacity="0">
+        <animate attributeName="opacity" values="0;0.25;0.1;0" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${cy + 3};${cy - 16}`} dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+        <animate attributeName="r" values="3;11" dur="4.5s" begin="2.8s" repeatCount="indefinite" />
+      </circle>
+      {/* Cannon flashes */}
+      <circle cx={cx - 3} cy={cy} fill="#fbbf24" opacity="0">
+        <animate attributeName="opacity" values="0;0;0.9;0;0;0;0;0;0;0" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="r" values="1;1;6;2;1;1;1;1;1;1" dur="3s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx + 4} cy={cy - 1} fill="#fb923c" opacity="0">
+        <animate attributeName="opacity" values="0;0;0;0;0;0.8;0;0;0;0" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
+        <animate attributeName="r" values="1;1;1;1;1;5;1;1;1;1" dur="4.5s" begin="1.8s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
       <div className="flex justify-between items-center mb-4">
@@ -380,6 +411,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -417,6 +449,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -449,6 +482,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         className="pointer-events-none"
                       />
                     )}
+                    {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                   </g>
                 );
               }
@@ -480,29 +514,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                       className="pointer-events-none"
                     />
                   )}
-                  {hasPendingBattle && labelX && labelY && (
-                    <g className="pointer-events-none">
-                      <circle
-                        cx={labelX}
-                        cy={labelY - 15}
-                        r="8"
-                        fill="#f59e0b"
-                        opacity="0.7"
-                      >
-                        <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
-                      </circle>
-                      <text
-                        x={labelX}
-                        y={labelY - 12}
-                        textAnchor="middle"
-                        fill="#1e293b"
-                        fontSize="7"
-                        fontWeight="bold"
-                      >
-                        !
-                      </text>
-                    </g>
-                  )}
+                  {hasPendingBattle && labelX && labelY && renderBattleSmoke(labelX, labelY)}
                 </g>
               );
             })}
