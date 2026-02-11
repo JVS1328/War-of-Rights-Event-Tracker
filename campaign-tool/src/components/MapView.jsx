@@ -436,7 +436,13 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     const [dominant, dominantWeight] = entries.reduce((best, curr) => curr[1] > best[1] ? curr : best);
     const total = entries.reduce((sum, [, w]) => sum + w, 0);
     const dominance = dominantWeight / total;
-    return { patternId: `terrain-${dominant}`, opacity: 0.08 + dominance * 0.14 };
+
+    // Urban uses density-scaled patterns: city (>=50%) vs town (<50%)
+    const patternId = dominant === 'Urban'
+      ? (dominance >= 0.5 ? 'terrain-Urban-city' : 'terrain-Urban-town')
+      : `terrain-${dominant}`;
+
+    return { patternId, opacity: 0.08 + dominance * 0.14 };
   };
 
   // Render terrain pattern overlay on territory paths (DRY across all 4 rendering modes)
@@ -506,9 +512,23 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
             <pattern id="terrain-Farmland" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
               <line x1="0" y1="0" x2="0" y2="8" stroke="#a16207" strokeWidth="1.5" />
             </pattern>
-            <pattern id="terrain-Urban" width="10" height="10" patternUnits="userSpaceOnUse">
-              <rect x="1" y="1" width="3.5" height="3.5" fill="#6b7280" rx="0.5" />
-              <rect x="6" y="5.5" width="3" height="3" fill="#4b5563" rx="0.5" />
+            <pattern id="terrain-Urban-city" width="16" height="16" patternUnits="userSpaceOnUse">
+              <rect x="1" y="1" width="5" height="3.5" fill="#6b7280" rx="0.3" />
+              <rect x="7.5" y="0.5" width="3.5" height="4" fill="#4b5563" rx="0.3" />
+              <rect x="12" y="1.5" width="3" height="2.5" fill="#6b7280" rx="0.3" />
+              <rect x="0.5" y="6" width="4" height="3" fill="#4b5563" rx="0.3" />
+              <rect x="6" y="6.5" width="5.5" height="2.5" fill="#6b7280" rx="0.3" />
+              <rect x="13" y="5.5" width="2.5" height="3.5" fill="#4b5563" rx="0.3" />
+              <rect x="1" y="10.5" width="3.5" height="4" fill="#6b7280" rx="0.3" />
+              <rect x="5.5" y="11" width="4" height="3.5" fill="#4b5563" rx="0.3" />
+              <rect x="10.5" y="10" width="3" height="4.5" fill="#6b7280" rx="0.3" />
+              <rect x="14" y="11" width="1.5" height="2" fill="#4b5563" rx="0.2" />
+            </pattern>
+            <pattern id="terrain-Urban-town" width="22" height="22" patternUnits="userSpaceOnUse">
+              <rect x="2" y="2" width="4.5" height="3" fill="#6b7280" rx="0.3" />
+              <rect x="13" y="3.5" width="3" height="2.5" fill="#4b5563" rx="0.3" />
+              <rect x="5" y="12" width="3.5" height="3" fill="#6b7280" rx="0.3" />
+              <rect x="15" y="15" width="2.5" height="2" fill="#4b5563" rx="0.3" />
             </pattern>
           </defs>
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
