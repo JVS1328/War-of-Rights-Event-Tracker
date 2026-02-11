@@ -506,6 +506,158 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
               </select>
             </div>
 
+            {/* Territory Info Display */}
+            {selectedTerritory && (
+              <div className="bg-slate-700 rounded p-3">
+                {(() => {
+                  const territory = territories.find(t => t.id === selectedTerritory);
+                  const adjacentIds = territory.adjacentTerritories || [];
+                  const adjacentTerritoryObjects = adjacentIds
+                    .map(id => territories.find(t => t.id === id))
+                    .filter(Boolean);
+                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
+
+                  return (
+                    <>
+                      <div className="text-sm text-slate-400 mb-1">Selected Territory:</div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-white font-semibold">{territory.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-400 text-sm">
+                            Owner: <span className={`font-semibold ${
+                              territory.owner === 'USA' ? 'text-blue-400' :
+                              territory.owner === 'CSA' ? 'text-red-400' :
+                              'text-slate-400'
+                            }`}>{territory.owner}</span>
+                          </span>
+                          <span className="text-amber-400 text-sm">
+                            ({allTerritoryMaps.length} maps)
+                          </span>
+                          <span className="text-green-400 font-semibold text-sm">
+                            {territory.victoryPoints} VP
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Supply Status */}
+                      {territory.owner !== 'NEUTRAL' && (
+                        <div className={`text-xs px-2 py-1 rounded inline-block mb-2 ${
+                          isSupplied
+                            ? 'bg-green-900/50 text-green-400 border border-green-700'
+                            : 'bg-red-900/50 text-red-400 border border-red-700'
+                        }`}>
+                          {isSupplied ? '✓ Supplied' : '⚠ ENCIRCLED (2x defense cost)'}
+                        </div>
+                      )}
+
+                      {/* Adjacent Territories */}
+                      <div className="mt-2 pt-2 border-t border-slate-600">
+                        <div className="text-xs text-slate-400 mb-1">
+                          Adjacent Territories ({adjacentIds.length} defined, {adjacentTerritoryObjects.length} found):
+                        </div>
+                        {adjacentTerritoryObjects.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {adjacentTerritoryObjects.map(adj => (
+                              <span
+                                key={adj.id}
+                                className={`text-xs px-2 py-0.5 rounded ${
+                                  adj.owner === 'USA'
+                                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                                    : adj.owner === 'CSA'
+                                    ? 'bg-red-900/50 text-red-300 border border-red-700'
+                                    : 'bg-slate-600 text-slate-300 border border-slate-500'
+                                }`}
+                              >
+                                {adj.name} ({adj.owner})
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-500 italic">
+                            {adjacentIds.length > 0
+                              ? `IDs not found in territories: ${adjacentIds.join(', ')}`
+                              : 'No adjacencies defined for this territory'}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Attacker Selection */}
+            <div>
+              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+                Attacker
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setAttacker('USA')}
+                  className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                    attacker === 'USA'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  USA
+                </button>
+                <button
+                  onClick={() => setAttacker('CSA')}
+                  className={`flex-1 px-4 py-2 rounded font-semibold transition ${
+                    attacker === 'CSA'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  CSA
+                </button>
+              </div>
+            </div>
+
+            {/* Team Ability */}
+            <div className="bg-slate-700 rounded-lg p-4">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="text-sm font-semibold text-amber-400 mb-1">
+                    {abilities[attacker]?.name}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {attacker === 'USA'
+                      ? 'Failed attacks keep territory neutral, wins triple CSA SP loss'
+                      : 'Reduces attack SP loss by 50%'}
+                  </div>
+                </div>
+                {abilities[attacker]?.cooldown > 0 && (
+                  <div className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-700">
+                    Cooldown: {abilities[attacker].cooldown} turns
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setAbilityActive(!abilityActive)}
+                disabled={abilities[attacker]?.cooldown > 0}
+                className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
+                  abilities[attacker]?.cooldown > 0
+                    ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                    : abilityActive
+                    ? attacker === 'USA'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-slate-600 hover:bg-slate-500 text-white'
+                }`}
+              >
+                {abilityActive ? '✓ Ability Active' : 'Use Ability'}
+              </button>
+
+              {abilityActive && (
+                <div className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded text-xs text-green-300">
+                  ✓ Ability will be activated for this battle
+                </div>
+              )}
+            </div>
+
             {/* Terrain Type Roll */}
             {needsTerrainRoll && selectedTerritory && (() => {
               const territory = territories.find(t => t.id === selectedTerritory);
@@ -667,9 +819,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             </span>
                           )}
                           {isSelected && (
-                            <span className="text-xs bg-green-700 px-2 py-0.5 rounded">
-                              Playing
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs bg-green-700 px-2 py-0.5 rounded">Playing</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                                {attacker} ATK
+                              </span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                                {defender} DEF
+                              </span>
+                            </div>
                           )}
                         </button>
                       );
@@ -719,8 +877,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                       Auto-Selected
                     </div>
                   </div>
-                  <div className="mt-2 px-3 py-2 bg-green-600 text-white rounded text-sm font-medium">
-                    {selectedMap}
+                  <div className="mt-2 px-3 py-2 bg-green-600 text-white rounded text-sm font-medium flex justify-between items-center">
+                    <span>{selectedMap}</span>
+                    <div className="flex gap-1.5">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                        {attacker} ATK
+                      </span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                        {defender} DEF
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-2 text-xs text-slate-400">
                     Only 1 map available for this territory
@@ -759,86 +925,6 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 </div>
               )}
             </div>
-
-            {/* Territory Info Display */}
-            {selectedTerritory && (
-              <div className="bg-slate-700 rounded p-3">
-                {(() => {
-                  const territory = territories.find(t => t.id === selectedTerritory);
-                  const adjacentIds = territory.adjacentTerritories || [];
-                  const adjacentTerritoryObjects = adjacentIds
-                    .map(id => territories.find(t => t.id === id))
-                    .filter(Boolean);
-                  const isSupplied = territory.owner === 'NEUTRAL' ? null : isTerritorySupplied(territory, territories);
-
-                  return (
-                    <>
-                      <div className="text-sm text-slate-400 mb-1">Selected Territory:</div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-white font-semibold">{territory.name}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-400 text-sm">
-                            Owner: <span className={`font-semibold ${
-                              territory.owner === 'USA' ? 'text-blue-400' :
-                              territory.owner === 'CSA' ? 'text-red-400' :
-                              'text-slate-400'
-                            }`}>{territory.owner}</span>
-                          </span>
-                          <span className="text-amber-400 text-sm">
-                            ({allTerritoryMaps.length} maps)
-                          </span>
-                          <span className="text-green-400 font-semibold text-sm">
-                            {territory.victoryPoints} VP
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Supply Status */}
-                      {territory.owner !== 'NEUTRAL' && (
-                        <div className={`text-xs px-2 py-1 rounded inline-block mb-2 ${
-                          isSupplied
-                            ? 'bg-green-900/50 text-green-400 border border-green-700'
-                            : 'bg-red-900/50 text-red-400 border border-red-700'
-                        }`}>
-                          {isSupplied ? '✓ Supplied' : '⚠ ENCIRCLED (2x defense cost)'}
-                        </div>
-                      )}
-
-                      {/* Adjacent Territories */}
-                      <div className="mt-2 pt-2 border-t border-slate-600">
-                        <div className="text-xs text-slate-400 mb-1">
-                          Adjacent Territories ({adjacentIds.length} defined, {adjacentTerritoryObjects.length} found):
-                        </div>
-                        {adjacentTerritoryObjects.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {adjacentTerritoryObjects.map(adj => (
-                              <span
-                                key={adj.id}
-                                className={`text-xs px-2 py-0.5 rounded ${
-                                  adj.owner === 'USA'
-                                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
-                                    : adj.owner === 'CSA'
-                                    ? 'bg-red-900/50 text-red-300 border border-red-700'
-                                    : 'bg-slate-600 text-slate-300 border border-slate-500'
-                                }`}
-                              >
-                                {adj.name} ({adj.owner})
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-slate-500 italic">
-                            {adjacentIds.length > 0
-                              ? `IDs not found in territories: ${adjacentIds.join(', ')}`
-                              : 'No adjacencies defined for this territory'}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
 
             {/* Battle Conditions - Separate Weather & Time Rolls */}
             <div className="bg-slate-700 rounded-lg p-4">
@@ -994,78 +1080,6 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 />
               </div>
             )}
-
-            {/* Attacker Selection */}
-            <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
-                Attacker
-              </label>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setAttacker('USA')}
-                  className={`flex-1 px-4 py-2 rounded font-semibold transition ${
-                    attacker === 'USA'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  USA
-                </button>
-                <button
-                  onClick={() => setAttacker('CSA')}
-                  className={`flex-1 px-4 py-2 rounded font-semibold transition ${
-                    attacker === 'CSA'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  CSA
-                </button>
-              </div>
-            </div>
-
-            {/* Team Ability */}
-            <div className="bg-slate-700 rounded-lg p-4">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <div className="text-sm font-semibold text-amber-400 mb-1">
-                    {abilities[attacker]?.name}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {attacker === 'USA'
-                      ? 'Failed attacks keep territory neutral, wins triple CSA SP loss'
-                      : 'Reduces attack SP loss by 50%'}
-                  </div>
-                </div>
-                {abilities[attacker]?.cooldown > 0 && (
-                  <div className="text-xs bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-700">
-                    Cooldown: {abilities[attacker].cooldown} turns
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setAbilityActive(!abilityActive)}
-                disabled={abilities[attacker]?.cooldown > 0}
-                className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
-                  abilities[attacker]?.cooldown > 0
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
-                    : abilityActive
-                    ? attacker === 'USA'
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-slate-600 hover:bg-slate-500 text-white'
-                }`}
-              >
-                {abilityActive ? '✓ Ability Active' : 'Use Ability'}
-              </button>
-
-              {abilityActive && (
-                <div className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded text-xs text-green-300">
-                  ✓ Ability will be activated for this battle
-                </div>
-              )}
-            </div>
 
             {/* Winner Selection */}
             <div>
