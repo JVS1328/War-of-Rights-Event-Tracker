@@ -426,6 +426,34 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     );
   };
 
+  // Terrain overlay — returns pattern ID + opacity for a territory's dominant terrain
+  const getTerrainOverlay = (territory) => {
+    const weights = territory.terrainWeights;
+    if (!weights) return null;
+    const entries = Object.entries(weights);
+    if (entries.length === 0) return null;
+
+    const [dominant, dominantWeight] = entries.reduce((best, curr) => curr[1] > best[1] ? curr : best);
+    const total = entries.reduce((sum, [, w]) => sum + w, 0);
+    const dominance = dominantWeight / total;
+    return { patternId: `terrain-${dominant}`, opacity: 0.08 + dominance * 0.14 };
+  };
+
+  // Render terrain pattern overlay on territory paths (DRY across all 4 rendering modes)
+  const renderTerrainOverlay = (svgPaths, territory) => {
+    const overlay = getTerrainOverlay(territory);
+    if (!overlay) return null;
+    return svgPaths.map((path, i) => (
+      <path
+        key={`terrain-${i}`}
+        d={typeof path === 'string' ? path : path.svgPath}
+        fill={`url(#${overlay.patternId})`}
+        opacity={overlay.opacity}
+        className="pointer-events-none"
+      />
+    ));
+  };
+
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
       <div className="flex justify-between items-center mb-4">
@@ -469,6 +497,19 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               <feDisplacementMap in="SourceGraphic" in2="noise" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced" />
               <feGaussianBlur in="displaced" stdDeviation="1.5" />
             </filter>
+            {/* Terrain patterns — tiling textures for top-down terrain visualization */}
+            <pattern id="terrain-Woods" width="14" height="14" patternUnits="userSpaceOnUse">
+              <circle cx="4" cy="4" r="2.5" fill="#15803d" />
+              <circle cx="11" cy="10" r="2" fill="#166534" />
+              <circle cx="8" cy="2" r="1.5" fill="#14532d" />
+            </pattern>
+            <pattern id="terrain-Farmland" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="#a16207" strokeWidth="1.5" />
+            </pattern>
+            <pattern id="terrain-Urban" width="10" height="10" patternUnits="userSpaceOnUse">
+              <rect x="1" y="1" width="3.5" height="3.5" fill="#6b7280" rx="0.5" />
+              <rect x="6" y="5.5" width="3" height="3" fill="#4b5563" rx="0.5" />
+            </pattern>
           </defs>
           <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
@@ -497,6 +538,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
+                    {renderTerrainOverlay(paths, territory)}
                     {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
                     {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
                   </g>
@@ -525,6 +567,10 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         />
                       );
                     })}
+                    {renderTerrainOverlay(
+                      territory.states.map(a => usaStates.find(s => s.abbreviation === a)).filter(Boolean),
+                      territory
+                    )}
                     {territory.isCapital && (
                       <circle
                         cx={labelX}
@@ -559,6 +605,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onMouseLeave={() => setHoveredTerritory(null)}
                       />
                     ))}
+                    {renderTerrainOverlay(territory.countyPaths, territory)}
                     {territory.isCapital && (
                       <circle
                         cx={labelX}
@@ -592,6 +639,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
                   />
+                  {renderTerrainOverlay([pathData], territory)}
                   {territory.isCapital && (
                     <circle
                       cx={labelX}
@@ -631,6 +679,19 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                   'text-orange-400'
                 }`}>{tooltipTerritory.owner}</span></div>
                 <div>VP Value: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span></div>
+                {tooltipTerritory.terrainWeights && (() => {
+                  const entries = Object.entries(tooltipTerritory.terrainWeights);
+                  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+                  const terrainColors = { Woods: 'text-green-400', Farmland: 'text-amber-400', Urban: 'text-slate-300' };
+                  return (
+                    <div>Terrain: {entries.map(([type, w], i) => (
+                      <span key={type}>
+                        {i > 0 && ' · '}
+                        <span className={terrainColors[type] || 'text-slate-400'}>{type} {Math.round(w / total * 100)}%</span>
+                      </span>
+                    ))}</div>
+                  );
+                })()}
                 {tooltipTerritory.stateAbbr && (
                   <div>State: <span className="text-slate-400">{tooltipTerritory.stateAbbr}</span></div>
                 )}
