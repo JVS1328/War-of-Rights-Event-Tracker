@@ -274,13 +274,46 @@ export const decodeSharePayload = (encoded) => {
   }
 };
 
+/** Long hash-based share URL (client-only fallback). */
 export const generateShareUrl = (campaign) => {
   const encoded = encodeSharePayload(createSharePayload(campaign));
   return `${window.location.origin + window.location.pathname}#share=${encoded}`;
 };
 
+/** Short server-backed share URL. Throws on failure so caller can fallback. */
+export const generateShortShareUrl = async (campaign) => {
+  const payload = encodeSharePayload(createSharePayload(campaign));
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload }),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  const { id } = await res.json();
+  return `${window.location.origin + window.location.pathname}#s=${id}`;
+};
+
+/** Fetch and decode a short share payload by ID. */
+export const fetchSharePayload = async (id) => {
+  try {
+    const res = await fetch(`/api/share?id=${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    const { payload } = await res.json();
+    return decodeSharePayload(payload);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Read the URL hash. Returns:
+ * - decoded share data for legacy #share= links
+ * - { pending: true, id } for short #s= links (needs async fetch)
+ * - null if no share hash
+ */
 export const getShareFromUrl = () => {
   const hash = window.location.hash;
-  if (!hash.startsWith('#share=')) return null;
-  return decodeSharePayload(hash.slice(7));
+  if (hash.startsWith('#s=')) return { pending: true, id: hash.slice(3) };
+  if (hash.startsWith('#share=')) return decodeSharePayload(hash.slice(7));
+  return null;
 };

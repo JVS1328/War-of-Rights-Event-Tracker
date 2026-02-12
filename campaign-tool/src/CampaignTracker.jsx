@@ -16,7 +16,7 @@ import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
 import { validateImportedCampaign, prepareCampaignExport, formatImportError } from './utils/campaignValidation';
-import { generateShareUrl } from './utils/shareMap';
+import { generateShareUrl, generateShortShareUrl } from './utils/shareMap';
 
 const STORAGE_KEY = 'WarOfRightsCampaignTracker';
 
@@ -315,15 +315,23 @@ const CampaignTracker = () => {
     event.target.value = '';
   };
 
-  const shareCampaignMap = () => {
+  const shareCampaignMap = async () => {
     if (!campaign) return;
-    const url = generateShareUrl(campaign);
-    navigator.clipboard.writeText(url).then(() => {
+
+    let url;
+    try {
+      url = await generateShortShareUrl(campaign);
+    } catch {
+      // Server unavailable — fall back to client-only long URL
+      url = generateShareUrl(campaign);
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
       alert('Share link copied to clipboard! Anyone with this link can view your campaign map.');
-    }).catch(() => {
-      // Fallback: show the URL for manual copy
+    } catch {
       prompt('Copy this link to share your campaign map:', url);
-    });
+    }
   };
 
   const saveSettings = (newSettings) => {
