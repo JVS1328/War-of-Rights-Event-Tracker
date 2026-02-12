@@ -1,9 +1,19 @@
-import { kv } from '@vercel/kv';
+import { createClient } from 'redis';
 import crypto from 'node:crypto';
 
 const MAX_PAYLOAD = 512_000; // 500 KB
 
+let redis;
+async function getRedis() {
+  if (!redis) {
+    redis = await createClient({ url: process.env.REDIS_URL }).connect();
+  }
+  return redis;
+}
+
 export default async function handler(req, res) {
+  const client = await getRedis();
+
   if (req.method === 'POST') {
     const { payload } = req.body;
     if (!payload || typeof payload !== 'string') {
@@ -14,7 +24,7 @@ export default async function handler(req, res) {
     }
 
     const id = crypto.createHash('sha256').update(payload).digest('hex').slice(0, 8);
-    await kv.set(`share:${id}`, payload);
+    await client.set(`share:${id}`, payload);
     return res.status(200).json({ id });
   }
 
@@ -24,7 +34,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing id' });
     }
 
-    const payload = await kv.get(`share:${id}`);
+    const payload = await client.get(`share:${id}`);
     if (payload == null) {
       return res.status(404).json({ error: 'Not found' });
     }
