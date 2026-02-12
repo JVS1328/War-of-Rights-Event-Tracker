@@ -51,6 +51,33 @@ export const createSharePayload = (campaign) => {
     };
   }
 
+  // Casualties totals
+  const battles = campaign.battles || [];
+  let casU = 0, casC = 0;
+  battles.forEach(b => { casU += b.casualties?.USA || 0; casC += b.casualties?.CSA || 0; });
+  if (casU || casC) base.cas = { u: casU, c: casC };
+
+  // Regiment data (only if regiments exist)
+  const regs = campaign.regiments || { USA: [], CSA: [] };
+  if (regs.USA.length || regs.CSA.length) {
+    const stats = campaign.regimentStats || {};
+    const encodeStats = (s) => ({
+      w: s.wins || 0, l: s.losses || 0, c: s.casualties || 0,
+      sp: s.spLost || 0, vg: s.vpGained || 0, vl: s.vpLost || 0,
+      b: (s.battles || []).map(b => ({
+        t: b.territoryName, tn: b.turn, w: b.won ? 1 : 0, r: b.role === 'Attacker' ? 'A' : 'D',
+        m: b.mapName, c: b.casualties || 0, sp: b.spLost || 0, vg: b.vpGained || 0, vl: b.vpLost || 0,
+      })),
+    });
+    const s = {};
+    [...regs.USA, ...regs.CSA].forEach(r => { if (stats[r.id]) s[r.id] = encodeStats(stats[r.id]); });
+    base.rg = {
+      U: regs.USA.map(r => ({ i: r.id, n: r.name })),
+      C: regs.CSA.map(r => ({ i: r.id, n: r.name })),
+      s,
+    };
+  }
+
   const tplKey = campaign.mapTemplate;
   const template = tplKey && tplKey !== 'custom' && CAMPAIGN_TEMPLATES[tplKey];
 
@@ -119,26 +146,56 @@ export const createSharePayload = (campaign) => {
 /**
  * Normalize a decoded payload into the shape SharedMapView expects.
  */
-const normalize = (raw, territories, pendingTerritoryIds) => ({
-  name: raw.n ?? raw.name,
-  turn: raw.tn ?? raw.turn,
-  date: raw.d ?? raw.date,
-  instantVP: raw.iv != null ? !!raw.iv : raw.instantVP,
-  battleCount: raw.bc ?? raw.battleCount ?? 0,
-  pendingCount: pendingTerritoryIds.length || undefined,
-  cpEnabled: raw.cp ? true : (raw.cpEnabled || false),
-  cpUSA: raw.cU ?? raw.cpUSA ?? 0,
-  cpCSA: raw.cC ?? raw.cpCSA ?? 0,
-  spSettings: raw.sp ? {
-    vpBase: raw.sp.v,
-    attackEnemy: raw.sp.aE,
-    attackNeutral: raw.sp.aN,
-    defenseFriendly: raw.sp.dF,
-    defenseNeutral: raw.sp.dN,
-  } : raw.spSettings,
-  territories,
-  pendingTerritoryIds,
-});
+const decodeRegiments = (rg) => {
+  if (!rg) return null;
+  const decodeStats = (s) => ({
+    wins: s.w || 0, losses: s.l || 0, casualties: s.c || 0,
+    spLost: s.sp || 0, vpGained: s.vg || 0, vpLost: s.vl || 0,
+    battles: (s.b || []).map(b => ({
+      territoryName: b.t, turn: b.tn, won: !!b.w, role: b.r === 'A' ? 'Attacker' : 'Defender',
+      mapName: b.m, casualties: b.c || 0, spLost: b.sp || 0, vpGained: b.vg || 0, vpLost: b.vl || 0,
+    })),
+  });
+  const regimentStats = {};
+  Object.entries(rg.s || {}).forEach(([id, s]) => { regimentStats[id] = decodeStats(s); });
+  return {
+    regiments: {
+      USA: (rg.U || []).map(r => ({ id: r.i, name: r.n })),
+      CSA: (rg.C || []).map(r => ({ id: r.i, name: r.n })),
+    },
+    regimentStats,
+  };
+};
+
+const normalize = (raw, territories, pendingTerritoryIds) => {
+  const cas = raw.cas;
+  const casU = cas?.u || 0, casC = cas?.c || 0;
+  const rg = decodeRegiments(raw.rg);
+
+  return {
+    name: raw.n ?? raw.name,
+    turn: raw.tn ?? raw.turn,
+    date: raw.d ?? raw.date,
+    instantVP: raw.iv != null ? !!raw.iv : raw.instantVP,
+    battleCount: raw.bc ?? raw.battleCount ?? 0,
+    pendingCount: pendingTerritoryIds.length || undefined,
+    cpEnabled: raw.cp ? true : (raw.cpEnabled || false),
+    cpUSA: raw.cU ?? raw.cpUSA ?? 0,
+    cpCSA: raw.cC ?? raw.cpCSA ?? 0,
+    spSettings: raw.sp ? {
+      vpBase: raw.sp.v,
+      attackEnemy: raw.sp.aE,
+      attackNeutral: raw.sp.aN,
+      defenseFriendly: raw.sp.dF,
+      defenseNeutral: raw.sp.dN,
+    } : raw.spSettings,
+    casualties: { usa: casU, csa: casC, total: casU + casC },
+    regiments: rg?.regiments || null,
+    regimentStats: rg?.regimentStats || null,
+    territories,
+    pendingTerritoryIds,
+  };
+};
 
 /**
  * Reconstruct from template + owner string (v2 compact).
