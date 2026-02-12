@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Map, Trophy, Calendar, Zap, MapPin, ChevronDown, ChevronRight, Star, ExternalLink } from 'lucide-react';
+import { Map, Trophy, Calendar, Zap, MapPin, ChevronDown, ChevronRight, Star, ExternalLink, Skull } from 'lucide-react';
 import MapView from './MapView';
+import RegimentStats from './RegimentStats';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
 
@@ -176,6 +177,30 @@ const SharedMapView = ({ shareData }) => {
                     )}
                   </span>
                 </div>
+
+                {/* Casualties */}
+                {shareData.casualties?.total > 0 && (
+                  <div className="pt-3 mt-3 border-t border-slate-700">
+                    <div className="text-sm text-slate-400 mb-2 font-semibold flex items-center gap-1">
+                      <Skull className="w-3.5 h-3.5" />
+                      Campaign Casualties
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-blue-400">USA:</span>
+                        <span className="text-white font-semibold">{shareData.casualties.usa.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-red-400">CSA:</span>
+                        <span className="text-white font-semibold">{shareData.casualties.csa.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-300">Total:</span>
+                        <span className="text-white font-bold">{shareData.casualties.total.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -207,6 +232,13 @@ const SharedMapView = ({ shareData }) => {
             </div>
           </div>
         </div>
+
+        {/* Regiment Leaderboard (reuse existing component) */}
+        {shareData.regiments && (
+          <div className="mb-6">
+            <RegimentStats campaign={{ regiments: shareData.regiments, regimentStats: shareData.regimentStats || {} }} />
+          </div>
+        )}
 
         {/* Territory List */}
         <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
