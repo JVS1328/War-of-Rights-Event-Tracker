@@ -241,6 +241,26 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                     </label>
                   </div>
                 )}
+
+                <div className="mt-3 bg-slate-800 rounded-lg p-3 border border-slate-600">
+                  <label className="block">
+                    <div className="text-white font-semibold mb-2 text-sm">
+                      Map Cooldown (turns)
+                    </div>
+                    <div className="text-xs text-slate-400 mb-2">
+                      After a map is played on a territory, it cannot be played again for this many turns.
+                      Set to 0 to disable map cooldown.
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={settings.mapCooldownTurns ?? 2}
+                      onChange={(e) => updateSetting('mapCooldownTurns', Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-24 px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
   
