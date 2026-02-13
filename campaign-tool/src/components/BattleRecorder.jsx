@@ -904,15 +904,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 </select>
               )}
 
-              {/* Map cooldown information */}
+              {/* Map cooldown information - Campaign-wide */}
               {selectedTerritory && cooldownMaps.size > 0 && (
                 <div className="mt-2 p-3 bg-slate-700/50 rounded border border-slate-600">
                   <div className="text-xs text-amber-400 font-semibold mb-2">
-                    Maps on Cooldown ({cooldownMaps.size})
+                    Maps on Cooldown - Campaign-Wide ({cooldownMaps.size})
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {Array.from(cooldownMaps.entries())
-                      .filter(([mapName]) => allTerritoryMaps.includes(mapName))
                       .sort((a, b) => b[1] - a[1])
                       .map(([mapName, turn]) => (
                         <div key={mapName} className="text-xs text-slate-400 flex justify-between items-center">

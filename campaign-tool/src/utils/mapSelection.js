@@ -50,7 +50,7 @@ export const resolveTerrainMaps = (territory, terrainGroups = {}, rolledTerrainT
 /**
  * Get available maps for a territory, considering:
  * 1. Maps assigned to the territory, or resolved from terrain group, or all maps
- * 2. Cooldown period - maps played recently cannot be replayed
+ * 2. Cooldown period - maps played recently cannot be replayed (campaign-wide)
  *
  * @param {Object} territory - The territory object with optional 'maps' array or 'terrainGroup' string
  * @param {Array} battles - All battles in the campaign
@@ -63,25 +63,23 @@ export const getAvailableMapsForTerritory = (territory, battles = [], currentTur
   // Determine base map pool for this territory
   const territoryMaps = resolveTerrainMaps(territory, terrainGroups);
 
-  // Find maps on cooldown (played within the cooldown window for this territory)
+  // Find maps on cooldown (played within the cooldown window across the entire campaign)
   const cooldownMaps = new Map(); // Map name -> turn it was last played
 
-  if (battles && battles.length > 0 && territory) {
-    battles
-      .filter(battle => battle.territoryId === territory.id)
-      .forEach(battle => {
-        const turnsSincePlay = currentTurn - battle.turn;
+  if (battles && battles.length > 0) {
+    battles.forEach(battle => {
+      const turnsSincePlay = currentTurn - battle.turn;
 
-        // Map is on cooldown if played in current turn or within the cooldown window
-        // Example with default 2: Map played in turn 5 is unavailable in turns 5, 6, 7
-        // and available again in turn 8 (turnsSincePlay >= cooldownTurns + 1)
-        if (turnsSincePlay <= mapCooldownTurns) {
-          // Store the most recent turn this map was played
-          if (!cooldownMaps.has(battle.mapName) || battle.turn > cooldownMaps.get(battle.mapName)) {
-            cooldownMaps.set(battle.mapName, battle.turn);
-          }
+      // Map is on cooldown if played in current turn or within the cooldown window
+      // Example with default 2: Map played in turn 5 is unavailable in turns 5, 6, 7
+      // and available again in turn 8 (turnsSincePlay >= cooldownTurns + 1)
+      if (turnsSincePlay <= mapCooldownTurns) {
+        // Store the most recent turn this map was played
+        if (!cooldownMaps.has(battle.mapName) || battle.turn > cooldownMaps.get(battle.mapName)) {
+          cooldownMaps.set(battle.mapName, battle.turn);
         }
-      });
+      }
+    });
   }
 
   // Filter out maps on cooldown
