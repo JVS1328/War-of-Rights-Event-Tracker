@@ -328,6 +328,9 @@ export const createDefaultCampaign = (customMap = null) => {
       // Team abilities settings
       abilityCooldown: 2,
 
+      // Map cooldown
+      mapCooldownTurns: 2,
+
       // Terrain map groups
       terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },
       terrainViz: { ...DEFAULT_TERRAIN_VIZ }
@@ -367,6 +370,9 @@ export const getDefaultSettings = () => ({
 
   // Team abilities settings
   abilityCooldown: 2,
+
+  // Map cooldown
+  mapCooldownTurns: 2,
 
   // Terrain map groups
   terrainGroups: { ...DEFAULT_TERRAIN_GROUPS },

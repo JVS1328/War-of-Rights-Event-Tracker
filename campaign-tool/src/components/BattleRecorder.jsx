@@ -115,7 +115,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
       { ...territory, maps: territoryMaps },
       campaign?.battles || [],
       currentTurn,
-      {} // terrainGroups already resolved above
+      {}, // terrainGroups already resolved above
+      campaign?.settings?.mapCooldownTurns ?? 2
     );
 
     setAvailableMaps(available);
@@ -917,7 +918,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         <div key={mapName} className="text-xs text-slate-400 flex justify-between items-center">
                           <span className="truncate">{mapName}</span>
                           <span className="text-orange-400 ml-2 whitespace-nowrap">
-                            {getMapCooldownMessage(mapName, cooldownMaps, currentTurn)}
+                            {getMapCooldownMessage(mapName, cooldownMaps, currentTurn, campaign?.settings?.mapCooldownTurns ?? 2)}
                           </span>
                         </div>
                       ))}

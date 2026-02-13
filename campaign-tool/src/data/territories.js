@@ -169,7 +169,33 @@ export const MAP_TERRITORY_MAPPING = {
   "Union Camp": "washington-dc",
   "Pat's Turnpike": "virginia-north",
   "Stefan's Lot": "virginia-shenandoah",
-  "Confederate Encampment": "virginia-richmond"
+  "Confederate Encampment": "virginia-richmond",
+
+  // Antietam Conquest maps -> Maryland
+  "Framing Fencelines": "maryland-antietam",
+  "Smokestacks": "maryland-antietam",
+  "Forest Stream": "maryland-antietam",
+  "Farmland": "maryland-antietam",
+  "Limestone Bridge": "maryland-antietam",
+  "Waterways": "maryland-antietam",
+
+  // Drill Camp Conquest maps
+  "Towering Trunks": "virginia-north",
+  "Corn Crib": "virginia-north",
+  "Orchards": "pennsylvania-gettysburg",
+  "Railroad Cut": "pennsylvania-gettysburg",
+
+  // Harpers Ferry Conquest maps
+  "Overlook": "harpers-ferry",
+  "River Town": "harpers-ferry",
+  "Outskirts": "harpers-ferry",
+  "Valley": "harpers-ferry",
+
+  // South Mountain Conquest maps
+  "Log Cabin": "south-mountain",
+  "Wheat Fields": "south-mountain",
+  "Rocky Slopes": "south-mountain",
+  "Hilltop": "south-mountain"
 };
 
 // Helper function to get territory ID from map name
@@ -199,7 +225,16 @@ export const ALL_MAPS = [
   "Crecy's Cornfield", "Crossley Creek", "Larsen Homestead",
   "South Woodlot", "Flemming's Meadow", "Wagon Road",
   "Union Camp", "Pat's Turnpike", "Stefan's Lot",
-  "Confederate Encampment"
+  "Confederate Encampment",
+  // Antietam Conquest
+  "Framing Fencelines", "Smokestacks", "Forest Stream",
+  "Farmland", "Limestone Bridge", "Waterways",
+  // Drill Camp Conquest
+  "Towering Trunks", "Corn Crib", "Orchards", "Railroad Cut",
+  // Harpers Ferry Conquest
+  "Overlook", "River Town", "Outskirts", "Valley",
+  // South Mountain Conquest
+  "Log Cabin", "Wheat Fields", "Rocky Slopes", "Hilltop"
 ].sort();
 
 // ============================================================================
@@ -251,5 +286,18 @@ export const MAPS_BY_MAPSET = {
     "South Woodlot", "Flemming's Meadow", "Wagon Road",
     "Union Camp", "Pat's Turnpike", "Stefan's Lot",
     "Confederate Encampment"
+  ],
+  'Antietam Conquest': [
+    "Framing Fencelines", "Smokestacks", "Forest Stream",
+    "Farmland", "Limestone Bridge", "Waterways"
+  ],
+  'Drill Camp Conquest': [
+    "Towering Trunks", "Corn Crib", "Orchards", "Railroad Cut"
+  ],
+  'Harpers Ferry Conquest': [
+    "Overlook", "River Town", "Outskirts", "Valley"
+  ],
+  'South Mountain Conquest': [
+    "Log Cabin", "Wheat Fields", "Rocky Slopes", "Hilltop"
   ]
 };
