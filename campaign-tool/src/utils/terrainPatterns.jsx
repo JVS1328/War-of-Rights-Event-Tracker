@@ -15,9 +15,9 @@ export const PATTERN_TYPES = {
 
 /** Default visualization config for the three built-in terrain groups */
 export const DEFAULT_TERRAIN_VIZ = {
-  Woods:    { patternType: 'circles',    color: '#15803d', colorAlt: '#166534', densityScaling: true },
-  Urban:    { patternType: 'rectangles', color: '#6b7280', colorAlt: '#4b5563', densityScaling: true },
-  Farmland: { patternType: 'lines',      color: '#a16207', colorAlt: '#a16207', densityScaling: false },
+  Wooded:    { patternType: 'circles',    color: '#15803d', colorAlt: '#166534', densityScaling: true },
+  Urban:     { patternType: 'rectangles', color: '#6b7280', colorAlt: '#4b5563', densityScaling: true },
+  Farmlands: { patternType: 'lines',      color: '#a16207', colorAlt: '#a16207', densityScaling: false },
 };
 
 /** Sensible default viz for newly-created custom terrain groups */

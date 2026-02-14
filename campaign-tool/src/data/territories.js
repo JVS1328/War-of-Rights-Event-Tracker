@@ -245,18 +245,34 @@ export const ALL_MAPS = [
 // ============================================================================
 
 export const DEFAULT_TERRAIN_GROUPS = {
+  'Farmlands': [
+    'Alexander Farm', 'Bloody Lane', 'Bolivar Heights Camp',
+    'Bolivar Heights Redoubt', "Burnside's Bridge", "Cooke's Countercharge",
+    'Corn Crib', "Cox's Push", "Crecy's Cornfield", 'Crossley Creek',
+    'Crossroads', 'Dunker Church', 'East Woods Skirmish', 'Farmland',
+    "Flemming's Meadow", 'Forest Stream', 'Framing Fencelines',
+    'Hagerstown Turnpike', "Hill's Counterattack", 'Hilltop',
+    "Hooker's Push", 'Limestone Bridge', "Miller's Cornfield",
+    'Nicodemus Hill', 'Otto and Sherrick Farms', "Pat's Turnpike",
+    'Piper Farm', 'Pry Ford', 'Pry House', 'Railroad Cut',
+    'Rocky Slopes', 'Roulette Lane', 'School House Ridge', 'Smith Field',
+    "Stefan's Lot", 'Union Camp', 'Valley', 'Wagon Road'
+  ],
+  'Wooded': [
+    "Anderson's Counterattack", "Burnside's Bridge", "Colquitt's Defense",
+    'Corn Crib', 'East Woods', 'East Woods Skirmish', 'Forest Stream',
+    "Garland's Stand", "Hatch's Attack", 'Hilltop', 'Larsen Homestead',
+    'Log Cabin', 'Maryland Heights', 'Orchards', 'Overlook',
+    'Pry Grist Mill', 'Railroad Cut', "Reno's Fall", 'Rocky Slopes',
+    'Smokestacks', 'South Woodlot', 'Towering Trunks', 'Waterways',
+    'West Woods'
+  ],
   'Urban': [
-    'Downtown', 'High Street', 'Washington Street', 'Shenandoah Street',
-    'Union Camp', 'Confederate Encampment', 'Crossroads'
-  ],
-  'Woods': [
-    'East Woods Skirmish', 'East Woods', 'West Woods',
-    'South Woodlot', 'Crossley Creek'
-  ],
-  'Farmland': [
-    'Alexander Farm', 'Smith Field', "Crecy's Cornfield",
-    'Larsen Homestead', "Flemming's Meadow", "Miller's Cornfield",
-    'Otto and Sherrick Farms', 'Piper Farm', 'Wagon Road'
+    'Bolivar Heights Camp', 'Bolivar Heights Redoubt',
+    'Confederate Encampment', 'Crossroads', 'Downtown',
+    'Harpers Ferry Graveyard', 'High Street', 'Otto and Sherrick Farms',
+    'Outskirts', 'River Crossing', 'River Town', 'Shenandoah Street',
+    'Union Camp', 'Washington Street'
   ]
 };
 

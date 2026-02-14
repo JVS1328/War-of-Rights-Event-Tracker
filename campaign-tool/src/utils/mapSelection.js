@@ -3,7 +3,7 @@ import { ALL_MAPS } from '../data/territories';
 /**
  * Roll a weighted random terrain type from a territory's terrain weights.
  *
- * @param {Object} terrainWeights - e.g. { Woods: 4, Farmland: 1, Urban: 1 }
+ * @param {Object} terrainWeights - e.g. { Wooded: 4, Farmlands: 1, Urban: 1 }
  * @returns {{ terrainType: string, roll: number, total: number }}
  */
 export const rollTerrainType = (terrainWeights) => {
