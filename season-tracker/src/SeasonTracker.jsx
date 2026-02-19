@@ -27,7 +27,8 @@ const getDefaultBalancerSettings = () => ({
   teammateWeight: 1.0,
   avgDiffWeight: 1.0,
   gapWeight: 0.75,
-  minDiffWeight: 0.50
+  minDiffWeight: 0.50,
+  divisionOppositionWeight: 0
 });
 
 // Map data from maps.py
@@ -1304,7 +1305,8 @@ const SeasonTracker = () => {
         balancerUnitCounts,
         balancerOpposingPairs,
         maxDiff,
-        teammate
+        teammate,
+        divisions
       );
 
       if (result) {
@@ -1332,7 +1334,7 @@ const SeasonTracker = () => {
     }
   };
 
-  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory) => {
+  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = []) => {
     // Validate and prepare unit data
     const unitData = {};
     try {
@@ -1364,6 +1366,14 @@ const SeasonTracker = () => {
       opposingMap[p1].add(p2);
       opposingMap[p2].add(p1);
     });
+
+    // Build unit-to-division lookup for division opposition scoring
+    const unitDivision = {};
+    if (balancerSettings.divisionOppositionWeight > 0 && divisionsList.length > 0) {
+      divisionsList.forEach(div => {
+        div.units.forEach(unit => { unitDivision[unit] = div.name; });
+      });
+    }
 
     let bestSolution = {
       score: Infinity,
@@ -1467,11 +1477,26 @@ const SeasonTracker = () => {
         calculatePairScore(teamA);
         calculatePairScore(teamB);
 
+        // Calculate division opposition score (negative = more same-division pairs opposing, which is good)
+        let divisionOppositionScore = 0;
+        if (balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0) {
+          const teamAArray = [...teamA];
+          const teamBArray = [...teamB];
+          for (const uA of teamAArray) {
+            const divA = unitDivision[uA];
+            if (!divA) continue;
+            for (const uB of teamBArray) {
+              if (unitDivision[uB] === divA) divisionOppositionScore--;
+            }
+          }
+        }
+
         // Calculate composite score accounting for all metrics together
         const currentScore = (teammateScore * balancerSettings.teammateWeight) +
                             (avgDiff * balancerSettings.avgDiffWeight) +
                             (gap * balancerSettings.gapWeight) +
-                            (minDiff * balancerSettings.minDiffWeight);
+                            (minDiff * balancerSettings.minDiffWeight) +
+                            (divisionOppositionScore * balancerSettings.divisionOppositionWeight);
 
         if (currentScore < bestSolution.score) {
           bestSolution = {
@@ -3826,6 +3851,18 @@ const SeasonTracker = () => {
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </div>
+                  {divisions.length > 0 && (
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">Division Opposition Weight</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={balancerSettings.divisionOppositionWeight}
+                        onChange={(e) => setBalancerSettings({ ...balancerSettings, divisionOppositionWeight: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
                   <p className="font-semibold text-amber-300 mb-2">💡 Weight Explanations:</p>
@@ -3834,6 +3871,9 @@ const SeasonTracker = () => {
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
                     <li><strong>Range Gap:</strong> Penalizes non-overlapping player ranges (e.g., Team A: 40-50, Team B: 60-70)</li>
                     <li><strong>Min Difference:</strong> Minimizes the difference between minimum player counts</li>
+                    {divisions.length > 0 && (
+                      <li><strong>Division Opposition:</strong> Prioritizes placing same-division units on opposing teams</li>
+                    )}
                   </ul>
                 </div>
               </div>
