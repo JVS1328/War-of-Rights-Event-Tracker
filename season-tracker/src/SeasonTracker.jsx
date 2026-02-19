@@ -27,7 +27,8 @@ const getDefaultBalancerSettings = () => ({
   teammateWeight: 1.0,
   avgDiffWeight: 1.0,
   gapWeight: 0.75,
-  minDiffWeight: 0.50
+  minDiffWeight: 0.50,
+  divisionOppositionWeight: 0
 });
 
 // Map data from maps.py
@@ -524,6 +525,7 @@ const SeasonTracker = () => {
       const tempStats = {};
       
       units.forEach(unit => {
+        if (nonTokenUnits.includes(unit)) return;
         tempStats[unit] = { points: 0 };
       });
 
@@ -550,6 +552,7 @@ const SeasonTracker = () => {
 
           if (!isPlayoffs) {
             winningTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === leadWinner) {
                 tempStats[unit].points += pointSystem.winLead;
               } else {
@@ -558,6 +561,7 @@ const SeasonTracker = () => {
             });
 
             losingTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === leadLoser) {
                 tempStats[unit].points += pointSystem.lossLead;
               } else {
@@ -577,6 +581,7 @@ const SeasonTracker = () => {
             const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
             sweepTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (sweepLeads.has(unit)) {
                 tempStats[unit].points += pointSystem.bonus2_0Lead;
               } else {
@@ -588,6 +593,7 @@ const SeasonTracker = () => {
             const sweepLead = week[`lead${week.round1Winner}`];
 
             sweepTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === sweepLead) {
                 tempStats[unit].points += pointSystem.bonus2_0Lead;
               } else {
@@ -608,8 +614,9 @@ const SeasonTracker = () => {
       const prevEloData = calculateEloRatings(previousWeekIdx);
       previousElo = prevEloData.eloRatings;
       
-      // Calculate previous Elo ranks
+      // Calculate previous Elo ranks (exclude non-token units)
       const prevEloStandings = Object.entries(previousElo)
+        .filter(([unit]) => !nonTokenUnits.includes(unit))
         .map(([unit, elo]) => ({ unit, elo }))
         .sort((a, b) => b.elo - a.elo);
       
@@ -1256,6 +1263,21 @@ const SeasonTracker = () => {
     setShowBalancerModal(true);
   };
 
+  const closeBalancerModal = () => {
+    if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
+      updateWeek(selectedWeek.id, {
+        ...selectedWeek,
+        unitPlayerCounts: { ...balancerUnitCounts }
+      });
+      setUnitPlayerCounts(prev => ({
+        ...prev,
+        ...balancerUnitCounts
+      }));
+    }
+    setShowBalancerModal(false);
+    setBalancerResults(null);
+  };
+
   const runBalancer = () => {
     if (!selectedWeek) return;
 
@@ -1283,7 +1305,8 @@ const SeasonTracker = () => {
         balancerUnitCounts,
         balancerOpposingPairs,
         maxDiff,
-        teammate
+        teammate,
+        divisions
       );
 
       if (result) {
@@ -1311,7 +1334,7 @@ const SeasonTracker = () => {
     }
   };
 
-  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory) => {
+  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = []) => {
     // Validate and prepare unit data
     const unitData = {};
     try {
@@ -1343,6 +1366,14 @@ const SeasonTracker = () => {
       opposingMap[p1].add(p2);
       opposingMap[p2].add(p1);
     });
+
+    // Build unit-to-division lookup for division opposition scoring
+    const unitDivision = {};
+    if (balancerSettings.divisionOppositionWeight > 0 && divisionsList.length > 0) {
+      divisionsList.forEach(div => {
+        div.units.forEach(unit => { unitDivision[unit] = div.name; });
+      });
+    }
 
     let bestSolution = {
       score: Infinity,
@@ -1446,11 +1477,26 @@ const SeasonTracker = () => {
         calculatePairScore(teamA);
         calculatePairScore(teamB);
 
+        // Calculate division opposition score (negative = more same-division pairs opposing, which is good)
+        let divisionOppositionScore = 0;
+        if (balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0) {
+          const teamAArray = [...teamA];
+          const teamBArray = [...teamB];
+          for (const uA of teamAArray) {
+            const divA = unitDivision[uA];
+            if (!divA) continue;
+            for (const uB of teamBArray) {
+              if (unitDivision[uB] === divA) divisionOppositionScore--;
+            }
+          }
+        }
+
         // Calculate composite score accounting for all metrics together
         const currentScore = (teammateScore * balancerSettings.teammateWeight) +
                             (avgDiff * balancerSettings.avgDiffWeight) +
                             (gap * balancerSettings.gapWeight) +
-                            (minDiff * balancerSettings.minDiffWeight);
+                            (minDiff * balancerSettings.minDiffWeight) +
+                            (divisionOppositionScore * balancerSettings.divisionOppositionWeight);
 
         if (currentScore < bestSolution.score) {
           bestSolution = {
@@ -2322,6 +2368,26 @@ const SeasonTracker = () => {
   };
 
   // Calculate team balance stats for current week assignments
+  // Get division matchups between two teams (same-division units on opposing teams)
+  const getDivisionMatchups = (teamA, teamB) => {
+    if (divisions.length === 0) return [];
+    const unitDiv = {};
+    divisions.forEach(div => {
+      div.units.forEach(unit => { unitDiv[unit] = div.name; });
+    });
+    const matchups = [];
+    for (const uA of teamA) {
+      const divA = unitDiv[uA];
+      if (!divA) continue;
+      for (const uB of teamB) {
+        if (unitDiv[uB] === divA) {
+          matchups.push({ unitA: uA, unitB: uB, division: divA });
+        }
+      }
+    }
+    return matchups;
+  };
+
   const calculateWeekTeamStats = () => {
     if (!selectedWeek) return null;
     
@@ -2350,6 +2416,9 @@ const SeasonTracker = () => {
     const avgDiff = Math.abs(avgA - avgB);
     const minDiff = Math.abs(minA - minB);
     const maxDiff = Math.abs(maxA - maxB);
+    const totalMin = minA + minB;
+    const totalMax = maxA + maxB;
+    const totalAvg = avgA + avgB;
     
     // Calculate average teammate history for each team
     // Only count weeks BEFORE the current week (same as balancer)
@@ -2418,6 +2487,9 @@ const SeasonTracker = () => {
       avgDiff,
       minDiff,
       maxDiff,
+      totalMin,
+      totalMax,
+      totalAvg,
       avgHistoryA,
       avgHistoryB,
       combinedAvgHistory
@@ -3799,6 +3871,18 @@ const SeasonTracker = () => {
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </div>
+                  {divisions.length > 0 && (
+                    <div>
+                      <label className="block text-sm text-slate-300 mb-1">Division Opposition Weight</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={balancerSettings.divisionOppositionWeight}
+                        onChange={(e) => setBalancerSettings({ ...balancerSettings, divisionOppositionWeight: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
                   <p className="font-semibold text-amber-300 mb-2">💡 Weight Explanations:</p>
@@ -3807,6 +3891,9 @@ const SeasonTracker = () => {
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
                     <li><strong>Range Gap:</strong> Penalizes non-overlapping player ranges (e.g., Team A: 40-50, Team B: 60-70)</li>
                     <li><strong>Min Difference:</strong> Minimizes the difference between minimum player counts</li>
+                    {divisions.length > 0 && (
+                      <li><strong>Division Opposition:</strong> Prioritizes placing same-division units on opposing teams</li>
+                    )}
                   </ul>
                 </div>
               </div>
@@ -4289,6 +4376,26 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                        <div className="text-lg font-bold text-cyan-400">
+                          {stats.totalMin}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                        <div className="text-lg font-bold text-purple-400">
+                          {stats.totalMax}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
+                        <div className="text-lg font-bold text-amber-400">
+                          {stats.totalAvg.toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
                       <div className="bg-slate-700 rounded p-3">
@@ -4315,6 +4422,27 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    {balancerSettings.divisionOppositionWeight > 0 && (() => {
+                      const matchups = getDivisionMatchups(stats.teamA, stats.teamB);
+                      if (matchups.length === 0) return null;
+                      return (
+                        <div className="mt-3 bg-slate-700 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2">
+                            Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                          </div>
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {matchups.map((m, i) => (
+                              <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                                <span className="text-blue-400">{m.unitA}</span>
+                                <span className="text-slate-500">vs</span>
+                                <span className="text-red-400">{m.unitB}</span>
+                                <span className="text-indigo-400 ml-1">({m.division})</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <p className="text-xs text-slate-400 mt-3 text-center">
                       💡 Lower teammate history = better variety • Counts history up to the current week, not including.
                     </p>
@@ -4824,21 +4952,7 @@ const SeasonTracker = () => {
                       Team Balancer - {selectedWeek.name}
                     </h2>
                     <button
-                      onClick={() => {
-                        // Save unit counts to the week and global state when closing
-                        if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
-                          updateWeek(selectedWeek.id, {
-                            ...selectedWeek,
-                            unitPlayerCounts: { ...balancerUnitCounts }
-                          });
-                          setUnitPlayerCounts(prev => ({
-                            ...prev,
-                            ...balancerUnitCounts
-                          }));
-                        }
-                        setShowBalancerModal(false);
-                        setBalancerResults(null);
-                      }}
+                      onClick={closeBalancerModal}
                       className="p-2 hover:bg-slate-700 rounded-lg transition"
                     >
                       <X className="w-5 h-5 text-slate-400" />
@@ -5018,6 +5132,47 @@ const SeasonTracker = () => {
                             </div>
                           </div>
                         </div>
+                        <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                            <div className="text-lg font-bold text-cyan-400">
+                              {balancerResults.minA + balancerResults.minB}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                            <div className="text-lg font-bold text-purple-400">
+                              {balancerResults.maxA + balancerResults.maxB}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
+                            <div className="text-lg font-bold text-amber-400">
+                              {((balancerResults.minA + balancerResults.maxA + balancerResults.minB + balancerResults.maxB) / 2).toFixed(1)}
+                            </div>
+                          </div>
+                        </div>
+                        {balancerSettings.divisionOppositionWeight > 0 && (() => {
+                          const matchups = getDivisionMatchups(balancerResults.teamA, balancerResults.teamB);
+                          if (matchups.length === 0) return null;
+                          return (
+                            <div className="mt-3 max-w-4xl mx-auto bg-slate-700 rounded p-3">
+                              <div className="text-xs text-slate-400 mb-2">
+                                Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                              </div>
+                              <div className="space-y-1 max-h-32 overflow-y-auto">
+                                {matchups.map((m, i) => (
+                                  <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                                    <span className="text-blue-400">{m.unitA}</span>
+                                    <span className="text-slate-500">vs</span>
+                                    <span className="text-red-400">{m.unitB}</span>
+                                    <span className="text-indigo-400 ml-1">({m.division})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <p className="text-slate-400 text-sm mt-3">
                           💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
@@ -5114,7 +5269,7 @@ const SeasonTracker = () => {
                       {!balancerResults ? (
                         <>
                           <button
-                            onClick={() => setShowBalancerModal(false)}
+                            onClick={closeBalancerModal}
                             className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
                           >
                             Close
