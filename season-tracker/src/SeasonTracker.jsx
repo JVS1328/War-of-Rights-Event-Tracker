@@ -2368,6 +2368,26 @@ const SeasonTracker = () => {
   };
 
   // Calculate team balance stats for current week assignments
+  // Get division matchups between two teams (same-division units on opposing teams)
+  const getDivisionMatchups = (teamA, teamB) => {
+    if (divisions.length === 0) return [];
+    const unitDiv = {};
+    divisions.forEach(div => {
+      div.units.forEach(unit => { unitDiv[unit] = div.name; });
+    });
+    const matchups = [];
+    for (const uA of teamA) {
+      const divA = unitDiv[uA];
+      if (!divA) continue;
+      for (const uB of teamB) {
+        if (unitDiv[uB] === divA) {
+          matchups.push({ unitA: uA, unitB: uB, division: divA });
+        }
+      }
+    }
+    return matchups;
+  };
+
   const calculateWeekTeamStats = () => {
     if (!selectedWeek) return null;
     
@@ -4402,6 +4422,27 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    {balancerSettings.divisionOppositionWeight > 0 && (() => {
+                      const matchups = getDivisionMatchups(stats.teamA, stats.teamB);
+                      if (matchups.length === 0) return null;
+                      return (
+                        <div className="mt-3 bg-slate-700 rounded p-3">
+                          <div className="text-xs text-slate-400 mb-2">
+                            Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                          </div>
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {matchups.map((m, i) => (
+                              <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                                <span className="text-blue-400">{m.unitA}</span>
+                                <span className="text-slate-500">vs</span>
+                                <span className="text-red-400">{m.unitB}</span>
+                                <span className="text-indigo-400 ml-1">({m.division})</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <p className="text-xs text-slate-400 mt-3 text-center">
                       💡 Lower teammate history = better variety • Counts history up to the current week, not including.
                     </p>
@@ -5091,6 +5132,47 @@ const SeasonTracker = () => {
                             </div>
                           </div>
                         </div>
+                        <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                            <div className="text-lg font-bold text-cyan-400">
+                              {balancerResults.minA + balancerResults.minB}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                            <div className="text-lg font-bold text-purple-400">
+                              {balancerResults.maxA + balancerResults.maxB}
+                            </div>
+                          </div>
+                          <div className="bg-slate-700 rounded p-3">
+                            <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
+                            <div className="text-lg font-bold text-amber-400">
+                              {((balancerResults.minA + balancerResults.maxA + balancerResults.minB + balancerResults.maxB) / 2).toFixed(1)}
+                            </div>
+                          </div>
+                        </div>
+                        {balancerSettings.divisionOppositionWeight > 0 && (() => {
+                          const matchups = getDivisionMatchups(balancerResults.teamA, balancerResults.teamB);
+                          if (matchups.length === 0) return null;
+                          return (
+                            <div className="mt-3 max-w-4xl mx-auto bg-slate-700 rounded p-3">
+                              <div className="text-xs text-slate-400 mb-2">
+                                Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                              </div>
+                              <div className="space-y-1 max-h-32 overflow-y-auto">
+                                {matchups.map((m, i) => (
+                                  <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                                    <span className="text-blue-400">{m.unitA}</span>
+                                    <span className="text-slate-500">vs</span>
+                                    <span className="text-red-400">{m.unitB}</span>
+                                    <span className="text-indigo-400 ml-1">({m.division})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <p className="text-slate-400 text-sm mt-3">
                           💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
