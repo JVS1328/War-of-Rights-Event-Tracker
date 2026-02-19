@@ -524,6 +524,7 @@ const SeasonTracker = () => {
       const tempStats = {};
       
       units.forEach(unit => {
+        if (nonTokenUnits.includes(unit)) return;
         tempStats[unit] = { points: 0 };
       });
 
@@ -550,6 +551,7 @@ const SeasonTracker = () => {
 
           if (!isPlayoffs) {
             winningTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === leadWinner) {
                 tempStats[unit].points += pointSystem.winLead;
               } else {
@@ -558,6 +560,7 @@ const SeasonTracker = () => {
             });
 
             losingTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === leadLoser) {
                 tempStats[unit].points += pointSystem.lossLead;
               } else {
@@ -577,6 +580,7 @@ const SeasonTracker = () => {
             const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
             sweepTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (sweepLeads.has(unit)) {
                 tempStats[unit].points += pointSystem.bonus2_0Lead;
               } else {
@@ -588,6 +592,7 @@ const SeasonTracker = () => {
             const sweepLead = week[`lead${week.round1Winner}`];
 
             sweepTeam.forEach(unit => {
+              if (!tempStats[unit]) return;
               if (unit === sweepLead) {
                 tempStats[unit].points += pointSystem.bonus2_0Lead;
               } else {
@@ -608,8 +613,9 @@ const SeasonTracker = () => {
       const prevEloData = calculateEloRatings(previousWeekIdx);
       previousElo = prevEloData.eloRatings;
       
-      // Calculate previous Elo ranks
+      // Calculate previous Elo ranks (exclude non-token units)
       const prevEloStandings = Object.entries(previousElo)
+        .filter(([unit]) => !nonTokenUnits.includes(unit))
         .map(([unit, elo]) => ({ unit, elo }))
         .sort((a, b) => b.elo - a.elo);
       
@@ -1254,6 +1260,21 @@ const SeasonTracker = () => {
     setBalancerResults(null);
     setBalancerStatus('');
     setShowBalancerModal(true);
+  };
+
+  const closeBalancerModal = () => {
+    if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
+      updateWeek(selectedWeek.id, {
+        ...selectedWeek,
+        unitPlayerCounts: { ...balancerUnitCounts }
+      });
+      setUnitPlayerCounts(prev => ({
+        ...prev,
+        ...balancerUnitCounts
+      }));
+    }
+    setShowBalancerModal(false);
+    setBalancerResults(null);
   };
 
   const runBalancer = () => {
@@ -2350,6 +2371,9 @@ const SeasonTracker = () => {
     const avgDiff = Math.abs(avgA - avgB);
     const minDiff = Math.abs(minA - minB);
     const maxDiff = Math.abs(maxA - maxB);
+    const totalMin = minA + minB;
+    const totalMax = maxA + maxB;
+    const totalAvg = avgA + avgB;
     
     // Calculate average teammate history for each team
     // Only count weeks BEFORE the current week (same as balancer)
@@ -2418,6 +2442,9 @@ const SeasonTracker = () => {
       avgDiff,
       minDiff,
       maxDiff,
+      totalMin,
+      totalMax,
+      totalAvg,
       avgHistoryA,
       avgHistoryB,
       combinedAvgHistory
@@ -4289,6 +4316,26 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                        <div className="text-lg font-bold text-cyan-400">
+                          {stats.totalMin}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                        <div className="text-lg font-bold text-purple-400">
+                          {stats.totalMax}
+                        </div>
+                      </div>
+                      <div className="bg-slate-700 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
+                        <div className="text-lg font-bold text-amber-400">
+                          {stats.totalAvg.toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
                       <div className="bg-slate-700 rounded p-3">
@@ -4824,21 +4871,7 @@ const SeasonTracker = () => {
                       Team Balancer - {selectedWeek.name}
                     </h2>
                     <button
-                      onClick={() => {
-                        // Save unit counts to the week and global state when closing
-                        if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
-                          updateWeek(selectedWeek.id, {
-                            ...selectedWeek,
-                            unitPlayerCounts: { ...balancerUnitCounts }
-                          });
-                          setUnitPlayerCounts(prev => ({
-                            ...prev,
-                            ...balancerUnitCounts
-                          }));
-                        }
-                        setShowBalancerModal(false);
-                        setBalancerResults(null);
-                      }}
+                      onClick={closeBalancerModal}
                       className="p-2 hover:bg-slate-700 rounded-lg transition"
                     >
                       <X className="w-5 h-5 text-slate-400" />
@@ -5114,7 +5147,7 @@ const SeasonTracker = () => {
                       {!balancerResults ? (
                         <>
                           <button
-                            onClick={() => setShowBalancerModal(false)}
+                            onClick={closeBalancerModal}
                             className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
                           >
                             Close
