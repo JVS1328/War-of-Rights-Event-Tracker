@@ -179,9 +179,9 @@ const WarOfRightsLogAnalyzer = () => {
     const assignments = playerAssignments || {};
     const regimentMap = {};
     
-    // Collect all regiments and normalize them
-    selectedRound.kills.forEach(death => {
-      const regiment = assignments[death.player] || extractRegimentTag(death.player);
+    // Collect all regiments from all known players and normalize them
+    getKnownPlayers(selectedRound).forEach(playerName => {
+      const regiment = assignments[playerName] || extractRegimentTag(playerName);
       if (regiment !== 'UNTAGGED') {
         const normalized = normalizeRegimentTag(regiment);
         if (!regimentMap[normalized]) {
@@ -189,7 +189,7 @@ const WarOfRightsLogAnalyzer = () => {
         }
       }
     });
-    
+
     return Object.keys(regimentMap).sort();
   };
 
@@ -198,18 +198,18 @@ const WarOfRightsLogAnalyzer = () => {
 
     const currentAssignments = { ...playerAssignments } || {};
     
-    // Build regiment list with counts and player lists
+    // Build regiment list with counts and player lists from all known players
     const regimentData = {};
-    selectedRound.kills.forEach(death => {
-      const currentRegiment = currentAssignments[death.player] || extractRegimentTag(death.player);
+    getKnownPlayers(selectedRound).forEach(playerName => {
+      const currentRegiment = currentAssignments[playerName] || extractRegimentTag(playerName);
       if (!regimentData[currentRegiment]) {
         regimentData[currentRegiment] = {
           count: 0,
           players: []
         };
       }
-      if (!regimentData[currentRegiment].players.includes(death.player)) {
-        regimentData[currentRegiment].players.push(death.player);
+      if (!regimentData[currentRegiment].players.includes(playerName)) {
+        regimentData[currentRegiment].players.push(playerName);
         regimentData[currentRegiment].count++;
       }
     });
@@ -382,6 +382,15 @@ const WarOfRightsLogAnalyzer = () => {
     return rounds.filter(round => round.endTime !== null);
   };
 
+  // Get all known players for a round from all available sources (joins, chat, kills)
+  const getKnownPlayers = (round) => {
+    const known = new Set();
+    Object.keys(round.playerSessions || {}).forEach(p => known.add(p));
+    (round.chatPlayers || []).forEach(p => known.add(p));
+    round.kills.forEach(k => known.add(k.player));
+    return [...known];
+  };
+
   const parseLogFile = (logText) => {
     const lines = logText.split('\n');
     const parsedRounds = [];
@@ -416,6 +425,7 @@ const WarOfRightsLogAnalyzer = () => {
           kills: [],
           teamkills: [],
           playerSessions: {},
+          chatPlayers: new Set(), // Players discovered from chat messages
           adjustedCasualties: 0 // Track adjusted casualties (excluding initial spawns)
         };
       }
@@ -528,6 +538,34 @@ const WarOfRightsLogAnalyzer = () => {
           }
         }
       }
+
+      // Detect chat messages to discover players present in the round
+      if ((line.includes('[Team]') || line.includes('[All]')) && currentRound) {
+        const chatMatch = line.match(/<(\d{2}:\d{2}:\d{2})>\s+\[(Team|All)\]\s+(.+)/);
+        if (chatMatch) {
+          const chatTime = chatMatch[1];
+          let playerName = chatMatch[3].trim();
+          // Remove message content after ': ' if present
+          const colonIndex = playerName.indexOf(': ');
+          if (colonIndex !== -1) {
+            playerName = playerName.substring(0, colonIndex).trim();
+          }
+
+          // Only track chats at or after round start
+          let shouldTrack = true;
+          if (currentRound.startTime && currentRound.startTime !== 'Unknown') {
+            const chatSeconds = chatTime.split(':').map(Number);
+            const startSeconds = currentRound.startTime.split(':').map(Number);
+            const chatTimeInSeconds = chatSeconds[0] * 3600 + chatSeconds[1] * 60 + chatSeconds[2];
+            const startTimeInSeconds = startSeconds[0] * 3600 + startSeconds[1] * 60 + startSeconds[2];
+            shouldTrack = chatTimeInSeconds >= startTimeInSeconds;
+          }
+
+          if (shouldTrack) {
+            currentRound.chatPlayers.add(playerName);
+          }
+        }
+      }
     });
 
     // Push last round if exists
@@ -535,8 +573,10 @@ const WarOfRightsLogAnalyzer = () => {
       parsedRounds.push(currentRound);
     }
 
-    // Calculate adjusted casualties for each round (excluding initial spawns)
+    // Post-process rounds: convert chatPlayers Set to array, calculate adjusted casualties
     parsedRounds.forEach(round => {
+      round.chatPlayers = [...round.chatPlayers];
+
       const playerRespawnSkipCount = {};
       const playerSessionCounts = {};
       
@@ -645,6 +685,25 @@ const WarOfRightsLogAnalyzer = () => {
       regimentCasualties[regiment].casualties++;
       regimentCasualties[regiment].deaths.push(death.player);
       regimentCasualties[regiment].players[death.player]++;
+    });
+
+    // Include all known players (from joins and chat) even without casualties
+    getKnownPlayers(round).forEach(playerName => {
+      let regiment = assignments[playerName] || extractRegimentTag(playerName);
+      regiment = normalizeRegimentTag(regiment);
+
+      if (!regimentCasualties[regiment]) {
+        regimentCasualties[regiment] = {
+          name: regiment,
+          casualties: 0,
+          deaths: [],
+          players: {}
+        };
+      }
+
+      if (!regimentCasualties[regiment].players[playerName]) {
+        regimentCasualties[regiment].players[playerName] = 0;
+      }
     });
 
     // Convert to array and sort by casualties
@@ -960,7 +1019,7 @@ const WarOfRightsLogAnalyzer = () => {
 
   const getAllPlayers = () => {
     if (!selectedRound) return [];
-    
+
     const playerMap = {};
     selectedRound.kills.forEach(death => {
       const baseRegiment = getPlayerRegiment(death.player);
@@ -973,6 +1032,19 @@ const WarOfRightsLogAnalyzer = () => {
         };
       }
       playerMap[death.player].deaths++;
+    });
+
+    // Include known players not found in kills (from joins and chat)
+    getKnownPlayers(selectedRound).forEach(playerName => {
+      if (!playerMap[playerName]) {
+        const baseRegiment = getPlayerRegiment(playerName);
+        playerMap[playerName] = {
+          name: playerName,
+          regiment: baseRegiment,
+          displayRegiment: pendingEdits[playerName] || baseRegiment,
+          deaths: 0
+        };
+      }
     });
 
     return Object.values(playerMap).sort((a, b) =>
@@ -1626,7 +1698,7 @@ const WarOfRightsLogAnalyzer = () => {
                         {round.adjustedCasualties} casualties
                       </div>
                       <div className="text-sm opacity-75">
-                        {new Set(round.kills.map(k => k.player)).size} players
+                        {getKnownPlayers(round).length} players
                       </div>
                     </button>
                   ))}
