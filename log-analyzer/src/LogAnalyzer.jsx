@@ -412,8 +412,15 @@ const WarOfRightsLogAnalyzer = () => {
     lines.forEach(line => {
       // Detect round start
       if (line.includes('CGameRulesEventHelper::OnRoundStarted')) {
-        if (currentRound) {
+        if (currentRound && currentRound.endTime !== null) {
+          // Previous round completed normally, push it
           parsedRounds.push(currentRound);
+        } else if (currentRound && currentRound.endTime === null) {
+          // Consecutive OnRoundStarted without a victory in between.
+          // Keep the existing round data (players, sessions, chat) and
+          // treat the original start time as the real start so we don't
+          // lose players discovered between the two events.
+          return;
         }
         roundNumber++;
         const timeMatch = line.match(/<(\d{2}:\d{2}:\d{2})>/);
