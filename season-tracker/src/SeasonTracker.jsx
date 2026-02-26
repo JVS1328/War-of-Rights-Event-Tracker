@@ -888,6 +888,188 @@ const SeasonTracker = () => {
     return { overall, byMap };
   };
 
+  // Calculate per-unit per-map win/loss records from historical weeks
+  const calculateUnitMapStats = (maxWeekIndex = null) => {
+    const unitMapRecords = {}; // { unitName: { mapName: { wins, losses } } }
+
+    const weeksToProcess = maxWeekIndex !== null
+      ? weeks.slice(0, maxWeekIndex + 1)
+      : weeks;
+
+    weeksToProcess.forEach(week => {
+      const teamAUnits = week.teamA || [];
+      const teamBUnits = week.teamB || [];
+      if (teamAUnits.length === 0 || teamBUnits.length === 0) return;
+
+      [1, 2].forEach(roundNum => {
+        const mapName = week[`round${roundNum}Map`];
+        const winner = week[`round${roundNum}Winner`];
+        if (!mapName || !winner) return;
+
+        const winningUnits = winner === 'A' ? teamAUnits : teamBUnits;
+        const losingUnits = winner === 'A' ? teamBUnits : teamAUnits;
+
+        winningUnits.forEach(unit => {
+          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
+          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
+          unitMapRecords[unit][mapName].wins++;
+        });
+
+        losingUnits.forEach(unit => {
+          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
+          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
+          unitMapRecords[unit][mapName].losses++;
+        });
+      });
+    });
+
+    return unitMapRecords;
+  };
+
+  // Calculate win probability for a round combining Elo, global map history, and unit map history
+  // Returns { teamAProb, teamBProb } as percentages (0-100)
+  const calculateWinProbability = (teamA, teamB, mapName, flipped, weekIndex) => {
+    if (teamA.length === 0 || teamB.length === 0) return null;
+
+    const previousWeekIdx = weekIndex != null ? weekIndex - 1 : weeks.length - 1;
+
+    // --- Factor 1: Elo-based expected outcome ---
+    const { eloRatings } = previousWeekIdx >= 0
+      ? calculateEloRatings(previousWeekIdx)
+      : { eloRatings: {} };
+
+    const getPlayerCt = (unit) => {
+      const counts = weekIndex != null && weeks[weekIndex]?.unitPlayerCounts?.[unit]
+        ? weeks[weekIndex].unitPlayerCounts[unit]
+        : unitPlayerCounts[unit];
+      if (!counts) return 25;
+      const min = parseInt(counts.min) || 0;
+      const max = parseInt(counts.max) || 0;
+      return (min + max) / 2 || 25;
+    };
+
+    const totalPlayersA = teamA.reduce((sum, u) => sum + getPlayerCt(u), 0);
+    const totalPlayersB = teamB.reduce((sum, u) => sum + getPlayerCt(u), 0);
+
+    const avgEloA = totalPlayersA > 0
+      ? teamA.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersA
+      : eloSystem.initialElo;
+    const avgEloB = totalPlayersB > 0
+      ? teamB.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersB
+      : eloSystem.initialElo;
+
+    let eloProbA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
+
+    // Apply map bias to Elo probability (same logic as Elo calculation)
+    if (mapName) {
+      const week = weekIndex != null ? weeks[weekIndex] : null;
+      const weekMapBiases = week?.mapBiases || mapBiases;
+      const weekEloBiasPercentages = week?.eloBiasPercentages || eloBiasPercentages;
+      const mapBiasLevel = weekMapBiases[mapName] ?? 0;
+
+      const biasPercentMap = {
+        0: 1.00,
+        1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
+        1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
+        2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
+        2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
+      };
+      const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
+
+      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
+      const usaSide = flipped ? 'B' : 'A';
+      const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
+
+      if (attackerSide === 'A') {
+        eloProbA *= biasMultiplier;
+      } else {
+        eloProbA /= biasMultiplier;
+      }
+      eloProbA = Math.max(0.05, Math.min(0.95, eloProbA));
+    }
+
+    // --- Factor 2: Global map win rate (USA/CSA side history) ---
+    let globalMapProbA = 0.5; // neutral if no map or no data
+    if (mapName) {
+      const { byMap } = calculateMapStats();
+      const mapData = byMap[mapName];
+      if (mapData && mapData.plays >= 2) {
+        const usaSide = flipped ? 'B' : 'A';
+        const usaWinRate = mapData.plays > 0 ? mapData.usaWins / mapData.plays : 0.5;
+        // If team A is USA side, their global map probability is the USA win rate
+        globalMapProbA = usaSide === 'A' ? usaWinRate : (1 - usaWinRate);
+        // Regress toward 0.5 for small sample sizes (Bayesian shrinkage)
+        const confidence = Math.min(1, mapData.plays / 10);
+        globalMapProbA = 0.5 + (globalMapProbA - 0.5) * confidence;
+      }
+    }
+
+    // --- Factor 3: Unit-specific map history ---
+    let unitMapProbA = 0.5; // neutral if no data
+    if (mapName) {
+      const unitMapStats = calculateUnitMapStats(previousWeekIdx >= 0 ? previousWeekIdx : null);
+
+      const getTeamMapWinRate = (team) => {
+        let totalWins = 0;
+        let totalGames = 0;
+        team.forEach(unit => {
+          const record = unitMapStats[unit]?.[mapName];
+          if (record) {
+            totalWins += record.wins;
+            totalGames += record.wins + record.losses;
+          }
+        });
+        if (totalGames === 0) return null;
+        const raw = totalWins / totalGames;
+        // Regress toward 0.5 for small samples
+        const confidence = Math.min(1, totalGames / (team.length * 3));
+        return 0.5 + (raw - 0.5) * confidence;
+      };
+
+      const teamAMapRate = getTeamMapWinRate(teamA);
+      const teamBMapRate = getTeamMapWinRate(teamB);
+
+      if (teamAMapRate !== null && teamBMapRate !== null) {
+        // Both teams have data - combine their perspectives
+        unitMapProbA = (teamAMapRate + (1 - teamBMapRate)) / 2;
+      } else if (teamAMapRate !== null) {
+        unitMapProbA = teamAMapRate;
+      } else if (teamBMapRate !== null) {
+        unitMapProbA = 1 - teamBMapRate;
+      }
+      // else stays 0.5
+    }
+
+    // --- Combine factors using log-odds (Bayesian-style) ---
+    // Weights: Elo is primary, global map and unit map history are secondary signals
+    const toLogOdds = (p) => Math.log(Math.max(0.01, Math.min(0.99, p)) / (1 - Math.max(0.01, Math.min(0.99, p))));
+    const fromLogOdds = (lo) => 1 / (1 + Math.exp(-lo));
+
+    const eloWeight = 1.0;
+    const globalMapWeight = mapName ? 0.4 : 0;
+    const unitMapWeight = mapName ? 0.35 : 0;
+    const totalWeight = eloWeight + globalMapWeight + unitMapWeight;
+
+    const combinedLogOdds = (
+      toLogOdds(eloProbA) * eloWeight +
+      toLogOdds(globalMapProbA) * globalMapWeight +
+      toLogOdds(unitMapProbA) * unitMapWeight
+    ) / totalWeight;
+
+    let combinedProbA = fromLogOdds(combinedLogOdds);
+    combinedProbA = Math.max(0.05, Math.min(0.95, combinedProbA));
+
+    return {
+      teamAProb: Math.round(combinedProbA * 1000) / 10,
+      teamBProb: Math.round((1 - combinedProbA) * 1000) / 10,
+      factors: {
+        elo: { probA: Math.round(eloProbA * 1000) / 10 },
+        globalMap: mapName ? { probA: Math.round(globalMapProbA * 1000) / 10 } : null,
+        unitMap: mapName ? { probA: Math.round(unitMapProbA * 1000) / 10 } : null
+      }
+    };
+  };
+
   // Helper function to get unit player count
   const getUnitPlayerCount = (unitName, weekIndex = null) => {
     // If weekIndex is provided and week has specific player counts, use those
@@ -1322,7 +1504,9 @@ const SeasonTracker = () => {
           maxB,
           avgHistoryA: stats.avgHistoryA,
           avgHistoryB: stats.avgHistoryB,
-          combinedAvgHistory: stats.combinedAvgHistory
+          combinedAvgHistory: stats.combinedAvgHistory,
+          round1Probability: stats.round1Probability,
+          round2Probability: stats.round2Probability
         });
         setBalancerStatus(`Best solution found! Avg. Diff: ${score.toFixed(1)}`);
       } else {
@@ -2363,8 +2547,21 @@ const SeasonTracker = () => {
     const avgHistoryA = calculateTeamAvgHistory(teamA);
     const avgHistoryB = calculateTeamAvgHistory(teamB);
     const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
-    
-    return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory };
+
+    // Calculate win probabilities for each round if week is selected
+    let round1Probability = null;
+    let round2Probability = null;
+    if (selectedWeek && teamA.length > 0 && teamB.length > 0) {
+      const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+      const round1Map = selectedWeek.round1Map;
+      const round1Flipped = selectedWeek.round1Flipped || false;
+      const round2Map = selectedWeek.round2Map;
+      const round2Flipped = selectedWeek.round2Flipped || false;
+      round1Probability = calculateWinProbability(teamA, teamB, round1Map, round1Flipped, weekIdx);
+      round2Probability = calculateWinProbability(teamA, teamB, round2Map, round2Flipped, weekIdx);
+    }
+
+    return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory, round1Probability, round2Probability };
   };
 
   // Calculate team balance stats for current week assignments
@@ -2474,7 +2671,20 @@ const SeasonTracker = () => {
     const avgHistoryA = calculateTeamAvgHistory(teamA);
     const avgHistoryB = calculateTeamAvgHistory(teamB);
     const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
-    
+
+    // Calculate win probabilities for each round
+    const round1Map = selectedWeek.round1Map;
+    const round1Flipped = selectedWeek.round1Flipped || false;
+    const round2Map = selectedWeek.round2Map;
+    const round2Flipped = selectedWeek.round2Flipped || false;
+
+    const round1Probability = (teamA.length > 0 && teamB.length > 0)
+      ? calculateWinProbability(teamA, teamB, round1Map, round1Flipped, weekIdx)
+      : null;
+    const round2Probability = (teamA.length > 0 && teamB.length > 0)
+      ? calculateWinProbability(teamA, teamB, round2Map, round2Flipped, weekIdx)
+      : null;
+
     return {
       teamA,
       teamB,
@@ -2492,7 +2702,9 @@ const SeasonTracker = () => {
       totalAvg,
       avgHistoryA,
       avgHistoryB,
-      combinedAvgHistory
+      combinedAvgHistory,
+      round1Probability,
+      round2Probability
     };
   };
 
@@ -2539,7 +2751,9 @@ const SeasonTracker = () => {
       maxB: newStats.maxB,
       avgHistoryA: newStats.avgHistoryA,
       avgHistoryB: newStats.avgHistoryB,
-      combinedAvgHistory: newStats.combinedAvgHistory
+      combinedAvgHistory: newStats.combinedAvgHistory,
+      round1Probability: newStats.round1Probability,
+      round2Probability: newStats.round2Probability
     });
 
     setDraggedUnit(null);
@@ -4396,6 +4610,59 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    {/* Win Probability Bars */}
+                    {(stats.round1Probability || stats.round2Probability) && (
+                      <div className="mt-4 space-y-3">
+                        <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4" />
+                          Win Probability
+                        </h4>
+                        {[
+                          { label: 'Round 1', prob: stats.round1Probability, map: selectedWeek.round1Map },
+                          { label: 'Round 2', prob: stats.round2Probability, map: selectedWeek.round2Map }
+                        ].map(({ label, prob, map }) => {
+                          if (!prob) return null;
+                          return (
+                            <div key={label} className="bg-slate-700 rounded p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                <div className="flex gap-3 text-xs">
+                                  {prob.factors.elo && (
+                                    <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                  )}
+                                  {prob.factors.globalMap && (
+                                    <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                  )}
+                                  {prob.factors.unitMap && (
+                                    <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                  <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                      width: `${prob.teamAProb}%`,
+                                      background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
+                                    }}
+                                  />
+                                  <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                      width: `${prob.teamBProb}%`,
+                                      background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
                       <div className="bg-slate-700 rounded p-3">
@@ -5173,6 +5440,59 @@ const SeasonTracker = () => {
                             </div>
                           );
                         })()}
+                        {/* Win Probability Bars */}
+                        {(balancerResults.round1Probability || balancerResults.round2Probability) && (
+                          <div className="mt-4 max-w-4xl mx-auto space-y-3">
+                            <h4 className="text-sm font-semibold text-amber-400 flex items-center justify-center gap-2">
+                              <TrendingUp className="w-4 h-4" />
+                              Win Probability
+                            </h4>
+                            {[
+                              { label: 'Round 1', prob: balancerResults.round1Probability, map: selectedWeek?.round1Map },
+                              { label: 'Round 2', prob: balancerResults.round2Probability, map: selectedWeek?.round2Map }
+                            ].map(({ label, prob, map }) => {
+                              if (!prob) return null;
+                              return (
+                                <div key={label} className="bg-slate-700 rounded p-3">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                    <div className="flex gap-3 text-xs">
+                                      {prob.factors.elo && (
+                                        <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                      )}
+                                      {prob.factors.globalMap && (
+                                        <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                      )}
+                                      {prob.factors.unitMap && (
+                                        <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                    <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                      <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                          width: `${prob.teamAProb}%`,
+                                          background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
+                                        }}
+                                      />
+                                      <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                          width: `${prob.teamBProb}%`,
+                                          background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         <p className="text-slate-400 text-sm mt-3">
                           💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
