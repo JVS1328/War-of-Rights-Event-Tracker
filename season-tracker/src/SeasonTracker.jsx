@@ -293,7 +293,8 @@ const SeasonTracker = () => {
       weeklyCasualties: {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
-      }
+      },
+      roundSwaps: { r1: [], r2: [] }
     };
     setWeeks([...weeks, newWeek]);
   };
@@ -316,6 +317,19 @@ const SeasonTracker = () => {
   const renameWeek = (weekId, newName) => {
     updateWeek(weekId, { name: newName });
     setEditingWeek(null);
+  };
+
+  // Get effective teams for a specific round, accounting for unit swaps
+  const getEffectiveTeams = (week, roundNum) => {
+    const baseTeamA = week.teamA || [];
+    const baseTeamB = week.teamB || [];
+    const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+
+    if (swaps.size === 0) return { teamA: baseTeamA, teamB: baseTeamB };
+
+    const teamA = baseTeamA.filter(u => !swaps.has(u)).concat(baseTeamB.filter(u => swaps.has(u)));
+    const teamB = baseTeamB.filter(u => !swaps.has(u)).concat(baseTeamA.filter(u => swaps.has(u)));
+    return { teamA, teamB };
   };
 
   // Team Management
@@ -371,8 +385,9 @@ const SeasonTracker = () => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
 
-        const winningTeam = week[`team${winner}`];
-        const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
 
         // Get leads based on playoffs or single round leads mode
         let leadWinner, leadLoser;
@@ -440,16 +455,20 @@ const SeasonTracker = () => {
 
       // 2-0 Sweep Bonus (skip in playoffs)
       if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
-        const sweepTeam = week[`team${week.round1Winner}`];
+        const sweepWinner = week.round1Winner;
+        // Only units on the winning side in BOTH rounds get the sweep bonus
+        const effectiveR1 = getEffectiveTeams(week, 1);
+        const effectiveR2 = getEffectiveTeams(week, 2);
+        const r1WinTeam = new Set(sweepWinner === 'A' ? effectiveR1.teamA : effectiveR1.teamB);
+        const r2WinTeam = new Set(sweepWinner === 'A' ? effectiveR2.teamA : effectiveR2.teamB);
+        const sweepTeam = [...r1WinTeam].filter(u => r2WinTeam.has(u));
 
         if (isSingleRoundLeads) {
-          // For single round leads, both round leads get the lead bonus
-          const r1Lead = week[`lead${week.round1Winner}_r1`];
-          const r2Lead = week[`lead${week.round1Winner}_r2`];
+          const r1Lead = week[`lead${sweepWinner}_r1`];
+          const r2Lead = week[`lead${sweepWinner}_r2`];
           const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
           sweepTeam.forEach(unit => {
-            // Skip non-token units
             if (!stats[unit]) return;
 
             if (sweepLeads.has(unit)) {
@@ -459,11 +478,9 @@ const SeasonTracker = () => {
             }
           });
         } else {
-          // Regular week: use week-level lead
-          const sweepLead = week[`lead${week.round1Winner}`];
+          const sweepLead = week[`lead${sweepWinner}`];
 
           sweepTeam.forEach(unit => {
-            // Skip non-token units
             if (!stats[unit]) return;
 
             if (unit === sweepLead) {
@@ -888,6 +905,187 @@ const SeasonTracker = () => {
     return { overall, byMap };
   };
 
+  // Calculate per-unit per-map win/loss records from historical weeks
+  const calculateUnitMapStats = (maxWeekIndex = null) => {
+    const unitMapRecords = {}; // { unitName: { mapName: { wins, losses } } }
+
+    const weeksToProcess = maxWeekIndex !== null
+      ? weeks.slice(0, maxWeekIndex + 1)
+      : weeks;
+
+    weeksToProcess.forEach(week => {
+      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
+
+      [1, 2].forEach(roundNum => {
+        const mapName = week[`round${roundNum}Map`];
+        const winner = week[`round${roundNum}Winner`];
+        if (!mapName || !winner) return;
+
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningUnits = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingUnits = winner === 'A' ? effective.teamB : effective.teamA;
+
+        winningUnits.forEach(unit => {
+          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
+          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
+          unitMapRecords[unit][mapName].wins++;
+        });
+
+        losingUnits.forEach(unit => {
+          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
+          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
+          unitMapRecords[unit][mapName].losses++;
+        });
+      });
+    });
+
+    return unitMapRecords;
+  };
+
+  // Calculate win probability for a round combining Elo, global map history, and unit map history
+  // Returns { teamAProb, teamBProb } as percentages (0-100)
+  const calculateWinProbability = (teamA, teamB, mapName, flipped, weekIndex) => {
+    if (teamA.length === 0 || teamB.length === 0) return null;
+
+    const previousWeekIdx = weekIndex != null ? weekIndex - 1 : weeks.length - 1;
+
+    // --- Factor 1: Elo-based expected outcome ---
+    const { eloRatings } = previousWeekIdx >= 0
+      ? calculateEloRatings(previousWeekIdx)
+      : { eloRatings: {} };
+
+    const getPlayerCt = (unit) => {
+      const counts = weekIndex != null && weeks[weekIndex]?.unitPlayerCounts?.[unit]
+        ? weeks[weekIndex].unitPlayerCounts[unit]
+        : unitPlayerCounts[unit];
+      if (!counts) return 25;
+      const min = parseInt(counts.min) || 0;
+      const max = parseInt(counts.max) || 0;
+      return (min + max) / 2 || 25;
+    };
+
+    const totalPlayersA = teamA.reduce((sum, u) => sum + getPlayerCt(u), 0);
+    const totalPlayersB = teamB.reduce((sum, u) => sum + getPlayerCt(u), 0);
+
+    const avgEloA = totalPlayersA > 0
+      ? teamA.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersA
+      : eloSystem.initialElo;
+    const avgEloB = totalPlayersB > 0
+      ? teamB.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersB
+      : eloSystem.initialElo;
+
+    let eloProbA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
+
+    // Apply map bias to Elo probability (same logic as Elo calculation)
+    if (mapName) {
+      const week = weekIndex != null ? weeks[weekIndex] : null;
+      const weekMapBiases = week?.mapBiases || mapBiases;
+      const weekEloBiasPercentages = week?.eloBiasPercentages || eloBiasPercentages;
+      const mapBiasLevel = weekMapBiases[mapName] ?? 0;
+
+      const biasPercentMap = {
+        0: 1.00,
+        1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
+        1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
+        2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
+        2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
+      };
+      const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
+
+      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
+      const usaSide = flipped ? 'B' : 'A';
+      const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
+
+      if (attackerSide === 'A') {
+        eloProbA *= biasMultiplier;
+      } else {
+        eloProbA /= biasMultiplier;
+      }
+      eloProbA = Math.max(0.05, Math.min(0.95, eloProbA));
+    }
+
+    // --- Factor 2: Global map win rate (USA/CSA side history) ---
+    let globalMapProbA = 0.5; // neutral if no map or no data
+    if (mapName) {
+      const { byMap } = calculateMapStats();
+      const mapData = byMap[mapName];
+      if (mapData && mapData.plays >= 2) {
+        const usaSide = flipped ? 'B' : 'A';
+        const usaWinRate = mapData.plays > 0 ? mapData.usaWins / mapData.plays : 0.5;
+        // If team A is USA side, their global map probability is the USA win rate
+        globalMapProbA = usaSide === 'A' ? usaWinRate : (1 - usaWinRate);
+        // Regress toward 0.5 for small sample sizes (Bayesian shrinkage)
+        const confidence = Math.min(1, mapData.plays / 10);
+        globalMapProbA = 0.5 + (globalMapProbA - 0.5) * confidence;
+      }
+    }
+
+    // --- Factor 3: Unit-specific map history ---
+    let unitMapProbA = 0.5; // neutral if no data
+    if (mapName) {
+      const unitMapStats = calculateUnitMapStats(previousWeekIdx >= 0 ? previousWeekIdx : null);
+
+      const getTeamMapWinRate = (team) => {
+        let totalWins = 0;
+        let totalGames = 0;
+        team.forEach(unit => {
+          const record = unitMapStats[unit]?.[mapName];
+          if (record) {
+            totalWins += record.wins;
+            totalGames += record.wins + record.losses;
+          }
+        });
+        if (totalGames === 0) return null;
+        const raw = totalWins / totalGames;
+        // Regress toward 0.5 for small samples
+        const confidence = Math.min(1, totalGames / (team.length * 3));
+        return 0.5 + (raw - 0.5) * confidence;
+      };
+
+      const teamAMapRate = getTeamMapWinRate(teamA);
+      const teamBMapRate = getTeamMapWinRate(teamB);
+
+      if (teamAMapRate !== null && teamBMapRate !== null) {
+        // Both teams have data - combine their perspectives
+        unitMapProbA = (teamAMapRate + (1 - teamBMapRate)) / 2;
+      } else if (teamAMapRate !== null) {
+        unitMapProbA = teamAMapRate;
+      } else if (teamBMapRate !== null) {
+        unitMapProbA = 1 - teamBMapRate;
+      }
+      // else stays 0.5
+    }
+
+    // --- Combine factors using log-odds (Bayesian-style) ---
+    // Weights: Elo is primary, global map and unit map history are secondary signals
+    const toLogOdds = (p) => Math.log(Math.max(0.01, Math.min(0.99, p)) / (1 - Math.max(0.01, Math.min(0.99, p))));
+    const fromLogOdds = (lo) => 1 / (1 + Math.exp(-lo));
+
+    const eloWeight = 1.0;
+    const globalMapWeight = mapName ? 0.4 : 0;
+    const unitMapWeight = mapName ? 0.35 : 0;
+    const totalWeight = eloWeight + globalMapWeight + unitMapWeight;
+
+    const combinedLogOdds = (
+      toLogOdds(eloProbA) * eloWeight +
+      toLogOdds(globalMapProbA) * globalMapWeight +
+      toLogOdds(unitMapProbA) * unitMapWeight
+    ) / totalWeight;
+
+    let combinedProbA = fromLogOdds(combinedLogOdds);
+    combinedProbA = Math.max(0.05, Math.min(0.95, combinedProbA));
+
+    return {
+      teamAProb: Math.round(combinedProbA * 1000) / 10,
+      teamBProb: Math.round((1 - combinedProbA) * 1000) / 10,
+      factors: {
+        elo: { probA: Math.round(eloProbA * 1000) / 10 },
+        globalMap: mapName ? { probA: Math.round(globalMapProbA * 1000) / 10 } : null,
+        unitMap: mapName ? { probA: Math.round(unitMapProbA * 1000) / 10 } : null
+      }
+    };
+  };
+
   // Helper function to get unit player count
   const getUnitPlayerCount = (unitName, weekIndex = null) => {
     // If weekIndex is provided and week has specific player counts, use those
@@ -947,10 +1145,9 @@ const SeasonTracker = () => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
 
-        const teamA = week.teamA || [];
-        const teamB = week.teamB || [];
-        const winningTeam = winner === 'A' ? teamA : teamB;
-        const losingTeam = winner === 'A' ? teamB : teamA;
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
 
         // Collect global loss data
         winningTeam.forEach(() => totalLossesRecords.push(0));
@@ -1101,10 +1298,7 @@ const SeasonTracker = () => {
       : weeks;
 
     weeksToProcess.forEach((week, weekIdx) => {
-      const teamAUnits = week.teamA || [];
-      const teamBUnits = week.teamB || [];
-      
-      if (teamAUnits.length === 0 || teamBUnits.length === 0) return;
+      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
 
       const isPlayoffs = week.isPlayoffs || false;
       const round1Winner = week.round1Winner;
@@ -1118,6 +1312,10 @@ const SeasonTracker = () => {
       [1, 2].forEach(roundNum => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
+
+        const effective = getEffectiveTeams(week, roundNum);
+        const teamAUnits = effective.teamA;
+        const teamBUnits = effective.teamB;
 
         // Calculate team Elo averages with player count weighting
         const totalPlayersA = teamAUnits.reduce((sum, u) => sum + getUnitPlayerCount(u, weekIdx), 0);
@@ -1144,14 +1342,12 @@ const SeasonTracker = () => {
         let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
 
         // Apply map bias if map is selected
-        // Use per-week snapshots if available, fall back to global state for backward compatibility
         const mapName = week[`round${roundNum}Map`];
         if (mapName) {
           const weekMapBiases = week.mapBiases || mapBiases;
           const weekEloBiasPercentages = week.eloBiasPercentages || eloBiasPercentages;
           const mapBiasLevel = weekMapBiases[mapName] ?? 0;
 
-          // Build bias multiplier map from percentages
           const biasPercentMap = {
             0: 1.00,
             1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
@@ -1165,7 +1361,7 @@ const SeasonTracker = () => {
           const flipped = week[`round${roundNum}Flipped`] || false;
           const usaSide = flipped ? 'B' : 'A';
           const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
-          
+
           if (attackerSide === 'A') {
             expectedA *= biasMultiplier;
           } else {
@@ -1182,10 +1378,9 @@ const SeasonTracker = () => {
         const applyEloChanges = (teamUnits, totalPlayers, leadUnit, sign, sweepBonus) => {
           if (totalPlayers <= 0) return;
 
-          // Log-scaled + normalized weights
           const weights = {};
           let totalWeight = 0;
-          
+
           teamUnits.forEach(unit => {
             const playerCount = getUnitPlayerCount(unit, weekIdx);
             const weight = Math.pow(Math.log(1 + playerCount), sizeInfluence)
@@ -1194,22 +1389,18 @@ const SeasonTracker = () => {
             totalWeight += weight;
           });
 
-          // Normalize weights
           Object.keys(weights).forEach(unit => {
             weights[unit] /= totalWeight;
           });
 
-          // Calculate team average Elo for proportional distribution
           const teamAvgElo = teamUnits.reduce((sum, u) => sum + eloRatings[u], 0) / teamUnits.length;
 
-          // Apply changes
           teamUnits.forEach(unit => {
             const k = roundsPlayed[unit] < provisionalRounds ? kFactorProvisional : kFactorStandard;
             const roundMultiplier = isPlayoffs ? playoffMultiplier : 1.0;
-            
-            // Relative factor for proportional distribution
+
             const relativeFactor = Math.max(0.8, Math.min(1.2, Math.pow(teamAvgElo / eloRatings[unit], 0.5)));
-            
+
             const delta = k * baseChange * weights[unit] * sign * roundMultiplier * sweepBonus * relativeFactor;
             eloRatings[unit] += delta;
           });
@@ -1322,7 +1513,9 @@ const SeasonTracker = () => {
           maxB,
           avgHistoryA: stats.avgHistoryA,
           avgHistoryB: stats.avgHistoryB,
-          combinedAvgHistory: stats.combinedAvgHistory
+          combinedAvgHistory: stats.combinedAvgHistory,
+          round1Probability: stats.round1Probability,
+          round2Probability: stats.round2Probability
         });
         setBalancerStatus(`Best solution found! Avg. Diff: ${score.toFixed(1)}`);
       } else {
@@ -2363,8 +2556,21 @@ const SeasonTracker = () => {
     const avgHistoryA = calculateTeamAvgHistory(teamA);
     const avgHistoryB = calculateTeamAvgHistory(teamB);
     const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
-    
-    return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory };
+
+    // Calculate win probabilities for each round if week is selected
+    let round1Probability = null;
+    let round2Probability = null;
+    if (selectedWeek && teamA.length > 0 && teamB.length > 0) {
+      const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+      const round1Map = selectedWeek.round1Map;
+      const round1Flipped = selectedWeek.round1Flipped || false;
+      const round2Map = selectedWeek.round2Map;
+      const round2Flipped = selectedWeek.round2Flipped || false;
+      round1Probability = calculateWinProbability(teamA, teamB, round1Map, round1Flipped, weekIdx);
+      round2Probability = calculateWinProbability(teamA, teamB, round2Map, round2Flipped, weekIdx);
+    }
+
+    return { minA, maxA, minB, maxB, avgDiff, minDiff, avgHistoryA, avgHistoryB, combinedAvgHistory, round1Probability, round2Probability };
   };
 
   // Calculate team balance stats for current week assignments
@@ -2474,7 +2680,20 @@ const SeasonTracker = () => {
     const avgHistoryA = calculateTeamAvgHistory(teamA);
     const avgHistoryB = calculateTeamAvgHistory(teamB);
     const combinedAvgHistory = (avgHistoryA + avgHistoryB) / 2;
-    
+
+    // Calculate win probabilities for each round
+    const round1Map = selectedWeek.round1Map;
+    const round1Flipped = selectedWeek.round1Flipped || false;
+    const round2Map = selectedWeek.round2Map;
+    const round2Flipped = selectedWeek.round2Flipped || false;
+
+    const round1Probability = (teamA.length > 0 && teamB.length > 0)
+      ? calculateWinProbability(teamA, teamB, round1Map, round1Flipped, weekIdx)
+      : null;
+    const round2Probability = (teamA.length > 0 && teamB.length > 0)
+      ? calculateWinProbability(teamA, teamB, round2Map, round2Flipped, weekIdx)
+      : null;
+
     return {
       teamA,
       teamB,
@@ -2492,7 +2711,9 @@ const SeasonTracker = () => {
       totalAvg,
       avgHistoryA,
       avgHistoryB,
-      combinedAvgHistory
+      combinedAvgHistory,
+      round1Probability,
+      round2Probability
     };
   };
 
@@ -2539,7 +2760,9 @@ const SeasonTracker = () => {
       maxB: newStats.maxB,
       avgHistoryA: newStats.avgHistoryA,
       avgHistoryB: newStats.avgHistoryB,
-      combinedAvgHistory: newStats.combinedAvgHistory
+      combinedAvgHistory: newStats.combinedAvgHistory,
+      round1Probability: newStats.round1Probability,
+      round2Probability: newStats.round2Probability
     });
 
     setDraggedUnit(null);
@@ -2874,7 +3097,8 @@ const SeasonTracker = () => {
         weeklyCasualties: {
           [teamNames.A]: { r1: {}, r2: {} },
           [teamNames.B]: { r1: {}, r2: {} }
-        }
+        },
+        roundSwaps: { r1: [], r2: [] }
       };
     });
 
@@ -4396,6 +4620,59 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
+                    {/* Win Probability Bars */}
+                    {(stats.round1Probability || stats.round2Probability) && (
+                      <div className="mt-4 space-y-3">
+                        <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4" />
+                          Win Probability
+                        </h4>
+                        {[
+                          { label: 'Round 1', prob: stats.round1Probability, map: selectedWeek.round1Map },
+                          { label: 'Round 2', prob: stats.round2Probability, map: selectedWeek.round2Map }
+                        ].map(({ label, prob, map }) => {
+                          if (!prob) return null;
+                          return (
+                            <div key={label} className="bg-slate-700 rounded p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                <div className="flex gap-3 text-xs">
+                                  {prob.factors.elo && (
+                                    <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                  )}
+                                  {prob.factors.globalMap && (
+                                    <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                  )}
+                                  {prob.factors.unitMap && (
+                                    <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                  <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                      width: `${prob.teamAProb}%`,
+                                      background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
+                                    }}
+                                  />
+                                  <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                      width: `${prob.teamBProb}%`,
+                                      background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
                       <div className="bg-slate-700 rounded p-3">
@@ -4841,6 +5118,46 @@ const SeasonTracker = () => {
                         min="0"
                       />
                     </div>
+                    {/* Round 1 Balance Swaps */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
+                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                          {[
+                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
+                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
+                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
+                            const swaps = selectedWeek.roundSwaps?.r1 || [];
+                            const isSwapped = swaps.includes(unit);
+                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
+                            return (
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSwapped}
+                                  onChange={() => {
+                                    const current = selectedWeek.roundSwaps?.r1 || [];
+                                    const updated = isSwapped
+                                      ? current.filter(u => u !== unit)
+                                      : [...current, unit];
+                                    updateWeek(selectedWeek.id, {
+                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: updated }
+                                    });
+                                  }}
+                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                />
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                  {unit}
+                                </span>
+                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
+                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -4907,10 +5224,50 @@ const SeasonTracker = () => {
                         min="0"
                       />
                     </div>
+                    {/* Round 2 Balance Swaps */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
+                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                          {[
+                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
+                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
+                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
+                            const swaps = selectedWeek.roundSwaps?.r2 || [];
+                            const isSwapped = swaps.includes(unit);
+                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
+                            return (
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSwapped}
+                                  onChange={() => {
+                                    const current = selectedWeek.roundSwaps?.r2 || [];
+                                    const updated = isSwapped
+                                      ? current.filter(u => u !== unit)
+                                      : [...current, unit];
+                                    updateWeek(selectedWeek.id, {
+                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: updated }
+                                    });
+                                  }}
+                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                />
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                  {unit}
+                                </span>
+                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
+                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-              
+
               {/* Action Buttons */}
               <div className="mt-4 space-y-2">
                 <button
@@ -5173,6 +5530,59 @@ const SeasonTracker = () => {
                             </div>
                           );
                         })()}
+                        {/* Win Probability Bars */}
+                        {(balancerResults.round1Probability || balancerResults.round2Probability) && (
+                          <div className="mt-4 max-w-4xl mx-auto space-y-3">
+                            <h4 className="text-sm font-semibold text-amber-400 flex items-center justify-center gap-2">
+                              <TrendingUp className="w-4 h-4" />
+                              Win Probability
+                            </h4>
+                            {[
+                              { label: 'Round 1', prob: balancerResults.round1Probability, map: selectedWeek?.round1Map },
+                              { label: 'Round 2', prob: balancerResults.round2Probability, map: selectedWeek?.round2Map }
+                            ].map(({ label, prob, map }) => {
+                              if (!prob) return null;
+                              return (
+                                <div key={label} className="bg-slate-700 rounded p-3">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                    <div className="flex gap-3 text-xs">
+                                      {prob.factors.elo && (
+                                        <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                      )}
+                                      {prob.factors.globalMap && (
+                                        <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                      )}
+                                      {prob.factors.unitMap && (
+                                        <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                    <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                      <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                          width: `${prob.teamAProb}%`,
+                                          background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
+                                        }}
+                                      />
+                                      <div
+                                        className="h-full transition-all duration-300"
+                                        style={{
+                                          width: `${prob.teamBProb}%`,
+                                          background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         <p className="text-slate-400 text-sm mt-3">
                           💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
