@@ -382,6 +382,54 @@ const WarOfRightsLogAnalyzer = () => {
     return rounds.filter(round => round.endTime !== null);
   };
 
+  // When no round has casualty data, merge all rounds into one collective player roster
+  const mergeRoundsIfNoCasualties = (rounds) => {
+    if (rounds.length <= 1) return rounds;
+    if (rounds.some(r => r.kills.length > 0)) return rounds;
+
+    // All rounds have zero kills — merge into a single round
+    const merged = {
+      id: 1,
+      startTime: rounds[0].startTime,
+      endTime: rounds[rounds.length - 1].endTime,
+      duration: null,
+      kills: [],
+      teamkills: [],
+      playerSessions: {},
+      chatPlayers: [],
+      adjustedCasualties: 0,
+    };
+
+    // Calculate duration
+    if (merged.startTime !== 'Unknown' && merged.endTime !== 'Unknown') {
+      const start = merged.startTime.split(':').map(Number);
+      const end = merged.endTime.split(':').map(Number);
+      const durationSeconds = (end[0] * 3600 + end[1] * 60 + end[2]) - (start[0] * 3600 + start[1] * 60 + start[2]);
+      const minutes = Math.floor(durationSeconds / 60);
+      const seconds = durationSeconds % 60;
+      merged.duration = `${minutes}m ${seconds}s`;
+    }
+
+    // Merge all players from every round
+    rounds.forEach(round => {
+      Object.entries(round.playerSessions).forEach(([player, sessions]) => {
+        if (!merged.playerSessions[player]) {
+          merged.playerSessions[player] = [];
+        }
+        merged.playerSessions[player].push(...sessions);
+      });
+
+      const chatList = Array.isArray(round.chatPlayers) ? round.chatPlayers : [...round.chatPlayers];
+      chatList.forEach(player => {
+        if (!merged.chatPlayers.includes(player)) {
+          merged.chatPlayers.push(player);
+        }
+      });
+    });
+
+    return [merged];
+  };
+
   // Get all known players for a round from all available sources (joins, chat, kills)
   const getKnownPlayers = (round) => {
     const known = new Set();
@@ -619,7 +667,7 @@ const WarOfRightsLogAnalyzer = () => {
 
     // Reset all state when loading a new log file
     // Filter out incomplete rounds (map switches without end times)
-    const completeRounds = filterCompleteRounds(parsedRounds);
+    const completeRounds = mergeRoundsIfNoCasualties(filterCompleteRounds(parsedRounds));
     setRounds(completeRounds);
     setLogDate(extractedDate);
     setSelectedRound(null);
@@ -745,7 +793,7 @@ const WarOfRightsLogAnalyzer = () => {
           }
 
           // Filter out incomplete rounds (map switches without end times)
-          const completeRounds = filterCompleteRounds(importedData.rounds || []);
+          const completeRounds = mergeRoundsIfNoCasualties(filterCompleteRounds(importedData.rounds || []));
 
           // Load the imported data into state
           setRounds(completeRounds);
