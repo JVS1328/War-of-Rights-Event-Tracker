@@ -397,6 +397,7 @@ const WarOfRightsLogAnalyzer = () => {
     let currentRound = null;
     let roundNumber = 0;
     let extractedDate = null;
+    let betweenRoundBuffer = new Set(); // Players seen between rounds (after victory, before next start)
 
     // Extract date from near the top of the file: "Log Started at Wed Nov 19 19:31:14 2025"
     // Extract only: "Wed Nov 19 2025" (remove time)
@@ -435,6 +436,14 @@ const WarOfRightsLogAnalyzer = () => {
           chatPlayers: new Set(), // Players discovered from chat messages
           adjustedCasualties: 0 // Track adjusted casualties (excluding initial spawns)
         };
+
+        // Merge between-round players into new round as present from start
+        betweenRoundBuffer.forEach(playerName => {
+          if (!currentRound.playerSessions[playerName]) {
+            currentRound.playerSessions[playerName] = [{ join: currentRound.startTime, leave: null }];
+          }
+        });
+        betweenRoundBuffer.clear();
       }
 
       // Detect round end (victory)
@@ -460,23 +469,27 @@ const WarOfRightsLogAnalyzer = () => {
         if (match) {
           const joinTime = match[1];
           const playerName = match[2].trim();
-          
-          // Only track joins that occur at or after round start
-          let shouldTrackJoin = true;
-          if (currentRound.startTime && currentRound.startTime !== 'Unknown') {
-            const joinSeconds = joinTime.split(':').map(Number);
-            const startSeconds = currentRound.startTime.split(':').map(Number);
-            const joinTimeInSeconds = joinSeconds[0] * 3600 + joinSeconds[1] * 60 + joinSeconds[2];
-            const startTimeInSeconds = startSeconds[0] * 3600 + startSeconds[1] * 60 + startSeconds[2];
-            
-            shouldTrackJoin = joinTimeInSeconds >= startTimeInSeconds;
-          }
-          
-          if (shouldTrackJoin) {
-            if (!currentRound.playerSessions[playerName]) {
-              currentRound.playerSessions[playerName] = [];
+
+          if (currentRound.endTime !== null) {
+            // Between rounds - buffer for next round
+            betweenRoundBuffer.add(playerName);
+          } else {
+            // During active round
+            let shouldTrackJoin = true;
+            if (currentRound.startTime && currentRound.startTime !== 'Unknown') {
+              const joinSeconds = joinTime.split(':').map(Number);
+              const startSeconds = currentRound.startTime.split(':').map(Number);
+              const joinTimeInSeconds = joinSeconds[0] * 3600 + joinSeconds[1] * 60 + joinSeconds[2];
+              const startTimeInSeconds = startSeconds[0] * 3600 + startSeconds[1] * 60 + startSeconds[2];
+              shouldTrackJoin = joinTimeInSeconds >= startTimeInSeconds;
             }
-            currentRound.playerSessions[playerName].push({ join: joinTime, leave: null });
+
+            if (shouldTrackJoin) {
+              if (!currentRound.playerSessions[playerName]) {
+                currentRound.playerSessions[playerName] = [];
+              }
+              currentRound.playerSessions[playerName].push({ join: joinTime, leave: null });
+            }
           }
         }
       }
@@ -487,28 +500,27 @@ const WarOfRightsLogAnalyzer = () => {
         if (match) {
           const leaveTime = match[1];
           const playerName = match[2].trim();
-          
-          // Check if leave is within round bounds
-          let shouldTrackLeave = true;
-          let cappedLeaveTime = leaveTime;
-          
-          if (currentRound.endTime && currentRound.endTime !== 'Unknown') {
-            const leaveSeconds = leaveTime.split(':').map(Number);
-            const endSeconds = currentRound.endTime.split(':').map(Number);
-            const leaveTimeInSeconds = leaveSeconds[0] * 3600 + leaveSeconds[1] * 60 + leaveSeconds[2];
-            const endTimeInSeconds = endSeconds[0] * 3600 + endSeconds[1] * 60 + endSeconds[2];
-            
-            // Cap leave time to round end if it's after
-            if (leaveTimeInSeconds > endTimeInSeconds) {
-              cappedLeaveTime = currentRound.endTime;
+
+          if (currentRound.endTime !== null) {
+            // Between rounds - add to the just-ended round if not already tracked
+            if (!currentRound.playerSessions[playerName] && !currentRound.chatPlayers.has(playerName)) {
+              currentRound.playerSessions[playerName] = [{ join: currentRound.startTime, leave: currentRound.endTime }];
             }
-          }
-          
-          if (currentRound.playerSessions[playerName]) {
-            const sessions = currentRound.playerSessions[playerName];
-            const lastSession = sessions[sessions.length - 1];
-            if (lastSession && !lastSession.leave) {
-              lastSession.leave = cappedLeaveTime;
+            // They left, so remove from next-round buffer
+            betweenRoundBuffer.delete(playerName);
+          } else {
+            // During active round
+            let cappedLeaveTime = leaveTime;
+
+            if (!currentRound.playerSessions[playerName]) {
+              // Player not tracked yet - they were here, add them (session from round start to now)
+              currentRound.playerSessions[playerName] = [{ join: currentRound.startTime, leave: cappedLeaveTime }];
+            } else {
+              const sessions = currentRound.playerSessions[playerName];
+              const lastSession = sessions[sessions.length - 1];
+              if (lastSession && !lastSession.leave) {
+                lastSession.leave = cappedLeaveTime;
+              }
             }
           }
         }
@@ -550,7 +562,6 @@ const WarOfRightsLogAnalyzer = () => {
       if ((line.includes('[Team]') || line.includes('[All]')) && currentRound) {
         const chatMatch = line.match(/<(\d{2}:\d{2}:\d{2})>\s+\[(Team|All)\]\s+(.+)/);
         if (chatMatch) {
-          const chatTime = chatMatch[1];
           let playerName = chatMatch[3].trim();
           // Remove message content after ': ' if present
           const colonIndex = playerName.indexOf(': ');
@@ -558,17 +569,10 @@ const WarOfRightsLogAnalyzer = () => {
             playerName = playerName.substring(0, colonIndex).trim();
           }
 
-          // Only track chats at or after round start
-          let shouldTrack = true;
-          if (currentRound.startTime && currentRound.startTime !== 'Unknown') {
-            const chatSeconds = chatTime.split(':').map(Number);
-            const startSeconds = currentRound.startTime.split(':').map(Number);
-            const chatTimeInSeconds = chatSeconds[0] * 3600 + chatSeconds[1] * 60 + chatSeconds[2];
-            const startTimeInSeconds = startSeconds[0] * 3600 + startSeconds[1] * 60 + startSeconds[2];
-            shouldTrack = chatTimeInSeconds >= startTimeInSeconds;
-          }
-
-          if (shouldTrack) {
+          if (currentRound.endTime !== null) {
+            // Between rounds - buffer for next round
+            betweenRoundBuffer.add(playerName);
+          } else {
             currentRound.chatPlayers.add(playerName);
           }
         }
