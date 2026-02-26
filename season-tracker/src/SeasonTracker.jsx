@@ -293,7 +293,8 @@ const SeasonTracker = () => {
       weeklyCasualties: {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
-      }
+      },
+      roundSwaps: { r1: [], r2: [] }
     };
     setWeeks([...weeks, newWeek]);
   };
@@ -316,6 +317,19 @@ const SeasonTracker = () => {
   const renameWeek = (weekId, newName) => {
     updateWeek(weekId, { name: newName });
     setEditingWeek(null);
+  };
+
+  // Get effective teams for a specific round, accounting for unit swaps
+  const getEffectiveTeams = (week, roundNum) => {
+    const baseTeamA = week.teamA || [];
+    const baseTeamB = week.teamB || [];
+    const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+
+    if (swaps.size === 0) return { teamA: baseTeamA, teamB: baseTeamB };
+
+    const teamA = baseTeamA.filter(u => !swaps.has(u)).concat(baseTeamB.filter(u => swaps.has(u)));
+    const teamB = baseTeamB.filter(u => !swaps.has(u)).concat(baseTeamA.filter(u => swaps.has(u)));
+    return { teamA, teamB };
   };
 
   // Team Management
@@ -371,8 +385,9 @@ const SeasonTracker = () => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
 
-        const winningTeam = week[`team${winner}`];
-        const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
 
         // Get leads based on playoffs or single round leads mode
         let leadWinner, leadLoser;
@@ -440,16 +455,20 @@ const SeasonTracker = () => {
 
       // 2-0 Sweep Bonus (skip in playoffs)
       if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
-        const sweepTeam = week[`team${week.round1Winner}`];
+        const sweepWinner = week.round1Winner;
+        // Only units on the winning side in BOTH rounds get the sweep bonus
+        const effectiveR1 = getEffectiveTeams(week, 1);
+        const effectiveR2 = getEffectiveTeams(week, 2);
+        const r1WinTeam = new Set(sweepWinner === 'A' ? effectiveR1.teamA : effectiveR1.teamB);
+        const r2WinTeam = new Set(sweepWinner === 'A' ? effectiveR2.teamA : effectiveR2.teamB);
+        const sweepTeam = [...r1WinTeam].filter(u => r2WinTeam.has(u));
 
         if (isSingleRoundLeads) {
-          // For single round leads, both round leads get the lead bonus
-          const r1Lead = week[`lead${week.round1Winner}_r1`];
-          const r2Lead = week[`lead${week.round1Winner}_r2`];
+          const r1Lead = week[`lead${sweepWinner}_r1`];
+          const r2Lead = week[`lead${sweepWinner}_r2`];
           const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
 
           sweepTeam.forEach(unit => {
-            // Skip non-token units
             if (!stats[unit]) return;
 
             if (sweepLeads.has(unit)) {
@@ -459,11 +478,9 @@ const SeasonTracker = () => {
             }
           });
         } else {
-          // Regular week: use week-level lead
-          const sweepLead = week[`lead${week.round1Winner}`];
+          const sweepLead = week[`lead${sweepWinner}`];
 
           sweepTeam.forEach(unit => {
-            // Skip non-token units
             if (!stats[unit]) return;
 
             if (unit === sweepLead) {
@@ -897,17 +914,16 @@ const SeasonTracker = () => {
       : weeks;
 
     weeksToProcess.forEach(week => {
-      const teamAUnits = week.teamA || [];
-      const teamBUnits = week.teamB || [];
-      if (teamAUnits.length === 0 || teamBUnits.length === 0) return;
+      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
 
       [1, 2].forEach(roundNum => {
         const mapName = week[`round${roundNum}Map`];
         const winner = week[`round${roundNum}Winner`];
         if (!mapName || !winner) return;
 
-        const winningUnits = winner === 'A' ? teamAUnits : teamBUnits;
-        const losingUnits = winner === 'A' ? teamBUnits : teamAUnits;
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningUnits = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingUnits = winner === 'A' ? effective.teamB : effective.teamA;
 
         winningUnits.forEach(unit => {
           if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
@@ -1129,10 +1145,9 @@ const SeasonTracker = () => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
 
-        const teamA = week.teamA || [];
-        const teamB = week.teamB || [];
-        const winningTeam = winner === 'A' ? teamA : teamB;
-        const losingTeam = winner === 'A' ? teamB : teamA;
+        const effective = getEffectiveTeams(week, roundNum);
+        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
+        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
 
         // Collect global loss data
         winningTeam.forEach(() => totalLossesRecords.push(0));
@@ -1283,10 +1298,7 @@ const SeasonTracker = () => {
       : weeks;
 
     weeksToProcess.forEach((week, weekIdx) => {
-      const teamAUnits = week.teamA || [];
-      const teamBUnits = week.teamB || [];
-      
-      if (teamAUnits.length === 0 || teamBUnits.length === 0) return;
+      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
 
       const isPlayoffs = week.isPlayoffs || false;
       const round1Winner = week.round1Winner;
@@ -1300,6 +1312,10 @@ const SeasonTracker = () => {
       [1, 2].forEach(roundNum => {
         const winner = week[`round${roundNum}Winner`];
         if (!winner) return;
+
+        const effective = getEffectiveTeams(week, roundNum);
+        const teamAUnits = effective.teamA;
+        const teamBUnits = effective.teamB;
 
         // Calculate team Elo averages with player count weighting
         const totalPlayersA = teamAUnits.reduce((sum, u) => sum + getUnitPlayerCount(u, weekIdx), 0);
@@ -1326,14 +1342,12 @@ const SeasonTracker = () => {
         let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
 
         // Apply map bias if map is selected
-        // Use per-week snapshots if available, fall back to global state for backward compatibility
         const mapName = week[`round${roundNum}Map`];
         if (mapName) {
           const weekMapBiases = week.mapBiases || mapBiases;
           const weekEloBiasPercentages = week.eloBiasPercentages || eloBiasPercentages;
           const mapBiasLevel = weekMapBiases[mapName] ?? 0;
 
-          // Build bias multiplier map from percentages
           const biasPercentMap = {
             0: 1.00,
             1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
@@ -1347,7 +1361,7 @@ const SeasonTracker = () => {
           const flipped = week[`round${roundNum}Flipped`] || false;
           const usaSide = flipped ? 'B' : 'A';
           const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
-          
+
           if (attackerSide === 'A') {
             expectedA *= biasMultiplier;
           } else {
@@ -1364,10 +1378,9 @@ const SeasonTracker = () => {
         const applyEloChanges = (teamUnits, totalPlayers, leadUnit, sign, sweepBonus) => {
           if (totalPlayers <= 0) return;
 
-          // Log-scaled + normalized weights
           const weights = {};
           let totalWeight = 0;
-          
+
           teamUnits.forEach(unit => {
             const playerCount = getUnitPlayerCount(unit, weekIdx);
             const weight = Math.pow(Math.log(1 + playerCount), sizeInfluence)
@@ -1376,22 +1389,18 @@ const SeasonTracker = () => {
             totalWeight += weight;
           });
 
-          // Normalize weights
           Object.keys(weights).forEach(unit => {
             weights[unit] /= totalWeight;
           });
 
-          // Calculate team average Elo for proportional distribution
           const teamAvgElo = teamUnits.reduce((sum, u) => sum + eloRatings[u], 0) / teamUnits.length;
 
-          // Apply changes
           teamUnits.forEach(unit => {
             const k = roundsPlayed[unit] < provisionalRounds ? kFactorProvisional : kFactorStandard;
             const roundMultiplier = isPlayoffs ? playoffMultiplier : 1.0;
-            
-            // Relative factor for proportional distribution
+
             const relativeFactor = Math.max(0.8, Math.min(1.2, Math.pow(teamAvgElo / eloRatings[unit], 0.5)));
-            
+
             const delta = k * baseChange * weights[unit] * sign * roundMultiplier * sweepBonus * relativeFactor;
             eloRatings[unit] += delta;
           });
@@ -3088,7 +3097,8 @@ const SeasonTracker = () => {
         weeklyCasualties: {
           [teamNames.A]: { r1: {}, r2: {} },
           [teamNames.B]: { r1: {}, r2: {} }
-        }
+        },
+        roundSwaps: { r1: [], r2: [] }
       };
     });
 
@@ -5108,6 +5118,46 @@ const SeasonTracker = () => {
                         min="0"
                       />
                     </div>
+                    {/* Round 1 Balance Swaps */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
+                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                          {[
+                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
+                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
+                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
+                            const swaps = selectedWeek.roundSwaps?.r1 || [];
+                            const isSwapped = swaps.includes(unit);
+                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
+                            return (
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSwapped}
+                                  onChange={() => {
+                                    const current = selectedWeek.roundSwaps?.r1 || [];
+                                    const updated = isSwapped
+                                      ? current.filter(u => u !== unit)
+                                      : [...current, unit];
+                                    updateWeek(selectedWeek.id, {
+                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: updated }
+                                    });
+                                  }}
+                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                />
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                  {unit}
+                                </span>
+                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
+                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -5174,10 +5224,50 @@ const SeasonTracker = () => {
                         min="0"
                       />
                     </div>
+                    {/* Round 2 Balance Swaps */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
+                      <div>
+                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
+                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                          {[
+                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
+                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
+                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
+                            const swaps = selectedWeek.roundSwaps?.r2 || [];
+                            const isSwapped = swaps.includes(unit);
+                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
+                            return (
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSwapped}
+                                  onChange={() => {
+                                    const current = selectedWeek.roundSwaps?.r2 || [];
+                                    const updated = isSwapped
+                                      ? current.filter(u => u !== unit)
+                                      : [...current, unit];
+                                    updateWeek(selectedWeek.id, {
+                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: updated }
+                                    });
+                                  }}
+                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                />
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                  {unit}
+                                </span>
+                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
+                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-              
+
               {/* Action Buttons */}
               <div className="mt-4 space-y-2">
                 <button
