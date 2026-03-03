@@ -325,19 +325,44 @@ export const processBattleResult = (campaign, battle) => {
         vpLost: sideVpLost
       });
 
-      // Remove commander from pool
-      const pool = updatedCampaign.commanderPool[side] || [];
-      updatedCampaign.commanderPool[side] = pool.filter(id => id !== regimentId);
-
-      // Reset pool if empty
-      const regiments = updatedCampaign.regiments?.[side] || [];
-      if (updatedCampaign.commanderPool[side].length === 0 && regiments.length > 0) {
-        updatedCampaign.commanderPool[side] = regiments.map(r => r.id);
-      }
     });
+
+    updatedCampaign = applyCommanderPoolUpdate(updatedCampaign, battle);
   }
 
   return updatedCampaign;
+};
+
+/**
+ * Remove selected commanders from the pool and refresh the pool if empty.
+ * Called for both pending and completed battles.
+ *
+ * @param {Object} campaign - Current campaign state
+ * @param {Object} battle - Battle data (only battle.commanders is used)
+ * @returns {Object} Updated campaign state
+ */
+export const applyCommanderPoolUpdate = (campaign, battle) => {
+  if (!battle.commanders) return campaign;
+
+  const updated = {
+    ...campaign,
+    commanderPool: { ...(campaign.commanderPool || { USA: [], CSA: [] }) }
+  };
+
+  ['USA', 'CSA'].forEach(side => {
+    const commander = battle.commanders[side];
+    if (!commander) return;
+
+    const pool = updated.commanderPool[side] || [];
+    updated.commanderPool[side] = pool.filter(id => id !== commander.id);
+
+    const regiments = updated.regiments?.[side] || [];
+    if (updated.commanderPool[side].length === 0 && regiments.length > 0) {
+      updated.commanderPool[side] = regiments.map(r => r.id);
+    }
+  });
+
+  return updated;
 };
 
 export const canAttackTerritory = (campaign, territoryId, attacker) => {
