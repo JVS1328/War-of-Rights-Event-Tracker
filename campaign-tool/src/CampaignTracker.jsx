@@ -11,7 +11,7 @@ import TerritoryEditor from './components/TerritoryEditor';
 import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
-import { processBattleResult, processTransitioningTerritories } from './utils/campaignLogic';
+import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
@@ -69,11 +69,11 @@ const CampaignTracker = () => {
     const battle = { ...battleData };
 
     if (battle.status === 'pending') {
-      // Pending battle: just add to history, no territory/VP/CP processing
-      const updatedCampaign = {
+      // Pending battle: add to history and update commander pool, but no territory/VP/CP processing
+      const updatedCampaign = applyCommanderPoolUpdate({
         ...campaign,
         battles: [...campaign.battles, battle]
-      };
+      }, battle);
       setCampaign(updatedCampaign);
     } else {
       // Completed battle: process territory changes, VP, CP
