@@ -1568,11 +1568,8 @@ const SeasonTracker = () => {
       });
     }
 
-    let bestSolution = {
-      score: Infinity,
-      teams: null,
-      stats: null
-    };
+    let bestValidSolution = null;
+    let bestOverallSolution = null;
 
     // Calculate average teammate count for penalty
     const allCounts = [];
@@ -1691,46 +1688,45 @@ const SeasonTracker = () => {
                             (minDiff * balancerSettings.minDiffWeight) +
                             (divisionOppositionScore * balancerSettings.divisionOppositionWeight);
 
-        if (currentScore < bestSolution.score) {
-          bestSolution = {
-            score: currentScore,
-            teams: [[...teamA], [...teamB]],
-            stats: [minA, maxA, minB, maxB]
-          };
+        const candidate = {
+          score: currentScore,
+          teams: [[...teamA], [...teamB]],
+          stats: [minA, maxA, minB, maxB]
+        };
+
+        const isValid = gap <= maxPlayerDiff && minDiff <= maxPlayerDiff;
+
+        if (isValid && (!bestValidSolution || currentScore < bestValidSolution.score)) {
+          bestValidSolution = candidate;
+        }
+        if (!bestOverallSolution || currentScore < bestOverallSolution.score) {
+          bestOverallSolution = candidate;
         }
       }
     }
 
-    // Check if solution is valid
-    if (bestSolution.teams) {
-      const [teamA, teamB] = bestSolution.teams;
-      const [minA, maxA, minB, maxB] = bestSolution.stats;
-      
-      // Calculate individual metrics for validation
+    // Prefer valid solutions; fall back to overall best for error reporting
+    if (bestValidSolution) {
+      const [teamA, teamB] = bestValidSolution.teams;
+      const [minA, maxA, minB, maxB] = bestValidSolution.stats;
+      const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
+      return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB };
+    } else if (bestOverallSolution) {
+      const [minA, maxA, minB, maxB] = bestOverallSolution.stats;
       let gap = 0;
-      if (maxA < minB) {
-        gap = minB - maxA;
-      } else if (maxB < minA) {
-        gap = minA - maxB;
-      }
+      if (maxA < minB) gap = minB - maxA;
+      else if (maxB < minA) gap = minA - maxB;
       const minDiff = Math.abs(minA - minB);
-      const avgA = (minA + maxA) / 2;
-      const avgB = (minB + maxB) / 2;
-      const avgDiff = Math.abs(avgA - avgB);
-      
-      if (gap <= maxPlayerDiff && minDiff <= maxPlayerDiff) {
-        return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB };
-      } else {
-        let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
-        if (gap > maxPlayerDiff) {
-          msg += `The best possible balance has a range gap of ${gap.toFixed(0)} players.\n`;
-        }
-        if (minDiff > maxPlayerDiff) {
-          msg += `The best possible balance has a minimums difference of ${minDiff.toFixed(0)} players.\n`;
-        }
-        alert(msg.trim());
-        return null;
+
+      let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
+      if (gap > maxPlayerDiff) {
+        msg += `The best possible balance has a range gap of ${gap.toFixed(0)} players.\n`;
       }
+      if (minDiff > maxPlayerDiff) {
+        msg += `The best possible balance has a minimums difference of ${minDiff.toFixed(0)} players.\n`;
+      }
+      alert(msg.trim());
+      return null;
     } else {
       alert('No valid team composition could be found with the given constraints.');
       return null;
