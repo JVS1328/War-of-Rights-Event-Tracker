@@ -2766,10 +2766,11 @@ const SeasonTracker = () => {
   // Render company config + auto-computed assignments for a round/side
   const renderCompanySection = (roundKey) => {
     if (!selectedWeek) return null;
-    const config = selectedWeek.companyConfig?.[roundKey] || { A: { count: 0, specialCount: 0 }, B: { count: 0, specialCount: 0 } };
+    const defaultSide = { count: 0, specialCount: 0 };
+    const rawConfig = selectedWeek.companyConfig?.[roundKey] || {};
+    const config = { A: { ...defaultSide, ...rawConfig.A }, B: { ...defaultSide, ...rawConfig.B } };
     const effective = getEffectiveTeams(selectedWeek, roundKey === 'r1' ? 1 : 2);
     const unitCountsSource = selectedWeek.unitPlayerCounts || unitPlayerCounts;
-    const hasAnyConfig = config.A.count > 0 || config.B.count > 0;
 
     return (
       <div className="mt-3 space-y-3">
