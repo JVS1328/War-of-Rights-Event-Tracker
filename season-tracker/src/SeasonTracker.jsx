@@ -294,7 +294,11 @@ const SeasonTracker = () => {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
       },
-      roundSwaps: { r1: [], r2: [] }
+      roundSwaps: { r1: [], r2: [] },
+      companyConfig: {
+        r1: { A: { count: 0, specialCount: 0 }, B: { count: 0, specialCount: 0 } },
+        r2: { A: { count: 0, specialCount: 0 }, B: { count: 0, specialCount: 0 } }
+      }
     };
     setWeeks([...weeks, newWeek]);
   };
@@ -1733,6 +1737,52 @@ const SeasonTracker = () => {
     }
   };
 
+  const SPECIAL_COMPANY_CAP = 20;
+
+  // Distribute regiments into companies for one side of one round
+  const distributeCompanies = (regiments, unitCountsSource, numCompanies, numSpecial) => {
+    if (numCompanies <= 0 || regiments.length === 0) return [];
+
+    // Build regiment list with avg player count (use balancer-aware counts)
+    const regs = regiments.map(unit => {
+      const counts = unitCountsSource[unit] || { min: 0, max: 0 };
+      return { unit, avg: (counts.min + counts.max) / 2 };
+    }).sort((a, b) => b.avg - a.avg); // largest first for greedy fill
+
+    const companies = Array.from({ length: numCompanies }, (_, i) => ({
+      index: i,
+      isSpecial: i < numSpecial,
+      cap: i < numSpecial ? SPECIAL_COMPANY_CAP : Infinity,
+      regiments: [],
+      total: 0
+    }));
+
+    // Greedy: assign each regiment to the company with the least total that can fit it
+    for (const reg of regs) {
+      let best = null;
+      for (const co of companies) {
+        if (co.total + reg.avg > co.cap) continue;
+        if (!best || co.total < best.total) best = co;
+      }
+      // If no company can fit under cap, put in the least-full regular company
+      if (!best) {
+        const regulars = companies.filter(c => !c.isSpecial);
+        best = regulars.length > 0
+          ? regulars.reduce((a, b) => a.total <= b.total ? a : b)
+          : companies.reduce((a, b) => a.total <= b.total ? a : b);
+      }
+      best.regiments.push(reg.unit);
+      best.total += reg.avg;
+    }
+
+    return companies.map((co, i) => ({
+      label: co.isSpecial ? `Special Co ${i + 1}` : `Co ${i + 1 - numSpecial}`,
+      isSpecial: co.isSpecial,
+      regiments: co.regiments,
+      totalAvg: co.total
+    }));
+  };
+
   const applyBalancerResults = () => {
     if (!balancerResults || !selectedWeek) return;
 
@@ -2711,6 +2761,96 @@ const SeasonTracker = () => {
       round1Probability,
       round2Probability
     };
+  };
+
+  // Render company config + auto-computed assignments for a round/side
+  const renderCompanySection = (roundKey) => {
+    if (!selectedWeek) return null;
+    const defaultSide = { count: 0, specialCount: 0 };
+    const rawConfig = selectedWeek.companyConfig?.[roundKey] || {};
+    const config = { A: { ...defaultSide, ...rawConfig.A }, B: { ...defaultSide, ...rawConfig.B } };
+    const effective = getEffectiveTeams(selectedWeek, roundKey === 'r1' ? 1 : 2);
+    const unitCountsSource = selectedWeek.unitPlayerCounts || unitPlayerCounts;
+
+    return (
+      <div className="mt-3 space-y-3">
+        <label className="block text-sm text-slate-300 mb-1">Company Balancer</label>
+        {['A', 'B'].map(side => (
+          <div key={side} className="bg-slate-800 rounded p-2 space-y-2">
+            <div className="text-xs font-semibold text-slate-300">{teamNames[side]}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400">Companies</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={config[side].count}
+                  onChange={(e) => {
+                    const newCount = parseInt(e.target.value) || 0;
+                    const newSpecial = Math.min(config[side].specialCount, newCount);
+                    updateWeek(selectedWeek.id, {
+                      companyConfig: {
+                        ...(selectedWeek.companyConfig || {}),
+                        [roundKey]: {
+                          ...(selectedWeek.companyConfig?.[roundKey] || {}),
+                          [side]: { count: newCount, specialCount: newSpecial }
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full px-2 py-1 bg-slate-700 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Special (cap {SPECIAL_COMPANY_CAP})</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={config[side].count}
+                  value={config[side].specialCount}
+                  onChange={(e) => {
+                    const val = Math.min(parseInt(e.target.value) || 0, config[side].count);
+                    updateWeek(selectedWeek.id, {
+                      companyConfig: {
+                        ...(selectedWeek.companyConfig || {}),
+                        [roundKey]: {
+                          ...(selectedWeek.companyConfig?.[roundKey] || {}),
+                          [side]: { ...config[side], specialCount: val }
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full px-2 py-1 bg-slate-700 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                />
+              </div>
+            </div>
+            {config[side].count > 0 && (() => {
+              const sideUnits = side === 'A' ? effective.teamA : effective.teamB;
+              const companies = distributeCompanies(sideUnits, unitCountsSource, config[side].count, config[side].specialCount);
+              return companies.length > 0 && (
+                <div className="space-y-1 mt-1">
+                  {companies.map((co, idx) => (
+                    <div key={idx} className={`text-xs rounded px-2 py-1 ${co.isSpecial ? 'bg-yellow-900/40 border border-yellow-700/50' : 'bg-slate-700'}`}>
+                      <span className={`font-semibold ${co.isSpecial ? 'text-yellow-400' : 'text-slate-300'}`}>
+                        {co.label}
+                      </span>
+                      <span className="text-slate-400 ml-1">({Math.round(co.totalAvg)} avg)</span>
+                      {co.isSpecial && co.totalAvg > SPECIAL_COMPANY_CAP && (
+                        <span className="text-red-400 ml-1">OVER CAP</span>
+                      )}
+                      <div className="text-slate-400 mt-0.5">
+                        {co.regiments.length > 0 ? co.regiments.join(', ') : 'Empty'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   // Drag and drop handlers for balancer
@@ -5154,6 +5294,8 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     )}
+                    {/* Round 1 Company Balancer */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r1')}
                   </div>
                 </div>
 
@@ -5260,6 +5402,8 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     )}
+                    {/* Round 2 Company Balancer */}
+                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r2')}
                   </div>
                 </div>
               </div>
