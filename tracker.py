@@ -3444,8 +3444,7 @@ This tool identifies the strongest and weakest possible team compositions based 
             opposing_map[p1].add(p2)
             opposing_map[p2].add(p1)
 
-        best_valid_solution = None
-        best_overall_solution = None
+        best_solution = {"score": (float('inf'), float('inf'), float('inf'), float('inf')), "teams": None, "stats": None}
 
         # --- Calculate average teammate count for penalty ---
         all_counts = []
@@ -3519,31 +3518,27 @@ This tool identifies the strongest and weakest possible team compositions based 
                         teammate_score += (count - over_teaming_threshold) * over_teaming_penalty_multiplier
 
                 current_score = (gap, min_diff, teammate_score, avg_diff)
-                candidate = {"score": current_score, "teams": (list(team_A), list(team_B)), "stats": (min_A, max_A, min_B, max_B)}
 
-                is_valid = gap <= max_player_diff and min_diff <= max_player_diff
-
-                if is_valid and (best_valid_solution is None or current_score < best_valid_solution["score"]):
-                    best_valid_solution = candidate
-                if best_overall_solution is None or current_score < best_overall_solution["score"]:
-                    best_overall_solution = candidate
+                if current_score < best_solution["score"]:
+                    best_solution["score"] = current_score
+                    best_solution["teams"] = (list(team_A), list(team_B))
+                    best_solution["stats"] = (min_A, max_A, min_B, max_B)
 
         # --- Main Execution ---
-        # Prefer valid solutions; fall back to overall best for error reporting
-        if best_valid_solution:
-            team_A, team_B = best_valid_solution["teams"]
-            min_A, max_A, min_B, max_B = best_valid_solution["stats"]
-            avg_diff = best_valid_solution["score"][3]
-            return team_A, team_B, avg_diff, min_A, max_A, min_B, max_B
-        elif best_overall_solution:
-            gap, min_diff, _, _ = best_overall_solution["score"]
-            msg = f"Could not find a balance within the max player difference of {max_player_diff}.\n"
-            if gap > max_player_diff:
-                msg += f"The best possible balance has a range gap of {gap:.0f} players.\n"
-            if min_diff > max_player_diff:
-                msg += f"The best possible balance has a minimums difference of {min_diff:.0f} players.\n"
-            messagebox.showinfo("Balancing Failed", msg.strip())
-            return None
+        if best_solution["teams"]:
+            gap, min_diff, teammate_score, avg_diff = best_solution["score"]
+            if gap <= max_player_diff and min_diff <= max_player_diff:
+                team_A, team_B = best_solution["teams"]
+                min_A, max_A, min_B, max_B = best_solution["stats"]
+                return team_A, team_B, avg_diff, min_A, max_A, min_B, max_B
+            else:
+                msg = f"Could not find a balance within the max player difference of {max_player_diff}.\n"
+                if gap > max_player_diff:
+                    msg += f"The best possible balance has a range gap of {gap:.0f} players.\n"
+                if min_diff > max_player_diff:
+                    msg += f"The best possible balance has a minimums difference of {min_diff:.0f} players.\n"
+                messagebox.showinfo("Balancing Failed", msg.strip())
+                return None
         else:
             messagebox.showwarning("Balancing Failed", "No valid team composition could be found with the given constraints.")
             return None
