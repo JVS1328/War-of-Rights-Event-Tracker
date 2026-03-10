@@ -179,6 +179,12 @@ const SeasonTracker = () => {
   const [previewTeams, setPreviewTeams] = useState(null);
   const [draggedMainUnit, setDraggedMainUnit] = useState(null);
   
+  // Coord sheet paste state
+  const [showCoordPasteModal, setShowCoordPasteModal] = useState(false);
+  const [coordPasteText, setCoordPasteText] = useState('');
+  const [coordParsedRows, setCoordParsedRows] = useState([]);
+  const [coordNewUnitDrafts, setCoordNewUnitDrafts] = useState({});
+
   // Simulation state
   const [simLeadNightsPerUnit, setSimLeadNightsPerUnit] = useState(2);
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
@@ -1471,6 +1477,93 @@ const SeasonTracker = () => {
     }
     setShowBalancerModal(false);
     setBalancerResults(null);
+  };
+
+  // --- Coord Sheet Paste helpers ---
+  const coordNormalize = (name) => name.replace(/\s/g, '').replace(/-/g, '').replace(/[()]/g, '').toLowerCase();
+
+  const coordFuzzyMatch = (parsed, registered) => {
+    const normParsed = coordNormalize(parsed);
+    // Exact match
+    const exact = registered.find(u => u === parsed);
+    if (exact) return exact;
+    // Normalized match
+    const norm = registered.find(u => coordNormalize(u) === normParsed);
+    if (norm) return norm;
+    // Substring / includes match
+    const sub = registered.find(u => coordNormalize(u).includes(normParsed) || normParsed.includes(coordNormalize(u)));
+    if (sub) return sub;
+    return null;
+  };
+
+  const parseCoordPaste = () => {
+    if (!coordPasteText.trim()) return;
+    const lines = coordPasteText.trim().split('\n');
+    const rows = [];
+    for (const line of lines) {
+      const cols = line.split('\t');
+      if (cols.length < 1 || !cols[0].trim()) continue;
+      const rawName = cols[0].trim();
+      // Strip trailing side indicator like " (T)" or " (B)"
+      const cleanName = rawName.replace(/\s*\([TB]\)\s*$/i, '').trim();
+      const nums = cols.slice(1).map(c => parseInt(c.trim())).filter(n => !isNaN(n));
+      const min = nums.length >= 1 ? nums[0] : 0;
+      const max = nums.length >= 2 ? nums[1] : min;
+      const match = coordFuzzyMatch(cleanName, units);
+      rows.push({
+        rawName,
+        cleanName,
+        min,
+        max,
+        matchedUnit: match,
+        action: match ? 'match' : 'create', // 'match' | 'create' | 'ignore'
+        newUnitName: cleanName,
+        newUnitIsToken: true,
+      });
+    }
+    setCoordParsedRows(rows);
+  };
+
+  const openCoordPasteModal = () => {
+    setCoordPasteText('');
+    setCoordParsedRows([]);
+    setShowCoordPasteModal(true);
+  };
+
+  const applyCoordPaste = () => {
+    const newCounts = { ...balancerUnitCounts };
+    const newUnits = [...units];
+    const newNonToken = [...nonTokenUnits];
+
+    for (const row of coordParsedRows) {
+      if (row.action === 'ignore') continue;
+
+      let unitName;
+      if (row.action === 'match' && row.matchedUnit) {
+        unitName = row.matchedUnit;
+      } else if (row.action === 'create') {
+        unitName = row.newUnitName.trim();
+        if (!unitName) continue;
+        if (!newUnits.includes(unitName)) {
+          newUnits.push(unitName);
+          if (!row.newUnitIsToken && !newNonToken.includes(unitName)) {
+            newNonToken.push(unitName);
+          }
+        }
+      } else {
+        continue;
+      }
+
+      newCounts[unitName] = { min: row.min, max: row.max };
+    }
+
+    newUnits.sort();
+    setUnits(newUnits);
+    setNonTokenUnits(newNonToken);
+    setBalancerUnitCounts(newCounts);
+    setShowCoordPasteModal(false);
+    setCoordParsedRows([]);
+    setCoordPasteText('');
   };
 
   const runBalancer = () => {
@@ -5497,7 +5590,16 @@ const SeasonTracker = () => {
 
                         {/* Unit Player Counts */}
                         <div className="bg-slate-700 rounded-lg p-4">
-                          <h3 className="text-lg font-semibold text-amber-400 mb-3">Unit Player Counts</h3>
+                          <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-lg font-semibold text-amber-400">Unit Player Counts</h3>
+                            <button
+                              onClick={openCoordPasteModal}
+                              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition"
+                            >
+                              <FileText className="w-3 h-3" />
+                              Paste from Coord Sheet
+                            </button>
+                          </div>
                           <div className="max-h-48 overflow-y-auto space-y-2">
                             {units.map(unit => (
                               <div key={unit} className="grid grid-cols-3 gap-2 items-center">
@@ -5851,6 +5953,165 @@ const SeasonTracker = () => {
                       )}
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Coord Sheet Paste Modal */}
+          {showCoordPasteModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-amber-400">Paste from Coord Sheet</h2>
+                    <button
+                      onClick={() => { setShowCoordPasteModal(false); setCoordParsedRows([]); setCoordPasteText(''); }}
+                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                    >
+                      <X className="w-5 h-5 text-white" />
+                    </button>
+                  </div>
+
+                  {coordParsedRows.length === 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-slate-300">
+                        Paste rows from your Google Sheets coord sheet. Expected format: tab-separated columns with regiment name, min, (optional column), max.
+                      </p>
+                      <textarea
+                        value={coordPasteText}
+                        onChange={(e) => setCoordPasteText(e.target.value)}
+                        placeholder={"CQB (T)\t14\t\t16\nJD (T)\t35\t\t40\n..."}
+                        rows={10}
+                        className="w-full px-3 py-2 bg-slate-900 text-white rounded border border-slate-600 focus:border-amber-500 outline-none font-mono text-sm"
+                      />
+                      <button
+                        onClick={parseCoordPaste}
+                        disabled={!coordPasteText.trim()}
+                        className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded transition font-semibold"
+                      >
+                        Parse
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-slate-300 mb-2">
+                        Review matched regiments below. Adjust matches or choose to create / ignore unmatched ones.
+                      </p>
+                      <div className="max-h-[50vh] overflow-y-auto space-y-2">
+                        {coordParsedRows.map((row, idx) => (
+                          <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-slate-800 opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-slate-700'}`}>
+                            <div className="grid grid-cols-12 gap-2 items-center">
+                              {/* Parsed name */}
+                              <div className="col-span-3">
+                                <span className="text-white text-sm font-medium">{row.rawName}</span>
+                              </div>
+                              {/* Min / Max */}
+                              <div className="col-span-2 flex gap-1">
+                                <input
+                                  type="number"
+                                  value={row.min}
+                                  onChange={(e) => {
+                                    const updated = [...coordParsedRows];
+                                    updated[idx] = { ...updated[idx], min: parseInt(e.target.value) || 0 };
+                                    setCoordParsedRows(updated);
+                                  }}
+                                  className="w-14 px-1 py-0.5 bg-slate-800 text-white text-xs rounded border border-slate-600 text-center"
+                                />
+                                <input
+                                  type="number"
+                                  value={row.max}
+                                  onChange={(e) => {
+                                    const updated = [...coordParsedRows];
+                                    updated[idx] = { ...updated[idx], max: parseInt(e.target.value) || 0 };
+                                    setCoordParsedRows(updated);
+                                  }}
+                                  className="w-14 px-1 py-0.5 bg-slate-800 text-white text-xs rounded border border-slate-600 text-center"
+                                />
+                              </div>
+                              {/* Arrow */}
+                              <div className="col-span-1 text-center text-slate-400 text-sm">→</div>
+                              {/* Action / match selector */}
+                              <div className="col-span-6">
+                                <select
+                                  value={row.action === 'match' ? `match:${row.matchedUnit}` : row.action}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = [...coordParsedRows];
+                                    if (val === 'ignore') {
+                                      updated[idx] = { ...updated[idx], action: 'ignore', matchedUnit: null };
+                                    } else if (val === 'create') {
+                                      updated[idx] = { ...updated[idx], action: 'create', matchedUnit: null };
+                                    } else if (val.startsWith('match:')) {
+                                      updated[idx] = { ...updated[idx], action: 'match', matchedUnit: val.slice(6) };
+                                    }
+                                    setCoordParsedRows(updated);
+                                  }}
+                                  className="w-full px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                >
+                                  <optgroup label="Registered Units">
+                                    {units.map(u => (
+                                      <option key={u} value={`match:${u}`}>{u}{u === row.matchedUnit && row.action === 'match' ? ' ✓' : ''}</option>
+                                    ))}
+                                  </optgroup>
+                                  <optgroup label="Actions">
+                                    <option value="create">＋ Create New Unit</option>
+                                    <option value="ignore">✕ Ignore</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+                            </div>
+                            {/* Create new unit options */}
+                            {row.action === 'create' && (
+                              <div className="mt-2 ml-4 flex items-center gap-3">
+                                <label className="text-xs text-slate-400">Name:</label>
+                                <input
+                                  type="text"
+                                  value={row.newUnitName}
+                                  onChange={(e) => {
+                                    const updated = [...coordParsedRows];
+                                    updated[idx] = { ...updated[idx], newUnitName: e.target.value };
+                                    setCoordParsedRows(updated);
+                                  }}
+                                  className="flex-1 px-2 py-1 bg-slate-900 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                />
+                                <label className="flex items-center gap-1 text-xs text-slate-400 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={row.newUnitIsToken}
+                                    onChange={(e) => {
+                                      const updated = [...coordParsedRows];
+                                      updated[idx] = { ...updated[idx], newUnitIsToken: e.target.checked };
+                                      setCoordParsedRows(updated);
+                                    }}
+                                    className="rounded"
+                                  />
+                                  Token unit
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <button
+                          onClick={() => { setCoordParsedRows([]); }}
+                          className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded transition"
+                        >
+                          Back
+                        </button>
+                        <button
+                          onClick={applyCoordPaste}
+                          className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition font-semibold"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <CheckCircle2 className="w-4 h-4" />
+                            Confirm & Apply
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
