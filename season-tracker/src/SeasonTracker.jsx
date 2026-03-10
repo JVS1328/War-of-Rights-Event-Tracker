@@ -1507,8 +1507,8 @@ const SeasonTracker = () => {
       // Strip trailing side indicator like " (T)" or " (B)"
       const cleanName = rawName.replace(/\s*\([TB]\)\s*$/i, '').trim();
       const nums = cols.slice(1).map(c => parseInt(c.trim())).filter(n => !isNaN(n));
-      const min = nums.length >= 1 ? nums[0] : 0;
-      const max = nums.length >= 2 ? nums[1] : min;
+      const min = nums.length >= 2 ? Math.min(nums[0], nums[1]) : (nums.length === 1 ? nums[0] : 0);
+      const max = nums.length >= 2 ? Math.max(nums[0], nums[1]) : min;
       const match = coordFuzzyMatch(cleanName, units);
       rows.push({
         rawName,
