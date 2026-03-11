@@ -145,8 +145,8 @@ export const validateCampaignState = (data) => {
       if (!['USA', 'CSA'].includes(battle.attacker)) {
         errors.push(`Battle ${index}: Invalid attacker (must be USA or CSA)`);
       }
-      if (!['USA', 'CSA'].includes(battle.winner)) {
-        errors.push(`Battle ${index}: Invalid winner (must be USA or CSA)`);
+      if (battle.winner != null && !['USA', 'CSA'].includes(battle.winner)) {
+        errors.push(`Battle ${index}: Invalid winner (must be USA, CSA, or null for pending battles)`);
       }
     });
   }
