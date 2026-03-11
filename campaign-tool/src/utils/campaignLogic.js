@@ -120,7 +120,7 @@ export const processBattleResult = (campaign, battle) => {
   territory.owner = finalWinner;
 
   // Create updated campaign
-  const updatedCampaign = { ...campaign };
+  let updatedCampaign = { ...campaign };
 
   // === VP CAPTURE SYSTEM ===
   const instantVPGains = campaign.settings?.instantVPGains !== false; // Default to true
