@@ -26,7 +26,7 @@ const getDefaultPlayoffConfig = () => ({
 const getDefaultBalancerSettings = () => ({
   teammateWeight: 1.0,
   avgDiffWeight: 1.0,
-  gapWeight: 0.75,
+  regimentCountWeight: 0.75,
   minDiffWeight: 0.50,
   divisionOppositionWeight: 0
 });
@@ -195,7 +195,17 @@ const SeasonTracker = () => {
   const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
   
   // Balancer settings state
-  const [balancerSettings, setBalancerSettings] = useState(savedState?.balancerSettings || getDefaultBalancerSettings());
+  const [balancerSettings, setBalancerSettings] = useState(() => {
+    const saved = savedState?.balancerSettings;
+    if (!saved) return getDefaultBalancerSettings();
+    const merged = { ...getDefaultBalancerSettings(), ...saved };
+    // Migrate old gapWeight to regimentCountWeight
+    if (saved.gapWeight !== undefined && saved.regimentCountWeight === undefined) {
+      merged.regimentCountWeight = saved.gapWeight;
+    }
+    delete merged.gapWeight;
+    return merged;
+  });
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -1665,9 +1675,6 @@ const SeasonTracker = () => {
       });
     }
 
-    let bestValidSolution = null;
-    let bestOverallSolution = null;
-
     // Calculate average teammate count for penalty
     const allCounts = [];
     const countedPairs = new Set();
@@ -1705,18 +1712,20 @@ const SeasonTracker = () => {
     const generateCombinations = (arr, size) => {
       if (size === 0) return [[]];
       if (arr.length === 0) return [];
-      
+
       const [first, ...rest] = arr;
       const withFirst = generateCombinations(rest, size - 1).map(combo => [first, ...combo]);
       const withoutFirst = generateCombinations(rest, size);
-      
+
       return [...withFirst, ...withoutFirst];
     };
 
-    // Try all possible team sizes
+    // Pass 1: Evaluate all candidates with raw metrics
+    const candidates = [];
+
     for (let sizeAAdditional = 0; sizeAAdditional <= playersToAssign.length; sizeAAdditional++) {
       const combinations = generateCombinations(playersToAssign, sizeAAdditional);
-      
+
       for (const teamAAdditional of combinations) {
         const teamA = new Set([...forcedA, ...teamAAdditional]);
         const teamB = new Set([...forcedB, ...playersToAssign.filter(p => !teamAAdditional.includes(p))]);
@@ -1727,13 +1736,8 @@ const SeasonTracker = () => {
         const minB = [...teamB].reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
         const maxB = [...teamB].reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
 
-        // Calculate gap
-        let gap = 0;
-        if (maxA < minB) {
-          gap = minB - maxA;
-        } else if (maxB < minA) {
-          gap = minA - maxB;
-        }
+        // Regiment count difference (favors equal regiment counts per team)
+        const regimentCountDiff = Math.abs(teamA.size - teamB.size);
 
         const minDiff = Math.abs(minA - minB);
         const avgA = teamA.size > 0 ? (minA + maxA) / 2 : 0;
@@ -1742,7 +1746,7 @@ const SeasonTracker = () => {
 
         // Calculate teammate heat score
         let teammateScore = 0;
-        
+
         const calculatePairScore = (team) => {
           const teamArray = [...team];
           for (let i = 0; i < teamArray.length; i++) {
@@ -1750,8 +1754,7 @@ const SeasonTracker = () => {
               const u1 = teamArray[i];
               const u2 = teamArray[j];
               const count = teammateHistory[u1]?.[u2] || 0;
-              
-              // Apply penalty multiplier for over-teaming, otherwise use base count
+
               if (averageTeammateCount > 0 && count > overTeamingThreshold) {
                 teammateScore += count * overTeamingPenaltyMultiplier;
               } else {
@@ -1764,41 +1767,76 @@ const SeasonTracker = () => {
         calculatePairScore(teamA);
         calculatePairScore(teamB);
 
-        // Calculate division opposition score (negative = more same-division pairs opposing, which is good)
+        // Division opposition score (negative = more same-division pairs opposing, which is good)
         let divisionOppositionScore = 0;
         if (balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0) {
-          const teamAArray = [...teamA];
-          const teamBArray = [...teamB];
-          for (const uA of teamAArray) {
+          for (const uA of teamA) {
             const divA = unitDivision[uA];
             if (!divA) continue;
-            for (const uB of teamBArray) {
+            for (const uB of teamB) {
               if (unitDivision[uB] === divA) divisionOppositionScore--;
             }
           }
         }
 
-        // Calculate composite score accounting for all metrics together
-        const currentScore = (teammateScore * balancerSettings.teammateWeight) +
-                            (avgDiff * balancerSettings.avgDiffWeight) +
-                            (gap * balancerSettings.gapWeight) +
-                            (minDiff * balancerSettings.minDiffWeight) +
-                            (divisionOppositionScore * balancerSettings.divisionOppositionWeight);
-
-        const candidate = {
-          score: currentScore,
-          teams: [[...teamA], [...teamB]],
-          stats: [minA, maxA, minB, maxB]
-        };
-
+        // Validity check for hard constraint
+        let gap = 0;
+        if (maxA < minB) gap = minB - maxA;
+        else if (maxB < minA) gap = minA - maxB;
         const isValid = gap <= maxPlayerDiff && minDiff <= maxPlayerDiff;
 
-        if (isValid && (!bestValidSolution || currentScore < bestValidSolution.score)) {
-          bestValidSolution = candidate;
-        }
-        if (!bestOverallSolution || currentScore < bestOverallSolution.score) {
-          bestOverallSolution = candidate;
-        }
+        candidates.push({
+          teams: [[...teamA], [...teamB]],
+          stats: [minA, maxA, minB, maxB],
+          isValid,
+          raw: { teammateScore, avgDiff, regimentCountDiff, minDiff, divisionOppositionScore }
+        });
+      }
+    }
+
+    if (candidates.length === 0) {
+      alert('No valid team composition could be found with the given constraints.');
+      return null;
+    }
+
+    // Pass 2: Normalize each metric to [0, 1] via min-max scaling, then apply weights
+    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'minDiff', 'divisionOppositionScore'];
+    const mins = {};
+    const maxes = {};
+    for (const key of metricKeys) {
+      const values = candidates.map(c => c.raw[key]);
+      mins[key] = Math.min(...values);
+      maxes[key] = Math.max(...values);
+    }
+
+    const normalize = (value, key) => {
+      const range = maxes[key] - mins[key];
+      return range === 0 ? 0 : (value - mins[key]) / range;
+    };
+
+    const weights = {
+      teammateScore: balancerSettings.teammateWeight,
+      avgDiff: balancerSettings.avgDiffWeight,
+      regimentCountDiff: balancerSettings.regimentCountWeight,
+      minDiff: balancerSettings.minDiffWeight,
+      divisionOppositionScore: balancerSettings.divisionOppositionWeight
+    };
+
+    let bestValidSolution = null;
+    let bestOverallSolution = null;
+
+    for (const candidate of candidates) {
+      let score = 0;
+      for (const key of metricKeys) {
+        score += normalize(candidate.raw[key], key) * weights[key];
+      }
+      candidate.score = score;
+
+      if (candidate.isValid && (!bestValidSolution || score < bestValidSolution.score)) {
+        bestValidSolution = candidate;
+      }
+      if (!bestOverallSolution || score < bestOverallSolution.score) {
+        bestOverallSolution = candidate;
       }
     }
 
@@ -2142,7 +2180,12 @@ const SeasonTracker = () => {
         setPlayoffConfig(importedPlayoffConfig);
         
         // Handle balancer settings - use default if not present (backwards compatibility)
-        const importedBalancerSettings = data.balancerSettings || getDefaultBalancerSettings();
+        const importedBalancerSettings = { ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) };
+        // Migrate old gapWeight to regimentCountWeight
+        if (data.balancerSettings?.gapWeight !== undefined && data.balancerSettings?.regimentCountWeight === undefined) {
+          importedBalancerSettings.regimentCountWeight = data.balancerSettings.gapWeight;
+        }
+        delete importedBalancerSettings.gapWeight;
         setBalancerSettings(importedBalancerSettings);
         
         setSelectedWeek(null);
@@ -4305,12 +4348,12 @@ const SeasonTracker = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Range Gap Weight</label>
+                    <label className="block text-sm text-slate-300 mb-1">Regiment Count Weight</label>
                     <input
                       type="number"
                       step="0.1"
-                      value={balancerSettings.gapWeight}
-                      onChange={(e) => setBalancerSettings({ ...balancerSettings, gapWeight: parseFloat(e.target.value) || 0.75 })}
+                      value={balancerSettings.regimentCountWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, regimentCountWeight: parseFloat(e.target.value) || 0.75 })}
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </div>
@@ -4342,7 +4385,7 @@ const SeasonTracker = () => {
                   <ul className="space-y-1 ml-4">
                     <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
-                    <li><strong>Range Gap:</strong> Penalizes non-overlapping player ranges (e.g., Team A: 40-50, Team B: 60-70)</li>
+                    <li><strong>Regiment Count:</strong> Favors equal regiment counts per team (e.g., 8v8 over 11v5)</li>
                     <li><strong>Min Difference:</strong> Minimizes the difference between minimum player counts</li>
                     {divisions.length > 0 && (
                       <li><strong>Division Opposition:</strong> Prioritizes placing same-division units on opposing teams</li>
