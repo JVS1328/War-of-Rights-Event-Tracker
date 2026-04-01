@@ -27,7 +27,7 @@ const getDefaultBalancerSettings = () => ({
   teammateWeight: 1.0,
   avgDiffWeight: 1.0,
   regimentCountWeight: 0.75,
-  minDiffWeight: 0.50,
+  rangeSimilarityWeight: 0.50,
   divisionOppositionWeight: 0
 });
 
@@ -199,11 +199,15 @@ const SeasonTracker = () => {
     const saved = savedState?.balancerSettings;
     if (!saved) return getDefaultBalancerSettings();
     const merged = { ...getDefaultBalancerSettings(), ...saved };
-    // Migrate old gapWeight to regimentCountWeight
+    // Migrate old property names
     if (saved.gapWeight !== undefined && saved.regimentCountWeight === undefined) {
       merged.regimentCountWeight = saved.gapWeight;
     }
+    if (saved.minDiffWeight !== undefined && saved.rangeSimilarityWeight === undefined) {
+      merged.rangeSimilarityWeight = saved.minDiffWeight;
+    }
     delete merged.gapWeight;
+    delete merged.minDiffWeight;
     return merged;
   });
 
@@ -1729,7 +1733,9 @@ const SeasonTracker = () => {
       const maxB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
 
       const regimentCountDiff = Math.abs(teamAArray.length - teamBArray.length);
-      const minDiff = Math.abs(minA - minB);
+      const rangeA = maxA - minA;
+      const rangeB = maxB - minB;
+      const rangeSimilarity = Math.abs(rangeA - rangeB);
       const avgA = teamAArray.length > 0 ? (minA + maxA) / 2 : 0;
       const avgB = teamBArray.length > 0 ? (minB + maxB) / 2 : 0;
       const avgDiff = Math.abs(avgA - avgB);
@@ -1764,13 +1770,13 @@ const SeasonTracker = () => {
 
       return {
         stats: [minA, maxA, minB, maxB],
-        isValid: gap <= maxPlayerDiff && minDiff <= maxPlayerDiff,
-        raw: { teammateScore, avgDiff, regimentCountDiff, minDiff, divisionOppositionScore }
+        isValid: gap <= maxPlayerDiff && avgDiff <= maxPlayerDiff,
+        raw: { teammateScore, avgDiff, regimentCountDiff, rangeSimilarity, divisionOppositionScore }
       };
     };
 
     // Pass 1: Iterate all partitions to find min/max of each metric (for normalization)
-    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'minDiff', 'divisionOppositionScore'];
+    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'rangeSimilarity', 'divisionOppositionScore'];
     const metricMin = {};
     const metricMax = {};
     for (const key of metricKeys) { metricMin[key] = Infinity; metricMax[key] = -Infinity; }
@@ -1790,7 +1796,7 @@ const SeasonTracker = () => {
       teammateScore: balancerSettings.teammateWeight,
       avgDiff: balancerSettings.avgDiffWeight,
       regimentCountDiff: balancerSettings.regimentCountWeight,
-      minDiff: balancerSettings.minDiffWeight,
+      rangeSimilarity: balancerSettings.rangeSimilarityWeight,
       divisionOppositionScore: balancerSettings.divisionOppositionWeight
     };
 
@@ -1836,14 +1842,14 @@ const SeasonTracker = () => {
       let gap = 0;
       if (maxA < minB) gap = minB - maxA;
       else if (maxB < minA) gap = minA - maxB;
-      const minDiff = Math.abs(minA - minB);
+      const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
 
       let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
       if (gap > maxPlayerDiff) {
         msg += `The best possible balance has a range gap of ${gap.toFixed(0)} players.\n`;
       }
-      if (minDiff > maxPlayerDiff) {
-        msg += `The best possible balance has a minimums difference of ${minDiff.toFixed(0)} players.\n`;
+      if (avgDiff > maxPlayerDiff) {
+        msg += `The best possible balance has an average difference of ${avgDiff.toFixed(0)} players.\n`;
       }
       alert(msg.trim());
       return null;
@@ -2166,11 +2172,15 @@ const SeasonTracker = () => {
         
         // Handle balancer settings - use default if not present (backwards compatibility)
         const importedBalancerSettings = { ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) };
-        // Migrate old gapWeight to regimentCountWeight
+        // Migrate old property names
         if (data.balancerSettings?.gapWeight !== undefined && data.balancerSettings?.regimentCountWeight === undefined) {
           importedBalancerSettings.regimentCountWeight = data.balancerSettings.gapWeight;
         }
+        if (data.balancerSettings?.minDiffWeight !== undefined && data.balancerSettings?.rangeSimilarityWeight === undefined) {
+          importedBalancerSettings.rangeSimilarityWeight = data.balancerSettings.minDiffWeight;
+        }
         delete importedBalancerSettings.gapWeight;
+        delete importedBalancerSettings.minDiffWeight;
         setBalancerSettings(importedBalancerSettings);
         
         setSelectedWeek(null);
@@ -4343,12 +4353,12 @@ const SeasonTracker = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Min Difference Weight</label>
+                    <label className="block text-sm text-slate-300 mb-1">Range Similarity Weight</label>
                     <input
                       type="number"
                       step="0.1"
-                      value={balancerSettings.minDiffWeight}
-                      onChange={(e) => setBalancerSettings({ ...balancerSettings, minDiffWeight: parseFloat(e.target.value) || 0.50 })}
+                      value={balancerSettings.rangeSimilarityWeight}
+                      onChange={(e) => setBalancerSettings({ ...balancerSettings, rangeSimilarityWeight: parseFloat(e.target.value) || 0.50 })}
                       className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                     />
                   </div>
@@ -4371,7 +4381,7 @@ const SeasonTracker = () => {
                     <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
                     <li><strong>Regiment Count:</strong> Favors equal regiment counts per team (e.g., 8v8 over 11v5)</li>
-                    <li><strong>Min Difference:</strong> Minimizes the difference between minimum player counts</li>
+                    <li><strong>Range Similarity:</strong> Ensures both teams have similar min-to-max spread (e.g., both 45-55 rather than one 45-50 and one 30-60)</li>
                     {divisions.length > 0 && (
                       <li><strong>Division Opposition:</strong> Prioritizes placing same-division units on opposing teams</li>
                     )}
