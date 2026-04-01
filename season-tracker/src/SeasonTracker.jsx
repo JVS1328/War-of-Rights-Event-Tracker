@@ -1705,114 +1705,86 @@ const SeasonTracker = () => {
       return null;
     }
 
-    // Players to assign
+    // Players to assign (not forced to either team)
     const playersToAssign = players.filter(p => !forcedA.has(p) && !forcedB.has(p)).sort();
+    const n = playersToAssign.length;
+    const totalCombos = 1 << n; // 2^n bitmask iteration — each bit assigns a unit to team A or B
 
-    // Generate all possible team combinations
-    const generateCombinations = (arr, size) => {
-      if (size === 0) return [[]];
-      if (arr.length === 0) return [];
+    const hasDivisions = balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0;
+    const forcedAArray = [...forcedA];
+    const forcedBArray = [...forcedB];
 
-      const [first, ...rest] = arr;
-      const withFirst = generateCombinations(rest, size - 1).map(combo => [first, ...combo]);
-      const withoutFirst = generateCombinations(rest, size);
+    // Evaluate raw metrics for a given bitmask
+    const evaluateMask = (mask) => {
+      const teamAArray = [...forcedAArray];
+      const teamBArray = [...forcedBArray];
+      for (let i = 0; i < n; i++) {
+        if (mask & (1 << i)) teamAArray.push(playersToAssign[i]);
+        else teamBArray.push(playersToAssign[i]);
+      }
 
-      return [...withFirst, ...withoutFirst];
-    };
+      const minA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
+      const maxA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
+      const minB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
+      const maxB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
 
-    // Pass 1: Evaluate all candidates with raw metrics
-    const candidates = [];
+      const regimentCountDiff = Math.abs(teamAArray.length - teamBArray.length);
+      const minDiff = Math.abs(minA - minB);
+      const avgA = teamAArray.length > 0 ? (minA + maxA) / 2 : 0;
+      const avgB = teamBArray.length > 0 ? (minB + maxB) / 2 : 0;
+      const avgDiff = Math.abs(avgA - avgB);
 
-    for (let sizeAAdditional = 0; sizeAAdditional <= playersToAssign.length; sizeAAdditional++) {
-      const combinations = generateCombinations(playersToAssign, sizeAAdditional);
-
-      for (const teamAAdditional of combinations) {
-        const teamA = new Set([...forcedA, ...teamAAdditional]);
-        const teamB = new Set([...forcedB, ...playersToAssign.filter(p => !teamAAdditional.includes(p))]);
-
-        // Calculate player ranges
-        const minA = [...teamA].reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-        const maxA = [...teamA].reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-        const minB = [...teamB].reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-        const maxB = [...teamB].reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-
-        // Regiment count difference (favors equal regiment counts per team)
-        const regimentCountDiff = Math.abs(teamA.size - teamB.size);
-
-        const minDiff = Math.abs(minA - minB);
-        const avgA = teamA.size > 0 ? (minA + maxA) / 2 : 0;
-        const avgB = teamB.size > 0 ? (minB + maxB) / 2 : 0;
-        const avgDiff = Math.abs(avgA - avgB);
-
-        // Calculate teammate heat score
-        let teammateScore = 0;
-
-        const calculatePairScore = (team) => {
-          const teamArray = [...team];
-          for (let i = 0; i < teamArray.length; i++) {
-            for (let j = i + 1; j < teamArray.length; j++) {
-              const u1 = teamArray[i];
-              const u2 = teamArray[j];
-              const count = teammateHistory[u1]?.[u2] || 0;
-
-              if (averageTeammateCount > 0 && count > overTeamingThreshold) {
-                teammateScore += count * overTeamingPenaltyMultiplier;
-              } else {
-                teammateScore += count;
-              }
-            }
-          }
-        };
-
-        calculatePairScore(teamA);
-        calculatePairScore(teamB);
-
-        // Division opposition score (negative = more same-division pairs opposing, which is good)
-        let divisionOppositionScore = 0;
-        if (balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0) {
-          for (const uA of teamA) {
-            const divA = unitDivision[uA];
-            if (!divA) continue;
-            for (const uB of teamB) {
-              if (unitDivision[uB] === divA) divisionOppositionScore--;
-            }
+      let teammateScore = 0;
+      const scorePairs = (arr) => {
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = i + 1; j < arr.length; j++) {
+            const count = teammateHistory[arr[i]]?.[arr[j]] || 0;
+            teammateScore += (averageTeammateCount > 0 && count > overTeamingThreshold)
+              ? count * overTeamingPenaltyMultiplier : count;
           }
         }
+      };
+      scorePairs(teamAArray);
+      scorePairs(teamBArray);
 
-        // Validity check for hard constraint
-        let gap = 0;
-        if (maxA < minB) gap = minB - maxA;
-        else if (maxB < minA) gap = minA - maxB;
-        const isValid = gap <= maxPlayerDiff && minDiff <= maxPlayerDiff;
+      let divisionOppositionScore = 0;
+      if (hasDivisions) {
+        for (const uA of teamAArray) {
+          const divA = unitDivision[uA];
+          if (!divA) continue;
+          for (const uB of teamBArray) {
+            if (unitDivision[uB] === divA) divisionOppositionScore--;
+          }
+        }
+      }
 
-        candidates.push({
-          teams: [[...teamA], [...teamB]],
-          stats: [minA, maxA, minB, maxB],
-          isValid,
-          raw: { teammateScore, avgDiff, regimentCountDiff, minDiff, divisionOppositionScore }
-        });
+      let gap = 0;
+      if (maxA < minB) gap = minB - maxA;
+      else if (maxB < minA) gap = minA - maxB;
+
+      return {
+        stats: [minA, maxA, minB, maxB],
+        isValid: gap <= maxPlayerDiff && minDiff <= maxPlayerDiff,
+        raw: { teammateScore, avgDiff, regimentCountDiff, minDiff, divisionOppositionScore }
+      };
+    };
+
+    // Pass 1: Iterate all partitions to find min/max of each metric (for normalization)
+    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'minDiff', 'divisionOppositionScore'];
+    const metricMin = {};
+    const metricMax = {};
+    for (const key of metricKeys) { metricMin[key] = Infinity; metricMax[key] = -Infinity; }
+
+    for (let mask = 0; mask < totalCombos; mask++) {
+      const { raw } = evaluateMask(mask);
+      for (const key of metricKeys) {
+        if (raw[key] < metricMin[key]) metricMin[key] = raw[key];
+        if (raw[key] > metricMax[key]) metricMax[key] = raw[key];
       }
     }
 
-    if (candidates.length === 0) {
-      alert('No valid team composition could be found with the given constraints.');
-      return null;
-    }
-
-    // Pass 2: Normalize each metric to [0, 1] via min-max scaling, then apply weights
-    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'minDiff', 'divisionOppositionScore'];
-    const mins = {};
-    const maxes = {};
-    for (const key of metricKeys) {
-      const values = candidates.map(c => c.raw[key]);
-      mins[key] = Math.min(...values);
-      maxes[key] = Math.max(...values);
-    }
-
-    const normalize = (value, key) => {
-      const range = maxes[key] - mins[key];
-      return range === 0 ? 0 : (value - mins[key]) / range;
-    };
+    const metricRange = {};
+    for (const key of metricKeys) { metricRange[key] = metricMax[key] - metricMin[key]; }
 
     const weights = {
       teammateScore: balancerSettings.teammateWeight,
@@ -1822,27 +1794,40 @@ const SeasonTracker = () => {
       divisionOppositionScore: balancerSettings.divisionOppositionWeight
     };
 
+    // Pass 2: Normalize, score, and find the best partition
     let bestValidSolution = null;
     let bestOverallSolution = null;
 
-    for (const candidate of candidates) {
+    for (let mask = 0; mask < totalCombos; mask++) {
+      const result = evaluateMask(mask);
       let score = 0;
       for (const key of metricKeys) {
-        score += normalize(candidate.raw[key], key) * weights[key];
+        const normalized = metricRange[key] === 0 ? 0 : (result.raw[key] - metricMin[key]) / metricRange[key];
+        score += normalized * weights[key];
       }
-      candidate.score = score;
 
-      if (candidate.isValid && (!bestValidSolution || score < bestValidSolution.score)) {
-        bestValidSolution = candidate;
+      if (result.isValid && (!bestValidSolution || score < bestValidSolution.score)) {
+        bestValidSolution = { mask, score, stats: result.stats };
       }
       if (!bestOverallSolution || score < bestOverallSolution.score) {
-        bestOverallSolution = candidate;
+        bestOverallSolution = { mask, score, stats: result.stats };
       }
     }
 
+    // Reconstruct teams from the winning bitmask
+    const buildTeams = (mask) => {
+      const teamA = [...forcedAArray];
+      const teamB = [...forcedBArray];
+      for (let i = 0; i < n; i++) {
+        if (mask & (1 << i)) teamA.push(playersToAssign[i]);
+        else teamB.push(playersToAssign[i]);
+      }
+      return [teamA, teamB];
+    };
+
     // Prefer valid solutions; fall back to overall best for error reporting
     if (bestValidSolution) {
-      const [teamA, teamB] = bestValidSolution.teams;
+      const [teamA, teamB] = buildTeams(bestValidSolution.mask);
       const [minA, maxA, minB, maxB] = bestValidSolution.stats;
       const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
       return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB };
