@@ -28,7 +28,8 @@ const getDefaultBalancerSettings = () => ({
   avgDiffWeight: 1.0,
   regimentCountWeight: 0.75,
   rangeSimilarityWeight: 0.50,
-  divisionOppositionWeight: 0
+  divisionOppositionWeight: 0,
+  balanceOptionCount: 3
 });
 
 // Map data from maps.py
@@ -173,7 +174,8 @@ const SeasonTracker = () => {
   const [balancerMaxDiff, setBalancerMaxDiff] = useState(1);
   const [balancerUnitCounts, setBalancerUnitCounts] = useState({});
   const [balancerOpposingPairs, setBalancerOpposingPairs] = useState([]);
-  const [balancerResults, setBalancerResults] = useState(null);
+  const [balancerResults, setBalancerResults] = useState(null); // Now an array of options
+  const [selectedBalanceIndex, setSelectedBalanceIndex] = useState(0);
   const [balancerStatus, setBalancerStatus] = useState('');
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
@@ -1612,23 +1614,21 @@ const SeasonTracker = () => {
       );
 
       if (result) {
-        const { teamA, teamB, score, minA, maxA, minB, maxB } = result;
-        const stats = calculatePreviewStats(teamA, teamB);
-        setBalancerResults({
-          teamA,
-          teamB,
-          score,
-          minA,
-          maxA,
-          minB,
-          maxB,
-          avgHistoryA: stats.avgHistoryA,
-          avgHistoryB: stats.avgHistoryB,
-          combinedAvgHistory: stats.combinedAvgHistory,
-          round1Probability: stats.round1Probability,
-          round2Probability: stats.round2Probability
+        // result is now an array of top N solutions
+        const enrichedResults = result.map(r => {
+          const stats = calculatePreviewStats(r.teamA, r.teamB);
+          return {
+            ...r,
+            avgHistoryA: stats.avgHistoryA,
+            avgHistoryB: stats.avgHistoryB,
+            combinedAvgHistory: stats.combinedAvgHistory,
+            round1Probability: stats.round1Probability,
+            round2Probability: stats.round2Probability
+          };
         });
-        setBalancerStatus(`Best solution found! Avg. Diff: ${score.toFixed(1)}`);
+        setBalancerResults(enrichedResults);
+        setSelectedBalanceIndex(0);
+        setBalancerStatus(`Found ${enrichedResults.length} balance option${enrichedResults.length > 1 ? 's' : ''}! Best Avg. Diff: ${enrichedResults[0].score.toFixed(1)}`);
       } else {
         setBalancerStatus('Failed to find a valid balance.');
       }
@@ -1800,9 +1800,24 @@ const SeasonTracker = () => {
       divisionOppositionScore: balancerSettings.divisionOppositionWeight
     };
 
-    // Pass 2: Normalize, score, and find the best partition
-    let bestValidSolution = null;
+    // Pass 2: Normalize, score, and find top N partitions
+    const topN = balancerSettings.balanceOptionCount || 3;
+    const topValidSolutions = []; // sorted ascending by score (best first)
     let bestOverallSolution = null;
+
+    const insertIntoTopN = (arr, entry) => {
+      // Insert into sorted array, keep only topN entries
+      let inserted = false;
+      for (let i = 0; i < arr.length; i++) {
+        if (entry.score < arr[i].score) {
+          arr.splice(i, 0, entry);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) arr.push(entry);
+      if (arr.length > topN) arr.pop();
+    };
 
     for (let mask = 0; mask < totalCombos; mask++) {
       const result = evaluateMask(mask);
@@ -1812,15 +1827,17 @@ const SeasonTracker = () => {
         score += normalized * weights[key];
       }
 
-      if (result.isValid && (!bestValidSolution || score < bestValidSolution.score)) {
-        bestValidSolution = { mask, score, stats: result.stats };
+      if (result.isValid) {
+        if (topValidSolutions.length < topN || score < topValidSolutions[topValidSolutions.length - 1].score) {
+          insertIntoTopN(topValidSolutions, { mask, score, stats: result.stats });
+        }
       }
       if (!bestOverallSolution || score < bestOverallSolution.score) {
         bestOverallSolution = { mask, score, stats: result.stats };
       }
     }
 
-    // Reconstruct teams from the winning bitmask
+    // Reconstruct teams from a bitmask
     const buildTeams = (mask) => {
       const teamA = [...forcedAArray];
       const teamB = [...forcedBArray];
@@ -1832,11 +1849,13 @@ const SeasonTracker = () => {
     };
 
     // Prefer valid solutions; fall back to overall best for error reporting
-    if (bestValidSolution) {
-      const [teamA, teamB] = buildTeams(bestValidSolution.mask);
-      const [minA, maxA, minB, maxB] = bestValidSolution.stats;
-      const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
-      return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB };
+    if (topValidSolutions.length > 0) {
+      return topValidSolutions.map(sol => {
+        const [teamA, teamB] = buildTeams(sol.mask);
+        const [minA, maxA, minB, maxB] = sol.stats;
+        const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
+        return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB, compositeScore: sol.score };
+      });
     } else if (bestOverallSolution) {
       const [minA, maxA, minB, maxB] = bestOverallSolution.stats;
       let gap = 0;
@@ -1908,7 +1927,7 @@ const SeasonTracker = () => {
   const applyBalancerResults = () => {
     if (!balancerResults || !selectedWeek) return;
 
-    const { teamA, teamB } = balancerResults;
+    const { teamA, teamB } = balancerResults[selectedBalanceIndex];
 
     // Save unit counts to the week
     const updatedWeek = {
@@ -2995,9 +3014,10 @@ const SeasonTracker = () => {
 
   const handleDrop = (targetTeam) => {
     if (!draggedUnit || !balancerResults) return;
-    
+
     const { unit, sourceTeam } = draggedUnit;
-    
+    const currentResult = balancerResults[selectedBalanceIndex];
+
     // Don't do anything if dropping on same team
     if (sourceTeam === targetTeam) {
       setDraggedUnit(null);
@@ -3005,19 +3025,21 @@ const SeasonTracker = () => {
     }
 
     // Create new team arrays
-    const newTeamA = sourceTeam === 'A' 
-      ? balancerResults.teamA.filter(u => u !== unit)
-      : [...balancerResults.teamA, unit];
-    
+    const newTeamA = sourceTeam === 'A'
+      ? currentResult.teamA.filter(u => u !== unit)
+      : [...currentResult.teamA, unit];
+
     const newTeamB = sourceTeam === 'B'
-      ? balancerResults.teamB.filter(u => u !== unit)
-      : [...balancerResults.teamB, unit];
+      ? currentResult.teamB.filter(u => u !== unit)
+      : [...currentResult.teamB, unit];
 
     // Calculate new stats
     const newStats = calculatePreviewStats(newTeamA, newTeamB);
-    
-    // Update balancer results with new teams and stats
-    setBalancerResults({
+
+    // Update just the selected option in the results array
+    const updatedResults = [...balancerResults];
+    updatedResults[selectedBalanceIndex] = {
+      ...currentResult,
       teamA: newTeamA,
       teamB: newTeamB,
       score: newStats.avgDiff,
@@ -3030,7 +3052,8 @@ const SeasonTracker = () => {
       combinedAvgHistory: newStats.combinedAvgHistory,
       round1Probability: newStats.round1Probability,
       round2Probability: newStats.round2Probability
-    });
+    };
+    setBalancerResults(updatedResults);
 
     setDraggedUnit(null);
   };
@@ -4375,6 +4398,18 @@ const SeasonTracker = () => {
                     </div>
                   )}
                 </div>
+                <div className="mt-4">
+                  <label className="block text-sm text-slate-300 mb-1">Balance Options to Show</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={balancerSettings.balanceOptionCount}
+                    onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
+                    className="w-24 px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  />
+                  <span className="text-xs text-slate-400 ml-2">Number of balance options the balancer will return (1-10)</span>
+                </div>
                 <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
                   <p className="font-semibold text-amber-300 mb-2">💡 Weight Explanations:</p>
                   <ul className="space-y-1 ml-4">
@@ -5587,7 +5622,7 @@ const SeasonTracker = () => {
                     </button>
                   </div>
 
-                  {!balancerResults ? (
+                  {!balancerResults || balancerResults.length === 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* Left: Available Units */}
                       <div className="bg-slate-700 rounded-lg p-4">
@@ -5624,6 +5659,20 @@ const SeasonTracker = () => {
                             max="100"
                             className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
                           />
+                        </div>
+
+                        {/* Balance Options Count */}
+                        <div className="bg-slate-700 rounded-lg p-4">
+                          <label className="block text-sm text-slate-300 mb-2">Balance Options</label>
+                          <input
+                            type="number"
+                            value={balancerSettings.balanceOptionCount}
+                            onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
+                            min="1"
+                            max="10"
+                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                          />
+                          <p className="text-xs text-slate-400 mt-1">How many balance options to compare (1-10)</p>
                         </div>
 
                         {/* Unit Player Counts */}
@@ -5736,36 +5785,67 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
-                  ) : (
+                  ) : (() => {
+                    const activeResult = balancerResults[selectedBalanceIndex];
+                    return (
                     /* Balance Results */
                     <div>
+                      {/* Option Tabs */}
+                      {balancerResults.length > 1 && (
+                        <div className="flex flex-wrap gap-2 mb-4 justify-center">
+                          {balancerResults.map((opt, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setSelectedBalanceIndex(idx)}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                                idx === selectedBalanceIndex
+                                  ? 'bg-amber-600 text-white'
+                                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                              }`}
+                            >
+                              {idx === 0 ? (
+                                <>
+                                  <Star className="w-3.5 h-3.5" />
+                                  Best Balance
+                                </>
+                              ) : (
+                                `Option ${idx + 1}`
+                              )}
+                              <span className={`text-xs ${idx === selectedBalanceIndex ? 'text-amber-200' : 'text-slate-400'}`}>
+                                (Diff: {opt.score.toFixed(1)})
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="text-center mb-6">
                         <h3 className="text-xl font-bold text-green-400 mb-2">
-                          Best Balance Found!
+                          {selectedBalanceIndex === 0 ? 'Best Balance Found!' : `Option ${selectedBalanceIndex + 1}`}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Avg Difference</div>
                             <div className="text-lg font-bold text-amber-400">
-                              {balancerResults.score.toFixed(1)}
+                              {activeResult.score.toFixed(1)}
                             </div>
                           </div>
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Min Difference</div>
                             <div className="text-lg font-bold text-cyan-400">
-                              {Math.abs(balancerResults.minA - balancerResults.minB).toFixed(0)}
+                              {Math.abs(activeResult.minA - activeResult.minB).toFixed(0)}
                             </div>
                           </div>
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Max Difference</div>
                             <div className="text-lg font-bold text-purple-400">
-                              {Math.abs(balancerResults.maxA - balancerResults.maxB).toFixed(0)}
+                              {Math.abs(activeResult.maxA - activeResult.maxB).toFixed(0)}
                             </div>
                           </div>
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Avg Teammate History</div>
                             <div className="text-lg font-bold text-green-400">
-                              {balancerResults.combinedAvgHistory?.toFixed(2) || '0.00'}
+                              {activeResult.combinedAvgHistory?.toFixed(2) || '0.00'}
                             </div>
                           </div>
                         </div>
@@ -5773,24 +5853,24 @@ const SeasonTracker = () => {
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
                             <div className="text-lg font-bold text-cyan-400">
-                              {balancerResults.minA + balancerResults.minB}
+                              {activeResult.minA + activeResult.minB}
                             </div>
                           </div>
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
                             <div className="text-lg font-bold text-purple-400">
-                              {balancerResults.maxA + balancerResults.maxB}
+                              {activeResult.maxA + activeResult.maxB}
                             </div>
                           </div>
                           <div className="bg-slate-700 rounded p-3">
                             <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
                             <div className="text-lg font-bold text-amber-400">
-                              {((balancerResults.minA + balancerResults.maxA + balancerResults.minB + balancerResults.maxB) / 2).toFixed(1)}
+                              {((activeResult.minA + activeResult.maxA + activeResult.minB + activeResult.maxB) / 2).toFixed(1)}
                             </div>
                           </div>
                         </div>
                         {balancerSettings.divisionOppositionWeight > 0 && (() => {
-                          const matchups = getDivisionMatchups(balancerResults.teamA, balancerResults.teamB);
+                          const matchups = getDivisionMatchups(activeResult.teamA, activeResult.teamB);
                           if (matchups.length === 0) return null;
                           return (
                             <div className="mt-3 max-w-4xl mx-auto bg-slate-700 rounded p-3">
@@ -5811,15 +5891,15 @@ const SeasonTracker = () => {
                           );
                         })()}
                         {/* Win Probability Bars */}
-                        {(balancerResults.round1Probability || balancerResults.round2Probability) && (
+                        {(activeResult.round1Probability || activeResult.round2Probability) && (
                           <div className="mt-4 max-w-4xl mx-auto space-y-3">
                             <h4 className="text-sm font-semibold text-amber-400 flex items-center justify-center gap-2">
                               <TrendingUp className="w-4 h-4" />
                               Win Probability
                             </h4>
                             {[
-                              { label: 'Round 1', prob: balancerResults.round1Probability, map: selectedWeek?.round1Map },
-                              { label: 'Round 2', prob: balancerResults.round2Probability, map: selectedWeek?.round2Map }
+                              { label: 'Round 1', prob: activeResult.round1Probability, map: selectedWeek?.round1Map },
+                              { label: 'Round 2', prob: activeResult.round2Probability, map: selectedWeek?.round2Map }
                             ].map(({ label, prob, map }) => {
                               if (!prob) return null;
                               return (
@@ -5876,17 +5956,17 @@ const SeasonTracker = () => {
                           onDrop={() => handleDrop('A')}
                         >
                           <h4 className="text-lg font-semibold text-blue-400 mb-3">
-                            Team A ({balancerResults.teamA.length} units)
+                            Team A ({activeResult.teamA.length} units)
                           </h4>
                           <div className="text-slate-300 text-sm mb-3 space-y-1">
-                            <p>Players: {balancerResults.minA}-{balancerResults.maxA} (avg: {((balancerResults.minA + balancerResults.maxA) / 2).toFixed(1)})</p>
+                            <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
                             <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{balancerResults.avgHistoryA?.toFixed(2) || '0.00'}</span>
+                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
                             </p>
                           </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
-                              {balancerResults.teamA.sort().map(unit => {
+                              {activeResult.teamA.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
                                 const minMax = counts ? `(${counts.min}-${counts.max})` : '';
                                 return (
@@ -5915,17 +5995,17 @@ const SeasonTracker = () => {
                           onDrop={() => handleDrop('B')}
                         >
                           <h4 className="text-lg font-semibold text-red-400 mb-3">
-                            Team B ({balancerResults.teamB.length} units)
+                            Team B ({activeResult.teamB.length} units)
                           </h4>
                           <div className="text-slate-300 text-sm mb-3 space-y-1">
-                            <p>Players: {balancerResults.minB}-{balancerResults.maxB} (avg: {((balancerResults.minB + balancerResults.maxB) / 2).toFixed(1)})</p>
+                            <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
                             <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{balancerResults.avgHistoryB?.toFixed(2) || '0.00'}</span>
+                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
                             </p>
                           </div>
                           <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
-                              {balancerResults.teamB.sort().map(unit => {
+                              {activeResult.teamB.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
                                 const minMax = counts ? `(${counts.min}-${counts.max})` : '';
                                 return (
@@ -5948,7 +6028,8 @@ const SeasonTracker = () => {
                         </div>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Bottom Buttons */}
                   <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-600">
@@ -5956,7 +6037,7 @@ const SeasonTracker = () => {
                       {balancerStatus}
                     </div>
                     <div className="flex gap-2">
-                      {!balancerResults ? (
+                      {!balancerResults || balancerResults.length === 0 ? (
                         <>
                           <button
                             onClick={closeBalancerModal}
@@ -5975,7 +6056,7 @@ const SeasonTracker = () => {
                       ) : (
                         <>
                           <button
-                            onClick={() => setBalancerResults(null)}
+                            onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}
                             className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
                           >
                             Back
