@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
-  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap,
+  ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap, Share2,
   CheckCircle2, FileText
 } from 'lucide-react';
+import { generateShareUrl, generateShortShareUrl } from './utils/shareSeason';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -96,7 +97,7 @@ const stampWeekBiases = (weeksList, fallbackMapBiases, fallbackEloBiasPercentage
     eloBiasPercentages: week.eloBiasPercentages || { ...fallbackEloBiasPercentages },
   });
 
-const SeasonTracker = () => {
+const SeasonTracker = ({ initialShareData = null }) => {
   // Load initial state from localStorage
   const loadFromStorage = () => {
     try {
@@ -238,6 +239,42 @@ const SeasonTracker = () => {
       console.error('Error saving to localStorage:', error);
     }
   }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, playoffConfig, balancerSettings]);
+
+  // Load shared data from URL (once, on mount)
+  useEffect(() => {
+    if (!initialShareData) return;
+
+    const confirmed = window.confirm(
+      'This link contains shared season data. Load it?\n\n' +
+      'This will replace your current season data.'
+    );
+    if (!confirmed) {
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
+    const data = initialShareData;
+    setUnits(data.units || []);
+    setNonTokenUnits(data.nonTokenUnits || []);
+    setWeeks(stampWeekBiases(
+      data.weeks || [],
+      data.mapBiases || getDefaultMapBiases(),
+      data.eloBiasPercentages || eloBiasPercentages
+    ));
+    setTeamNames(data.teamNames || { A: 'USA', B: 'CSA' });
+    setPointSystem(data.pointSystem || pointSystem);
+    setManualAdjustments(data.manualAdjustments || {});
+    setEloSystem(data.eloSystem || eloSystem);
+    setEloBiasPercentages(data.eloBiasPercentages || eloBiasPercentages);
+    setUnitPlayerCounts(data.unitPlayerCounts || {});
+    setDivisions(data.divisions || []);
+    setMapBiases(data.mapBiases || getDefaultMapBiases());
+    setPlayoffConfig(data.playoffConfig || getDefaultPlayoffConfig());
+    setBalancerSettings({ ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) });
+    setSelectedWeek(null);
+
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unit Management
   const addUnit = () => {
@@ -1993,6 +2030,38 @@ const SeasonTracker = () => {
     setBalancerSettings(getDefaultBalancerSettings());
     
     alert('New season started! All data has been cleared.');
+  };
+
+  const shareSeason = async () => {
+    const state = {
+      units,
+      nonTokenUnits,
+      weeks,
+      teamNames,
+      pointSystem,
+      manualAdjustments,
+      eloSystem,
+      eloBiasPercentages,
+      unitPlayerCounts,
+      divisions,
+      mapBiases,
+      playoffConfig,
+      balancerSettings,
+    };
+
+    let url;
+    try {
+      url = await generateShortShareUrl(state);
+    } catch {
+      url = generateShareUrl(state);
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard! Anyone with this link can load your season data.');
+    } catch {
+      prompt('Copy this link to share your season data:', url);
+    }
   };
 
   // Export/Import
@@ -4081,6 +4150,14 @@ const SeasonTracker = () => {
               <p className="text-slate-400">Track regiment performance across the season</p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={shareSeason}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
+                title="Copy share link to clipboard"
+              >
+                <Share2 className="w-4 h-4" />
+                Share
+              </button>
               <button
                 onClick={newSeason}
                 className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition"
