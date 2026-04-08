@@ -3,7 +3,7 @@ import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
   ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap, Share2,
-  CheckCircle2, FileText
+  CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
 import { generateShareUrl, generateShortShareUrl } from './utils/shareSeason';
 
@@ -213,6 +213,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
     delete merged.minDiffWeight;
     return merged;
   });
+
+  const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const overflowMenuRef = React.useRef(null);
+
+  const toggleTheme = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.classList.toggle('dark', next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
+  };
+
+  useEffect(() => {
+    if (!showOverflowMenu) return;
+    const handleClickOutside = (e) => {
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target)) {
+        setShowOverflowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showOverflowMenu]);
 
   // Save state to localStorage whenever relevant state changes
   useEffect(() => {
@@ -2993,13 +3015,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
     return (
       <div className="mt-3 space-y-3">
-        <label className="block text-sm text-slate-300 mb-1">Company Balancer</label>
+        <label className="block text-sm text-text-secondary mb-1">Company Balancer</label>
         {['A', 'B'].map(side => (
-          <div key={side} className="bg-slate-800 rounded p-2 space-y-2">
-            <div className="text-xs font-semibold text-slate-300">{teamNames[side]}</div>
+          <div key={side} className="bg-bg-card rounded p-2 space-y-2">
+            <div className="text-xs font-semibold text-text-secondary">{teamNames[side]}</div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-slate-400">Companies</label>
+                <label className="text-xs text-text-secondary">Companies</label>
                 <input
                   type="number"
                   min="0"
@@ -3018,11 +3040,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       }
                     });
                   }}
-                  className="w-full px-2 py-1 bg-slate-700 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  className="w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Special (cap {SPECIAL_COMPANY_CAP})</label>
+                <label className="text-xs text-text-secondary">Special (cap {SPECIAL_COMPANY_CAP})</label>
                 <input
                   type="number"
                   min="0"
@@ -3040,7 +3062,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       }
                     });
                   }}
-                  className="w-full px-2 py-1 bg-slate-700 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  className="w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                 />
               </div>
             </div>
@@ -3050,15 +3072,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
               return companies.length > 0 && (
                 <div className="space-y-1 mt-1">
                   {companies.map((co, idx) => (
-                    <div key={idx} className={`text-xs rounded px-2 py-1 ${co.isSpecial ? 'bg-yellow-900/40 border border-yellow-700/50' : 'bg-slate-700'}`}>
-                      <span className={`font-semibold ${co.isSpecial ? 'text-yellow-400' : 'text-slate-300'}`}>
+                    <div key={idx} className={`text-xs rounded px-2 py-1 ${co.isSpecial ? 'bg-yellow-900/40 border border-yellow-700/50' : 'bg-bg-inset'}`}>
+                      <span className={`font-semibold ${co.isSpecial ? 'text-yellow-400' : 'text-text-secondary'}`}>
                         {co.label}
                       </span>
-                      <span className="text-slate-400 ml-1">({Math.round(co.totalAvg)} avg)</span>
+                      <span className="text-text-secondary ml-1">({Math.round(co.totalAvg)} avg)</span>
                       {co.isSpecial && co.totalAvg > SPECIAL_COMPANY_CAP && (
                         <span className="text-red-400 ml-1">OVER CAP</span>
                       )}
-                      <div className="text-slate-400 mt-0.5">
+                      <div className="text-text-secondary mt-0.5">
                         {co.regiments.length > 0 ? co.regiments.join(', ') : 'Empty'}
                       </div>
                     </div>
@@ -4137,147 +4159,159 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-8">
+        <div>
           {/* Header */}
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h1 className="text-4xl font-bold text-amber-400 mb-2 flex items-center gap-3">
-                <Trophy className="w-10 h-10" />
-                War of Rights Season Tracker
-              </h1>
-              <p className="text-slate-400">Track regiment performance across the season</p>
-            </div>
-            <div className="flex gap-2">
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <h1 className="text-xl font-semibold flex items-center gap-2 shrink-0">
+              <Trophy className="w-5 h-5 text-indigo-500" />
+              <span className="hidden sm:inline">Season Tracker</span>
+              <span className="sm:hidden">Tracker</span>
+            </h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowStatsModal(!showStatsModal)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="hidden sm:inline">Stats</span>
+              </button>
               <button
                 onClick={shareSeason}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
                 title="Copy share link to clipboard"
               >
                 <Share2 className="w-4 h-4" />
-                Share
+                <span className="hidden sm:inline">Share</span>
               </button>
               <button
                 onClick={newSeason}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
                 title="Start New Season"
               >
                 <Plus className="w-4 h-4" />
-                New Season
+                <span className="hidden sm:inline">New Season</span>
               </button>
+              {/* Overflow Menu */}
+              <div className="relative" ref={overflowMenuRef}>
+                <button
+                  onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                  title="More actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {showOverflowMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-bg-card border border-border-default rounded-lg shadow-lg z-50 py-1">
+                    <button
+                      onClick={() => { exportData(); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
+                    >
+                      <Download className="w-4 h-4" /> Export JSON
+                    </button>
+                    <button
+                      onClick={() => { exportToCSV(); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
+                    >
+                      <Download className="w-4 h-4" /> Export CSV
+                    </button>
+                    <label className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition cursor-pointer">
+                      <Upload className="w-4 h-4" /> Import
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={(e) => { importData(e); setShowOverflowMenu(false); }}
+                        className="hidden"
+                      />
+                    </label>
+                    <button
+                      onClick={() => { setShowSettings(!showSettings); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
+                    >
+                      <Settings className="w-4 h-4" /> Settings
+                    </button>
+                    <button
+                      onClick={() => { setShowSimulateModal(true); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
+                    >
+                      <Zap className="w-4 h-4" /> Simulate
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Theme Toggle */}
               <button
-                onClick={exportData}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
-                title="Export JSON"
+                onClick={toggleTheme}
+                className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
               >
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-lg transition"
-                title="Export CSV"
-              >
-                <Download className="w-4 h-4" />
-                CSV
-              </button>
-              <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition cursor-pointer">
-                <Upload className="w-4 h-4" />
-                Import
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={importData}
-                  className="hidden"
-                />
-              </label>
-              <button
-                onClick={() => setShowStatsModal(!showStatsModal)}
-                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition"
-              >
-                <BarChart3 className="w-4 h-4" />
-                Stats
-              </button>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
-              >
-                <Settings className="w-4 h-4" />
-                Settings
-              </button>
-              <button
-                onClick={() => setShowSimulateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition"
-                title="Simulate Season"
-              >
-                <Zap className="w-4 h-4" />
-                Simulate
+                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
           {/* Settings Panel */}
           {showSettings && (
-            <div className="bg-slate-700 rounded-lg p-6 mb-6">
-              <h2 className="text-2xl font-bold text-amber-400 mb-4">System Settings</h2>
+            <div className="bg-bg-card border border-border-default rounded-lg p-4 mb-4">
+              <h2 className="text-lg font-semibold mb-3">System Settings</h2>
               
               {/* Point System Section */}
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-amber-300 mb-3">Point System</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Point System</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">Win Lead Points</label>
+                  <label className="block text-sm text-text-secondary mb-1">Win Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.winLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, winLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">Win Assist Points</label>
+                  <label className="block text-sm text-text-secondary mb-1">Win Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.winAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, winAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">Loss Lead Points</label>
+                  <label className="block text-sm text-text-secondary mb-1">Loss Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">Loss Assist Points</label>
+                  <label className="block text-sm text-text-secondary mb-1">Loss Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">2-0 Bonus Lead</label>
+                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Lead</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Lead}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Lead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1">2-0 Bonus Assist</label>
+                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Assist</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Assist}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Assist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
                 </div>
@@ -4285,85 +4319,85 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Elo System Section */}
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5" />
                   Elo Rating System
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Initial Elo</label>
+                    <label className="block text-sm text-text-secondary mb-1">Initial Elo</label>
                     <input
                       type="number"
                       value={eloSystem.initialElo}
                       onChange={(e) => setEloSystem({ ...eloSystem, initialElo: parseInt(e.target.value) || 1500 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Standard K-Factor</label>
+                    <label className="block text-sm text-text-secondary mb-1">Standard K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorStandard}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorStandard: parseInt(e.target.value) || 96 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Provisional K-Factor</label>
+                    <label className="block text-sm text-text-secondary mb-1">Provisional K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorProvisional}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorProvisional: parseInt(e.target.value) || 128 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Provisional Rounds</label>
+                    <label className="block text-sm text-text-secondary mb-1">Provisional Rounds</label>
                     <input
                       type="number"
                       value={eloSystem.provisionalRounds}
                       onChange={(e) => setEloSystem({ ...eloSystem, provisionalRounds: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Sweep Bonus (×)</label>
+                    <label className="block text-sm text-text-secondary mb-1">Sweep Bonus (×)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={eloSystem.sweepBonusMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, sweepBonusMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Lead Multiplier (×)</label>
+                    <label className="block text-sm text-text-secondary mb-1">Lead Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.1"
                       value={eloSystem.leadMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, leadMultiplier: parseFloat(e.target.value) || 2.0 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Size Influence</label>
+                    <label className="block text-sm text-text-secondary mb-1">Size Influence</label>
                     <input
                       type="number"
                       step="0.1"
                       value={eloSystem.sizeInfluence}
                       onChange={(e) => setEloSystem({ ...eloSystem, sizeInfluence: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Playoff Multiplier (×)</label>
+                    <label className="block text-sm text-text-secondary mb-1">Playoff Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={eloSystem.playoffMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, playoffMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                 </div>
@@ -4371,42 +4405,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Elo Bias Percentages */}
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-amber-300 mb-3">Map Bias Elo Multipliers (%)</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Map Bias Elo Multipliers (%)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Light Attacker %</label>
+                    <label className="block text-sm text-text-secondary mb-1">Light Attacker %</label>
                     <input
                       type="number"
                       value={eloBiasPercentages.lightAttacker}
                       onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, lightAttacker: parseInt(e.target.value) || 15 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Heavy Attacker %</label>
+                    <label className="block text-sm text-text-secondary mb-1">Heavy Attacker %</label>
                     <input
                       type="number"
                       value={eloBiasPercentages.heavyAttacker}
                       onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, heavyAttacker: parseInt(e.target.value) || 30 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Light Defender %</label>
+                    <label className="block text-sm text-text-secondary mb-1">Light Defender %</label>
                     <input
                       type="number"
                       value={eloBiasPercentages.lightDefender}
                       onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, lightDefender: parseInt(e.target.value) || 15 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Heavy Defender %</label>
+                    <label className="block text-sm text-text-secondary mb-1">Heavy Defender %</label>
                     <input
                       type="number"
                       value={eloBiasPercentages.heavyDefender}
                       onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, heavyDefender: parseInt(e.target.value) || 30 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                 </div>
@@ -4414,81 +4448,81 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Balancer Settings Section */}
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
                   <Target className="w-5 h-5" />
                   Team Balancer Weights
                 </h3>
-                <p className="text-xs text-slate-400 mb-3">
+                <p className="text-xs text-text-secondary mb-3">
                   Adjust the weights used in the composite score calculation. Higher weights increase the importance of that metric.
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Teammate History Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1">Teammate History Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.teammateWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, teammateWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Avg Difference Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1">Avg Difference Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.avgDiffWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, avgDiffWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Regiment Count Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1">Regiment Count Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.regimentCountWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, regimentCountWeight: parseFloat(e.target.value) || 0.75 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-300 mb-1">Range Similarity Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1">Range Similarity Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.rangeSimilarityWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, rangeSimilarityWeight: parseFloat(e.target.value) || 0.50 })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   {divisions.length > 0 && (
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Division Opposition Weight</label>
+                      <label className="block text-sm text-text-secondary mb-1">Division Opposition Weight</label>
                       <input
                         type="number"
                         step="0.1"
                         value={balancerSettings.divisionOppositionWeight}
                         onChange={(e) => setBalancerSettings({ ...balancerSettings, divisionOppositionWeight: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       />
                     </div>
                   )}
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm text-slate-300 mb-1">Balance Options to Show</label>
+                  <label className="block text-sm text-text-secondary mb-1">Balance Options to Show</label>
                   <input
                     type="number"
                     min="1"
                     max="10"
                     value={balancerSettings.balanceOptionCount}
                     onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
-                    className="w-24 px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
-                  <span className="text-xs text-slate-400 ml-2">Number of balance options the balancer will return (1-10)</span>
+                  <span className="text-xs text-text-secondary ml-2">Number of balance options the balancer will return (1-10)</span>
                 </div>
-                <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
-                  <p className="font-semibold text-amber-300 mb-2">💡 Weight Explanations:</p>
+                <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
+                  <p className="font-semibold text-text-secondary mb-2">💡 Weight Explanations:</p>
                   <ul className="space-y-1 ml-4">
                     <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
@@ -4512,7 +4546,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </button>
                 <button
                   onClick={() => setShowMapBiasModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition"
+                  className="flex items-center gap-2 px-4 py-2 border border-border-default hover:bg-bg-inset rounded-lg transition"
                 >
                   <Map className="w-4 h-4" />
                   Configure Map Biases
@@ -4522,39 +4556,39 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             {/* Left Column - Weeks */}
-            <div className="bg-slate-700 rounded-lg p-6">
+            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Calendar className="w-6 h-6" />
                   Weeks ({weeks.length})
                 </h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleEnlarge('weeks')}
-                    className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     title="Enlarge View"
                   >
                     <Maximize2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={addWeek}
-                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                    className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition"
                     title="Add Week"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
                 {weeks.map((week) => (
                   <div
                     key={week.id}
                     className={`p-4 rounded-lg transition cursor-pointer ${
                       selectedWeek?.id === week.id
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-bg-inset hover:bg-border-subtle'
                     }`}
                   >
                     <div className="flex justify-between items-center">
@@ -4568,7 +4602,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               renameWeek(week.id, e.target.value);
                             }
                           }}
-                          className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 outline-none"
+                          className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
                           autoFocus
                         />
                       ) : (
@@ -4588,7 +4622,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             e.stopPropagation();
                             setEditingWeek(week.id);
                           }}
-                          className="p-1 hover:bg-slate-700 rounded transition"
+                          className="p-1 rounded-md hover:bg-bg-inset transition"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -4597,7 +4631,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             e.stopPropagation();
                             removeWeek(week.id);
                           }}
-                          className="p-1 hover:bg-red-600 rounded transition"
+                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -4610,18 +4644,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
             {/* Middle Column - Units */}
             <div
-              className="bg-slate-700 rounded-lg p-6"
+              className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm"
               onDragOver={handleMainDragOver}
               onDrop={handleMainDropToUnassigned}
             >
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Users className="w-6 h-6" />
                   {selectedWeek ? `Available Units (${getAvailableUnitsForWeek().length})` : `Units (${units.length})`}
                 </h2>
                 <button
                   onClick={() => toggleEnlarge('units')}
-                  className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
                   title="Enlarge View"
                 >
                   <Maximize2 className="w-4 h-4" />
@@ -4634,21 +4668,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   onChange={(e) => setNewUnitName(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && addUnit()}
                   placeholder="Unit name..."
-                  className="flex-1 px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                 />
                 <button
                   onClick={addUnit}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
               </div>
               {selectedWeek && getAvailableUnitsForWeek().length > 0 && (
-                <div className="mb-2 text-xs text-slate-400 bg-slate-600 rounded p-2">
+                <div className="mb-2 text-xs text-text-muted bg-bg-inset rounded-md p-2">
                   💡 Drag units to teams or use A/B buttons
                 </div>
               )}
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-48 sm:max-h-72 overflow-y-auto">
                 {(selectedWeek ? getAvailableUnitsForWeek() : units).map((unit) => {
                   const isNonToken = nonTokenUnits.includes(unit);
                   return (
@@ -4656,8 +4690,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       key={unit}
                       draggable={selectedWeek ? true : false}
                       onDragStart={() => selectedWeek && handleMainDragStart(unit, null)}
-                      className={`flex justify-between items-center p-3 bg-slate-600 rounded-lg ${
-                        selectedWeek ? 'cursor-move hover:bg-slate-500' : ''
+                      className={`flex justify-between items-center p-3 bg-bg-inset rounded-md ${
+                        selectedWeek ? 'cursor-move hover:bg-border-subtle' : ''
                       } transition`}
                     >
                       <div className="flex items-center gap-2">
@@ -4665,14 +4699,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onClick={() => toggleNonTokenStatus(unit)}
                           className={`px-2 py-1 rounded text-xs font-bold transition ${
                             isNonToken
-                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                              : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                              : 'bg-bg-card hover:bg-border-subtle text-text-muted'
                           }`}
                           title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
                         >
                           {isNonToken ? '*' : '○'}
                         </button>
-                        <span className={`font-medium ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                        <span className={`font-medium ${isNonToken ? 'text-indigo-400' : ''}`}>
                           {unit}
                         </span>
                       </div>
@@ -4697,9 +4731,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         )}
                         <button
                           onClick={() => removeUnit(unit)}
-                          className="p-1 hover:bg-red-600 rounded transition"
+                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
                         >
-                          <Trash2 className="w-4 h-4 text-white" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -4709,23 +4743,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
 
             {/* Right Column - Standings */}
-            <div className="bg-slate-700 rounded-lg p-6">
+            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm sm:col-span-2 lg:col-span-1">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
                   <Award className="w-6 h-6" />
                   Standings
                 </h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleEnlarge('standings')}
-                    className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     title="Enlarge View"
                   >
                     <Maximize2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setRankByElo(!rankByElo)}
-                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm transition flex items-center gap-1"
+                    className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
                     title={rankByElo ? "Rank by Points" : "Rank by Elo"}
                   >
                     <TrendingUp className="w-3 h-3" />
@@ -4734,7 +4768,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   {divisions && divisions.length > 0 && (
                     <button
                       onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
+                      className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
                       title={showGroupedStandings ? "Show All" : "Group by Division"}
                     >
                       {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
@@ -4743,12 +4777,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                 </div>
               </div>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
                 {showGroupedStandings && divisions && divisions.length > 0 ? (
                   // Grouped view by division
                   getGroupedStandings().map((group) => (
                     <div key={group.name} className="mb-4">
-                      <h3 className="text-sm font-bold text-amber-300 mb-2 px-2 flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-text-secondary mb-2 px-2 flex items-center gap-2">
                         <Shield className="w-4 h-4" />
                         {group.name}
                       </h3>
@@ -4758,25 +4792,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           return (
                             <div
                               key={stat.unit}
-                              className="bg-slate-600 rounded-lg p-3"
+                              className="bg-bg-inset rounded-md p-3"
                             >
                               <div className="flex justify-between items-center mb-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-amber-400 font-bold text-lg">
+                                  <span className="text-indigo-400 font-bold text-lg">
                                     #{stat.divisionRank || stat.currentRank}
                                   </span>
                                 {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                   <span className={`text-xs font-semibold ${
                                     stat.rankDelta > 0 ? 'text-green-400' :
                                     stat.rankDelta < 0 ? 'text-red-400' :
-                                    'text-slate-400'
+                                    'text-text-secondary'
                                   }`}>
                                     {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
                                      stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
                                      '−'}
                                   </span>
                                 )}
-                                <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
                                   {isNonToken ? '*' : ''}{stat.unit}
                                 </span>
                               </div>
@@ -4789,7 +4823,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   ) : (
                                     <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                   )}
-                                  <span className="text-cyan-400 font-semibold">
+                                  <span className="text-indigo-400 font-semibold">
                                     {Math.round(stat.elo)}
                                   </span>
                                   {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
@@ -4812,27 +4846,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       });
                                     }
                                   }}
-                                  className="p-1 hover:bg-slate-700 rounded transition"
+                                  className="p-1 hover:bg-bg-inset rounded transition"
                                   title="Adjust points"
                                 >
-                                  <Edit2 className="w-3 h-3 text-slate-400" />
+                                  <Edit2 className="w-3 h-3 text-text-secondary" />
                                 </button>
                                 <span className="text-green-400 font-bold text-xl">
                                   {stat.points}
                                 </span>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                            <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                               <div>L-Wins: {stat.leadWins}</div>
                               <div>L-Loss: {stat.leadLosses}</div>
                               <div>A-Wins: {stat.assistWins}</div>
                               <div>A-Loss: {stat.assistLosses}</div>
-                              <div className="col-span-2 text-cyan-300">
+                              <div className="col-span-2 text-indigo-400">
                                 Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                               </div>
                             </div>
                             {manualAdjustments[stat.unit] && (
-                              <div className="mt-1 text-xs text-amber-400">
+                              <div className="mt-1 text-xs text-indigo-400">
                                 Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                               </div>
                             )}
@@ -4849,25 +4883,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     return (
                       <div
                         key={stat.unit}
-                        className="bg-slate-600 rounded-lg p-3"
+                        className="bg-bg-inset rounded-md p-3"
                       >
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-amber-400 font-bold text-lg">
+                            <span className="text-indigo-400 font-bold text-lg">
                               #{index + 1}
                             </span>
                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                             <span className={`text-xs font-semibold ${
                               stat.rankDelta > 0 ? 'text-green-400' :
                               stat.rankDelta < 0 ? 'text-red-400' :
-                              'text-slate-400'
+                              'text-text-secondary'
                             }`}>
                               {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
                                stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
                                '−'}
                             </span>
                           )}
-                          <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
                             {isNonToken ? '*' : ''}{stat.unit}
                           </span>
                         </div>
@@ -4880,7 +4914,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             ) : (
                               <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                             )}
-                            <span className="text-cyan-400 font-semibold">
+                            <span className="text-indigo-400 font-semibold">
                               {Math.round(stat.elo)}
                             </span>
                             {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
@@ -4903,27 +4937,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 });
                               }
                             }}
-                            className="p-1 hover:bg-slate-700 rounded transition"
+                            className="p-1 hover:bg-bg-inset rounded transition"
                             title="Adjust points"
                           >
-                            <Edit2 className="w-3 h-3 text-slate-400" />
+                            <Edit2 className="w-3 h-3 text-text-secondary" />
                           </button>
                           <span className="text-green-400 font-bold text-xl">
                             {stat.points}
                           </span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                         <div>L-Wins: {stat.leadWins}</div>
                         <div>L-Loss: {stat.leadLosses}</div>
                         <div>A-Wins: {stat.assistWins}</div>
                         <div>A-Loss: {stat.assistLosses}</div>
-                        <div className="col-span-2 text-cyan-300">
+                        <div className="col-span-2 text-indigo-400">
                           Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                         </div>
                       </div>
                       {manualAdjustments[stat.unit] && (
-                        <div className="mt-1 text-xs text-amber-400">
+                        <div className="mt-1 text-xs text-indigo-400">
                           Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                         </div>
                       )}
@@ -4937,8 +4971,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Week Details */}
           {selectedWeek && (
-            <div className="mt-6 bg-slate-700 rounded-lg p-6">
-              <h2 className="text-2xl font-bold text-amber-400 mb-4">
+            <div className="mt-6 bg-bg-card border border-border-default rounded-lg p-4">
+              <h2 className="text-lg font-semibold mb-4">
                 {selectedWeek.name} - Team Rosters
               </h2>
               
@@ -4948,53 +4982,53 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 if (!stats) return null;
                 
                 return (
-                  <div className="mb-6 bg-slate-600 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                  <div className="mb-6 bg-bg-inset rounded-lg p-4">
+                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                       <Target className="w-5 h-5" />
                       Team Balance Overview
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Avg Difference</div>
-                        <div className="text-lg font-bold text-amber-400">
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
+                        <div className="text-lg font-bold text-indigo-400">
                           {stats.avgDiff.toFixed(1)}
                         </div>
                       </div>
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Min Difference</div>
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Min Difference</div>
                         <div className="text-lg font-bold text-cyan-400">
                           {stats.minDiff.toFixed(0)}
                         </div>
                       </div>
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Max Difference</div>
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Max Difference</div>
                         <div className="text-lg font-bold text-purple-400">
                           {stats.maxDiff.toFixed(0)}
                         </div>
                       </div>
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Avg Teammate History</div>
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
                         <div className="text-lg font-bold text-green-400">
                           {stats.combinedAvgHistory.toFixed(2)}
                         </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3 mt-3">
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
                         <div className="text-lg font-bold text-cyan-400">
                           {stats.totalMin}
                         </div>
                       </div>
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
                         <div className="text-lg font-bold text-purple-400">
                           {stats.totalMax}
                         </div>
                       </div>
-                      <div className="bg-slate-700 rounded p-3">
-                        <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
-                        <div className="text-lg font-bold text-amber-400">
+                      <div className="bg-bg-inset rounded p-3">
+                        <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
+                        <div className="text-lg font-bold text-indigo-400">
                           {stats.totalAvg.toFixed(1)}
                         </div>
                       </div>
@@ -5002,7 +5036,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     {/* Win Probability Bars */}
                     {(stats.round1Probability || stats.round2Probability) && (
                       <div className="mt-4 space-y-3">
-                        <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                        <h4 className="text-sm font-semibold flex items-center gap-2">
                           <TrendingUp className="w-4 h-4" />
                           Win Probability
                         </h4>
@@ -5012,24 +5046,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         ].map(({ label, prob, map }) => {
                           if (!prob) return null;
                           return (
-                            <div key={label} className="bg-slate-700 rounded p-3">
+                            <div key={label} className="bg-bg-inset rounded p-3">
                               <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
                                 <div className="flex gap-3 text-xs">
                                   {prob.factors.elo && (
-                                    <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                    <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
                                   )}
                                   {prob.factors.globalMap && (
-                                    <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                    <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
                                   )}
                                   {prob.factors.unitMap && (
-                                    <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                    <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
                                   )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
                                   <div
                                     className="h-full transition-all duration-300"
                                     style={{
@@ -5054,11 +5088,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
-                      <div className="bg-slate-700 rounded p-3">
+                      <div className="bg-bg-inset rounded p-3">
                         <h4 className="text-sm font-semibold text-blue-400 mb-2">
                           {teamNames.A} ({stats.teamA.length} units)
                         </h4>
-                        <div className="text-slate-300 text-sm space-y-1">
+                        <div className="text-text-secondary text-sm space-y-1">
                           <p>Players: {stats.minA}-{stats.maxA} (avg: {stats.avgA.toFixed(1)})</p>
                           <p className="text-xs">
                             Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
@@ -5066,11 +5100,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </div>
                       </div>
                       {/* Team B Stats */}
-                      <div className="bg-slate-700 rounded p-3">
+                      <div className="bg-bg-inset rounded p-3">
                         <h4 className="text-sm font-semibold text-red-400 mb-2">
                           {teamNames.B} ({stats.teamB.length} units)
                         </h4>
-                        <div className="text-slate-300 text-sm space-y-1">
+                        <div className="text-text-secondary text-sm space-y-1">
                           <p>Players: {stats.minB}-{stats.maxB} (avg: {stats.avgB.toFixed(1)})</p>
                           <p className="text-xs">
                             Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
@@ -5082,15 +5116,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       const matchups = getDivisionMatchups(stats.teamA, stats.teamB);
                       if (matchups.length === 0) return null;
                       return (
-                        <div className="mt-3 bg-slate-700 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2">
+                        <div className="mt-3 bg-bg-inset rounded p-3">
+                          <div className="text-xs text-text-secondary mb-2">
                             Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
                           </div>
                           <div className="space-y-1 max-h-32 overflow-y-auto">
                             {matchups.map((m, i) => (
-                              <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                              <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
                                 <span className="text-blue-400">{m.unitA}</span>
-                                <span className="text-slate-500">vs</span>
+                                <span className="text-text-secondary">vs</span>
                                 <span className="text-red-400">{m.unitB}</span>
                                 <span className="text-indigo-400 ml-1">({m.division})</span>
                               </div>
@@ -5099,7 +5133,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </div>
                       );
                     })()}
-                    <p className="text-xs text-slate-400 mt-3 text-center">
+                    <p className="text-xs text-text-secondary mt-3 text-center">
                       💡 Lower teammate history = better variety • Counts history up to the current week, not including.
                     </p>
                   </div>
@@ -5109,7 +5143,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {/* Team A */}
                 <div
-                  className="bg-slate-600 rounded-lg p-4 min-h-[200px]"
+                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
                   onDragOver={handleMainDragOver}
                   onDrop={() => handleMainDrop('A')}
                 >
@@ -5118,11 +5152,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="text"
                       value={teamNames.A}
                       onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white text-center font-bold text-lg rounded border border-slate-500 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                     />
                   </div>
                   {selectedWeek.teamA.length === 0 && (
-                    <div className="text-center text-slate-400 py-8 border-2 border-dashed border-slate-500 rounded">
+                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
                       Drop units here or use → A button
                     </div>
                   )}
@@ -5153,22 +5187,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           key={unit}
                           draggable
                           onDragStart={() => handleMainDragStart(unit, 'A')}
-                          className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
+                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
                         >
                           <div className="flex flex-col flex-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-white font-medium">{unit}</span>
-                              <span className="text-xs text-slate-400 ml-2">{minMax}</span>
+                              <span className="font-medium">{unit}</span>
+                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
                             </div>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-text-secondary">
                               Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
                             </span>
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'A')}
-                            className="p-1 hover:bg-red-600 rounded transition ml-2"
+                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
                           >
-                            <X className="w-4 h-4 text-white" />
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
                       );
@@ -5176,11 +5210,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                   {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
                     <div className="mt-3">
-                      <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
+                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
                       <select
                         value={selectedWeek.leadA || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">Select lead...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5193,7 +5227,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                 {/* Team B */}
                 <div
-                  className="bg-slate-600 rounded-lg p-4 min-h-[200px]"
+                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
                   onDragOver={handleMainDragOver}
                   onDrop={() => handleMainDrop('B')}
                 >
@@ -5202,11 +5236,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="text"
                       value={teamNames.B}
                       onChange={(e) => setTeamNames({ ...teamNames, B: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-800 text-white text-center font-bold text-lg rounded border border-slate-500 focus:border-amber-500 outline-none"
+                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                     />
                   </div>
                   {selectedWeek.teamB.length === 0 && (
-                    <div className="text-center text-slate-400 py-8 border-2 border-dashed border-slate-500 rounded">
+                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
                       Drop units here or use → B button
                     </div>
                   )}
@@ -5237,22 +5271,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           key={unit}
                           draggable
                           onDragStart={() => handleMainDragStart(unit, 'B')}
-                          className="flex justify-between items-center p-2 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition"
+                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
                         >
                           <div className="flex flex-col flex-1">
                             <div className="flex items-center justify-between">
-                              <span className="text-white font-medium">{unit}</span>
-                              <span className="text-xs text-slate-400 ml-2">{minMax}</span>
+                              <span className="font-medium">{unit}</span>
+                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
                             </div>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-text-secondary">
                               Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
                             </span>
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'B')}
-                            className="p-1 hover:bg-red-600 rounded transition ml-2"
+                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
                           >
-                            <X className="w-4 h-4 text-white" />
+                            <X className="w-4 h-4" />
                           </button>
                         </div>
                       );
@@ -5260,11 +5294,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                   {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
                     <div className="mt-3">
-                      <label className="block text-sm text-slate-300 mb-1">Lead Unit</label>
+                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
                       <select
                         value={selectedWeek.leadB || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">Select lead...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5278,7 +5312,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Playoffs Toggle */}
               <div className="mb-4">
-                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedWeek.isPlayoffs || false}
@@ -5286,7 +5320,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       isPlayoffs: e.target.checked,
                       ...(e.target.checked && { isSingleRoundLeads: false })
                     })}
-                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                   />
                   <Star className="w-4 h-4" />
                   <span className="font-semibold">Playoffs Week</span>
@@ -5295,7 +5329,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Single Round Leads Toggle */}
               <div className="mb-4">
-                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedWeek.isSingleRoundLeads || false}
@@ -5303,7 +5337,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       isSingleRoundLeads: e.target.checked,
                       ...(e.target.checked && { isPlayoffs: false })
                     })}
-                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                   />
                   <Star className="w-4 h-4" />
                   <span className="font-semibold">Single Round Leads</span>
@@ -5312,15 +5346,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Playoffs Lead Selection */}
               {selectedWeek.isPlayoffs && (
-                <div className="mb-6 bg-slate-600 rounded-lg p-4">
-                  <h3 className="text-lg font-bold text-amber-400 mb-3">Playoff Round Leads</h3>
+                <div className="mb-6 bg-bg-inset rounded-lg p-4">
+                  <h3 className="text-lg font-bold mb-3">Playoff Round Leads</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
                       <select
                         value={selectedWeek.leadA_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5329,11 +5363,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
                       <select
                         value={selectedWeek.leadB_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5342,11 +5376,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
                       <select
                         value={selectedWeek.leadA_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5355,11 +5389,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
                       <select
                         value={selectedWeek.leadB_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5373,15 +5407,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Single Round Leads Lead Selection */}
               {selectedWeek.isSingleRoundLeads && (
-                <div className="mb-6 bg-slate-600 rounded-lg p-4">
-                  <h3 className="text-lg font-bold text-amber-400 mb-3">Round Leads</h3>
+                <div className="mb-6 bg-bg-inset rounded-lg p-4">
+                  <h3 className="text-lg font-bold mb-3">Round Leads</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
                       <select
                         value={selectedWeek.leadA_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5390,11 +5424,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R1 Lead {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
                       <select
                         value={selectedWeek.leadB_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5403,11 +5437,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
                       <select
                         value={selectedWeek.leadA_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5416,11 +5450,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">R2 Lead {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
                       <select
                         value={selectedWeek.leadB_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5435,18 +5469,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
               {/* Round Results with Maps */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Round 1 */}
-                <div className="bg-slate-600 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                <div className="bg-bg-inset rounded-lg p-4">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                     <Target className="w-4 h-4" />
                     Round 1
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Map</label>
+                      <label className="block text-sm text-text-secondary mb-1">Map</label>
                       <select
                         value={selectedWeek.round1Map || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round1Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
@@ -5455,22 +5489,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedWeek.round1Flipped || false}
                           onChange={(e) => updateWeek(selectedWeek.id, { round1Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-slate-500 bg-slate-800"
+                          className="w-4 h-4 rounded border-border-default bg-bg-card"
                         />
                         <span className="text-sm">Flipped</span>
                       </label>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Winner</label>
+                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
                         value={selectedWeek.round1Winner || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round1Winner: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
@@ -5478,30 +5512,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Casualties {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
                       <input
                         type="number"
                         value={selectedWeek.r1CasualtiesA || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Casualties {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
                       <input
                         type="number"
                         value={selectedWeek.r1CasualtiesB || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
                     </div>
                     {/* Round 1 Balance Swaps */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
                       <div>
-                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
-                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
+                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
                           {[
                             ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
                             ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
@@ -5510,7 +5544,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             const isSwapped = swaps.includes(unit);
                             const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
                             return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
                                 <input
                                   type="checkbox"
                                   checked={isSwapped}
@@ -5523,9 +5557,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: updated }
                                     });
                                   }}
-                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
                                 />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
                                   {unit}
                                 </span>
                                 <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
@@ -5543,18 +5577,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
 
                 {/* Round 2 */}
-                <div className="bg-slate-600 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                <div className="bg-bg-inset rounded-lg p-4">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                     <Target className="w-4 h-4" />
                     Round 2
                   </h3>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Map</label>
+                      <label className="block text-sm text-text-secondary mb-1">Map</label>
                       <select
                         value={selectedWeek.round2Map || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round2Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
@@ -5563,22 +5597,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                         <input
                           type="checkbox"
                           checked={selectedWeek.round2Flipped || false}
                           onChange={(e) => updateWeek(selectedWeek.id, { round2Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-slate-500 bg-slate-800"
+                          className="w-4 h-4 rounded border-border-default bg-bg-card"
                         />
                         <span className="text-sm">Flipped</span>
                       </label>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Winner</label>
+                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
                         value={selectedWeek.round2Winner || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round2Winner: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
@@ -5586,30 +5620,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Casualties {teamNames.A}</label>
+                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
                       <input
                         type="number"
                         value={selectedWeek.r2CasualtiesA || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-300 mb-1">Casualties {teamNames.B}</label>
+                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
                       <input
                         type="number"
                         value={selectedWeek.r2CasualtiesB || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
                     </div>
                     {/* Round 2 Balance Swaps */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
                       <div>
-                        <label className="block text-sm text-slate-300 mb-1">Balance Swaps</label>
-                        <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto space-y-1">
+                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
+                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
                           {[
                             ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
                             ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
@@ -5618,7 +5652,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             const isSwapped = swaps.includes(unit);
                             const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
                             return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-slate-700 rounded px-1 py-0.5">
+                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
                                 <input
                                   type="checkbox"
                                   checked={isSwapped}
@@ -5631,9 +5665,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: updated }
                                     });
                                   }}
-                                  className="w-3 h-3 rounded border-slate-500 bg-slate-700"
+                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
                                 />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-slate-400'}`}>
+                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
                                   {unit}
                                 </span>
                                 <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
@@ -5658,8 +5692,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   disabled={!selectedWeek}
                   className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
                     selectedWeek
-                      ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                      : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      : 'bg-bg-inset text-text-muted cursor-not-allowed'
                   }`}
                 >
                   <Target className="w-5 h-5" />
@@ -5671,7 +5705,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
                     selectedWeek
                       ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                      : 'bg-bg-inset text-text-secondary cursor-not-allowed'
                   }`}
                 >
                   <Flame className="w-5 h-5" />
@@ -5683,41 +5717,41 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Balancer Modal */}
           {showBalancerModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Target className="w-6 h-6" />
                       Team Balancer - {selectedWeek.name}
                     </h2>
                     <button
                       onClick={closeBalancerModal}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   {!balancerResults || balancerResults.length === 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {/* Left: Available Units */}
-                      <div className="bg-slate-700 rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-amber-400 mb-3">Available Units Pool</h3>
-                        <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
+                      <div className="bg-bg-inset rounded-lg p-4">
+                        <h3 className="text-lg font-semibold mb-3">Available Units Pool</h3>
+                        <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
                           {(() => {
                             const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
                             const available = units.filter(u => !assignedUnits.has(u));
                             return available.length > 0 ? (
                               <div className="space-y-1">
                                 {available.map(unit => (
-                                  <div key={unit} className="text-white text-sm py-1">
+                                  <div key={unit} className="text-sm py-1">
                                     {unit}
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <p className="text-slate-400 text-sm">All units assigned</p>
+                              <p className="text-text-secondary text-sm">All units assigned</p>
                             );
                           })()}
                         </div>
@@ -5726,36 +5760,36 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {/* Right: Constraints */}
                       <div className="space-y-4">
                         {/* Max Player Difference */}
-                        <div className="bg-slate-700 rounded-lg p-4">
-                          <label className="block text-sm text-slate-300 mb-2">Max Player Difference</label>
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <label className="block text-sm text-text-secondary mb-2">Max Player Difference</label>
                           <input
                             type="number"
                             value={balancerMaxDiff}
                             onChange={(e) => setBalancerMaxDiff(parseInt(e.target.value) || 1)}
                             min="0"
                             max="100"
-                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                           />
                         </div>
 
                         {/* Balance Options Count */}
-                        <div className="bg-slate-700 rounded-lg p-4">
-                          <label className="block text-sm text-slate-300 mb-2">Balance Options</label>
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <label className="block text-sm text-text-secondary mb-2">Balance Options</label>
                           <input
                             type="number"
                             value={balancerSettings.balanceOptionCount}
                             onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
                             min="1"
                             max="10"
-                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                           />
-                          <p className="text-xs text-slate-400 mt-1">How many balance options to compare (1-10)</p>
+                          <p className="text-xs text-text-secondary mt-1">How many balance options to compare (1-10)</p>
                         </div>
 
                         {/* Unit Player Counts */}
-                        <div className="bg-slate-700 rounded-lg p-4">
+                        <div className="bg-bg-inset rounded-lg p-4">
                           <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-lg font-semibold text-amber-400">Unit Player Counts</h3>
+                            <h3 className="text-lg font-semibold">Unit Player Counts</h3>
                             <button
                               onClick={openCoordPasteModal}
                               className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition"
@@ -5767,7 +5801,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <div className="max-h-48 overflow-y-auto space-y-2">
                             {units.map(unit => (
                               <div key={unit} className="grid grid-cols-3 gap-2 items-center">
-                                <span className="text-white text-sm truncate" title={unit}>{unit}</span>
+                                <span className="text-sm truncate" title={unit}>{unit}</span>
                                 <input
                                   type="number"
                                   placeholder="Min"
@@ -5779,7 +5813,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       min: parseInt(e.target.value) || 0
                                     }
                                   })}
-                                  className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                 />
                                 <input
                                   type="number"
@@ -5792,7 +5826,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       max: parseInt(e.target.value) || 0
                                     }
                                   })}
-                                  className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                 />
                               </div>
                             ))}
@@ -5800,12 +5834,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </div>
 
                         {/* Opposing Units */}
-                        <div className="bg-slate-700 rounded-lg p-4">
-                          <h3 className="text-lg font-semibold text-amber-400 mb-3">Opposing Units</h3>
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-lg font-semibold mb-3">Opposing Units</h3>
                           <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
                             {balancerOpposingPairs.map((pair, idx) => (
-                              <div key={idx} className="flex justify-between items-center bg-slate-600 rounded p-2">
-                                <span className="text-white text-sm">{pair[0]} vs {pair[1]}</span>
+                              <div key={idx} className="flex justify-between items-center bg-bg-inset rounded p-2">
+                                <span className="text-sm">{pair[0]} vs {pair[1]}</span>
                                 <button
                                   onClick={() => setBalancerOpposingPairs(balancerOpposingPairs.filter((_, i) => i !== idx))}
                                   className="p-1 hover:bg-red-600 rounded transition"
@@ -5818,7 +5852,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <div className="grid grid-cols-2 gap-2">
                             <select
                               id="opposing-unit-1"
-                              className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                             >
                               <option value="">Select first unit...</option>
                               {units.map(unit => (
@@ -5827,7 +5861,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </select>
                             <select
                               id="opposing-unit-2"
-                              className="px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                             >
                               <option value="">Select second unit...</option>
                               {units.map(unit => (
@@ -5855,7 +5889,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               select1.value = '';
                               select2.value = '';
                             }}
-                            className="w-full mt-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                            className="w-full mt-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
                           >
                             Add Opposing Pair
                           </button>
@@ -5876,8 +5910,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               onClick={() => setSelectedBalanceIndex(idx)}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
                                 idx === selectedBalanceIndex
-                                  ? 'bg-amber-600 text-white'
-                                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-bg-inset text-text-secondary hover:bg-border-subtle'
                               }`}
                             >
                               {idx === 0 ? (
@@ -5888,7 +5922,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               ) : (
                                 `Option ${idx + 1}`
                               )}
-                              <span className={`text-xs ${idx === selectedBalanceIndex ? 'text-amber-200' : 'text-slate-400'}`}>
+                              <span className={`text-xs ${idx === selectedBalanceIndex ? 'text-white' : 'text-text-secondary'}`}>
                                 (Diff: {opt.score.toFixed(1)})
                               </span>
                             </button>
@@ -5901,47 +5935,47 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           {selectedBalanceIndex === 0 ? 'Best Balance Found!' : `Option ${selectedBalanceIndex + 1}`}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Avg Difference</div>
-                            <div className="text-lg font-bold text-amber-400">
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
+                            <div className="text-lg font-bold text-indigo-400">
                               {activeResult.score.toFixed(1)}
                             </div>
                           </div>
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Min Difference</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Min Difference</div>
                             <div className="text-lg font-bold text-cyan-400">
                               {Math.abs(activeResult.minA - activeResult.minB).toFixed(0)}
                             </div>
                           </div>
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Max Difference</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Max Difference</div>
                             <div className="text-lg font-bold text-purple-400">
                               {Math.abs(activeResult.maxA - activeResult.maxB).toFixed(0)}
                             </div>
                           </div>
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Avg Teammate History</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
                             <div className="text-lg font-bold text-green-400">
                               {activeResult.combinedAvgHistory?.toFixed(2) || '0.00'}
                             </div>
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Total Min Pop</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
                             <div className="text-lg font-bold text-cyan-400">
                               {activeResult.minA + activeResult.minB}
                             </div>
                           </div>
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Total Max Pop</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
                             <div className="text-lg font-bold text-purple-400">
                               {activeResult.maxA + activeResult.maxB}
                             </div>
                           </div>
-                          <div className="bg-slate-700 rounded p-3">
-                            <div className="text-xs text-slate-400 mb-1">Total Average Pop</div>
-                            <div className="text-lg font-bold text-amber-400">
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
+                            <div className="text-lg font-bold text-indigo-400">
                               {((activeResult.minA + activeResult.maxA + activeResult.minB + activeResult.maxB) / 2).toFixed(1)}
                             </div>
                           </div>
@@ -5950,15 +5984,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           const matchups = getDivisionMatchups(activeResult.teamA, activeResult.teamB);
                           if (matchups.length === 0) return null;
                           return (
-                            <div className="mt-3 max-w-4xl mx-auto bg-slate-700 rounded p-3">
-                              <div className="text-xs text-slate-400 mb-2">
+                            <div className="mt-3 max-w-4xl mx-auto bg-bg-inset rounded p-3">
+                              <div className="text-xs text-text-secondary mb-2">
                                 Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
                               </div>
                               <div className="space-y-1 max-h-32 overflow-y-auto">
                                 {matchups.map((m, i) => (
-                                  <div key={i} className="text-xs text-slate-300 flex items-center gap-1">
+                                  <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
                                     <span className="text-blue-400">{m.unitA}</span>
-                                    <span className="text-slate-500">vs</span>
+                                    <span className="text-text-secondary">vs</span>
                                     <span className="text-red-400">{m.unitB}</span>
                                     <span className="text-indigo-400 ml-1">({m.division})</span>
                                   </div>
@@ -5970,7 +6004,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         {/* Win Probability Bars */}
                         {(activeResult.round1Probability || activeResult.round2Probability) && (
                           <div className="mt-4 max-w-4xl mx-auto space-y-3">
-                            <h4 className="text-sm font-semibold text-amber-400 flex items-center justify-center gap-2">
+                            <h4 className="text-sm font-semibold text-text-secondary flex items-center justify-center gap-2">
                               <TrendingUp className="w-4 h-4" />
                               Win Probability
                             </h4>
@@ -5980,24 +6014,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             ].map(({ label, prob, map }) => {
                               if (!prob) return null;
                               return (
-                                <div key={label} className="bg-slate-700 rounded p-3">
+                                <div key={label} className="bg-bg-inset rounded p-3">
                                   <div className="flex justify-between items-center mb-2">
-                                    <span className="text-xs text-slate-400">{label}{map ? ` — ${map}` : ''}</span>
+                                    <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
                                     <div className="flex gap-3 text-xs">
                                       {prob.factors.elo && (
-                                        <span className="text-slate-500" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
+                                        <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
                                       )}
                                       {prob.factors.globalMap && (
-                                        <span className="text-slate-500" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
+                                        <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
                                       )}
                                       {prob.factors.unitMap && (
-                                        <span className="text-slate-500" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
+                                        <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
                                       )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                    <div className="flex-1 h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                                    <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
                                       <div
                                         className="h-full transition-all duration-300"
                                         style={{
@@ -6020,7 +6054,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             })}
                           </div>
                         )}
-                        <p className="text-slate-400 text-sm mt-3">
+                        <p className="text-text-secondary text-sm mt-3">
                           💡 Drag units between teams to adjust balance • Lower teammate history = better variety
                         </p>
                       </div>
@@ -6028,20 +6062,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         {/* Team A Results */}
                         <div
-                          className="bg-slate-700 rounded-lg p-4"
+                          className="bg-bg-inset rounded-lg p-4"
                           onDragOver={handleDragOver}
                           onDrop={() => handleDrop('A')}
                         >
                           <h4 className="text-lg font-semibold text-blue-400 mb-3">
                             Team A ({activeResult.teamA.length} units)
                           </h4>
-                          <div className="text-slate-300 text-sm mb-3 space-y-1">
+                          <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
                             <p className="text-xs">
                               Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
                             </p>
                           </div>
-                          <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
+                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
                               {activeResult.teamA.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
@@ -6051,13 +6085,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     key={unit}
                                     draggable
                                     onDragStart={() => handleDragStart(unit, 'A')}
-                                    className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center justify-between gap-2"
+                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
                                   >
                                     <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-slate-400" />
+                                      <Swords className="w-3 h-3 text-text-muted" />
                                       {unit}
                                     </div>
-                                    <span className="text-xs text-slate-400">{minMax}</span>
+                                    <span className="text-xs text-text-secondary">{minMax}</span>
                                   </div>
                                 );
                               })}
@@ -6067,20 +6101,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                         {/* Team B Results */}
                         <div
-                          className="bg-slate-700 rounded-lg p-4"
+                          className="bg-bg-inset rounded-lg p-4"
                           onDragOver={handleDragOver}
                           onDrop={() => handleDrop('B')}
                         >
                           <h4 className="text-lg font-semibold text-red-400 mb-3">
                             Team B ({activeResult.teamB.length} units)
                           </h4>
-                          <div className="text-slate-300 text-sm mb-3 space-y-1">
+                          <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
                             <p className="text-xs">
                               Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
                             </p>
                           </div>
-                          <div className="bg-slate-600 rounded p-3 max-h-64 overflow-y-auto">
+                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
                               {activeResult.teamB.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
@@ -6090,13 +6124,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     key={unit}
                                     draggable
                                     onDragStart={() => handleDragStart(unit, 'B')}
-                                    className="text-white text-sm py-2 px-3 bg-slate-700 rounded cursor-move hover:bg-slate-600 transition flex items-center justify-between gap-2"
+                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
                                   >
                                     <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-slate-400" />
+                                      <Swords className="w-3 h-3 text-text-muted" />
                                       {unit}
                                     </div>
-                                    <span className="text-xs text-slate-400">{minMax}</span>
+                                    <span className="text-xs text-text-secondary">{minMax}</span>
                                   </div>
                                 );
                               })}
@@ -6109,8 +6143,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   })()}
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-600">
-                    <div className="text-slate-300 text-sm">
+                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-border-default">
+                    <div className="text-text-secondary text-sm">
                       {balancerStatus}
                     </div>
                     <div className="flex gap-2">
@@ -6118,13 +6152,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <>
                           <button
                             onClick={closeBalancerModal}
-                            className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                           >
                             Close
                           </button>
                           <button
                             onClick={runBalancer}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                           >
                             <Target className="w-4 h-4" />
                             Balance!
@@ -6134,13 +6168,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <>
                           <button
                             onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}
-                            className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                           >
                             Back
                           </button>
                           <button
                             onClick={applyBalancerResults}
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                           >
                             <Save className="w-4 h-4" />
                             Apply to Week
@@ -6156,22 +6190,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Coord Sheet Paste Modal */}
           {showCoordPasteModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-amber-400">Paste from Coord Sheet</h2>
+                    <h2 className="text-lg font-semibold">Paste from Coord Sheet</h2>
                     <button
                       onClick={() => { setShowCoordPasteModal(false); setCoordParsedRows([]); setCoordPasteText(''); }}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-white" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   {coordParsedRows.length === 0 ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-slate-300">
+                      <p className="text-sm text-text-secondary">
                         Paste rows from your Google Sheets coord sheet. Expected format: tab-separated columns with regiment name, min, (optional column), max.
                       </p>
                       <textarea
@@ -6179,28 +6213,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         onChange={(e) => setCoordPasteText(e.target.value)}
                         placeholder={"CQB (T)\t14\t\t16\nJD (T)\t35\t\t40\n..."}
                         rows={10}
-                        className="w-full px-3 py-2 bg-slate-900 text-white rounded border border-slate-600 focus:border-amber-500 outline-none font-mono text-sm"
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm"
                       />
                       <button
                         onClick={parseCoordPaste}
                         disabled={!coordPasteText.trim()}
-                        className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded transition font-semibold"
+                        className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-bg-inset disabled:cursor-not-allowed text-white text-sm rounded-md transition font-semibold"
                       >
                         Parse
                       </button>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <p className="text-sm text-slate-300 mb-2">
+                      <p className="text-sm text-text-secondary mb-2">
                         Review matched regiments below. Adjust matches or choose to create / ignore unmatched ones.
                       </p>
                       <div className="max-h-[50vh] overflow-y-auto space-y-2">
                         {coordParsedRows.map((row, idx) => (
-                          <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-slate-800 opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-slate-700'}`}>
+                          <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
                             <div className="grid grid-cols-12 gap-2 items-center">
                               {/* Parsed name */}
                               <div className="col-span-3">
-                                <span className="text-white text-sm font-medium">{row.rawName}</span>
+                                <span className="text-sm font-medium">{row.rawName}</span>
                               </div>
                               {/* Min / Max */}
                               <div className="col-span-2 flex gap-1">
@@ -6212,7 +6246,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], min: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-slate-800 text-white text-xs rounded border border-slate-600 text-center"
+                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
                                 />
                                 <input
                                   type="number"
@@ -6222,11 +6256,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], max: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-slate-800 text-white text-xs rounded border border-slate-600 text-center"
+                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
                                 />
                               </div>
                               {/* Arrow */}
-                              <div className="col-span-1 text-center text-slate-400 text-sm">→</div>
+                              <div className="col-span-1 text-center text-text-secondary text-sm">→</div>
                               {/* Action / match selector */}
                               <div className="col-span-6">
                                 <select
@@ -6243,7 +6277,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     }
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-full px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                  className="w-full px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                 >
                                   <optgroup label="Registered Units">
                                     {units.map(u => (
@@ -6260,7 +6294,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             {/* Create new unit options */}
                             {row.action === 'create' && (
                               <div className="mt-2 ml-4 flex items-center gap-3">
-                                <label className="text-xs text-slate-400">Name:</label>
+                                <label className="text-xs text-text-secondary">Name:</label>
                                 <input
                                   type="text"
                                   value={row.newUnitName}
@@ -6269,9 +6303,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], newUnitName: e.target.value };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="flex-1 px-2 py-1 bg-slate-900 text-white text-sm rounded border border-slate-600 focus:border-amber-500 outline-none"
+                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                 />
-                                <label className="flex items-center gap-1 text-xs text-slate-400 cursor-pointer">
+                                <label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer">
                                   <input
                                     type="checkbox"
                                     checked={row.newUnitIsToken}
@@ -6292,13 +6326,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="flex gap-2 mt-4">
                         <button
                           onClick={() => { setCoordParsedRows([]); }}
-                          className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded transition"
+                          className="flex-1 px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                         >
                           Back
                         </button>
                         <button
                           onClick={applyCoordPaste}
-                          className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition font-semibold"
+                          className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition font-semibold"
                         >
                           <span className="flex items-center justify-center gap-2">
                             <CheckCircle2 className="w-4 h-4" />
@@ -6315,19 +6349,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Casualty Input Modal */}
           {showCasualtyModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Flame className="w-6 h-6" />
                       Input Casualties - {selectedWeek.name}
                     </h2>
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
@@ -6338,15 +6372,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       const rosterUnits = selectedWeek[`team${teamId}`] || [];
 
                       return (
-                        <div key={teamName} className="bg-slate-700 rounded-lg p-4">
-                          <h3 className="text-lg font-semibold text-amber-400 mb-4">{teamName} Units</h3>
+                        <div key={teamName} className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-lg font-semibold mb-4">{teamName} Units</h3>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* Round 1 */}
-                            <div className="bg-slate-600 rounded-lg p-3">
+                            <div className="bg-bg-inset rounded-lg p-3">
                               <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-semibold text-white">Round 1 Casualties</h4>
-                                <label className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs cursor-pointer transition">
+                                <h4 className="font-semibold">Round 1 Casualties</h4>
+                                <label className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
                                   Load CSV
                                   <input
                                     type="file"
@@ -6359,7 +6393,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {rosterUnits.map(unit => (
                                   <div key={unit} className="flex justify-between items-center">
-                                    <label className="text-white text-sm truncate flex-1" title={unit}>
+                                    <label className="text-sm truncate flex-1" title={unit}>
                                       {unit}:
                                     </label>
                                     <input
@@ -6382,21 +6416,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           }
                                         }));
                                       }}
-                                      className="w-16 px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-500 focus:border-amber-500 outline-none ml-2"
+                                      className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
                                     />
                                   </div>
                                 ))}
                                 {rosterUnits.length === 0 && (
-                                  <p className="text-slate-400 text-xs text-center py-2">No units assigned</p>
+                                  <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
                                 )}
                               </div>
                             </div>
 
                             {/* Round 2 */}
-                            <div className="bg-slate-600 rounded-lg p-3">
+                            <div className="bg-bg-inset rounded-lg p-3">
                               <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-semibold text-white">Round 2 Casualties</h4>
-                                <label className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs cursor-pointer transition">
+                                <h4 className="font-semibold">Round 2 Casualties</h4>
+                                <label className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
                                   Load CSV
                                   <input
                                     type="file"
@@ -6409,7 +6443,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {rosterUnits.map(unit => (
                                   <div key={unit} className="flex justify-between items-center">
-                                    <label className="text-white text-sm truncate flex-1" title={unit}>
+                                    <label className="text-sm truncate flex-1" title={unit}>
                                       {unit}:
                                     </label>
                                     <input
@@ -6432,12 +6466,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           }
                                         }));
                                       }}
-                                      className="w-16 px-2 py-1 bg-slate-800 text-white text-sm rounded border border-slate-500 focus:border-amber-500 outline-none ml-2"
+                                      className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
                                     />
                                   </div>
                                 ))}
                                 {rosterUnits.length === 0 && (
-                                  <p className="text-slate-400 text-xs text-center py-2">No units assigned</p>
+                                  <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
                                 )}
                               </div>
                             </div>
@@ -6448,16 +6482,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={saveCasualtyData}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                     >
                       <Save className="w-4 h-4" />
                       Save
@@ -6471,30 +6505,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Statistics Modal */}
           {showStatsModal && (
             <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
               onClick={() => setShowStatsModal(false)}
             >
               <div
-                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <BarChart3 className="w-6 h-6" />
                       Season Statistics
                     </h2>
                     <button
                       onClick={() => setShowStatsModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   {/* Map Statistics */}
-                  <div className="bg-slate-700 rounded-lg p-4 mb-4">
-                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                       <Map className="w-5 h-5" />
                       Map Statistics
                     </h3>
@@ -6509,58 +6543,58 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             <div className="mb-4 space-y-3">
                               {/* Faction Win Rates */}
                               <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-600 rounded p-3">
-                                  <div className="text-xs text-slate-400 mb-1">USA Overall</div>
+                                <div className="bg-bg-inset rounded p-3">
+                                  <div className="text-xs text-text-secondary mb-1">USA Overall</div>
                                   <div className="text-lg font-bold text-blue-400">
-                                    {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.usaWins}/{overall.totalRounds})</span>
+                                    {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span>
                                   </div>
                                 </div>
-                                <div className="bg-slate-600 rounded p-3">
-                                  <div className="text-xs text-slate-400 mb-1">CSA Overall</div>
+                                <div className="bg-bg-inset rounded p-3">
+                                  <div className="text-xs text-text-secondary mb-1">CSA Overall</div>
                                   <div className="text-lg font-bold text-red-400">
-                                    {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.csaWins}/{overall.totalRounds})</span>
+                                    {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaWins}/{overall.totalRounds})</span>
                                   </div>
                                 </div>
                               </div>
                               {/* Attacker/Defender Win Rates */}
                               <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-600 rounded p-3">
-                                  <div className="text-xs text-slate-400 mb-1">Attackers Won</div>
-                                  <div className="text-lg font-bold text-amber-400">
-                                    {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.attackerWins}/{overall.totalRounds})</span>
+                                <div className="bg-bg-inset rounded p-3">
+                                  <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
+                                  <div className="text-lg font-bold text-indigo-400">
+                                    {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span>
                                   </div>
                                 </div>
-                                <div className="bg-slate-600 rounded p-3">
-                                  <div className="text-xs text-slate-400 mb-1">Defenders Won</div>
+                                <div className="bg-bg-inset rounded p-3">
+                                  <div className="text-xs text-text-secondary mb-1">Defenders Won</div>
                                   <div className="text-lg font-bold text-green-400">
-                                    {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-slate-300">({overall.defenderWins}/{overall.totalRounds})</span>
+                                    {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.defenderWins}/{overall.totalRounds})</span>
                                   </div>
                                 </div>
                               </div>
                               {/* Faction Attack/Defense Breakdown */}
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div className="bg-slate-600 rounded p-2">
-                                  <div className="text-xs text-slate-400">USA Attack</div>
+                                <div className="bg-bg-inset rounded p-2">
+                                  <div className="text-xs text-text-secondary">USA Attack</div>
                                   <div className="text-sm font-semibold text-blue-400">
-                                    {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-slate-400">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
+                                    {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
                                   </div>
                                 </div>
-                                <div className="bg-slate-600 rounded p-2">
-                                  <div className="text-xs text-slate-400">USA Defense</div>
+                                <div className="bg-bg-inset rounded p-2">
+                                  <div className="text-xs text-text-secondary">USA Defense</div>
                                   <div className="text-sm font-semibold text-blue-400">
-                                    {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-slate-400">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
+                                    {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
                                   </div>
                                 </div>
-                                <div className="bg-slate-600 rounded p-2">
-                                  <div className="text-xs text-slate-400">CSA Attack</div>
+                                <div className="bg-bg-inset rounded p-2">
+                                  <div className="text-xs text-text-secondary">CSA Attack</div>
                                   <div className="text-sm font-semibold text-red-400">
-                                    {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-slate-400">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
+                                    {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
                                   </div>
                                 </div>
-                                <div className="bg-slate-600 rounded p-2">
-                                  <div className="text-xs text-slate-400">CSA Defense</div>
+                                <div className="bg-bg-inset rounded p-2">
+                                  <div className="text-xs text-text-secondary">CSA Defense</div>
                                   <div className="text-sm font-semibold text-red-400">
-                                    {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-slate-400">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
+                                    {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
                                   </div>
                                 </div>
                               </div>
@@ -6575,16 +6609,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               if (playedMaps.length === 0) return null;
 
                               return (
-                                <div key={areaKey} className="bg-slate-600 rounded-lg overflow-hidden">
+                                <div key={areaKey} className="bg-bg-inset rounded-lg overflow-hidden">
                                   <button
                                     onClick={() => toggleSection(`mapStats_${areaKey}`)}
-                                    className="w-full flex items-center justify-between bg-slate-500 px-3 py-2 hover:bg-slate-450 transition"
+                                    className="w-full flex items-center justify-between bg-bg-inset px-3 py-2 hover:bg-border-subtle transition"
                                   >
-                                    <span className="font-semibold text-amber-300">{areaName} ({playedMaps.length})</span>
+                                    <span className="font-semibold text-text-secondary">{areaName} ({playedMaps.length})</span>
                                     {expandedSections[`mapStats_${areaKey}`] ? (
-                                      <ChevronDown className="w-4 h-4 text-slate-300" />
+                                      <ChevronDown className="w-4 h-4 text-text-secondary" />
                                     ) : (
-                                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                                      <ChevronRight className="w-4 h-4 text-text-secondary" />
                                     )}
                                   </button>
                                   {expandedSections[`mapStats_${areaKey}`] && (
@@ -6595,18 +6629,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           const stats = byMap[mapName];
                                           const avgCas = stats.plays > 0 ? (stats.totalCasualties / stats.plays).toFixed(0) : 0;
                                           return (
-                                            <div key={mapName} className="bg-slate-700 rounded p-2">
+                                            <div key={mapName} className="bg-bg-card rounded p-2">
                                               <div className="flex justify-between items-center mb-1">
-                                                <span className="text-sm font-medium text-white">{mapName}</span>
-                                                <span className="text-xs text-slate-400">{stats.plays} rounds</span>
+                                                <span className="text-sm font-medium">{mapName}</span>
+                                                <span className="text-xs text-text-secondary">{stats.plays} rounds</span>
                                               </div>
                                               <div className="text-xs space-y-0.5">
                                                 <div>
                                                   <span className="text-blue-300">USA: {stats.usaWins} ({pct(stats.usaWins, stats.plays)}%)</span>
-                                                  <span className="text-slate-500 mx-2">|</span>
+                                                  <span className="text-text-secondary mx-2">|</span>
                                                   <span className="text-red-300">CSA: {stats.csaWins} ({pct(stats.csaWins, stats.plays)}%)</span>
                                                 </div>
-                                                <div className="text-slate-300">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
+                                                <div className="text-text-secondary">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
                                               </div>
                                             </div>
                                           );
@@ -6619,7 +6653,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
 
                           {Object.keys(byMap).length === 0 && (
-                            <p className="text-slate-400 text-center py-4">No map data available</p>
+                            <p className="text-text-secondary text-center py-4">No map data available</p>
                           )}
                         </>
                       );
@@ -6627,8 +6661,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Casualties Summary */}
-                  <div className="bg-slate-700 rounded-lg p-4 mb-4">
-                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                       <Flame className="w-5 h-5" />
                       Total Casualties
                     </h3>
@@ -6663,21 +6697,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       
                       return (
                         <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-slate-600 rounded p-3">
-                            <div className="text-sm text-slate-300 mb-1">USA Casualties</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
                             <div className="text-2xl font-bold text-blue-400">
                               {usaCasualties}
                             </div>
                           </div>
-                          <div className="bg-slate-600 rounded p-3">
-                            <div className="text-sm text-slate-300 mb-1">CSA Casualties</div>
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
                             <div className="text-2xl font-bold text-red-400">
                               {csaCasualties}
                             </div>
                           </div>
-                          <div className="bg-slate-600 rounded p-3">
-                            <div className="text-sm text-slate-300 mb-1">Combined Casualties</div>
-                            <div className="text-2xl font-bold text-amber-400">
+                          <div className="bg-bg-inset rounded p-3">
+                            <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
+                            <div className="text-2xl font-bold text-indigo-400">
                               {totalCasualties}
                             </div>
                           </div>
@@ -6729,12 +6763,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       }).sort((a, b) => b.kd - a.kd);
 
                       return (
-                        <div className="bg-slate-600 rounded p-3 mt-4">
-                          <h4 className="font-semibold text-white mb-3">Per-Unit Casualty Report</h4>
+                        <div className="bg-bg-inset rounded p-3 mt-4">
+                          <h4 className="font-semibold mb-3">Per-Unit Casualty Report</h4>
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs">
                               <thead>
-                                <tr className="text-slate-300 border-b border-slate-500">
+                                <tr className="text-text-secondary border-b border-border-default">
                                   <th className="text-left py-2 px-2">Unit</th>
                                   <th className="text-center py-2 px-2">Inflicted</th>
                                   <th className="text-center py-2 px-2">Lost</th>
@@ -6745,15 +6779,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               </thead>
                               <tbody>
                                 {tableData.map((row, idx) => (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-slate-700' : 'bg-slate-600'}`}>
-                                    <td className="text-white py-2 px-2">{row.unit}</td>
+                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}`}>
+                                    <td className="py-2 px-2">{row.unit}</td>
                                     <td className="text-green-400 text-center py-2 px-2">{row.inflicted}</td>
                                     <td className="text-red-400 text-center py-2 px-2">{row.lost}</td>
-                                    <td className="text-amber-400 text-center py-2 px-2">
+                                    <td className="text-indigo-400 text-center py-2 px-2">
                                       {row.kd === Infinity ? '∞' : row.kd.toFixed(2)}
                                     </td>
-                                    <td className="text-slate-300 text-center py-2 px-2">{row.inflictedPerGame.toFixed(2)}</td>
-                                    <td className="text-slate-300 text-center py-2 px-2">{row.lostPerGame.toFixed(2)}</td>
+                                    <td className="text-text-secondary text-center py-2 px-2">{row.inflictedPerGame.toFixed(2)}</td>
+                                    <td className="text-text-secondary text-center py-2 px-2">{row.lostPerGame.toFixed(2)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -6765,8 +6799,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Teammate Impact Index (TII) */}
-                  <div className="bg-slate-700 rounded-lg p-4 mb-4">
-                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                       <TrendingUp className="w-5 h-5" />
                       Teammate Impact Index (TII)
                     </h3>
@@ -6785,14 +6819,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
                       
                       if (tableData.length === 0) {
-                        return <p className="text-slate-400 text-center py-4">No TII data available yet</p>;
+                        return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
                       }
                       
                       return (
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs">
                             <thead>
-                              <tr className="text-slate-300 border-b border-slate-500">
+                              <tr className="text-text-secondary border-b border-border-default">
                                 <th className="text-left py-2 px-2">Unit (Avg Players)</th>
                                 <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
                                 <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
@@ -6805,11 +6839,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               {tableData.map((row, idx) => {
                                 const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
                                 return (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-slate-600' : 'bg-slate-700'}`}>
-                                    <td className="text-white py-2 px-2">
+                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
+                                    <td className="py-2 px-2">
                                       {row.unit} ({row.avgPlayers.toFixed(1)})
                                     </td>
-                                    <td className="text-amber-400 text-center py-2 px-2 font-semibold">
+                                    <td className="text-indigo-400 text-center py-2 px-2 font-semibold">
                                       {row.adjustedTiiScore.toFixed(3)}
                                     </td>
                                     <td className="text-cyan-400 text-center py-2 px-2">
@@ -6829,8 +6863,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               })}
                             </tbody>
                           </table>
-                          <div className="mt-3 text-xs text-slate-400 bg-slate-600 rounded p-3">
-                            <p className="font-semibold text-amber-300 mb-2">📊 Metric Explanations:</p>
+                          <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
+                            <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
                             <ul className="space-y-1 ml-4">
                               <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
                               <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
@@ -6845,24 +6879,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Playoffs Section */}
-                  <div className="bg-slate-700 rounded-lg p-4">
-                    <h3 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
+                  <div className="bg-bg-inset rounded-lg p-4">
+                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                       <Trophy className="w-5 h-5" />
                       Playoffs
                     </h3>
                     
                     {/* Playoff Configuration */}
-                    <div className="bg-slate-600 rounded-lg p-4 mb-4">
-                      <h4 className="font-semibold text-white mb-3">Playoff Format Settings</h4>
+                    <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                      <h4 className="font-semibold mb-3">Playoff Format Settings</h4>
                       
                       <div className="space-y-3">
                         {/* Enable Playoffs */}
-                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                           <input
                             type="checkbox"
                             checked={playoffConfig.enabled}
                             onChange={(e) => setPlayoffConfig({ ...playoffConfig, enabled: e.target.checked })}
-                            className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                           />
                           <Star className="w-4 h-4" />
                           <span className="font-semibold">Enable Playoff Tracking</span>
@@ -6872,12 +6906,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <>
                             {/* Use Divisions */}
                             {divisions && divisions.length > 0 && (
-                              <label className="flex items-center gap-2 text-slate-300 cursor-pointer ml-6">
+                              <label className="flex items-center gap-2 text-text-secondary cursor-pointer ml-6">
                                 <input
                                   type="checkbox"
                                   checked={playoffConfig.useDivisions}
                                   onChange={(e) => setPlayoffConfig({ ...playoffConfig, useDivisions: e.target.checked })}
-                                  className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                                  className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                                 />
                                 <Shield className="w-4 h-4" />
                                 <span className="text-sm">Use Division-based Playoffs</span>
@@ -6887,21 +6921,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             {/* Teams per Division */}
                             {playoffConfig.useDivisions && (
                               <div className="ml-6">
-                                <label className="block text-sm text-slate-300 mb-1">Top Teams per Division</label>
+                                <label className="block text-sm text-text-secondary mb-1">Top Teams per Division</label>
                                 <input
                                   type="number"
                                   min="1"
                                   max="4"
                                   value={playoffConfig.teamsPerDivision}
                                   onChange={(e) => setPlayoffConfig({ ...playoffConfig, teamsPerDivision: parseInt(e.target.value) || 1 })}
-                                  className="w-24 px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                 />
                               </div>
                             )}
                             
                             {/* Wildcard Teams */}
                             <div className="ml-6">
-                              <label className="block text-sm text-slate-300 mb-1">
+                              <label className="block text-sm text-text-secondary mb-1">
                                 {playoffConfig.useDivisions ? 'Wildcard Teams' : 'Total Playoff Teams'}
                               </label>
                               <input
@@ -6910,16 +6944,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 max="8"
                                 value={playoffConfig.wildcardTeams}
                                 onChange={(e) => setPlayoffConfig({ ...playoffConfig, wildcardTeams: parseInt(e.target.value) || 0 })}
-                                className="w-24 px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                               />
                             </div>
                             
                             {/* Round Formats */}
-                            <div className="ml-6 bg-slate-700 rounded p-3">
-                              <h5 className="text-sm font-semibold text-amber-300 mb-2">Rounds per Playoff Stage</h5>
+                            <div className="ml-6 bg-bg-card rounded p-3">
+                              <h5 className="text-sm font-semibold text-text-secondary mb-2">Rounds per Playoff Stage</h5>
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="block text-xs text-slate-300 mb-1">Wildcard</label>
+                                  <label className="block text-xs text-text-secondary mb-1">Wildcard</label>
                                   <input
                                     type="number"
                                     min="1"
@@ -6929,11 +6963,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       ...playoffConfig,
                                       roundFormats: { ...playoffConfig.roundFormats, wildcard: parseInt(e.target.value) || 1 }
                                     })}
-                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                    className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-slate-300 mb-1">Divisional</label>
+                                  <label className="block text-xs text-text-secondary mb-1">Divisional</label>
                                   <input
                                     type="number"
                                     min="1"
@@ -6943,11 +6977,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       ...playoffConfig,
                                       roundFormats: { ...playoffConfig.roundFormats, divisional: parseInt(e.target.value) || 1 }
                                     })}
-                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                    className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-slate-300 mb-1">Conference</label>
+                                  <label className="block text-xs text-text-secondary mb-1">Conference</label>
                                   <input
                                     type="number"
                                     min="1"
@@ -6957,11 +6991,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       ...playoffConfig,
                                       roundFormats: { ...playoffConfig.roundFormats, conference: parseInt(e.target.value) || 2 }
                                     })}
-                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                    className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-slate-300 mb-1">Finals</label>
+                                  <label className="block text-xs text-text-secondary mb-1">Finals</label>
                                   <input
                                     type="number"
                                     min="1"
@@ -6971,7 +7005,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       ...playoffConfig,
                                       roundFormats: { ...playoffConfig.roundFormats, finals: parseInt(e.target.value) || 2 }
                                     })}
-                                    className="w-16 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                    className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                                   />
                                 </div>
                               </div>
@@ -6988,8 +7022,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       
                       if (!bracket || bracket.teams.length === 0) {
                         return (
-                          <div className="bg-slate-600 rounded-lg p-4 text-center">
-                            <p className="text-slate-400 text-sm">
+                          <div className="bg-bg-inset rounded-lg p-4 text-center">
+                            <p className="text-text-secondary text-sm">
                               Not enough teams for playoffs. Configure playoff settings above.
                             </p>
                           </div>
@@ -6997,20 +7031,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       }
                       
                       return (
-                        <div className="bg-slate-600 rounded-lg p-4">
-                          <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h4 className="font-semibold mb-3 flex items-center gap-2">
                             <Target className="w-4 h-4" />
                             Playoff Picture
                             {selectedWeek && (
-                              <span className="text-xs text-slate-400 font-normal">
+                              <span className="text-xs text-text-secondary font-normal">
                                 (as of {selectedWeek.name})
                               </span>
                             )}
                           </h4>
-                          
+
                           {/* Seeding */}
-                          <div className="mb-4 bg-slate-700 rounded p-3">
-                            <h5 className="text-sm font-semibold text-amber-300 mb-2">Playoff Seeds</h5>
+                          <div className="mb-4 bg-bg-card rounded p-3">
+                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Playoff Seeds</h5>
                             {playoffConfig.useDivisions && bracket.teams.some(t => t.conference) ? (
                               // Conference-based seeding display
                               (() => {
@@ -7024,14 +7058,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 return (
                                   <div className="space-y-3">
                                     {Object.entries(conferences).map(([confName, confTeams]) => (
-                                      <div key={confName} className="bg-slate-600 rounded p-2">
+                                      <div key={confName} className="bg-bg-inset rounded p-2">
                                         <h6 className="text-xs font-bold text-cyan-300 mb-2">{confName} Conference</h6>
                                         <div className="grid grid-cols-2 gap-2">
                                           {confTeams.map((team) => (
                                             <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                              <span className="text-amber-400 font-bold">#{team.conferenceSeed}</span>
-                                              <span className="text-white">{team.unit}</span>
-                                              <span className="text-slate-400 text-xs">
+                                              <span className="text-indigo-400 font-bold">#{team.conferenceSeed}</span>
+                                              <span>{team.unit}</span>
+                                              <span className="text-text-secondary text-xs">
                                                 ({team.points} pts{team.isWildcard ? ', WC' : ''})
                                               </span>
                                             </div>
@@ -7047,9 +7081,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="grid grid-cols-2 gap-2">
                                 {bracket.teams.map((team) => (
                                   <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                    <span className="text-amber-400 font-bold">#{team.seed}</span>
-                                    <span className="text-white">{team.unit}</span>
-                                    <span className="text-slate-400 text-xs">({team.points} pts)</span>
+                                    <span className="text-indigo-400 font-bold">#{team.seed}</span>
+                                    <span>{team.unit}</span>
+                                    <span className="text-text-secondary text-xs">({team.points} pts)</span>
                                   </div>
                                 ))}
                               </div>
@@ -7059,11 +7093,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           {/* Bracket Rounds */}
                           <div className="space-y-3">
                             {bracket.rounds.map((round, roundIdx) => (
-                              <div key={roundIdx} className="bg-slate-700 rounded p-3">
-                                <h5 className="text-sm font-semibold text-amber-300 mb-2 flex items-center gap-2">
+                              <div key={roundIdx} className="bg-bg-card rounded p-3">
+                                <h5 className="text-sm font-semibold text-text-secondary mb-2 flex items-center gap-2">
                                   <Swords className="w-4 h-4" />
                                   {round.name}
-                                  <span className="text-xs text-slate-400 font-normal">
+                                  <span className="text-xs text-text-secondary font-normal">
                                     ({round.roundsPerMatch} round{round.roundsPerMatch > 1 ? 's' : ''} per match)
                                   </span>
                                 </h5>
@@ -7073,9 +7107,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     const confLabel = matchup.conference && matchup.conference !== 'Championship'
                                       ? `[${matchup.conference}] `
                                       : '';
-                                    
+
                                     return (
-                                      <div key={matchIdx} className="bg-slate-600 rounded p-2">
+                                      <div key={matchIdx} className="bg-bg-inset rounded p-2">
                                         {confLabel && (
                                           <div className="text-xs text-cyan-400 font-semibold mb-1">{confLabel}</div>
                                         )}
@@ -7083,32 +7117,32 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           <div className="flex items-center gap-2 flex-1">
                                             {matchup.team1 ? (
                                               <>
-                                                <span className="text-amber-400 font-bold text-xs">#{matchup.seed1}</span>
-                                                <span className="text-white text-sm">{matchup.team1.unit}</span>
+                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed1}</span>
+                                                <span className="text-sm">{matchup.team1.unit}</span>
                                                 {matchup.team1.isWildcard && (
                                                   <span className="text-purple-400 text-xs font-bold">WC</span>
                                                 )}
                                               </>
                                             ) : matchup.label ? (
-                                              <span className="text-slate-400 text-sm italic">{matchup.label}</span>
+                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
                                             ) : (
-                                              <span className="text-slate-400 text-sm italic">Seed #{matchup.seed1}</span>
+                                              <span className="text-text-secondary text-sm italic">Seed #{matchup.seed1}</span>
                                             )}
                                           </div>
-                                          <span className="text-slate-400 text-xs font-bold mx-2">VS</span>
+                                          <span className="text-text-secondary text-xs font-bold mx-2">VS</span>
                                           <div className="flex items-center gap-2 flex-1 justify-end">
                                             {matchup.team2 ? (
                                               <>
                                                 {matchup.team2.isWildcard && (
                                                   <span className="text-purple-400 text-xs font-bold">WC</span>
                                                 )}
-                                                <span className="text-white text-sm">{matchup.team2.unit}</span>
-                                                <span className="text-amber-400 font-bold text-xs">#{matchup.seed2}</span>
+                                                <span className="text-sm">{matchup.team2.unit}</span>
+                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed2}</span>
                                               </>
                                             ) : matchup.label && !matchup.team1 ? (
-                                              <span className="text-slate-400 text-sm italic">{matchup.label}</span>
+                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
                                             ) : (
-                                              <span className="text-slate-400 text-sm italic">
+                                              <span className="text-text-secondary text-sm italic">
                                                 {matchup.seed2 === 'WC1' || matchup.seed2 === 'WC2' ? 'Wildcard Winner' : `Seed #${matchup.seed2}`}
                                               </span>
                                             )}
@@ -7127,15 +7161,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Unit Interactions */}
-                  <div className="bg-slate-700 rounded-lg p-4">
+                  <div className="bg-bg-inset rounded-lg p-4">
                     <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2">
+                      <h3 className="text-base font-semibold flex items-center gap-2">
                         <Users className="w-5 h-5" />
                         Unit Interactions
                       </h3>
                       <button
                         onClick={() => setShowHeatmapModal(true)}
-                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition flex items-center gap-1"
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
                         title="View Teammate Composition Heatmap"
                       >
                         <Swords className="w-4 h-4" />
@@ -7183,32 +7217,32 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         
                         return (
                           <>
-                            <div className="bg-slate-600 rounded p-3">
-                              <h4 className="font-semibold text-white mb-2">Most Frequent Teammates</h4>
+                            <div className="bg-bg-inset rounded p-3">
+                              <h4 className="font-semibold mb-2">Most Frequent Teammates</h4>
                               <div className="space-y-1">
                                 {teammatePairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-slate-300 flex justify-between">
+                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} & {pair.unit2}</span>
-                                    <span className="text-amber-400">{pair.count} weeks</span>
+                                    <span className="text-indigo-400">{pair.count} weeks</span>
                                   </div>
                                 ))}
                                 {teammatePairs.length === 0 && (
-                                  <p className="text-xs text-slate-400">No teammate data yet</p>
+                                  <p className="text-xs text-text-secondary">No teammate data yet</p>
                                 )}
                               </div>
                             </div>
-                            
-                            <div className="bg-slate-600 rounded p-3">
-                              <h4 className="font-semibold text-white mb-2">Most Frequent Opponents</h4>
+
+                            <div className="bg-bg-inset rounded p-3">
+                              <h4 className="font-semibold mb-2">Most Frequent Opponents</h4>
                               <div className="space-y-1">
                                 {opponentPairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-slate-300 flex justify-between">
+                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} vs {pair.unit2}</span>
                                     <span className="text-red-400">{pair.count} weeks</span>
                                   </div>
                                 ))}
                                 {opponentPairs.length === 0 && (
-                                  <p className="text-xs text-slate-400">No opponent data yet</p>
+                                  <p className="text-xs text-text-secondary">No opponent data yet</p>
                                 )}
                               </div>
                             </div>
@@ -7224,61 +7258,61 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Division Management Modal */}
           {showDivisionModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Users className="w-6 h-6" />
                       Division Management
                     </h2>
                     <button
                       onClick={() => setShowDivisionModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Left: Unassigned Units */}
-                    <div className="bg-slate-700 rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-amber-400 mb-3">Unassigned Units</h3>
-                      <div className="bg-slate-600 rounded p-3 max-h-96 overflow-y-auto">
+                    <div className="bg-bg-inset rounded-lg p-4">
+                      <h3 className="text-lg font-semibold mb-3">Unassigned Units</h3>
+                      <div className="bg-bg-inset rounded p-3 max-h-96 overflow-y-auto">
                         {getUnassignedUnits().length > 0 ? (
                           <div className="space-y-1">
                             {getUnassignedUnits().map(unit => (
-                              <div key={unit} className="text-white text-sm py-1">
+                              <div key={unit} className="text-sm py-1">
                                 {unit}
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-slate-400 text-sm">All units assigned to divisions</p>
+                          <p className="text-text-secondary text-sm">All units assigned to divisions</p>
                         )}
                       </div>
                     </div>
 
                     {/* Right: Divisions */}
-                    <div className="bg-slate-700 rounded-lg p-4">
+                    <div className="bg-bg-inset rounded-lg p-4">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-lg font-semibold text-amber-400">Divisions</h3>
+                        <h3 className="text-lg font-semibold">Divisions</h3>
                         <button
                           onClick={addDivision}
-                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition"
+                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
                         {divisions.map((division) => (
-                          <div key={division.name} className="bg-slate-600 rounded-lg p-3">
+                          <div key={division.name} className="bg-bg-inset rounded-lg p-3">
                             <div className="flex justify-between items-center mb-2">
                               <input
                                 type="text"
                                 value={division.name}
                                 onChange={(e) => renameDivision(division.name, e.target.value)}
-                                className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm font-semibold"
+                                className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm font-semibold"
                               />
                               <button
                                 onClick={() => deleteDivision(division.name)}
@@ -7290,17 +7324,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             <div className="space-y-1">
                               {division.units.map(unit => (
                                 <div key={unit} className="flex justify-between items-center text-xs">
-                                  <span className="text-white">{unit}</span>
+                                  <span>{unit}</span>
                                   <button
                                     onClick={() => removeUnitFromDivision(division.name, unit)}
                                     className="p-1 hover:bg-red-600 rounded transition"
                                   >
-                                    <X className="w-3 h-3 text-white" />
+                                    <X className="w-3 h-3" />
                                   </button>
                                 </div>
                               ))}
                               {division.units.length === 0 && (
-                                <p className="text-slate-400 text-xs">No units in this division</p>
+                                <p className="text-text-secondary text-xs">No units in this division</p>
                               )}
                             </div>
                             <select
@@ -7310,7 +7344,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   e.target.value = '';
                                 }
                               }}
-                              className="w-full mt-2 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-xs"
+                              className="w-full mt-2 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-xs"
                             >
                               <option value="">Add unit...</option>
                               {getUnassignedUnits().map(unit => (
@@ -7320,17 +7354,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                         ))}
                         {divisions.length === 0 && (
-                          <p className="text-slate-400 text-sm text-center py-4">No divisions created yet</p>
+                          <p className="text-text-secondary text-sm text-center py-4">No divisions created yet</p>
                         )}
                       </div>
                     </div>
                   </div>
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowDivisionModal(false)}
-                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
                       Close
                     </button>
@@ -7342,25 +7376,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Map Bias Configuration Modal */}
           {showMapBiasModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Map className="w-6 h-6" />
                       Configure Map Biases
                     </h2>
                     <button
                       onClick={() => setShowMapBiasModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
-                  <div className="mb-4 bg-slate-700 rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-amber-300 mb-2">Bias Scale:</h3>
-                    <div className="text-xs text-slate-300 space-y-1">
+                  <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-text-secondary mb-2">Bias Scale:</h3>
+                    <div className="text-xs text-text-secondary space-y-1">
                       <div><strong>0</strong> = Balanced</div>
                       <div><strong>1</strong> = Light Attacker Bias</div>
                       <div><strong>1.5</strong> = Heavy Attacker Bias</div>
@@ -7374,30 +7408,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div key={category} className="mb-4">
                       <button
                         onClick={() => toggleSection(category)}
-                        className="w-full flex items-center justify-between bg-slate-700 rounded-lg p-3 hover:bg-slate-600 transition"
+                        className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
                       >
-                        <h3 className="text-lg font-semibold text-amber-400">
+                        <h3 className="text-lg font-semibold">
                           {category.replace(/_/g, ' ').toUpperCase()}
                         </h3>
                         {expandedSections[category] ? (
-                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                          <ChevronDown className="w-5 h-5 text-text-secondary" />
                         ) : (
-                          <ChevronRight className="w-5 h-5 text-slate-400" />
+                          <ChevronRight className="w-5 h-5 text-text-secondary" />
                         )}
                       </button>
                       
                       {expandedSections[category] && (
-                        <div className="mt-2 bg-slate-700 rounded-lg p-4 space-y-3">
+                        <div className="mt-2 bg-bg-inset rounded-lg p-4 space-y-3">
                           {mapList.map(mapName => (
                             <div key={mapName} className="grid grid-cols-2 gap-4 items-center">
-                              <label className="text-white text-sm">{mapName}</label>
+                              <label className="text-sm">{mapName}</label>
                               <select
                                 value={mapBiases[mapName] || 0}
                                 onChange={(e) => setMapBiases({
                                   ...mapBiases,
                                   [mapName]: parseFloat(e.target.value)
                                 })}
-                                className="px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none text-sm"
+                                className="px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
                               >
                                 <option value="0">Balanced</option>
                                 <option value="1">Light Attacker</option>
@@ -7413,10 +7447,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   ))}
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowMapBiasModal(false)}
-                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
                       Close
                     </button>
@@ -7429,29 +7463,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Teammate Composition Heatmap Modal */}
           {showHeatmapModal && (
             <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
               onClick={() => setShowHeatmapModal(false)}
             >
               <div
-                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-6xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Swords className="w-6 h-6" />
                       Teammate Composition Heatmap
                     </h2>
                     <button
                       onClick={() => setShowHeatmapModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
-                  <div className="mb-4 bg-slate-700 rounded-lg p-4">
-                    <p className="text-sm text-slate-300">
+                  <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                    <p className="text-sm text-text-secondary">
                       This heatmap shows how often units have played together as teammates as a percentage of weeks both units were in attendance.
                       For example, 50% means they played together in half of the weeks they were both present for in the season.
                     </p>
@@ -7462,7 +7496,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     
                     if (activeUnits.length === 0) {
                       return (
-                        <div className="text-center text-slate-400 py-12">
+                        <div className="text-center text-text-secondary py-12">
                           <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
                           <p>No teammate data available yet</p>
                         </div>
@@ -7472,7 +7506,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     // Helper to get color intensity based on percentage of weeks both units were active
                     // Creates a smooth gradient from blue (0%) -> purple -> orange -> red (100%)
                     const getHeatColor = (count, bothActiveWeeks) => {
-                      if (bothActiveWeeks === 0) return 'bg-slate-700';
+                      if (bothActiveWeeks === 0) return 'bg-bg-inset';
                       const percentage = (count / bothActiveWeeks) * 100;
                       
                       // Calculate RGB values for smooth gradient
@@ -7508,14 +7542,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
                     
                     return (
-                      <div className="bg-slate-700 rounded-lg p-4">
+                      <div className="bg-bg-inset rounded-lg p-4">
                         <div className="w-full">
                           <table className="w-full border-collapse table-fixed">
                             <thead>
                               <tr style={{ height: '80px' }}>
-                                <th className="p-1 text-xs font-semibold text-slate-400 bg-slate-700 z-10" style={{ width: '120px' }}></th>
+                                <th className="p-1 text-xs font-semibold text-text-secondary bg-bg-inset z-10" style={{ width: '120px' }}></th>
                                 {activeUnits.map(unit => (
-                                  <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-slate-300 relative`} style={{ height: '80px' }}>
+                                  <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-text-secondary relative`} style={{ height: '80px' }}>
                                     <div className="absolute bottom-2 left-1/2 transform -translate-x-1/6 -rotate-45 origin-bottom-left whitespace-nowrap" style={{ maxWidth: `${cellSize * 2}px` }} title={unit}>
                                       <span className="truncate block">{unit}</span>
                                     </div>
@@ -7526,15 +7560,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             <tbody>
                               {activeUnits.map(unit1 => (
                                 <tr key={unit1}>
-                                  <td className={`p-1 ${fontSize} font-semibold text-slate-300 bg-slate-700 z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
+                                  <td className={`p-1 ${fontSize} font-semibold text-text-secondary bg-bg-inset z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
                                     {unit1}
                                   </td>
                                   {activeUnits.map(unit2 => {
                                     if (unit1 === unit2) {
                                       return (
                                         <td key={unit2} className="p-0.5">
-                                          <div className="w-full bg-slate-800 rounded flex items-center justify-center" style={{ height: `${cellSize}px` }}>
-                                            <span className={`${fontSize} text-slate-600`}>-</span>
+                                          <div className="w-full bg-bg-card rounded flex items-center justify-center" style={{ height: `${cellSize}px` }}>
+                                            <span className={`${fontSize} text-text-muted`}>-</span>
                                           </div>
                                         </td>
                                       );
@@ -7549,12 +7583,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     const percentage = getPercentage(count, bothActiveWeeks);
                                     
                                     const bgColor = getHeatColor(count, bothActiveWeeks);
-                                    const isSlateGray = bgColor === 'bg-slate-700';
+                                    const isSlateGray = bgColor === 'bg-bg-inset';
                                     
                                     return (
                                       <td key={unit2} className="p-0.5">
                                         <div
-                                          className={`w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-400 transition ${isSlateGray ? bgColor : ''}`}
+                                          className={`w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition ${isSlateGray ? bgColor : ''}`}
                                           style={{
                                             height: `${cellSize}px`,
                                             backgroundColor: isSlateGray ? undefined : bgColor
@@ -7576,11 +7610,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                         {/* Legend */}
                         <div className="mt-6">
-                          <div className="text-sm text-slate-300 text-center mb-2">
+                          <div className="text-sm text-text-secondary text-center mb-2">
                             Percentage of Weeks Both Units Active
                           </div>
                           <div className="flex items-center justify-center gap-3">
-                            <span className="text-xs text-slate-400">0%</span>
+                            <span className="text-xs text-text-secondary">0%</span>
                             <div className="relative w-64 h-6 rounded overflow-hidden">
                               <div
                                 className="absolute inset-0"
@@ -7589,20 +7623,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 }}
                               />
                             </div>
-                            <span className="text-xs text-slate-400">100%</span>
+                            <span className="text-xs text-text-secondary">100%</span>
                           </div>
                           <div className="flex items-center justify-center gap-8 mt-2">
                             <div className="flex items-center gap-2">
                               <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(135, 206, 235)' }}></div>
-                              <span className="text-xs text-slate-400">Low</span>
+                              <span className="text-xs text-text-secondary">Low</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(147, 51, 235)' }}></div>
-                              <span className="text-xs text-slate-400">Mid</span>
+                              <span className="text-xs text-text-secondary">Mid</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(220, 38, 38)' }}></div>
-                              <span className="text-xs text-slate-400">High</span>
+                              <span className="text-xs text-text-secondary">High</span>
                             </div>
                           </div>
                         </div>
@@ -7611,10 +7645,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   })()}
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowHeatmapModal(false)}
-                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
                       Close
                     </button>
@@ -7627,70 +7661,70 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Simulation Modal */}
           {showSimulateModal && (
             <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
               onClick={() => setShowSimulateModal(false)}
             >
               <div
-                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-2xl w-full max-h-[85vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Zap className="w-6 h-6" />
                       Simulate Season
                     </h2>
                     <button
                       onClick={() => setShowSimulateModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   <div className="space-y-6">
                     {/* Info Box */}
-                    <div className="bg-slate-700 rounded-lg p-4">
-                      <p className="text-sm text-slate-300 mb-2">
+                    <div className="bg-bg-inset rounded-lg p-4">
+                      <p className="text-sm text-text-secondary mb-2">
                         This will simulate a season by generating weeks with {simScheduleOnly ? 'scheduled leads' : 'randomized'}:
                       </p>
                       {!simScheduleOnly ? (
-                        <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
+                        <ul className="text-sm text-text-secondary list-disc list-inside space-y-1 ml-2">
                           <li>Team assignments (leads and supporting units)</li>
                           <li>Map selections for both rounds</li>
                           <li>Round results (50/50 chance per team)</li>
                           <li>No repeat lead matchups</li>
                         </ul>
                       ) : (
-                        <ul className="text-sm text-slate-300 list-disc list-inside space-y-1 ml-2">
+                        <ul className="text-sm text-text-secondary list-disc list-inside space-y-1 ml-2">
                           <li>Week creation with assigned leads only</li>
                           <li>Teams remain unassigned (empty)</li>
                           <li>No maps or outcomes generated</li>
                           <li>No repeat lead matchups</li>
                         </ul>
                       )}
-                      <p className="text-sm text-amber-400 mt-3">
+                      <p className="text-sm text-text-secondary mt-3">
                         💡 Simulated weeks will be added to your existing weeks.
                       </p>
                     </div>
 
                     {/* Settings */}
-                    <div className="bg-slate-700 rounded-lg p-4 space-y-4">
-                      <h3 className="text-lg font-semibold text-amber-400 mb-3">Simulation Settings</h3>
-                      
+                    <div className="bg-bg-inset rounded-lg p-4 space-y-4">
+                      <h3 className="text-lg font-semibold mb-3">Simulation Settings</h3>
+
                       {/* Schedule Only Toggle */}
-                      <div className="bg-slate-600 rounded-lg p-3">
-                        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                      <div className="bg-bg-inset rounded-lg p-3">
+                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                           <input
                             type="checkbox"
                             checked={simScheduleOnly}
                             onChange={(e) => setSimScheduleOnly(e.target.checked)}
-                            className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500"
+                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                           />
                           <Calendar className="w-4 h-4" />
                           <span className="font-semibold">Schedule Only</span>
                         </label>
-                        <p className="text-xs text-slate-400 mt-2 ml-6">
+                        <p className="text-xs text-text-secondary mt-2 ml-6">
                           {simScheduleOnly
                             ? "Generate weeks with leads assigned but no teams, maps, or outcomes"
                             : "Generate complete weeks with teams, maps, and simulated outcomes"}
@@ -7699,7 +7733,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                       {/* Lead Nights Per Unit */}
                       <div>
-                        <label className="block text-sm text-slate-300 mb-2">
+                        <label className="block text-sm text-text-secondary mb-2">
                           # of Lead Nights per Token Unit
                         </label>
                         <input
@@ -7708,9 +7742,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           max="20"
                           value={simLeadNightsPerUnit}
                           onChange={(e) => setSimLeadNightsPerUnit(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                          className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         />
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="text-xs text-text-secondary mt-1">
                           {simLeadMode === 'rounds'
                             ? `Each token unit will lead ${simLeadNightsPerUnit} night(s) with 2 rounds per night. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} × 2 = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit * 2} weeks`
                             : `Each token unit will lead this many weeks. Total weeks = ${units.filter(u => !nonTokenUnits.includes(u)).length} units × ${simLeadNightsPerUnit} = ${units.filter(u => !nonTokenUnits.includes(u)).length * simLeadNightsPerUnit} weeks`
@@ -7720,11 +7754,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                       {/* Lead Mode Selection */}
                       <div>
-                        <label className="block text-sm text-slate-300 mb-2">
+                        <label className="block text-sm text-text-secondary mb-2">
                           Lead Assignment Mode
                         </label>
                         <div className="space-y-2">
-                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
                             <input
                               type="radio"
                               name="simLeadMode"
@@ -7735,10 +7769,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             />
                             <div>
                               <div className="text-sm">Full Lead Weeks</div>
-                              <div className="text-xs text-slate-400">One unit leads both rounds each night</div>
+                              <div className="text-xs text-text-secondary">One unit leads both rounds each night</div>
                             </div>
                           </label>
-                          <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
                             <input
                               type="radio"
                               name="simLeadMode"
@@ -7749,7 +7783,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             />
                             <div>
                               <div className="text-sm">Lead Rounds</div>
-                              <div className="text-xs text-slate-400">Two units lead per night (one per round)</div>
+                              <div className="text-xs text-text-secondary">Two units lead per night (one per round)</div>
                             </div>
                           </label>
                         </div>
@@ -7758,7 +7792,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {/* Division Lead Nights */}
                       {divisions && divisions.length > 0 && (
                         <div>
-                          <label className="block text-sm text-slate-300 mb-2">
+                          <label className="block text-sm text-text-secondary mb-2">
                             # of Lead Nights within Division
                           </label>
                           <input
@@ -7767,10 +7801,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             max={simLeadNightsPerUnit}
                             value={simLeadNightsInDivision}
                             onChange={(e) => setSimLeadNightsInDivision(Math.min(parseInt(e.target.value) || 0, simLeadNightsPerUnit))}
-                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                           />
-                          <p className="text-xs text-slate-400 mt-1">
-                            {simLeadNightsInDivision === 0 
+                          <p className="text-xs text-text-secondary mt-1">
+                            {simLeadNightsInDivision === 0
                               ? "0 = Any matchup is fine (no division requirement)" 
                               : `Each unit must lead ${simLeadNightsInDivision} week(s) against opponents in their division`}
                           </p>
@@ -7778,9 +7812,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       )}
 
                       {/* Unit Summary */}
-                      <div className="bg-slate-600 rounded p-3">
-                        <h4 className="text-sm font-semibold text-white mb-2">Current Units</h4>
-                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <div className="bg-bg-inset rounded p-3">
+                        <h4 className="text-sm font-semibold mb-2">Current Units</h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                           <div>Token Units: {units.filter(u => !nonTokenUnits.includes(u)).length}</div>
                           <div>Non-Token Units: {nonTokenUnits.length}</div>
                           <div className="col-span-2">Total Units: {units.length}</div>
@@ -7793,16 +7827,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-600">
+                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowSimulateModal(false)}
-                      className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
+                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={simulateSeason}
-                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition flex items-center gap-2"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                     >
                       {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
                       {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
@@ -7816,24 +7850,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Simulation Analytics Modal */}
           {showAnalyticsModal && simulationAnalytics && (
             <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
               onClick={() => setShowAnalyticsModal(false)}
             >
               <div
-                className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-6">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       <TrendingUp className="w-6 h-6" />
                       Simulation Analytics
                     </h2>
                     <button
                       onClick={() => setShowAnalyticsModal(false)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
@@ -7844,173 +7878,173 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <CheckCircle2 className="w-5 h-5" />
                         Successfully simulated {simulationAnalytics.totalWeeks} weeks ({simulationAnalytics.totalRounds} rounds)!
                       </p>
-                      <p className="text-xs text-slate-300 mt-2">
+                      <p className="text-xs text-text-secondary mt-2">
                         Analysis shows point distribution from a per-token-unit perspective
                       </p>
                     </div>
 
                     {/* Point System Summary */}
-                    <div className="bg-slate-700 rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                    <div className="bg-bg-inset rounded-lg p-4">
+                      <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                         <Settings className="w-5 h-5" />
                         Current Point System
                       </h3>
                       <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-slate-400 mb-2 font-semibold">Lead Points</div>
-                          <div className="space-y-1 text-slate-300">
-                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winLead}</span></div>
-                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossLead}</span></div>
-                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-text-secondary mb-2 font-semibold">Lead Points</div>
+                          <div className="space-y-1 text-text-secondary">
+                            <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winLead}</span></div>
+                            <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossLead}</span></div>
+                            <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
                           </div>
                         </div>
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-slate-400 mb-2 font-semibold">Assist Points</div>
-                          <div className="space-y-1 text-slate-300">
-                            <div>Win: <span className="text-amber-400 font-semibold">{pointSystem.winAssist}</span></div>
-                            <div>Loss: <span className="text-amber-400 font-semibold">{pointSystem.lossAssist}</span></div>
-                            <div>Sweep: <span className="text-amber-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-text-secondary mb-2 font-semibold">Assist Points</div>
+                          <div className="space-y-1 text-text-secondary">
+                            <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winAssist}</span></div>
+                            <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossAssist}</span></div>
+                            <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Theoretical Analysis */}
-                    <div className="bg-slate-700 rounded-lg p-4">
+                    <div className="bg-bg-inset rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
                         <FileText className="w-5 h-5" />
                         Theoretical Distribution (Per Token Unit)
                       </h3>
-                      <p className="text-xs text-slate-400 mb-4">
+                      <p className="text-xs text-text-secondary mb-4">
                         Maximum possible points per token unit (winning every round and sweep)
                       </p>
                       <div className="space-y-3">
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Season)</div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Season)</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points</span>
-                            <span className="text-amber-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(1)}</span>
+                            <span className="text-text-secondary font-semibold">Lead Points</span>
+                            <span className="text-indigo-400 font-bold">{simulationAnalytics.theoretical.leadPoints.toFixed(1)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-text-secondary font-semibold">Assist Points</span>
                             <span className="text-blue-400 font-bold">{simulationAnalytics.theoretical.assistPoints.toFixed(1)}</span>
                           </div>
-                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="border-t border-border-default my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total Points</span>
-                            <span className="text-white font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(1)}</span>
+                            <span className="text-text-secondary font-semibold">Total Points</span>
+                            <span className="font-bold">{simulationAnalytics.theoretical.totalPoints.toFixed(1)}</span>
                           </div>
                         </div>
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Max Possible (Per Round)</div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Per Round)</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points</span>
-                            <span className="text-amber-400 font-bold">{(simulationAnalytics.theoretical.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                            <span className="text-text-secondary font-semibold">Lead Points</span>
+                            <span className="text-indigo-400 font-bold">{(simulationAnalytics.theoretical.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-text-secondary font-semibold">Assist Points</span>
                             <span className="text-blue-400 font-bold">{(simulationAnalytics.theoretical.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
-                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="border-t border-border-default my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total Points</span>
-                            <span className="text-white font-bold">{(simulationAnalytics.theoretical.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                            <span className="text-text-secondary font-semibold">Total Points</span>
+                            <span className="font-bold">{(simulationAnalytics.theoretical.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
-                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.theoretical.leadPercentage.toFixed(1)}%</div>
-                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
+                            <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.theoretical.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                           </div>
                           <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
                             <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.theoretical.assistPercentage.toFixed(1)}%</div>
-                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                            <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Simulated Results */}
-                    <div className="bg-slate-700 rounded-lg p-4">
+                    <div className="bg-bg-inset rounded-lg p-4">
                       <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
                         <BarChart3 className="w-5 h-5" />
                         Simulated Results (Per Token Unit Average)
                       </h3>
-                      <p className="text-xs text-slate-400 mb-4">
+                      <p className="text-xs text-text-secondary mb-4">
                         Actual points averaged across all token units from the simulation
                       </p>
                       <div className="space-y-3">
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Season Totals (Average)</div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-xs text-text-secondary mb-2 font-semibold">Season Totals (Average)</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points</span>
-                            <span className="text-amber-400 font-bold">{simulationAnalytics.simulated.leadPoints.toFixed(1)}</span>
+                            <span className="text-text-secondary font-semibold">Lead Points</span>
+                            <span className="text-indigo-400 font-bold">{simulationAnalytics.simulated.leadPoints.toFixed(1)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-text-secondary font-semibold">Assist Points</span>
                             <span className="text-blue-400 font-bold">{simulationAnalytics.simulated.assistPoints.toFixed(1)}</span>
                           </div>
-                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="border-t border-border-default my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total Points</span>
-                            <span className="text-white font-bold">{simulationAnalytics.simulated.totalPoints.toFixed(1)}</span>
+                            <span className="text-text-secondary font-semibold">Total Points</span>
+                            <span className="font-bold">{simulationAnalytics.simulated.totalPoints.toFixed(1)}</span>
                           </div>
                         </div>
-                        <div className="bg-slate-600 rounded p-3">
-                          <div className="text-xs text-slate-400 mb-2 font-semibold">Per Round Average</div>
+                        <div className="bg-bg-inset rounded p-3">
+                          <div className="text-xs text-text-secondary mb-2 font-semibold">Per Round Average</div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Lead Points</span>
-                            <span className="text-amber-400 font-bold">{(simulationAnalytics.simulated.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                            <span className="text-text-secondary font-semibold">Lead Points</span>
+                            <span className="text-indigo-400 font-bold">{(simulationAnalytics.simulated.leadPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-slate-300 font-semibold">Assist Points</span>
+                            <span className="text-text-secondary font-semibold">Assist Points</span>
                             <span className="text-blue-400 font-bold">{(simulationAnalytics.simulated.assistPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
-                          <div className="border-t border-slate-500 my-2"></div>
+                          <div className="border-t border-border-default my-2"></div>
                           <div className="flex justify-between items-center">
-                            <span className="text-slate-300 font-semibold">Total Points</span>
-                            <span className="text-white font-bold">{(simulationAnalytics.simulated.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
+                            <span className="text-text-secondary font-semibold">Total Points</span>
+                            <span className="font-bold">{(simulationAnalytics.simulated.totalPoints / simulationAnalytics.totalRounds).toFixed(2)}</span>
                           </div>
                         </div>
-                        <div className="text-xs text-slate-400 bg-slate-600 rounded p-2">
+                        <div className="text-xs text-text-secondary bg-bg-inset rounded p-2">
                           All token units combined: {simulationAnalytics.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.simulated.totalAssistPoints.toFixed(0)} assist points
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="bg-amber-900/30 border border-amber-700 rounded p-3 text-center">
-                            <div className="text-amber-400 text-2xl font-bold">{simulationAnalytics.simulated.leadPercentage.toFixed(1)}%</div>
-                            <div className="text-xs text-slate-300 mt-1">Lead Points</div>
+                          <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
+                            <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.simulated.leadPercentage.toFixed(1)}%</div>
+                            <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                           </div>
                           <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
                             <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.simulated.assistPercentage.toFixed(1)}%</div>
-                            <div className="text-xs text-slate-300 mt-1">Assist Points</div>
+                            <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Comparison */}
-                    <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                    <div className="bg-indigo-900/20 border border-indigo-700 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-indigo-400 mb-3 flex items-center gap-2">
                         <TrendingUp className="w-5 h-5" />
                         Comparison
                       </h3>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <div className="text-slate-400 mb-1">Lead Point Variance</div>
+                          <div className="text-text-secondary mb-1">Lead Point Variance</div>
                           <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
                             {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage > 0 ? '+' : '')}
                             {(simulationAnalytics.simulated.leadPercentage - simulationAnalytics.theoretical.leadPercentage).toFixed(1)}%
                           </div>
                         </div>
                         <div>
-                          <div className="text-slate-400 mb-1">Assist Point Variance</div>
+                          <div className="text-text-secondary mb-1">Assist Point Variance</div>
                           <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
                             {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage > 0 ? '+' : '')}
                             {(simulationAnalytics.simulated.assistPercentage - simulationAnalytics.theoretical.assistPercentage).toFixed(1)}%
                           </div>
                         </div>
                       </div>
-                      <p className="text-xs text-slate-400 mt-3">
+                      <p className="text-xs text-text-secondary mt-3">
                         💡 Small variances are expected due to randomization. Large variances may indicate imbalanced settings.
                       </p>
                     </div>
@@ -8019,7 +8053,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end">
                       <button
                         onClick={() => setShowAnalyticsModal(false)}
-                        className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition font-semibold"
+                        className="px-6 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition font-semibold"
                       >
                         Close
                       </button>
@@ -8032,11 +8066,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Enlarged Section Modal */}
           {enlargedSection && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-                <div className="p-6">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default w-full max-w-6xl max-h-[85vh] overflow-y-auto">
+                <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
                       {enlargedSection === 'weeks' && (
                         <>
                           <Calendar className="w-6 h-6" />
@@ -8058,9 +8092,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </h2>
                     <button
                       onClick={() => setEnlargedSection(null)}
-                      className="p-2 hover:bg-slate-700 rounded-lg transition"
+                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
                     >
-                      <X className="w-5 h-5 text-slate-400" />
+                      <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
@@ -8070,7 +8104,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="mb-4 flex justify-end">
                         <button
                           onClick={addWeek}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" />
                           Add Week
@@ -8082,8 +8116,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             key={week.id}
                             className={`p-4 rounded-lg transition cursor-pointer ${
                               selectedWeek?.id === week.id
-                                ? 'bg-amber-600 text-white'
-                                : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-bg-inset hover:bg-border-subtle'
                             }`}
                           >
                             <div className="flex justify-between items-center">
@@ -8097,7 +8131,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       renameWeek(week.id, e.target.value);
                                     }
                                   }}
-                                  className="flex-1 px-2 py-1 bg-slate-800 text-white rounded border border-slate-500 outline-none"
+                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
                                   autoFocus
                                 />
                               ) : (
@@ -8117,7 +8151,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     e.stopPropagation();
                                     setEditingWeek(week.id);
                                   }}
-                                  className="p-1 hover:bg-slate-700 rounded transition"
+                                  className="p-1 hover:bg-bg-inset rounded transition"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
@@ -8148,11 +8182,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onChange={(e) => setNewUnitName(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && addUnit()}
                           placeholder="Unit name..."
-                          className="flex-1 px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                          className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         />
                         <button
                           onClick={addUnit}
-                          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition flex items-center gap-2"
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" />
                           Add Unit
@@ -8164,21 +8198,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           return (
                             <div
                               key={unit}
-                              className="flex justify-between items-center p-3 bg-slate-600 rounded-lg"
+                              className="flex justify-between items-center p-3 bg-bg-inset rounded-lg"
                             >
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => toggleNonTokenStatus(unit)}
                                   className={`px-2 py-1 rounded text-xs font-bold transition ${
                                     isNonToken
-                                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                                      : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                      : 'bg-bg-card hover:bg-bg-inset text-text-secondary'
                                   }`}
                                   title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
                                 >
                                   {isNonToken ? '*' : '○'}
                                 </button>
-                                <span className={`font-medium ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                <span className={`font-medium ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
                                   {unit}
                                 </span>
                               </div>
@@ -8221,7 +8255,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="mb-4 flex gap-2 justify-end">
                         <button
                           onClick={() => setRankByElo(!rankByElo)}
-                          className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition flex items-center gap-1"
+                          className="px-3 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition flex items-center gap-1"
                           title={rankByElo ? "Rank by Points" : "Rank by Elo"}
                         >
                           <TrendingUp className="w-4 h-4" />
@@ -8241,8 +8275,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {showGroupedStandings && divisions && divisions.length > 0 ? (
                           getGroupedStandings().map((group) => (
-                            <div key={group.name} className="bg-slate-700 rounded-lg p-4">
-                              <h3 className="text-sm font-bold text-amber-300 mb-3 px-2 flex items-center gap-2">
+                            <div key={group.name} className="bg-bg-inset rounded-lg p-4">
+                              <h3 className="text-sm font-bold text-text-secondary mb-3 px-2 flex items-center gap-2">
                                 <Shield className="w-4 h-4" />
                                 {group.name}
                               </h3>
@@ -8252,25 +8286,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   return (
                                     <div
                                       key={stat.unit}
-                                      className="bg-slate-600 rounded-lg p-3"
+                                      className="bg-bg-inset rounded-lg p-3"
                                     >
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-amber-400 font-bold text-lg">
+                                          <span className="text-indigo-400 font-bold text-lg">
                                             #{stat.divisionRank || stat.currentRank}
                                           </span>
                                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                             <span className={`text-xs font-semibold ${
                                               stat.rankDelta > 0 ? 'text-green-400' :
                                               stat.rankDelta < 0 ? 'text-red-400' :
-                                              'text-slate-400'
+                                              'text-text-secondary'
                                             }`}>
                                               {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
                                                stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
                                                '−'}
                                             </span>
                                           )}
-                                          <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
                                             {isNonToken ? '*' : ''}{stat.unit}
                                           </span>
                                         </div>
@@ -8299,7 +8333,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           </span>
                                         </div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                                         <div>L-Wins: {stat.leadWins}</div>
                                         <div>L-Loss: {stat.leadLosses}</div>
                                         <div>A-Wins: {stat.assistWins}</div>
@@ -8320,25 +8354,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             return (
                               <div
                                 key={stat.unit}
-                                className="bg-slate-600 rounded-lg p-3"
+                                className="bg-bg-inset rounded-lg p-3"
                               >
                                 <div className="flex justify-between items-center mb-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-amber-400 font-bold text-lg">
+                                    <span className="text-indigo-400 font-bold text-lg">
                                       #{index + 1}
                                     </span>
                                     {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                       <span className={`text-xs font-semibold ${
                                         stat.rankDelta > 0 ? 'text-green-400' :
                                         stat.rankDelta < 0 ? 'text-red-400' :
-                                        'text-slate-400'
+                                        'text-text-secondary'
                                       }`}>
                                         {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
                                          stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
                                          '−'}
                                       </span>
                                     )}
-                                    <span className={`font-semibold ${isNonToken ? 'text-amber-400' : 'text-white'}`}>
+                                    <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
                                       {isNonToken ? '*' : ''}{stat.unit}
                                     </span>
                                   </div>
@@ -8367,7 +8401,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     </span>
                                   </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                                <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                                   <div>L-Wins: {stat.leadWins}</div>
                                   <div>L-Loss: {stat.leadLosses}</div>
                                   <div>A-Wins: {stat.assistWins}</div>
@@ -8390,7 +8424,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Empty State */}
           {weeks.length === 0 && (
-            <div className="text-center text-slate-400 py-12 mt-6">
+            <div className="text-center text-text-secondary py-12 mt-6">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg">Add a week to get started</p>
             </div>
