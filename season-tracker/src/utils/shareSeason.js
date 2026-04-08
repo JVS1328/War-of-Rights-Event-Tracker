@@ -204,6 +204,7 @@ export const createSharePayload = (state) => {
   if (bs) p.bs = bs;
   const pf = deltaEncode(state.playoffConfig, DEFAULT_PLAYOFF_CONFIG);
   if (pf) p.pf = pf;
+  if (state.mapCooldown) p.mc = state.mapCooldown;
   const ma = indexObj(state.manualAdjustments, u);
   if (ma) p.ma = ma;
   const pc = indexObj(state.unitPlayerCounts, u);
@@ -265,6 +266,7 @@ const expandPayload = (p) => {
     unitPlayerCounts: expandObj(p.pc, u),
     divisions: p.dv ? p.dv.map(d => ({ name: d.n, units: expandArr(d.u, u) })) : [],
     mapBiases: deltaDecode(p.mb, DEFAULT_MAP_BIASES),
+    mapCooldown: p.mc || 0,
     playoffConfig: deltaDecode(p.pf, DEFAULT_PLAYOFF_CONFIG),
     balancerSettings: deltaDecode(p.bs, DEFAULT_BALANCER),
   };

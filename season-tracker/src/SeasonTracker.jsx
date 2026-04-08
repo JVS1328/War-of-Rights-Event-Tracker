@@ -150,6 +150,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [manualAdjustments, setManualAdjustments] = useState(savedState?.manualAdjustments || {});
   const [divisions, setDivisions] = useState(savedState?.divisions || []);
   const [mapBiases, setMapBiases] = useState(initialMapBiases);
+  const [mapCooldown, setMapCooldown] = useState(savedState?.mapCooldown || 0);
   const [showSettings, setShowSettings] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
@@ -251,6 +252,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       unitPlayerCounts,
       divisions,
       mapBiases,
+      mapCooldown,
       playoffConfig,
       balancerSettings
     };
@@ -260,7 +262,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, playoffConfig, balancerSettings]);
+  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, mapCooldown, playoffConfig, balancerSettings]);
 
   // Load shared data from URL (once, on mount)
   useEffect(() => {
@@ -291,6 +293,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setUnitPlayerCounts(data.unitPlayerCounts || {});
     setDivisions(data.divisions || []);
     setMapBiases(data.mapBiases || getDefaultMapBiases());
+    setMapCooldown(data.mapCooldown || 0);
     setPlayoffConfig(data.playoffConfig || getDefaultPlayoffConfig());
     setBalancerSettings({ ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) });
     setSelectedWeek(null);
@@ -390,6 +393,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (selectedWeek?.id === weekId) {
       setSelectedWeek(null);
     }
+  };
+
+  // Compute maps on cooldown relative to a given week index
+  const getMapsOnCooldown = (weekIndex) => {
+    if (mapCooldown <= 0) return new Set();
+    const cooldownMaps = new Set();
+    const start = Math.max(0, weekIndex - mapCooldown);
+    for (let i = start; i < weekIndex; i++) {
+      const w = weeks[i];
+      if (w.round1Map) cooldownMaps.add(w.round1Map);
+      if (w.round2Map) cooldownMaps.add(w.round2Map);
+    }
+    return cooldownMaps;
   };
 
   const updateWeek = (weekId, updates) => {
@@ -2048,9 +2064,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setManualAdjustments({});
     setDivisions([]);
     setMapBiases(getDefaultMapBiases());
+    setMapCooldown(0);
     setPlayoffConfig(getDefaultPlayoffConfig());
     setBalancerSettings(getDefaultBalancerSettings());
-    
+
     alert('New season started! All data has been cleared.');
   };
 
@@ -2067,6 +2084,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       unitPlayerCounts,
       divisions,
       mapBiases,
+      mapCooldown,
       playoffConfig,
       balancerSettings,
     };
@@ -2100,6 +2118,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       unitPlayerCounts,
       divisions,
       mapBiases,
+      mapCooldown,
       playoffConfig,
       balancerSettings,
       exportDate: new Date().toISOString()
@@ -2275,7 +2294,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
         setDivisions(importedDivisions);
 
         setMapBiases(importedMapBiases);
-        
+        setMapCooldown(parseInt(data.mapCooldown) || 0);
+
         // Handle playoff configuration - always use default if not present
         const importedPlayoffConfig = data.playoffConfig || getDefaultPlayoffConfig();
         setPlayoffConfig(importedPlayoffConfig);
@@ -4446,6 +4466,31 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
 
+              {/* Map Cooldown Section */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+                  <Map className="w-5 h-5" />
+                  Map Cooldown
+                </h3>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <label className="block text-sm text-text-secondary mb-1">Weeks Until Replayable</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={mapCooldown}
+                      onChange={(e) => setMapCooldown(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    />
+                  </div>
+                  <span className="text-xs text-text-secondary mt-5">
+                    {mapCooldown === 0
+                      ? 'Disabled — maps can be replayed immediately'
+                      : `Maps played in the last ${mapCooldown} week${mapCooldown > 1 ? 's' : ''} will be marked on cooldown`}
+                  </span>
+                </div>
+              </div>
+
               {/* Balancer Settings Section */}
               <div className="mb-6">
                 <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
@@ -5467,6 +5512,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
               )}
 
               {/* Round Results with Maps */}
+              {(() => {
+                const selectedWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+                const cooldownMaps = getMapsOnCooldown(selectedWeekIdx);
+                return (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Round 1 */}
                 <div className="bg-bg-inset rounded-lg p-4">
@@ -5484,7 +5533,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
-                          <option key={map} value={map}>{map}</option>
+                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
+                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -5592,7 +5643,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
-                          <option key={map} value={map}>{map}</option>
+                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
+                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -5684,6 +5737,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                 </div>
               </div>
+                );
+              })()}
 
               {/* Action Buttons */}
               <div className="mt-4 space-y-2">
