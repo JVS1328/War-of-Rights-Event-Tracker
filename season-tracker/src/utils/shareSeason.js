@@ -5,6 +5,7 @@ import pako from 'pako';
 const DEFAULT_POINT_SYSTEM = {
   winLead: 4, winAssist: 2, lossLead: 0, lossAssist: 1,
   bonus2_0Lead: 0, bonus2_0Assist: 1,
+  balancePoints: 0, balancePointsStyle: 'perNight',
 };
 const DEFAULT_ELO_SYSTEM = {
   initialElo: 1500, kFactorStandard: 96, kFactorProvisional: 128,

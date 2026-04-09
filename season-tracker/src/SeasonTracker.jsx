@@ -127,13 +127,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
   );
   const [selectedWeek, setSelectedWeek] = useState(savedState?.selectedWeek || null);
   const [teamNames, setTeamNames] = useState(savedState?.teamNames || { A: 'USA', B: 'CSA' });
-  const [pointSystem, setPointSystem] = useState(savedState?.pointSystem || {
+  const [pointSystem, setPointSystem] = useState({
     winLead: 4,
     winAssist: 2,
     lossLead: 0,
     lossAssist: 1,
     bonus2_0Lead: 0,
-    bonus2_0Assist: 1
+    bonus2_0Assist: 1,
+    balancePoints: 0,
+    balancePointsStyle: 'perNight',
+    ...(savedState?.pointSystem || {})
   });
   const [eloSystem, setEloSystem] = useState(savedState?.eloSystem || {
     initialElo: 1500,
@@ -593,6 +596,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
         }
       }
     });
+
+    // Apply balance points
+    if (pointSystem.balancePoints) {
+      weeksToProcess.forEach(week => {
+        const r1Swaps = week.roundSwaps?.r1 || [];
+        const r2Swaps = week.roundSwaps?.r2 || [];
+
+        if (pointSystem.balancePointsStyle === 'perRound') {
+          r1Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
+          r2Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
+        } else {
+          // perNight: each unit gets balance points at most once per week
+          const balanced = new Set([...r1Swaps, ...r2Swaps]);
+          balanced.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
+        }
+      });
+    }
 
     // Apply manual adjustments
     Object.entries(manualAdjustments).forEach(([unit, adjustment]) => {
@@ -2224,7 +2244,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
         }
         
         // Handle point system
-        let importedPointSystem = data.pointSystem || pointSystem;
+        let importedPointSystem = { balancePoints: 0, balancePointsStyle: 'perNight', ...(data.pointSystem || pointSystem) };
         if (data.point_system_values) {
           importedPointSystem = {
             winLead: parseInt(data.point_system_values.win_lead) || 4,
@@ -2232,7 +2252,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
             lossLead: parseInt(data.point_system_values.loss_lead) || 0,
             lossAssist: parseInt(data.point_system_values.loss_assist) || 1,
             bonus2_0Lead: parseInt(data.point_system_values.bonus_2_0_lead) || 0,
-            bonus2_0Assist: parseInt(data.point_system_values.bonus_2_0_assist) || 1
+            bonus2_0Assist: parseInt(data.point_system_values.bonus_2_0_assist) || 1,
+            balancePoints: 0,
+            balancePointsStyle: 'perNight'
           };
         }
         
@@ -4337,6 +4359,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm text-text-secondary mb-1">Balancer Points</label>
+                  <input
+                    type="number"
+                    value={pointSystem.balancePoints}
+                    onChange={(e) => setPointSystem({ ...pointSystem, balancePoints: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                  />
+                </div>
+                {pointSystem.balancePoints !== 0 && (
+                <div>
+                  <label className="block text-sm text-text-secondary mb-1">Balance Points Style</label>
+                  <select
+                    value={pointSystem.balancePointsStyle || 'perNight'}
+                    onChange={(e) => setPointSystem({ ...pointSystem, balancePointsStyle: e.target.value })}
+                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                  >
+                    <option value="perNight">Per Night</option>
+                    <option value="perRound">Per Round</option>
+                  </select>
+                </div>
+                )}
                 </div>
               </div>
 
