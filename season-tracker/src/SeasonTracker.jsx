@@ -658,97 +658,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     let previousElo = {};
     let previousEloRanks = {};
     if (previousWeekIdx >= 0) {
-      // Simplified: just get previous week's calculated points
-      const prevWeeks = weeks.slice(0, previousWeekIdx + 1);
-      const tempStats = {};
-      
-      units.forEach(unit => {
-        if (nonTokenUnits.includes(unit)) return;
-        tempStats[unit] = { points: 0 };
-      });
-
-      prevWeeks.forEach(week => {
-        if (!week.round1Winner && !week.round2Winner) return;
-        const isPlayoffs = week.isPlayoffs || false;
-        const isSingleRoundLeads = week.isSingleRoundLeads || false;
-
-        [1, 2].forEach(roundNum => {
-          const winner = week[`round${roundNum}Winner`];
-          if (!winner) return;
-
-          const winningTeam = week[`team${winner}`];
-          const losingTeam = week[`team${winner === 'A' ? 'B' : 'A'}`];
-
-          let leadWinner, leadLoser;
-          if (isPlayoffs || isSingleRoundLeads) {
-            leadWinner = week[`lead${winner}_r${roundNum}`];
-            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
-          } else {
-            leadWinner = week[`lead${winner}`];
-            leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
-          }
-
-          if (!isPlayoffs) {
-            winningTeam.forEach(unit => {
-              if (!tempStats[unit]) return;
-              if (unit === leadWinner) {
-                tempStats[unit].points += pointSystem.winLead;
-              } else {
-                tempStats[unit].points += pointSystem.winAssist;
-              }
-            });
-
-            losingTeam.forEach(unit => {
-              if (!tempStats[unit]) return;
-              if (unit === leadLoser) {
-                tempStats[unit].points += pointSystem.lossLead;
-              } else {
-                tempStats[unit].points += pointSystem.lossAssist;
-              }
-            });
-          }
-        });
-
-        if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
-          const sweepTeam = week[`team${week.round1Winner}`];
-
-          if (isSingleRoundLeads) {
-            // For single round leads, both round leads get the lead bonus
-            const r1Lead = week[`lead${week.round1Winner}_r1`];
-            const r2Lead = week[`lead${week.round1Winner}_r2`];
-            const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
-
-            sweepTeam.forEach(unit => {
-              if (!tempStats[unit]) return;
-              if (sweepLeads.has(unit)) {
-                tempStats[unit].points += pointSystem.bonus2_0Lead;
-              } else {
-                tempStats[unit].points += pointSystem.bonus2_0Assist;
-              }
-            });
-          } else {
-            // Regular week: use week-level lead
-            const sweepLead = week[`lead${week.round1Winner}`];
-
-            sweepTeam.forEach(unit => {
-              if (!tempStats[unit]) return;
-              if (unit === sweepLead) {
-                tempStats[unit].points += pointSystem.bonus2_0Lead;
-              } else {
-                tempStats[unit].points += pointSystem.bonus2_0Assist;
-              }
-            });
-          }
-        }
-      });
-
-      Object.entries(manualAdjustments).forEach(([unit, adjustment]) => {
-        if (tempStats[unit]) {
-          tempStats[unit].points += adjustment;
-        }
-      });
-
-      previousStats = tempStats;
+      previousStats = calculatePointsUpToWeek(previousWeekIdx);
       const prevEloData = calculateEloRatings(previousWeekIdx);
       previousElo = prevEloData.eloRatings;
       
@@ -2950,33 +2860,31 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const totalAvg = avgA + avgB;
     
     // Calculate average teammate history for each team
-    // Only count weeks BEFORE the current week (same as balancer)
+    // Only count rounds BEFORE the current week (same as balancer)
     const teammate = {};
-    
+
     weeks.forEach((week, idx) => {
-      // Skip current week and all weeks after it
       if (idx >= weekIdx) return;
-      
-      const wTeamA = week.teamA || [];
-      const wTeamB = week.teamB || [];
 
-      // Teammates in Team A
-      wTeamA.forEach(unit1 => {
-        if (!teammate[unit1]) teammate[unit1] = {};
-        wTeamA.forEach(unit2 => {
-          if (unit1 !== unit2) {
-            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
-          }
+      [1, 2].forEach(roundNum => {
+        const { teamA: rTeamA, teamB: rTeamB } = getEffectiveTeams(week, roundNum);
+
+        rTeamA.forEach(unit1 => {
+          if (!teammate[unit1]) teammate[unit1] = {};
+          rTeamA.forEach(unit2 => {
+            if (unit1 !== unit2) {
+              teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+            }
+          });
         });
-      });
 
-      // Teammates in Team B
-      wTeamB.forEach(unit1 => {
-        if (!teammate[unit1]) teammate[unit1] = {};
-        wTeamB.forEach(unit2 => {
-          if (unit1 !== unit2) {
-            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
-          }
+        rTeamB.forEach(unit1 => {
+          if (!teammate[unit1]) teammate[unit1] = {};
+          rTeamB.forEach(unit2 => {
+            if (unit1 !== unit2) {
+              teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+            }
+          });
         });
       });
     });
@@ -5227,7 +5135,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     })()}
                     <p className="text-xs text-text-secondary mt-3 text-center">
-                      💡 Lower teammate history = better variety • Counts history up to the current week, not including.
+                      💡 Lower teammate history = better variety • Counts rounds played together before the current week.
                     </p>
                   </div>
                 );
