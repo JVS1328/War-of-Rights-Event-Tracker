@@ -129,6 +129,7 @@ const buildMapIndex = (weeks) => {
  * [9] name (string)     — 0 if default "Week N"
  * [10] pc (object)      — 0 if empty (indexed unitPlayerCounts)
  * [11] wc (object)      — 0 if empty (indexed weeklyCasualties)
+ * [12] rs ([r1Swaps, r2Swaps]) — 0 if no swaps (indexed roundSwaps)
  * Trailing 0s are stripped.
  */
 const W_MAP = { A: 1, B: 2 };
@@ -157,6 +158,9 @@ const encodeWeek = (wk, i, u, m) => {
   const name = wk.name !== `Week ${i + 1}` ? wk.name : 0;
   const pc = indexObj(wk.unitPlayerCounts, u) || 0;
   const wc = compactCasualties(wk.weeklyCasualties, u) || 0;
+  const r1s = indexArr(wk.roundSwaps?.r1, u);
+  const r2s = indexArr(wk.roundSwaps?.r2, u);
+  const rs = (r1s.length || r2s.length) ? [r1s, r2s] : 0;
 
   const tuple = [
     indexArr(wk.teamA, u),
@@ -171,6 +175,7 @@ const encodeWeek = (wk, i, u, m) => {
     name,
     pc,
     wc,
+    rs,
   ];
 
   // Strip trailing 0s
@@ -245,6 +250,7 @@ const decodeWeek = (t, i, u, m) => {
     r2CasualtiesA: cas[2], r2CasualtiesB: cas[3],
     unitPlayerCounts: expandObj(t[10], u),
     weeklyCasualties: expandCasualties(t[11], u),
+    roundSwaps: t[12] ? { r1: expandArr(t[12][0], u), r2: expandArr(t[12][1], u) } : { r1: [], r2: [] },
   };
 };
 
