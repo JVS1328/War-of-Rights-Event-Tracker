@@ -2358,47 +2358,45 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setEnlargedSection(enlargedSection === section ? null : section);
   };
 
-  // Compute teammate and opponent stats
+  // Compute teammate and opponent stats (per-round, swap-aware)
   const computeStats = () => {
     const teammate = {};
     const opponent = {};
 
     weeks.forEach(week => {
-      const teamA = week.teamA || [];
-      const teamB = week.teamB || [];
+      [1, 2].forEach(roundNum => {
+        const { teamA, teamB } = getEffectiveTeams(week, roundNum);
 
-      // Teammates in Team A
-      teamA.forEach(unit1 => {
-        if (!teammate[unit1]) teammate[unit1] = {};
-        teamA.forEach(unit2 => {
-          if (unit1 !== unit2) {
-            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
-          }
+        teamA.forEach(unit1 => {
+          if (!teammate[unit1]) teammate[unit1] = {};
+          teamA.forEach(unit2 => {
+            if (unit1 !== unit2) {
+              teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+            }
+          });
         });
-      });
 
-      // Teammates in Team B
-      teamB.forEach(unit1 => {
-        if (!teammate[unit1]) teammate[unit1] = {};
-        teamB.forEach(unit2 => {
-          if (unit1 !== unit2) {
-            teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
-          }
+        teamB.forEach(unit1 => {
+          if (!teammate[unit1]) teammate[unit1] = {};
+          teamB.forEach(unit2 => {
+            if (unit1 !== unit2) {
+              teammate[unit1][unit2] = (teammate[unit1][unit2] || 0) + 1;
+            }
+          });
         });
-      });
 
-      // Opponents (Team A vs Team B)
-      teamA.forEach(unitA => {
-        if (!opponent[unitA]) opponent[unitA] = {};
-        teamB.forEach(unitB => {
-          opponent[unitA][unitB] = (opponent[unitA][unitB] || 0) + 1;
-        });
-      });
-
-      teamB.forEach(unitB => {
-        if (!opponent[unitB]) opponent[unitB] = {};
         teamA.forEach(unitA => {
-          opponent[unitB][unitA] = (opponent[unitB][unitA] || 0) + 1;
+          if (!opponent[unitA]) opponent[unitA] = {};
+          teamB.forEach(unitB => {
+            opponent[unitA][unitB] = (opponent[unitA][unitB] || 0) + 1;
+          });
+        });
+
+        teamB.forEach(unitB => {
+          if (!opponent[unitB]) opponent[unitB] = {};
+          teamA.forEach(unitA => {
+            opponent[unitB][unitA] = (opponent[unitB][unitA] || 0) + 1;
+          });
         });
       });
     });
@@ -2406,55 +2404,45 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return { teammate, opponent };
   };
 
-  // Get detailed interactions with week numbers
+  // Get detailed interactions with round labels (swap-aware)
   const getDetailedInteractions = () => {
     const interactions = {};
 
+    const ensurePair = (a, b) => {
+      if (!interactions[a]) interactions[a] = {};
+      if (!interactions[a][b]) interactions[a][b] = { teammateRounds: [], opponentRounds: [] };
+    };
+
     weeks.forEach((week, weekIdx) => {
-      const weekNum = weekIdx + 1;
-      const teamA = week.teamA || [];
-      const teamB = week.teamB || [];
+      [1, 2].forEach(roundNum => {
+        const label = `W${weekIdx + 1}R${roundNum}`;
+        const { teamA, teamB } = getEffectiveTeams(week, roundNum);
 
-      // Teammates in Team A
-      for (let i = 0; i < teamA.length; i++) {
-        for (let j = i + 1; j < teamA.length; j++) {
-          const u1 = teamA[i];
-          const u2 = teamA[j];
-          if (!interactions[u1]) interactions[u1] = {};
-          if (!interactions[u1][u2]) interactions[u1][u2] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[u1][u2].teammateWeeks.push(weekNum);
-
-          if (!interactions[u2]) interactions[u2] = {};
-          if (!interactions[u2][u1]) interactions[u2][u1] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[u2][u1].teammateWeeks.push(weekNum);
+        for (let i = 0; i < teamA.length; i++) {
+          for (let j = i + 1; j < teamA.length; j++) {
+            ensurePair(teamA[i], teamA[j]);
+            ensurePair(teamA[j], teamA[i]);
+            interactions[teamA[i]][teamA[j]].teammateRounds.push(label);
+            interactions[teamA[j]][teamA[i]].teammateRounds.push(label);
+          }
         }
-      }
 
-      // Teammates in Team B
-      for (let i = 0; i < teamB.length; i++) {
-        for (let j = i + 1; j < teamB.length; j++) {
-          const u1 = teamB[i];
-          const u2 = teamB[j];
-          if (!interactions[u1]) interactions[u1] = {};
-          if (!interactions[u1][u2]) interactions[u1][u2] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[u1][u2].teammateWeeks.push(weekNum);
-
-          if (!interactions[u2]) interactions[u2] = {};
-          if (!interactions[u2][u1]) interactions[u2][u1] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[u2][u1].teammateWeeks.push(weekNum);
+        for (let i = 0; i < teamB.length; i++) {
+          for (let j = i + 1; j < teamB.length; j++) {
+            ensurePair(teamB[i], teamB[j]);
+            ensurePair(teamB[j], teamB[i]);
+            interactions[teamB[i]][teamB[j]].teammateRounds.push(label);
+            interactions[teamB[j]][teamB[i]].teammateRounds.push(label);
+          }
         }
-      }
 
-      // Opponents (Team A vs Team B)
-      teamA.forEach(unitA => {
-        teamB.forEach(unitB => {
-          if (!interactions[unitA]) interactions[unitA] = {};
-          if (!interactions[unitA][unitB]) interactions[unitA][unitB] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[unitA][unitB].opponentWeeks.push(weekNum);
-
-          if (!interactions[unitB]) interactions[unitB] = {};
-          if (!interactions[unitB][unitA]) interactions[unitB][unitA] = { teammateWeeks: [], opponentWeeks: [] };
-          interactions[unitB][unitA].opponentWeeks.push(weekNum);
+        teamA.forEach(unitA => {
+          teamB.forEach(unitB => {
+            ensurePair(unitA, unitB);
+            ensurePair(unitB, unitA);
+            interactions[unitA][unitB].opponentRounds.push(label);
+            interactions[unitB][unitA].opponentRounds.push(label);
+          });
         });
       });
     });
@@ -2808,11 +2796,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return units.filter(u => !assignedUnits.has(u));
   };
 
-  // Calculate teammate composition heatmap
+  // Calculate teammate composition heatmap (per-round, swap-aware)
   const calculateTeammateHeatmap = () => {
     const { teammate } = computeStats();
     const heatmapData = [];
-    
+
     // Get all units that have played
     const activeUnits = units.filter(unit => {
       return weeks.some(week =>
@@ -2820,12 +2808,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
       );
     }).sort();
 
-    // Calculate weeks where each unit was active
+    // Calculate weeks and rounds where each unit was active
     const unitActiveWeeks = {};
+    const unitActiveRounds = {};
     activeUnits.forEach(unit => {
       unitActiveWeeks[unit] = weeks.filter(week =>
         week.teamA.includes(unit) || week.teamB.includes(unit)
       ).length;
+      unitActiveRounds[unit] = unitActiveWeeks[unit] * 2;
     });
 
     // Build heatmap matrix with relative percentages
@@ -2833,15 +2823,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
       activeUnits.forEach(unit2 => {
         if (unit1 !== unit2) {
           const count = teammate[unit1]?.[unit2] || 0;
-          // Calculate the minimum weeks both units were active
           const bothActiveWeeks = Math.min(unitActiveWeeks[unit1] || 0, unitActiveWeeks[unit2] || 0);
-          
-          if (count > 0 || bothActiveWeeks > 0) {
+          const bothActiveRounds = bothActiveWeeks * 2;
+
+          if (count > 0 || bothActiveRounds > 0) {
             heatmapData.push({
               unit1,
               unit2,
               count,
-              bothActiveWeeks
+              bothActiveWeeks,
+              bothActiveRounds
             });
           }
         }
@@ -7303,7 +7294,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 unit1,
                                 unit2,
                                 count,
-                                weeks: details?.teammateWeeks || []
+                                rounds: details?.teammateRounds || []
                               });
                             }
                           });
@@ -7320,7 +7311,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 unit1,
                                 unit2,
                                 count,
-                                weeks: details?.opponentWeeks || []
+                                rounds: details?.opponentRounds || []
                               });
                             }
                           });
@@ -7335,7 +7326,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 {teammatePairs.slice(0, 5).map((pair, idx) => (
                                   <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} & {pair.unit2}</span>
-                                    <span className="text-indigo-400">{pair.count} weeks</span>
+                                    <span className="text-indigo-400">{pair.count} rounds</span>
                                   </div>
                                 ))}
                                 {teammatePairs.length === 0 && (
@@ -7350,7 +7341,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 {opponentPairs.slice(0, 5).map((pair, idx) => (
                                   <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} vs {pair.unit2}</span>
-                                    <span className="text-red-400">{pair.count} weeks</span>
+                                    <span className="text-red-400">{pair.count} rounds</span>
                                   </div>
                                 ))}
                                 {opponentPairs.length === 0 && (
@@ -7598,8 +7589,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                   <div className="mb-4 bg-bg-inset rounded-lg p-4">
                     <p className="text-sm text-text-secondary">
-                      This heatmap shows how often units have played together as teammates as a percentage of weeks both units were in attendance.
-                      For example, 50% means they played together in half of the weeks they were both present for in the season.
+                      This heatmap shows how often units have played together as teammates per round, accounting for balance swaps.
+                      For example, 50% means they were teammates in half of the rounds where both units were present.
                     </p>
                   </div>
 
@@ -7615,11 +7606,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     }
 
-                    // Helper to get color intensity based on percentage of weeks both units were active
+                    // Helper to get color intensity based on percentage of rounds both units were active
                     // Creates a smooth gradient from blue (0%) -> purple -> orange -> red (100%)
-                    const getHeatColor = (count, bothActiveWeeks) => {
-                      if (bothActiveWeeks === 0) return 'bg-bg-inset';
-                      const percentage = (count / bothActiveWeeks) * 100;
+                    const getHeatColor = (count, bothActiveRounds) => {
+                      if (bothActiveRounds === 0) return 'bg-bg-inset';
+                      const percentage = (count / bothActiveRounds) * 100;
                       
                       // Calculate RGB values for smooth gradient
                       // 0% = sky blue (135, 206, 235), 100% = red (220, 38, 38)
@@ -7643,9 +7634,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     };
 
                     // Helper to get percentage display
-                    const getPercentage = (count, bothActiveWeeks) => {
-                      if (bothActiveWeeks === 0) return '';
-                      return Math.round((count / bothActiveWeeks) * 100);
+                    const getPercentage = (count, bothActiveRounds) => {
+                      if (bothActiveRounds === 0) return '';
+                      return Math.round((count / bothActiveRounds) * 100);
                     };
 
                     // Calculate dynamic cell size based on number of units
@@ -7692,9 +7683,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     );
                                     const count = data?.count || 0;
                                     const bothActiveWeeks = data?.bothActiveWeeks || 0;
-                                    const percentage = getPercentage(count, bothActiveWeeks);
-                                    
-                                    const bgColor = getHeatColor(count, bothActiveWeeks);
+                                    const bothActiveRounds = data?.bothActiveRounds || 0;
+                                    const percentage = getPercentage(count, bothActiveRounds);
+
+                                    const bgColor = getHeatColor(count, bothActiveRounds);
                                     const isSlateGray = bgColor === 'bg-bg-inset';
                                     
                                     return (
@@ -7705,7 +7697,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                             height: `${cellSize}px`,
                                             backgroundColor: isSlateGray ? undefined : bgColor
                                           }}
-                                          title={`${unit1} & ${unit2}: ${count} weeks together (${percentage}% of ${bothActiveWeeks} weeks both active)`}
+                                          title={`${unit1} & ${unit2}: ${count} rounds together (${percentage}% of ${bothActiveRounds} rounds) — ${bothActiveWeeks} weeks both active`}
                                         >
                                           <span className={`${fontSize} font-semibold text-white`}>
                                             {percentage !== '' ? `${percentage}%` : ''}
