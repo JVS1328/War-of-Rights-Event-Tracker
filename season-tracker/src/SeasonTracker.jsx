@@ -765,11 +765,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
         const previousRank = previousRanks[unit] || null;
         const previousEloRank = previousEloRanks[unit] || null;
 
+        const pointsDelta = data.points - (previousStats[unit]?.points || 0);
+
         return {
           unit,
           ...data,
           elo: currentEloValue,
           eloDelta,
+          pointsDelta,
           previousRank,
           previousEloRank,
           rounds: roundsPlayed[unit] || 0
@@ -4899,6 +4902,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 <span className="text-green-400 font-bold text-xl">
                                   {stat.points}
                                 </span>
+                                {stat.pointsDelta !== 0 && (
+                                  <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
@@ -4910,7 +4918,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                               </div>
                             </div>
-                            {manualAdjustments[stat.unit] && (
+                            {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
                               <div className="mt-1 text-xs text-indigo-400">
                                 Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                               </div>
@@ -4990,6 +4998,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <span className="text-green-400 font-bold text-xl">
                             {stat.points}
                           </span>
+                          {stat.pointsDelta !== 0 && (
+                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
@@ -5001,7 +5014,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                         </div>
                       </div>
-                      {manualAdjustments[stat.unit] && (
+                      {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
                         <div className="mt-1 text-xs text-indigo-400">
                           Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                         </div>
@@ -8386,6 +8399,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           <span className="text-green-400 font-bold text-xl">
                                             {stat.points}
                                           </span>
+                                          {stat.pointsDelta !== 0 && (
+                                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                              ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
+                                            </span>
+                                          )}
                                         </div>
                                       </div>
                                       <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
@@ -8454,6 +8472,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     <span className="text-green-400 font-bold text-xl">
                                       {stat.points}
                                     </span>
+                                    {stat.pointsDelta !== 0 && (
+                                      <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
