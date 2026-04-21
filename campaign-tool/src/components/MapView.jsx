@@ -107,7 +107,22 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null, terrainViz = null }) => {
+const MapView = ({
+  territories,
+  selectedTerritory,
+  onTerritoryClick,
+  onTerritoryDoubleClick,
+  onTerritoryCtrlDoubleClick,
+  isCountyView = false,
+  pendingBattleTerritoryIds = [],
+  recentBattleTerritoryIds = [],
+  spSettings = null,
+  terrainViz = null,
+  tokens = null,          // Grand Campaign: array of tokens to render as overlays
+  moveModeTokenId = null, // Grand Campaign: id of token awaiting placement
+  onMapClick = null,      // Grand Campaign: called with { x, y } in SVG coords when in move mode
+  onTokenClick = null,    // Grand Campaign: called with a token object on click
+}) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -129,8 +144,30 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
   const clickTimeoutRef = useRef(null);
   const lastClickEventRef = useRef(null);
 
+  // SVG refs used for coordinate conversion (Grand Campaign move-mode placement)
+  const svgRef = useRef(null);
+  const transformGroupRef = useRef(null);
+
+  // Convert a client (screen) point to SVG viewBox coordinates, accounting
+  // for the <g> pan/zoom transform. Used when placing / moving tokens.
+  const clientToSvgCoords = useCallback((clientX, clientY) => {
+    const svg = svgRef.current;
+    const g = transformGroupRef.current;
+    if (!svg || !g) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = g.getScreenCTM();
+    if (!ctm) return null;
+    const inv = ctm.inverse();
+    const svgP = pt.matrixTransform(inv);
+    return { x: svgP.x, y: svgP.y };
+  }, []);
+
   // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
+    // In token move mode, territories don't respond — SVG-level handler places the token.
+    if (moveModeTokenId) return;
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
@@ -149,7 +186,16 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
         onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId]);
+
+  // Map-level click for token move mode — fires onMapClick with SVG coords.
+  // Shift-clicks are treated as pan gestures and ignored.
+  const handleSvgClick = useCallback((e) => {
+    if (!moveModeTokenId || !onMapClick) return;
+    if (e.shiftKey) return;
+    const point = clientToSvgCoords(e.clientX, e.clientY);
+    if (point) onMapClick(point);
+  }, [moveModeTokenId, onMapClick, clientToSvgCoords]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -494,13 +540,15 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
       <div ref={mapContainerRef} className="relative bg-slate-900 rounded-lg p-4" onMouseMove={handleMouseMove}>
         <svg
+          ref={svgRef}
           viewBox="0 0 1000 589"
           className="w-full h-full"
-          style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+          style={{ cursor: moveModeTokenId ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onClick={handleSvgClick}
         >
           <defs>
             <filter id="battle-smoke" x="-100%" y="-100%" width="300%" height="300%">
@@ -513,7 +561,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
             {/* Terrain patterns — generated from vizConfig for all terrain groups */}
             {Object.entries(vizConfig).flatMap(([name, cfg]) => generateTerrainPatterns(name, cfg))}
           </defs>
-          <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+          <g ref={transformGroupRef} transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
               const center = getTerritoryCenter(territory);
@@ -655,6 +703,54 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                   )}
                   {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
                     {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
+                </g>
+              );
+            })}
+
+            {/* Grand Campaign token overlays — small side-colored markers */}
+            {tokens && tokens.map(token => {
+              if (!token.position || token.status === 'wiped') return null;
+              const { x, y } = token.position;
+              const isMoving = moveModeTokenId === token.id;
+              const fill = token.side === 'USA' ? '#3b82f6' : '#ef4444';
+              const stroke = isMoving ? '#fbbf24' : '#0f172a';
+              return (
+                <g
+                  key={token.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onTokenClick && !moveModeTokenId) onTokenClick(token);
+                  }}
+                >
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r="6"
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={isMoving ? 2 : 1.2}
+                  />
+                  {token.status === 'last-stand' && (
+                    <circle cx={x} cy={y} r="9" fill="none" stroke="#f97316" strokeWidth="1.2" strokeDasharray="2,1.5" />
+                  )}
+                  {token.inCombat && (
+                    <circle cx={x} cy={y} r="11" fill="none" stroke="#fbbf24" strokeWidth="0.8" opacity="0.8" />
+                  )}
+                  <text
+                    x={x}
+                    y={y - 9}
+                    textAnchor="middle"
+                    fontSize="6"
+                    fontWeight="bold"
+                    fill="#fef3c7"
+                    stroke="#0f172a"
+                    strokeWidth="0.3"
+                    paintOrder="stroke"
+                    className="pointer-events-none select-none"
+                  >
+                    {token.name}
+                  </text>
                 </g>
               );
             })}

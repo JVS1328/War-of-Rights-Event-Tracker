@@ -10,6 +10,15 @@ import MapEditor from './components/MapEditor';
 import TerritoryEditor from './components/TerritoryEditor';
 import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
+import TokenPanel from './components/TokenPanel';
+import {
+  isGrandCampaign,
+  addToken as gcAddToken,
+  renameToken as gcRenameToken,
+  removeToken as gcRemoveToken,
+  updateToken as gcUpdateToken,
+  moveTokenTo as gcMoveTokenTo,
+} from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
@@ -33,6 +42,9 @@ const CampaignTracker = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
   const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
+
+  // Grand Campaign: which token (if any) is currently in "click-to-place" mode
+  const [moveModeTokenId, setMoveModeTokenId] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -370,6 +382,22 @@ const CampaignTracker = () => {
     setShowSettings(false);
   };
 
+  // === Grand Campaign handlers ===
+  const handleAddToken = (payload) => setCampaign(c => gcAddToken(c, payload));
+  const handleRenameToken = (tokenId, newName) => setCampaign(c => gcRenameToken(c, tokenId, newName));
+  const handleRemoveToken = (tokenId) => {
+    setCampaign(c => gcRemoveToken(c, tokenId));
+    if (moveModeTokenId === tokenId) setMoveModeTokenId(null);
+  };
+  const handleUpdateToken = (tokenId, patch) => setCampaign(c => gcUpdateToken(c, tokenId, patch));
+  const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
+  const handleCancelMoveMode = () => setMoveModeTokenId(null);
+  const handleMapPlaceClick = (point) => {
+    if (!moveModeTokenId) return;
+    setCampaign(c => gcMoveTokenTo(c, moveModeTokenId, point));
+    setMoveModeTokenId(null);
+  };
+
   const handleTerritoryClick = (territory) => {
     setSelectedTerritory(prev => prev?.id === territory.id ? null : territory);
   };
@@ -402,6 +430,9 @@ const CampaignTracker = () => {
       </div>
     );
   }
+
+  const isGC = isGrandCampaign(campaign);
+  const gcTokens = isGC ? campaign.grandCampaign.tokens : null;
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -516,15 +547,32 @@ const CampaignTracker = () => {
               }
               spSettings={spSettings}
               terrainViz={campaign.settings?.terrainViz}
+              tokens={gcTokens}
+              moveModeTokenId={moveModeTokenId}
+              onMapClick={handleMapPlaceClick}
             />
           </div>
 
-          {/* Right Sidebar - Stats */}
-          <div>
-            <CampaignStats
-              campaign={campaign}
-              onUpdateCampaign={setCampaign}
-            />
+          {/* Right Sidebar - Stats (standard mode) / Tokens (Grand Campaign) */}
+          <div className="space-y-6">
+            {isGC && (
+              <TokenPanel
+                campaign={campaign}
+                moveModeTokenId={moveModeTokenId}
+                onAddToken={handleAddToken}
+                onRenameToken={handleRenameToken}
+                onRemoveToken={handleRemoveToken}
+                onUpdateToken={handleUpdateToken}
+                onEnterMoveMode={handleEnterMoveMode}
+                onCancelMoveMode={handleCancelMoveMode}
+              />
+            )}
+            {!isGC && (
+              <CampaignStats
+                campaign={campaign}
+                onUpdateCampaign={setCampaign}
+              />
+            )}
           </div>
         </div>
 
