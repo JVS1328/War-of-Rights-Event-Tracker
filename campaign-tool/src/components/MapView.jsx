@@ -122,6 +122,9 @@ const MapView = ({
   moveModeTokenId = null, // Grand Campaign: id of token awaiting placement
   onMapClick = null,      // Grand Campaign: called with { x, y } in SVG coords when in move mode
   onTokenClick = null,    // Grand Campaign: called with a token object on click
+  mapFeatures = null,     // Grand Campaign: { cities, forts, stations, railways, rivers }
+  featureTool = null,     // Grand Campaign: 'city' | 'fort' | 'station' | 'railway' | 'river' | null
+  lineDraft = null,       // Grand Campaign: [{x,y},...] points already clicked for in-progress polyline
 }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
@@ -166,8 +169,8 @@ const MapView = ({
 
   // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
-    // In token move mode, territories don't respond — SVG-level handler places the token.
-    if (moveModeTokenId) return;
+    // In any edit mode, territories don't respond — SVG-level handler takes over.
+    if (moveModeTokenId || featureTool) return;
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
@@ -186,16 +189,17 @@ const MapView = ({
         onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool]);
 
-  // Map-level click for token move mode — fires onMapClick with SVG coords.
-  // Shift-clicks are treated as pan gestures and ignored.
+  // Map-level click for token move mode OR feature edit tools — fires
+  // onMapClick with SVG coords. Shift-clicks are pan gestures and ignored.
   const handleSvgClick = useCallback((e) => {
-    if (!moveModeTokenId || !onMapClick) return;
+    if (!onMapClick) return;
+    if (!moveModeTokenId && !featureTool) return;
     if (e.shiftKey) return;
     const point = clientToSvgCoords(e.clientX, e.clientY);
     if (point) onMapClick(point);
-  }, [moveModeTokenId, onMapClick, clientToSvgCoords]);
+  }, [moveModeTokenId, featureTool, onMapClick, clientToSvgCoords]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -543,7 +547,7 @@ const MapView = ({
           ref={svgRef}
           viewBox="0 0 1000 589"
           className="w-full h-full"
-          style={{ cursor: moveModeTokenId ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
+          style={{ cursor: (moveModeTokenId || featureTool) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
@@ -703,6 +707,106 @@ const MapView = ({
                   )}
                   {hasPendingBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'active')}
                     {hasRecentBattle && labelX && labelY && renderBattleEffects(labelX, labelY, 'aftermath')}
+                </g>
+              );
+            })}
+
+            {/* Grand Campaign map features — rivers + rails drawn under points so
+                cities/forts/stations sit on top. Tokens render last (topmost). */}
+            {mapFeatures?.rivers?.map(river => (
+              <polyline
+                key={river.id}
+                points={river.points.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#0ea5e9"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.85"
+                className="pointer-events-none"
+              />
+            ))}
+            {mapFeatures?.railways?.map(rail => (
+              <g key={rail.id} className="pointer-events-none">
+                <polyline
+                  points={rail.points.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <polyline
+                  points={rail.points.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#e2e8f0"
+                  strokeWidth="1"
+                  strokeDasharray="1,2"
+                  strokeLinecap="round"
+                />
+              </g>
+            ))}
+
+            {/* In-progress polyline preview while user is drawing */}
+            {lineDraft && lineDraft.length > 0 && featureTool && (featureTool === 'railway' || featureTool === 'river') && (
+              <g className="pointer-events-none">
+                <polyline
+                  points={lineDraft.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke={featureTool === 'river' ? '#0ea5e9' : '#e2e8f0'}
+                  strokeWidth="2"
+                  strokeDasharray="3,2"
+                  opacity="0.9"
+                />
+                {lineDraft.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r="2" fill="#fbbf24" />
+                ))}
+              </g>
+            )}
+
+            {/* Stations — small circle with cross bar */}
+            {mapFeatures?.stations?.map(s => (
+              <g key={s.id} className="pointer-events-none">
+                <circle cx={s.x} cy={s.y} r="3.5" fill="#475569" stroke="#0f172a" strokeWidth="0.8" />
+                <line x1={s.x - 2.2} y1={s.y} x2={s.x + 2.2} y2={s.y} stroke="#e2e8f0" strokeWidth="0.8" />
+                <text x={s.x} y={s.y + 8} textAnchor="middle" fontSize="4" fill="#cbd5e1" className="select-none">
+                  {s.name}
+                </text>
+              </g>
+            ))}
+
+            {/* Forts — square + diagonal cross */}
+            {mapFeatures?.forts?.map(f => {
+              const fill = f.side === 'USA' ? '#3b82f6' : f.side === 'CSA' ? '#ef4444' : '#f59e0b';
+              return (
+                <g key={f.id} className="pointer-events-none">
+                  <rect x={f.x - 4} y={f.y - 4} width="8" height="8" fill={fill} stroke="#0f172a" strokeWidth="1" />
+                  <line x1={f.x - 4} y1={f.y - 4} x2={f.x + 4} y2={f.y + 4} stroke="#0f172a" strokeWidth="0.8" />
+                  <line x1={f.x + 4} y1={f.y - 4} x2={f.x - 4} y2={f.y + 4} stroke="#0f172a" strokeWidth="0.8" />
+                  <text x={f.x} y={f.y + 10} textAnchor="middle" fontSize="4" fontWeight="bold" fill="#fef3c7" stroke="#0f172a" strokeWidth="0.3" paintOrder="stroke" className="select-none">
+                    {f.name}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Cities — diamond, capitals get a gold star ring */}
+            {mapFeatures?.cities?.map(c => {
+              const fill = c.side === 'USA' ? '#3b82f6' : c.side === 'CSA' ? '#ef4444' : '#f59e0b';
+              return (
+                <g key={c.id} className="pointer-events-none">
+                  {c.isCapital && (
+                    <circle cx={c.x} cy={c.y} r="8" fill="none" stroke="#fbbf24" strokeWidth="1.2" />
+                  )}
+                  <polygon
+                    points={`${c.x},${c.y - 5} ${c.x + 5},${c.y} ${c.x},${c.y + 5} ${c.x - 5},${c.y}`}
+                    fill={fill}
+                    stroke="#0f172a"
+                    strokeWidth="1"
+                  />
+                  <text x={c.x} y={c.y + 11} textAnchor="middle" fontSize="4.5" fontWeight="bold" fill="#fef3c7" stroke="#0f172a" strokeWidth="0.35" paintOrder="stroke" className="select-none">
+                    {c.name}{c.isCapital ? ' ★' : ''}
+                  </text>
                 </g>
               );
             })}

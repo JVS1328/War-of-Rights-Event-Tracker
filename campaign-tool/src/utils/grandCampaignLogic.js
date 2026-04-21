@@ -5,7 +5,7 @@
  * mutates in place. Callers wire these into React setState.
  */
 
-import { createToken } from '../data/grandCampaign';
+import { createToken, createMapPoint, createMapLine } from '../data/grandCampaign';
 
 // ---------------------------------------------------------------------------
 // ID generator — short, readable, collision-free within a session.
@@ -169,4 +169,120 @@ export const updateToken = (campaign, tokenId, patch) => {
       ),
     },
   };
+};
+
+// ---------------------------------------------------------------------------
+// Map feature CRUD — cities / forts / stations (points), railways / rivers
+// (polylines). All stored in grandCampaign.mapFeatures.
+// ---------------------------------------------------------------------------
+
+const POINT_KIND_TO_BUCKET = { city: 'cities', fort: 'forts', station: 'stations' };
+const LINE_KIND_TO_BUCKET = { railway: 'railways', river: 'rivers' };
+
+/** Add a point-type feature at a map position. */
+export const addMapPoint = (campaign, { kind, name, x, y, side = 'NEUTRAL', isCapital = false }) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const bucket = POINT_KIND_TO_BUCKET[kind];
+  if (!bucket) return campaign;
+
+  const feature = createMapPoint({
+    id: nextId(kind),
+    name: name || `${kind} ${campaign.grandCampaign.mapFeatures[bucket].length + 1}`,
+    kind,
+    x,
+    y,
+    side: kind === 'station' ? 'NEUTRAL' : side,
+    isCapital: kind === 'city' ? isCapital : false,
+  });
+
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...campaign.grandCampaign,
+      mapFeatures: {
+        ...campaign.grandCampaign.mapFeatures,
+        [bucket]: [...campaign.grandCampaign.mapFeatures[bucket], feature],
+      },
+    },
+  };
+};
+
+/** Add a polyline-type feature (railway / river) from an array of points. */
+export const addMapLine = (campaign, { kind, name, points }) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  if (!Array.isArray(points) || points.length < 2) return campaign;
+  const bucket = LINE_KIND_TO_BUCKET[kind];
+  if (!bucket) return campaign;
+
+  const feature = createMapLine({
+    id: nextId(kind),
+    name: name || `${kind} ${campaign.grandCampaign.mapFeatures[bucket].length + 1}`,
+    kind,
+    points: points.map(p => ({ x: p.x, y: p.y })),
+  });
+
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...campaign.grandCampaign,
+      mapFeatures: {
+        ...campaign.grandCampaign.mapFeatures,
+        [bucket]: [...campaign.grandCampaign.mapFeatures[bucket], feature],
+      },
+    },
+  };
+};
+
+/** Patch any feature by id (searches every bucket). */
+export const updateMapFeature = (campaign, featureId, patch) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const mapFeatures = { ...campaign.grandCampaign.mapFeatures };
+  let changed = false;
+  for (const bucket of Object.keys(mapFeatures)) {
+    const idx = mapFeatures[bucket].findIndex(f => f.id === featureId);
+    if (idx >= 0) {
+      mapFeatures[bucket] = [...mapFeatures[bucket]];
+      mapFeatures[bucket][idx] = { ...mapFeatures[bucket][idx], ...patch };
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return campaign;
+  return {
+    ...campaign,
+    grandCampaign: { ...campaign.grandCampaign, mapFeatures },
+  };
+};
+
+/** Delete any feature by id. */
+export const removeMapFeature = (campaign, featureId) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const mapFeatures = { ...campaign.grandCampaign.mapFeatures };
+  let changed = false;
+  for (const bucket of Object.keys(mapFeatures)) {
+    const next = mapFeatures[bucket].filter(f => f.id !== featureId);
+    if (next.length !== mapFeatures[bucket].length) {
+      mapFeatures[bucket] = next;
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return campaign;
+  return {
+    ...campaign,
+    grandCampaign: { ...campaign.grandCampaign, mapFeatures },
+  };
+};
+
+/** Flatten every feature into one iterable — handy for hit-testing / rendering. */
+export const allMapFeatures = (campaign) => {
+  if (!isGrandCampaign(campaign)) return [];
+  const mf = campaign.grandCampaign.mapFeatures;
+  return [
+    ...mf.cities,
+    ...mf.forts,
+    ...mf.stations,
+    ...mf.railways,
+    ...mf.rivers,
+  ];
 };

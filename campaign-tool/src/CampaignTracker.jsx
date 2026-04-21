@@ -11,6 +11,7 @@ import TerritoryEditor from './components/TerritoryEditor';
 import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
 import TokenPanel from './components/TokenPanel';
+import MapFeaturesPanel from './components/MapFeaturesPanel';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -18,6 +19,10 @@ import {
   removeToken as gcRemoveToken,
   updateToken as gcUpdateToken,
   moveTokenTo as gcMoveTokenTo,
+  addMapPoint as gcAddMapPoint,
+  addMapLine as gcAddMapLine,
+  updateMapFeature as gcUpdateMapFeature,
+  removeMapFeature as gcRemoveMapFeature,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -45,6 +50,16 @@ const CampaignTracker = () => {
 
   // Grand Campaign: which token (if any) is currently in "click-to-place" mode
   const [moveModeTokenId, setMoveModeTokenId] = useState(null);
+
+  // Grand Campaign: feature-edit mode state. `featureEditMode` is a top-level
+  // boolean that swaps the sidebar; `featureTool` is the currently selected
+  // placement tool (city/fort/station/railway/river). `lineDraft` accumulates
+  // points for in-progress railways/rivers.
+  const [featureEditMode, setFeatureEditMode] = useState(false);
+  const [featureTool, setFeatureTool] = useState(null);
+  const [featurePointSide, setFeaturePointSide] = useState('USA');
+  const [featurePointIsCapital, setFeaturePointIsCapital] = useState(false);
+  const [lineDraft, setLineDraft] = useState([]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -393,10 +408,53 @@ const CampaignTracker = () => {
   const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
   const handleCancelMoveMode = () => setMoveModeTokenId(null);
   const handleMapPlaceClick = (point) => {
-    if (!moveModeTokenId) return;
-    setCampaign(c => gcMoveTokenTo(c, moveModeTokenId, point));
-    setMoveModeTokenId(null);
+    // Priority 1: placing a token in move mode
+    if (moveModeTokenId) {
+      setCampaign(c => gcMoveTokenTo(c, moveModeTokenId, point));
+      setMoveModeTokenId(null);
+      return;
+    }
+    // Priority 2: placing a map feature via the current tool
+    if (featureTool === 'city' || featureTool === 'fort' || featureTool === 'station') {
+      setCampaign(c => gcAddMapPoint(c, {
+        kind: featureTool,
+        x: point.x,
+        y: point.y,
+        side: featurePointSide,
+        isCapital: featurePointIsCapital,
+      }));
+      // Stay in tool so user can drop multiple points in sequence.
+      return;
+    }
+    if (featureTool === 'railway' || featureTool === 'river') {
+      setLineDraft(prev => [...prev, { x: point.x, y: point.y }]);
+      return;
+    }
   };
+
+  // === Feature edit mode handlers ===
+  const enterFeatureEditMode = () => {
+    setFeatureEditMode(true);
+    setMoveModeTokenId(null); // don't mix modes
+  };
+  const exitFeatureEditMode = () => {
+    setFeatureEditMode(false);
+    setFeatureTool(null);
+    setLineDraft([]);
+  };
+  const handleSelectTool = (tool) => {
+    setFeatureTool(tool);
+    setLineDraft([]); // reset draft when switching tools
+  };
+  const handleFinishLine = () => {
+    if (!featureTool || lineDraft.length < 2) return;
+    setCampaign(c => gcAddMapLine(c, { kind: featureTool, points: lineDraft }));
+    setLineDraft([]);
+  };
+  const handleCancelLine = () => setLineDraft([]);
+  const handleUndoLinePoint = () => setLineDraft(d => d.slice(0, -1));
+  const handleUpdateFeature = (id, patch) => setCampaign(c => gcUpdateMapFeature(c, id, patch));
+  const handleRemoveFeature = (id) => setCampaign(c => gcRemoveMapFeature(c, id));
 
   const handleTerritoryClick = (territory) => {
     setSelectedTerritory(prev => prev?.id === territory.id ? null : territory);
@@ -433,6 +491,7 @@ const CampaignTracker = () => {
 
   const isGC = isGrandCampaign(campaign);
   const gcTokens = isGC ? campaign.grandCampaign.tokens : null;
+  const gcMapFeatures = isGC ? campaign.grandCampaign.mapFeatures : null;
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -550,22 +609,54 @@ const CampaignTracker = () => {
               tokens={gcTokens}
               moveModeTokenId={moveModeTokenId}
               onMapClick={handleMapPlaceClick}
+              mapFeatures={gcMapFeatures}
+              featureTool={featureTool}
+              lineDraft={lineDraft}
             />
           </div>
 
-          {/* Right Sidebar - Stats (standard mode) / Tokens (Grand Campaign) */}
+          {/* Right Sidebar — swaps based on mode:
+              - Standard campaign: CampaignStats
+              - Grand Campaign (default): TokenPanel (+ "Edit Map Features" button)
+              - Grand Campaign (features-edit mode): MapFeaturesPanel */}
           <div className="space-y-6">
-            {isGC && (
-              <TokenPanel
+            {isGC && featureEditMode && (
+              <MapFeaturesPanel
                 campaign={campaign}
-                moveModeTokenId={moveModeTokenId}
-                onAddToken={handleAddToken}
-                onRenameToken={handleRenameToken}
-                onRemoveToken={handleRemoveToken}
-                onUpdateToken={handleUpdateToken}
-                onEnterMoveMode={handleEnterMoveMode}
-                onCancelMoveMode={handleCancelMoveMode}
+                tool={featureTool}
+                pointSide={featurePointSide}
+                pointIsCapital={featurePointIsCapital}
+                lineDraft={lineDraft}
+                onSelectTool={handleSelectTool}
+                onChangePointSide={setFeaturePointSide}
+                onTogglePointCapital={() => setFeaturePointIsCapital(v => !v)}
+                onFinishLine={handleFinishLine}
+                onCancelLine={handleCancelLine}
+                onUndoLinePoint={handleUndoLinePoint}
+                onUpdateFeature={handleUpdateFeature}
+                onRemoveFeature={handleRemoveFeature}
+                onExitEditMode={exitFeatureEditMode}
               />
+            )}
+            {isGC && !featureEditMode && (
+              <>
+                <button
+                  onClick={enterFeatureEditMode}
+                  className="w-full px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold"
+                >
+                  Edit Map Features (cities / forts / rails / rivers)
+                </button>
+                <TokenPanel
+                  campaign={campaign}
+                  moveModeTokenId={moveModeTokenId}
+                  onAddToken={handleAddToken}
+                  onRenameToken={handleRenameToken}
+                  onRemoveToken={handleRemoveToken}
+                  onUpdateToken={handleUpdateToken}
+                  onEnterMoveMode={handleEnterMoveMode}
+                  onCancelMoveMode={handleCancelMoveMode}
+                />
+              </>
             )}
             {!isGC && (
               <CampaignStats
