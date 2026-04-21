@@ -125,6 +125,7 @@ const MapView = ({
   mapFeatures = null,     // Grand Campaign: { cities, forts, stations, railways, rivers }
   featureTool = null,     // Grand Campaign: 'city' | 'fort' | 'station' | 'railway' | 'river' | null
   lineDraft = null,       // Grand Campaign: [{x,y},...] points already clicked for in-progress polyline
+  interactionLocked = false, // Any edit/setup mode active — suppresses territory click handlers.
 }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
@@ -169,8 +170,8 @@ const MapView = ({
 
   // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
-    // In any edit mode, territories don't respond — SVG-level handler takes over.
-    if (moveModeTokenId || featureTool) return;
+    // In any edit/setup mode, territories don't respond — SVG-level handler takes over.
+    if (moveModeTokenId || featureTool || interactionLocked) return;
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
@@ -189,17 +190,23 @@ const MapView = ({
         onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool, interactionLocked]);
 
-  // Map-level click for token move mode OR feature edit tools — fires
-  // onMapClick with SVG coords. Shift-clicks are pan gestures and ignored.
+  // Map-level click for token move mode OR feature edit tools OR setup
+  // placement — fires onMapClick with { x, y, territoryId } in SVG coords.
+  // Shift-clicks are pan gestures and ignored.
   const handleSvgClick = useCallback((e) => {
     if (!onMapClick) return;
-    if (!moveModeTokenId && !featureTool) return;
     if (e.shiftKey) return;
     const point = clientToSvgCoords(e.clientX, e.clientY);
-    if (point) onMapClick(point);
-  }, [moveModeTokenId, featureTool, onMapClick, clientToSvgCoords]);
+    if (!point) return;
+    // Identify the territory at the click point via the DOM stack (topmost
+    // element under the cursor that carries a data-territory-id).
+    const stack = document.elementsFromPoint(e.clientX, e.clientY);
+    const territoryEl = stack.find(el => el?.dataset?.territoryId);
+    const territoryId = territoryEl?.dataset?.territoryId || null;
+    onMapClick({ ...point, territoryId });
+  }, [onMapClick, clientToSvgCoords]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -547,7 +554,7 @@ const MapView = ({
           ref={svgRef}
           viewBox="0 0 1000 589"
           className="w-full h-full"
-          style={{ cursor: (moveModeTokenId || featureTool) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
+          style={{ cursor: (moveModeTokenId || featureTool || interactionLocked) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
@@ -590,6 +597,7 @@ const MapView = ({
                         onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
+                        data-territory-id={territory.id}
                       />
                     ))}
                     {renderTerrainOverlay(paths, territory)}
@@ -618,6 +626,7 @@ const MapView = ({
                           onClick={(e) => handleTerritoryPathClick(territory, e)}
                           onMouseEnter={() => setHoveredTerritory(territory)}
                           onMouseLeave={() => setHoveredTerritory(null)}
+                          data-territory-id={territory.id}
                         />
                       );
                     })}
@@ -657,6 +666,7 @@ const MapView = ({
                         onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
+                        data-territory-id={territory.id}
                       />
                     ))}
                     {renderTerrainOverlay(territory.countyPaths, territory)}
@@ -692,6 +702,7 @@ const MapView = ({
                     onClick={(e) => handleTerritoryPathClick(territory, e)}
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
+                    data-territory-id={territory.id}
                   />
                   {renderTerrainOverlay([pathData], territory)}
                   {territory.isCapital && (

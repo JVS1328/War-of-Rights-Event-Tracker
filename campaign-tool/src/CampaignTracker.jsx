@@ -12,6 +12,7 @@ import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
 import TokenPanel from './components/TokenPanel';
 import MapFeaturesPanel from './components/MapFeaturesPanel';
+import SetupWizard from './components/SetupWizard';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -23,6 +24,9 @@ import {
   addMapLine as gcAddMapLine,
   updateMapFeature as gcUpdateMapFeature,
   removeMapFeature as gcRemoveMapFeature,
+  resolveCoinFlip as gcResolveCoinFlip,
+  drawNextSetupToken as gcDrawNextSetupToken,
+  placeSetupToken as gcPlaceSetupToken,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -60,6 +64,10 @@ const CampaignTracker = () => {
   const [featurePointSide, setFeaturePointSide] = useState('USA');
   const [featurePointIsCapital, setFeaturePointIsCapital] = useState(false);
   const [lineDraft, setLineDraft] = useState([]);
+
+  // Grand Campaign setup wizard state
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [setupError, setSetupError] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -408,6 +416,22 @@ const CampaignTracker = () => {
   const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
   const handleCancelMoveMode = () => setMoveModeTokenId(null);
   const handleMapPlaceClick = (point) => {
+    // Grand Campaign setup placement takes highest priority when active.
+    if (isGC && campaign.grandCampaign.phase === 'setup-placement') {
+      // Need the territory at the click point (supplied by MapView as point.territoryId).
+      const territory = point.territoryId
+        ? campaign.territories.find(t => t.id === point.territoryId)
+        : null;
+      const owner = territory?.owner || null;
+      const result = gcPlaceSetupToken(campaign, { x: point.x, y: point.y }, owner);
+      if (result.error) {
+        setSetupError(result.error);
+      } else {
+        setSetupError(null);
+        setCampaign(result.campaign);
+      }
+      return;
+    }
     // Priority 1: placing a token in move mode
     if (moveModeTokenId) {
       setCampaign(c => gcMoveTokenTo(c, moveModeTokenId, point));
@@ -430,6 +454,25 @@ const CampaignTracker = () => {
       setLineDraft(prev => [...prev, { x: point.x, y: point.y }]);
       return;
     }
+  };
+
+  // === Setup wizard handlers ===
+  const handleOpenSetupWizard = () => {
+    if (!isGC) return;
+    // Reset any edit modes so the map is free for setup clicks.
+    setMoveModeTokenId(null);
+    setFeatureEditMode(false);
+    setFeatureTool(null);
+    setLineDraft([]);
+    setShowSetupWizard(true);
+  };
+  const handleCloseSetupWizard = () => setShowSetupWizard(false);
+  const handleCoinFlipCommit = (winner) => {
+    // resolveCoinFlip populates bags; then immediately draw the first token.
+    const withFlip = gcResolveCoinFlip(campaign, winner);
+    const drawn = gcDrawNextSetupToken(withFlip);
+    setCampaign(drawn);
+    setSetupError(null);
   };
 
   // === Feature edit mode handlers ===
@@ -492,6 +535,9 @@ const CampaignTracker = () => {
   const isGC = isGrandCampaign(campaign);
   const gcTokens = isGC ? campaign.grandCampaign.tokens : null;
   const gcMapFeatures = isGC ? campaign.grandCampaign.mapFeatures : null;
+  const gcPhase = isGC ? campaign.grandCampaign.phase : null;
+  const isSetupActive = gcPhase === 'setup-coinflip' || gcPhase === 'setup-placement';
+  const interactionLocked = gcPhase === 'setup-placement';
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -612,6 +658,7 @@ const CampaignTracker = () => {
               mapFeatures={gcMapFeatures}
               featureTool={featureTool}
               lineDraft={lineDraft}
+              interactionLocked={interactionLocked}
             />
           </div>
 
@@ -640,6 +687,19 @@ const CampaignTracker = () => {
             )}
             {isGC && !featureEditMode && (
               <>
+                {gcPhase === 'setup-coinflip' && gcTokens.length > 0 && (
+                  <button
+                    onClick={handleOpenSetupWizard}
+                    className="w-full px-3 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-bold animate-pulse"
+                  >
+                    Begin Setup — Coin Flip & Placement
+                  </button>
+                )}
+                {gcPhase === 'setup-placement' && (
+                  <div className="px-3 py-2 bg-amber-900/50 border border-amber-600 text-amber-200 rounded-lg text-xs">
+                    Setup in progress — follow the floating panel to place tokens.
+                  </div>
+                )}
                 <button
                   onClick={enterFeatureEditMode}
                   className="w-full px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold"
@@ -767,6 +827,18 @@ const CampaignTracker = () => {
           isOpen={showHelpGuide}
           onClose={() => setShowHelpGuide(false)}
         />
+
+        {/* Grand Campaign Setup Wizard — opened either explicitly from the
+            sidebar button, or automatically once the placement phase begins. */}
+        {isGC && (showSetupWizard || gcPhase === 'setup-placement') && (
+          <SetupWizard
+            campaign={campaign}
+            lastPlacementError={setupError}
+            onFlip={handleCoinFlipCommit}
+            onClose={handleCloseSetupWizard}
+            onClearError={() => setSetupError(null)}
+          />
+        )}
 
         {/* Campaign Template Selector Modal */}
         {showTemplateSelector && (

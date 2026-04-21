@@ -286,3 +286,136 @@ export const allMapFeatures = (campaign) => {
     ...mf.rivers,
   ];
 };
+
+// ---------------------------------------------------------------------------
+// Setup wizard — coin flip & alternating placement.
+// ---------------------------------------------------------------------------
+
+const OPPOSITE_SIDE = { USA: 'CSA', CSA: 'USA' };
+
+/** Resolve the coin flip and prime bags for alternating placement. */
+export const resolveCoinFlip = (campaign, winner) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  if (winner !== 'USA' && winner !== 'CSA') return campaign;
+
+  const gc = campaign.grandCampaign;
+  const usaIds = gc.tokens.filter(t => t.side === 'USA').map(t => t.id);
+  const csaIds = gc.tokens.filter(t => t.side === 'CSA').map(t => t.id);
+
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      phase: 'setup-placement',
+      coinFlipWinner: winner,
+      activeSide: winner,
+      monthStartedBy: winner,
+      bags: {
+        USA: shuffleInPlace([...usaIds]),
+        CSA: shuffleInPlace([...csaIds]),
+        discardUSA: [],
+        discardCSA: [],
+      },
+      currentTokenId: null,      // drawn by drawNextSetupToken
+      lastDrawnTokenId: null,
+    },
+  };
+};
+
+/** Fisher-Yates shuffle — side-effect on the array, returned for convenience. */
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Draw the next token for the current activeSide during setup. Returns the
+ * updated campaign with currentTokenId set to the drawn token, or transitions
+ * phase to 'playing' if both bags are empty.
+ */
+export const drawNextSetupToken = (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  if (gc.phase !== 'setup-placement') return campaign;
+
+  const side = gc.activeSide;
+  const bagKey = side === 'USA' ? 'USA' : 'CSA';
+  const bag = gc.bags[bagKey];
+
+  if (bag.length === 0) {
+    // This side's bag is empty — try the other side.
+    const otherSide = OPPOSITE_SIDE[side];
+    const otherBag = gc.bags[otherSide];
+    if (otherBag.length === 0) {
+      // All placed — transition to playing phase.
+      return {
+        ...campaign,
+        grandCampaign: {
+          ...gc,
+          phase: 'playing',
+          currentTokenId: null,
+          activeSide: gc.coinFlipWinner, // first drawer of month 1 is the coin-flip winner
+          currentTurn: gc.currentTurn,
+        },
+        currentTurn: 1,
+      };
+    }
+    return drawNextSetupToken({
+      ...campaign,
+      grandCampaign: { ...gc, activeSide: otherSide },
+    });
+  }
+
+  const [drawnId, ...rest] = bag;
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      bags: { ...gc.bags, [bagKey]: rest },
+      currentTokenId: drawnId,
+    },
+  };
+};
+
+/**
+ * Place the currently-drawn setup token at point. Enforces:
+ *   - the point's containing territory must be owned by the token's side
+ *   - collision (no overlapping existing tokens)
+ * Returns { campaign, error } — error is null on success.
+ */
+export const placeSetupToken = (campaign, point, territoryOwner) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not a grand campaign' };
+  const gc = campaign.grandCampaign;
+  if (gc.phase !== 'setup-placement') return { campaign, error: 'not in setup placement phase' };
+
+  const tokenId = gc.currentTokenId;
+  if (!tokenId) return { campaign, error: 'no token drawn' };
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token) return { campaign, error: 'token not found' };
+
+  if (!territoryOwner || territoryOwner !== token.side) {
+    return { campaign, error: `Must place ${token.side} tokens in ${token.side}-controlled territory.` };
+  }
+  if (!isPositionClear(campaign, point, tokenId)) {
+    return { campaign, error: 'That spot overlaps another token.' };
+  }
+
+  const placedCampaign = {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      tokens: gc.tokens.map(t => t.id === tokenId ? { ...t, position: { x: point.x, y: point.y } } : t),
+      currentTokenId: null,
+      lastDrawnTokenId: tokenId,
+      activeSide: OPPOSITE_SIDE[gc.activeSide],
+    },
+  };
+
+  // Immediately draw the next token for the now-active side.
+  const nextDrawn = drawNextSetupToken(placedCampaign);
+  return { campaign: nextDrawn, error: null };
+};
+
