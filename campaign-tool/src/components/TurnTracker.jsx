@@ -1,4 +1,4 @@
-import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users } from 'lucide-react';
+import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints } from 'lucide-react';
 
 /**
  * TurnTracker — the "whose turn is it" HUD for Grand Campaign.
@@ -8,7 +8,7 @@ import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users } from 'l
  *   - Draw Next Token: starts the next token's turn (from activeSide's bag)
  *   - End Turn: ends the currently-drawn token's turn, flips activeSide
  */
-const TurnTracker = ({ campaign, onDrawNext, onEndTurn }) => {
+const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive }) => {
   const gc = campaign?.grandCampaign;
   if (!gc || gc.phase !== 'playing') return null;
 
@@ -51,12 +51,27 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn }) => {
               {' · '}Fatigue: <span className="text-white">{currentToken.fatigue}</span>
               {currentToken.status === 'last-stand' && <span className="text-orange-400 ml-1 font-bold">LAST STAND</span>}
             </div>
-            <button
-              onClick={onEndTurn}
-              className="w-full mt-2 bg-blue-700 hover:bg-blue-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1.5"
-            >
-              <SkipForward className="w-4 h-4" /> End Turn
-            </button>
+            <div className="flex gap-1.5 mt-2">
+              {onBeginMove && (currentToken.movementPointsUsed || 0) < gc.settings.movementPointsPerTurn && currentToken.status !== 'wiped' && (
+                <button
+                  onClick={onBeginMove}
+                  className={`flex-1 rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1.5 ${
+                    turnMoveActive
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                      : 'bg-amber-700 hover:bg-amber-600 text-white'
+                  }`}
+                >
+                  <Footprints className="w-4 h-4" />
+                  {turnMoveActive ? 'Cancel Move' : 'Move'}
+                </button>
+              )}
+              <button
+                onClick={onEndTurn}
+                className="flex-1 bg-blue-700 hover:bg-blue-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1.5"
+              >
+                <SkipForward className="w-4 h-4" /> End Turn
+              </button>
+            </div>
           </>
         ) : (
           <>

@@ -509,6 +509,162 @@ export const drawNextToken = (campaign) => {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Geometry — inch-based movement helpers.
+// ---------------------------------------------------------------------------
+
+/** Perpendicular distance from a point to a line segment AB. */
+export const distanceToSegment = (p, a, b) => {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return distance(p, a);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
+  return distance(p, { x: a.x + t * dx, y: a.y + t * dy });
+};
+
+/** Minimum distance from a point to any segment of a polyline. */
+export const distanceToPolyline = (p, points) => {
+  let min = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d = distanceToSegment(p, points[i], points[i + 1]);
+    if (d < min) min = d;
+  }
+  return min;
+};
+
+/** Do segments AB and CD intersect? Used for river-crossing detection. */
+const segmentsIntersect = (a, b, c, d) => {
+  const det = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+  if (det === 0) return false;
+  const t = ((c.x - a.x) * (d.y - c.y) - (c.y - a.y) * (d.x - c.x)) / det;
+  const u = ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x)) / det;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+};
+
+/** Count how many river segments the movement line crosses. */
+const countRiverCrossings = (from, to, rivers) => {
+  let n = 0;
+  for (const r of rivers) {
+    for (let i = 0; i < r.points.length - 1; i++) {
+      if (segmentsIntersect(from, to, r.points[i], r.points[i + 1])) n++;
+    }
+  }
+  return n;
+};
+
+/**
+ * Evaluate a proposed move for a token. Returns an object describing all
+ * available movement modes, their MP costs, the river crossing count, and
+ * the suggested (cheapest available) mode. Does not mutate state.
+ */
+export const evaluateMove = (campaign, tokenId, destination) => {
+  if (!isGrandCampaign(campaign)) return { valid: false, error: 'not a grand campaign' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token) return { valid: false, error: 'token not found' };
+  if (!token.position) return { valid: false, error: 'token has no position' };
+  if (token.status === 'wiped') return { valid: false, error: 'wiped token cannot move' };
+
+  const s = gc.settings;
+  const from = token.position;
+  const to = destination;
+  const distSvg = distance(from, to);
+  const inches = distSvg / (s.svgUnitsPerInch || 1);
+
+  const railSnap = inchesToSvg(s.railSnapInches, s);
+  const riverSnap = inchesToSvg(s.riverSnapInches, s);
+
+  // Rail eligibility: token is at a city / fort / station AND destination is
+  // near the same railway.
+  const boardingFeatures = [
+    ...gc.mapFeatures.cities,
+    ...gc.mapFeatures.forts,
+    ...gc.mapFeatures.stations,
+  ];
+  const atRailBoarding = boardingFeatures.some(f => distance(from, f) <= railSnap);
+  const railAvailable = atRailBoarding && gc.mapFeatures.railways.some(r =>
+    distanceToPolyline(from, r.points) <= railSnap &&
+    distanceToPolyline(to, r.points) <= railSnap
+  );
+
+  // River eligibility: both start and destination are on the same river.
+  const riverAvailable = gc.mapFeatures.rivers.some(r =>
+    distanceToPolyline(from, r.points) <= riverSnap &&
+    distanceToPolyline(to, r.points) <= riverSnap
+  );
+
+  // River crossings only add cost when marching — if travelling BY river you
+  // follow its course, not crossing it.
+  const crossings = riverAvailable ? 0 : countRiverCrossings(from, to, gc.mapFeatures.rivers);
+
+  const marchCost = Math.max(1, Math.ceil(inches / s.marchInchesPerMP)) + crossings * s.riverCrossCost;
+  const riverCost = riverAvailable ? Math.max(1, Math.ceil(inches / s.riverInchesPerMP)) : null;
+  const railCost = railAvailable ? Math.max(1, Math.ceil(inches / s.railInchesPerMP)) : null;
+
+  const options = { march: { cost: marchCost, available: true } };
+  if (riverAvailable) options.river = { cost: riverCost, available: true };
+  if (railAvailable) options.rail = { cost: railCost, available: true };
+
+  // Cheapest wins.
+  const suggested = Object.entries(options)
+    .sort((a, b) => a[1].cost - b[1].cost)[0][0];
+
+  return {
+    valid: true,
+    inches,
+    crossings,
+    options,
+    suggested,
+  };
+};
+
+/**
+ * Commit a move for a token using a specific mode. Deducts MP; rail/river
+ * moves exhaust all remaining MP (board + disembark ends turn per rules).
+ * Returns { campaign, error, turnEnds }.
+ */
+export const performMove = (campaign, tokenId, destination, mode) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not a grand campaign' };
+  const evalResult = evaluateMove(campaign, tokenId, destination);
+  if (!evalResult.valid) return { campaign, error: evalResult.error };
+
+  const option = evalResult.options[mode];
+  if (!option || !option.available) return { campaign, error: `Mode ${mode} not available` };
+
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  const mpMax = gc.settings.movementPointsPerTurn;
+  const mpLeft = mpMax - (token.movementPointsUsed || 0);
+
+  if (option.cost > mpLeft) {
+    return { campaign, error: `Not enough MP (need ${option.cost}, have ${mpLeft}).` };
+  }
+  if (!isPositionClear(campaign, destination, tokenId)) {
+    return { campaign, error: 'Destination overlaps another token.' };
+  }
+
+  // Rail and river movement consume the remainder of the turn — disembarking
+  // ends your turn per the rules. March keeps your MP available.
+  const turnEnds = mode === 'rail' || mode === 'river';
+  const newMpUsed = turnEnds ? mpMax : (token.movementPointsUsed || 0) + option.cost;
+
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          position: { x: destination.x, y: destination.y },
+          movementPointsUsed: newMpUsed,
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds,
+  };
+};
+
 /**
  * End the currently-drawn token's turn: fatigue resets if the token did not
  * engage in combat this turn, token moves into the correct discard bag, and

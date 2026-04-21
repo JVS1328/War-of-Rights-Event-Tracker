@@ -14,6 +14,7 @@ import TokenPanel from './components/TokenPanel';
 import MapFeaturesPanel from './components/MapFeaturesPanel';
 import SetupWizard from './components/SetupWizard';
 import TurnTracker from './components/TurnTracker';
+import MoveConfirmModal from './components/MoveConfirmModal';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -30,6 +31,8 @@ import {
   placeSetupToken as gcPlaceSetupToken,
   drawNextToken as gcDrawNextToken,
   endTokenTurn as gcEndTokenTurn,
+  evaluateMove as gcEvaluateMove,
+  performMove as gcPerformMove,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -71,6 +74,12 @@ const CampaignTracker = () => {
   // Grand Campaign setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [setupError, setSetupError] = useState(null);
+
+  // Grand Campaign in-turn movement state. When a token's turn is active the
+  // user can click "Move", which enters targeting mode; the next valid map
+  // click computes an evaluation and pops the MoveConfirmModal.
+  const [turnMoveActive, setTurnMoveActive] = useState(false);
+  const [pendingMove, setPendingMove] = useState(null); // { evaluation, destination }
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -419,6 +428,17 @@ const CampaignTracker = () => {
   const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
   const handleCancelMoveMode = () => setMoveModeTokenId(null);
   const handleMapPlaceClick = (point) => {
+    // In-turn movement targeting has priority whenever a move is being
+    // chosen for the currently-drawn token.
+    if (isGC && turnMoveActive && campaign.grandCampaign.currentTokenId) {
+      const evaluation = gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, { x: point.x, y: point.y });
+      if (!evaluation.valid) {
+        alert(`Cannot move there: ${evaluation.error}`);
+        return;
+      }
+      setPendingMove({ evaluation, destination: { x: point.x, y: point.y } });
+      return;
+    }
     // Grand Campaign setup placement takes highest priority when active.
     if (isGC && campaign.grandCampaign.phase === 'setup-placement') {
       // Need the territory at the click point (supplied by MapView as point.territoryId).
@@ -483,6 +503,35 @@ const CampaignTracker = () => {
   const handleEndTokenTurn = () => {
     // End the current token's turn, then immediately draw the next one.
     setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c)));
+    setTurnMoveActive(false);
+    setPendingMove(null);
+  };
+
+  // === In-turn movement handlers ===
+  const handleBeginMove = () => {
+    if (turnMoveActive) {
+      setTurnMoveActive(false);
+      setPendingMove(null);
+    } else {
+      setTurnMoveActive(true);
+    }
+  };
+  const handleCancelPendingMove = () => setPendingMove(null);
+  const handleConfirmMove = (mode) => {
+    if (!pendingMove) return;
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformMove(campaign, tokenId, pendingMove.destination, mode);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setCampaign(result.campaign);
+    setPendingMove(null);
+    // Rail/river disembark ends the turn. March leaves the "Move" mode on so
+    // the user can continue if MP remain.
+    if (result.turnEnds) {
+      setTurnMoveActive(false);
+    }
   };
 
   // === Feature edit mode handlers ===
@@ -547,7 +596,7 @@ const CampaignTracker = () => {
   const gcMapFeatures = isGC ? campaign.grandCampaign.mapFeatures : null;
   const gcPhase = isGC ? campaign.grandCampaign.phase : null;
   const isSetupActive = gcPhase === 'setup-coinflip' || gcPhase === 'setup-placement';
-  const interactionLocked = gcPhase === 'setup-placement';
+  const interactionLocked = gcPhase === 'setup-placement' || turnMoveActive;
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -715,6 +764,8 @@ const CampaignTracker = () => {
                     campaign={campaign}
                     onDrawNext={handleDrawNextToken}
                     onEndTurn={handleEndTokenTurn}
+                    onBeginMove={handleBeginMove}
+                    turnMoveActive={turnMoveActive}
                   />
                 )}
                 <button
@@ -856,6 +907,22 @@ const CampaignTracker = () => {
             onClearError={() => setSetupError(null)}
           />
         )}
+
+        {/* Grand Campaign in-turn move confirmation */}
+        {isGC && pendingMove && (() => {
+          const token = campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId);
+          const mpLeft = campaign.grandCampaign.settings.movementPointsPerTurn - (token?.movementPointsUsed || 0);
+          return (
+            <MoveConfirmModal
+              evaluation={pendingMove.evaluation}
+              token={token}
+              destination={pendingMove.destination}
+              mpLeft={mpLeft}
+              onConfirm={handleConfirmMove}
+              onCancel={handleCancelPendingMove}
+            />
+          );
+        })()}
 
         {/* Campaign Template Selector Modal */}
         {showTemplateSelector && (
