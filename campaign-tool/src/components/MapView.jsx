@@ -316,14 +316,21 @@ const MapView = ({
   };
 
   // Zoom and pan handlers
-  const handleWheel = (e) => {
-    if (e.shiftKey) {
+  // React attaches onWheel as a passive listener, so preventDefault() is a
+  // no-op there. Attach a non-passive wheel listener on the SVG element
+  // directly so shift-scroll can consume the page scroll when zooming.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!e.shiftKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
-      setZoom(newZoom);
-    }
-  };
+      setZoom(z => Math.max(0.5, Math.min(5, z * delta)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handleMouseDown = (e) => {
     const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
@@ -555,7 +562,6 @@ const MapView = ({
           viewBox="0 0 1000 589"
           className="w-full h-full"
           style={{ cursor: (moveModeTokenId || featureTool || interactionLocked) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
-          onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}

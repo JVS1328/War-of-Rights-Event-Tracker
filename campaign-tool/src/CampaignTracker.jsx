@@ -948,6 +948,7 @@ const CampaignTracker = () => {
               battles={campaign.battles}
               territories={campaign.territories}
               onEditBattle={handleEditBattle}
+              campaign={campaign}
             />
           </div>
         </div>

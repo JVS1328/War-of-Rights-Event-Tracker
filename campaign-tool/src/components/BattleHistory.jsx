@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Swords, ChevronDown, ChevronRight, Trophy, Skull, Calendar, Clock, Edit3 } from 'lucide-react';
 
-const BattleHistory = ({ battles, territories, onEditBattle }) => {
+const BattleHistory = ({ battles, territories, onEditBattle, campaign = null }) => {
   const [expandedBattle, setExpandedBattle] = useState(null);
 
   const toggleExpand = (battleId) => {
@@ -9,8 +9,26 @@ const BattleHistory = ({ battles, territories, onEditBattle }) => {
   };
 
   const getTerritoryName = (territoryId) => {
+    if (territoryId === 'grand-campaign') return null;
     const territory = territories.find(t => t.id === territoryId);
     return territory ? territory.name : 'Unknown';
+  };
+
+  // Grand Campaign battles use token names + a location label instead of a
+  // territory name as their subtitle.
+  const getGrandBattleSubtitle = (battle) => {
+    const gc = campaign?.grandCampaign;
+    if (!gc) return null;
+    const tokenName = (id) => gc.tokens.find(t => t.id === id)?.name || 'Unknown';
+    const attackerName = tokenName(battle.attackerTokenId);
+    const defenderName = tokenName(battle.defenderTokenId);
+    const pieces = [`${attackerName} vs ${defenderName}`];
+    if (battle.attackerSupportId) pieces.push(`(+ ${tokenName(battle.attackerSupportId)})`);
+    if (battle.defenderSupportId) pieces.push(`(+ ${tokenName(battle.defenderSupportId)})`);
+    const locationLabel = battle.locationLabel
+      || getTerritoryName(battle.territoryId)
+      || null;
+    return { header: pieces.join(' '), location: locationLabel };
   };
 
   const formatDate = (isoString) => {
@@ -79,9 +97,20 @@ const BattleHistory = ({ battles, territories, onEditBattle }) => {
                       <span className="text-slate-400 text-sm">Turn {battle.turn}</span>
                       <span className="text-white font-semibold">{battle.mapName}</span>
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      {getTerritoryName(battle.territoryId)}
-                    </div>
+                    {(() => {
+                      if (battle.mode === 'grand') {
+                        const sub = getGrandBattleSubtitle(battle);
+                        if (!sub) return null;
+                        return (
+                          <div className="text-xs text-slate-300 mt-1">
+                            <span className="font-semibold">{sub.header}</span>
+                            {sub.location && <span className="text-slate-500"> — {sub.location}</span>}
+                          </div>
+                        );
+                      }
+                      const name = getTerritoryName(battle.territoryId);
+                      return name ? <div className="text-xs text-slate-400 mt-1">{name}</div> : null;
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -124,9 +153,41 @@ const BattleHistory = ({ battles, territories, onEditBattle }) => {
                         <span className="text-white font-semibold">{battle.mapName}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Territory:</span>
-                        <span className="text-white font-semibold">{getTerritoryName(battle.territoryId)}</span>
+                        <span className="text-slate-400">Location:</span>
+                        <span className="text-white font-semibold text-right">
+                          {battle.mode === 'grand'
+                            ? (battle.locationLabel || getTerritoryName(battle.territoryId) || 'Unknown')
+                            : (getTerritoryName(battle.territoryId) || 'Unknown')}
+                        </span>
                       </div>
+                      {battle.mode === 'grand' && campaign?.grandCampaign && (() => {
+                        const gc = campaign.grandCampaign;
+                        const t = (id) => gc.tokens.find(x => x.id === id)?.name || '—';
+                        return (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Attacker Token:</span>
+                              <span className="text-white font-semibold text-right">{t(battle.attackerTokenId)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Defender Token:</span>
+                              <span className="text-white font-semibold text-right">{t(battle.defenderTokenId)}</span>
+                            </div>
+                            {battle.attackerSupportId && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Attacker Support:</span>
+                                <span className="text-white font-semibold text-right">{t(battle.attackerSupportId)}</span>
+                              </div>
+                            )}
+                            {battle.defenderSupportId && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Defender Support:</span>
+                                <span className="text-white font-semibold text-right">{t(battle.defenderSupportId)}</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 

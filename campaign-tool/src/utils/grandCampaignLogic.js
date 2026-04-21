@@ -350,17 +350,26 @@ export const drawNextSetupToken = (campaign) => {
     const otherSide = OPPOSITE_SIDE[side];
     const otherBag = gc.bags[otherSide];
     if (otherBag.length === 0) {
-      // All placed — transition to playing phase.
+      // All tokens placed — transition to playing phase. Refill both draw
+      // bags from the placed roster so month 1 can actually draw turns.
+      const usaIds = gc.tokens.filter(t => t.side === 'USA' && t.status !== 'wiped').map(t => t.id);
+      const csaIds = gc.tokens.filter(t => t.side === 'CSA' && t.status !== 'wiped').map(t => t.id);
       return {
         ...campaign,
+        currentTurn: 1,
         grandCampaign: {
           ...gc,
           phase: 'playing',
           currentTokenId: null,
-          activeSide: gc.coinFlipWinner, // first drawer of month 1 is the coin-flip winner
-          currentTurn: gc.currentTurn,
+          activeSide: gc.coinFlipWinner, // first drawer of month 1 = coin-flip winner
+          monthStartedBy: gc.coinFlipWinner,
+          bags: {
+            USA: shuffleInPlace(usaIds),
+            CSA: shuffleInPlace(csaIds),
+            discardUSA: [],
+            discardCSA: [],
+          },
         },
-        currentTurn: 1,
       };
     }
     return drawNextSetupToken({
@@ -823,6 +832,53 @@ export const findStrongholdAtToken = (campaign, tokenId) => {
   return candidates[0] || null;
 };
 
+/**
+ * Nearest named map feature (city / fort / station) to a point, regardless
+ * of side. Returns { feature, distance } or null. Used to label Grand
+ * Campaign battles by their real-world location.
+ */
+export const findNearestNamedFeature = (campaign, point) => {
+  if (!isGrandCampaign(campaign) || !point) return null;
+  const gc = campaign.grandCampaign;
+  const candidates = [
+    ...gc.mapFeatures.cities,
+    ...gc.mapFeatures.forts,
+    ...gc.mapFeatures.stations,
+  ];
+  if (candidates.length === 0) return null;
+  let best = null;
+  for (const f of candidates) {
+    const d = distance(point, f);
+    if (!best || d < best.distance) best = { feature: f, distance: d };
+  }
+  return best;
+};
+
+/**
+ * Hit-test a point (in SVG viewBox coords) against the currently-rendered
+ * territory paths in the DOM. Uses SVGPathElement.isPointInFill so it works
+ * under the map's transform group. Returns the matching territory object or
+ * null. Safe to call in SSR (returns null if document is unavailable).
+ */
+export const findTerritoryAtSvgPoint = (campaign, point) => {
+  if (typeof document === 'undefined' || !point) return null;
+  const svg = document.querySelector('svg[viewBox="0 0 1000 589"]');
+  if (!svg) return null;
+  const svgPoint = svg.createSVGPoint();
+  svgPoint.x = point.x;
+  svgPoint.y = point.y;
+  const paths = svg.querySelectorAll('[data-territory-id]');
+  for (const path of paths) {
+    try {
+      if (path.isPointInFill && path.isPointInFill(svgPoint)) {
+        const id = path.dataset.territoryId;
+        return campaign.territories.find(t => t.id === id) || null;
+      }
+    } catch (_) { /* browsers that don't support isPointInFill on this node */ }
+  }
+  return null;
+};
+
 // ---------------------------------------------------------------------------
 // Replenishment — active turn action at a friendly city/fort.
 // ---------------------------------------------------------------------------
@@ -1008,6 +1064,28 @@ export const findSupporters = (campaign, engagedTokenId, exclude = []) => {
 };
 
 /**
+ * Compute a human-readable location label for a battle at `position` — the
+ * nearest named feature if within ~1 inch, otherwise the containing
+ * territory name, otherwise null.
+ */
+export const describeBattleLocation = (campaign, position) => {
+  if (!isGrandCampaign(campaign) || !position) return null;
+  const gc = campaign.grandCampaign;
+  const near = findNearestNamedFeature(campaign, position);
+  const nearLimit = inchesToSvg(1.0, gc.settings);
+  if (near && near.distance <= nearLimit) {
+    const kindLabel = near.feature.kind === 'city'
+      ? (near.feature.isCapital ? 'capital of' : 'at')
+      : near.feature.kind === 'fort'
+        ? 'at Fort' : 'near';
+    return `${kindLabel} ${near.feature.name}`;
+  }
+  const territory = findTerritoryAtSvgPoint(campaign, position);
+  if (territory) return `in ${territory.name}`;
+  return null;
+};
+
+/**
  * Create a pending Grand Campaign battle. Marks all participants as inCombat
  * so they're skipped if drawn, records the attacker's turn as over (per GC
  * rules — an attack ends your turn), and appends a battle entry.
@@ -1024,6 +1102,10 @@ export const createGCBattle = (campaign, payload) => {
   if (!attacker || !defender) return campaign;
 
   const participantIds = [attackerId, defenderId, attackerSupportId, defenderSupportId].filter(Boolean);
+  const locationLabel = describeBattleLocation(campaign, defender.position);
+  // Stash a territoryId for the legacy validator: use defender's containing
+  // territory if we can identify it, else the sentinel 'grand-campaign'.
+  const defenderTerritory = findTerritoryAtSvgPoint(campaign, defender.position);
 
   const battle = {
     id: battleId || nextId('battle'),
@@ -1040,9 +1122,9 @@ export const createGCBattle = (campaign, payload) => {
     winner: null,
     casualties: null,
     resolution: null,
-    // territoryId is required by the existing validator; use defender's nearest
-    // territory or a placeholder. Grand Campaign doesn't consume territory VP.
-    territoryId: 'grand-campaign',
+    locationLabel: locationLabel || null,
+    // territoryId — real one if we resolved it, else sentinel for validation.
+    territoryId: defenderTerritory?.id || 'grand-campaign',
   };
 
   return {
