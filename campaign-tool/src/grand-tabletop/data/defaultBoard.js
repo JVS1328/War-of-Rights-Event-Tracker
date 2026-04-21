@@ -180,6 +180,22 @@ const buildRailSet = () => {
   });
 };
 
+const STATE_LABELS = [
+  { name: 'Michigan',        q: 10, r: 14, fontSize: 36 },
+  { name: 'Ohio',            q: 22, r: 32, fontSize: 48 },
+  { name: 'Pennsylvania',    q: 42, r: 30, fontSize: 46 },
+  { name: 'New York',        q: 56, r: 24, fontSize: 40 },
+  { name: 'West Virginia',   q: 32, r: 42, fontSize: 30 },
+  { name: 'Maryland',        q: 50, r: 42, fontSize: 26 },
+  { name: 'Virginia',        q: 46, r: 54, fontSize: 48 },
+  { name: 'Kentucky',        q: 18, r: 48, fontSize: 44 },
+  { name: 'Tennessee',       q: 18, r: 60, fontSize: 46 },
+  { name: 'North Carolina',  q: 40, r: 68, fontSize: 40 },
+  { name: 'South Carolina',  q: 42, r: 76, fontSize: 34 },
+  { name: 'Georgia',         q: 32, r: 80, fontSize: 46 },
+  { name: 'Alabama',         q: 24, r: 74, fontSize: 40 }
+];
+
 export const createDefaultBoard = () => {
   return {
     width: BOARD_WIDTH,
@@ -191,6 +207,7 @@ export const createDefaultBoard = () => {
       garrison: 0
     })),
     rails: buildRailSet(),
+    stateLabels: STATE_LABELS,
     capitals: {
       USA: ['washington', 'new-york', 'cleveland'],
       CSA: ['richmond', 'wilmington', 'atlanta']
