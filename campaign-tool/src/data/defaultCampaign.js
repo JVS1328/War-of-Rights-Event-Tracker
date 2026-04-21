@@ -7,6 +7,7 @@ import { createEasternTheatreTerritories, calculateInitialVP as calcEasternVP } 
 import { createMaryland1862Territories, calculateInitialVP as calcMaryland1862VP } from './marylandCampaign1862';
 import { DEFAULT_TERRAIN_GROUPS } from './territories';
 import { DEFAULT_TERRAIN_VIZ } from '../utils/terrainPatterns.jsx';
+import { createGrandCampaign } from './grandCampaign';
 
 /**
  * Helper to add SVG path data to a territory based on state abbreviation
@@ -593,5 +594,10 @@ export const CAMPAIGN_TEMPLATES = {
     name: 'Eastern Theatre of the War',
     description: 'Full Civil War campaign (April 1861 - December 1865) with county-based regions across MD, WV, VA, and PA',
     create: createMaryland1862Campaign
+  },
+  'grand-campaign': {
+    name: 'Grand Campaign',
+    description: 'Tabletop ruleset adaptation — token-based units, inch-measured movement, manpower/treasury pools, cities/forts/stations/rails/rivers placed on the Eastern Theatre map. Victory at 10 VP via capital captures and token wipes.',
+    create: createGrandCampaign
   }
 };

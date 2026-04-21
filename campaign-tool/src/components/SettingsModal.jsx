@@ -8,6 +8,8 @@ import {
   DEFAULT_TIME_WEIGHTS
 } from '../utils/battleConditions';
 import { PATTERN_TYPES, DEFAULT_TERRAIN_VIZ, defaultVizEntry, generateTerrainPatterns } from '../utils/terrainPatterns.jsx';
+import GrandCampaignSettings from './GrandCampaignSettings';
+import { GRAND_CAMPAIGN_DEFAULTS } from '../data/grandCampaign';
 
 const SettingsModal = ({ campaign, onSave, onClose }) => {
   const [settings, setSettings] = useState({
@@ -42,8 +44,16 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
     campaign.settings?.timeWeights || { ...DEFAULT_TIME_WEIGHTS }
   );
 
+  // Grand Campaign settings — only editable when the campaign is in GC mode.
+  const isGrandCampaign = campaign.campaignStyle === 'grand';
+  const [gcSettings, setGcSettings] = useState(
+    isGrandCampaign
+      ? { ...GRAND_CAMPAIGN_DEFAULTS, ...(campaign.grandCampaign?.settings || {}) }
+      : null
+  );
+
   const handleSubmit = () => {
-    onSave({ ...settings, terrainGroups, terrainViz, regiments, weatherWeights, timeWeights });
+    onSave({ ...settings, terrainGroups, terrainViz, regiments, weatherWeights, timeWeights, gcSettings });
   };
 
   const updateSetting = (key, value) => {
@@ -126,6 +136,14 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
 
           {/* Form */}
           <div className="space-y-6">
+            {/* Grand Campaign section — only shown for GC style campaigns */}
+            {isGrandCampaign && gcSettings && (
+              <GrandCampaignSettings
+                gcSettings={gcSettings}
+                onChange={setGcSettings}
+              />
+            )}
+
             {/* Campaign Info */}
             <div className="bg-slate-700 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-amber-300 mb-4">Campaign Information</h3>

@@ -1,4 +1,4 @@
-import { ALL_MAPS } from '../data/territories';
+import { ALL_MAPS, MAPS_BY_MAPSET } from '../data/territories';
 
 /**
  * Roll a weighted random terrain type from a territory's terrain weights.
@@ -114,6 +114,27 @@ export const getMapCooldownMessage = (mapName, cooldownMaps, currentTurn, mapCoo
   }
 
   return `(Turn ${lastPlayedTurn}, available in ${turnsUntilAvailable} turn${turnsUntilAvailable !== 1 ? 's' : ''})`;
+};
+
+/**
+ * Is `mapName` a Conquest-type map?
+ *
+ * The canonical list lives in MAPS_BY_MAPSET (data/territories.js) where
+ * dedicated "*Conquest" buckets hold the conquest variants
+ * ("Antietam Conquest", "South Mountain Conquest", etc). We also check any
+ * caller-supplied terrainGroups that match the same pattern so the user
+ * can add their own conquest maps via settings later.
+ */
+export const isConquestMap = (mapName, terrainGroups = {}) => {
+  if (!mapName) return false;
+  const scan = (bucket) => {
+    for (const [groupName, maps] of Object.entries(bucket || {})) {
+      if (!groupName || !groupName.toLowerCase().includes('conquest')) continue;
+      if (Array.isArray(maps) && maps.includes(mapName)) return true;
+    }
+    return false;
+  };
+  return scan(MAPS_BY_MAPSET) || scan(terrainGroups);
 };
 
 /**

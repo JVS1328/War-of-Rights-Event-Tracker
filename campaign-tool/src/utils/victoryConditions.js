@@ -20,8 +20,13 @@ import { isCampaignOver } from './dateSystem';
  * @returns {Object|null} Victory result or null if no victory
  */
 export const checkVictoryConditions = (campaign) => {
+  // Grand Campaign mode: VP from capital captures + token wipes.
+  if (campaign.campaignStyle === 'grand' && campaign.grandCampaign) {
+    return checkGrandCampaignVictory(campaign);
+  }
+
   // Determine which system to use
-  const useCPSystem = campaign.cpSystemEnabled && 
+  const useCPSystem = campaign.cpSystemEnabled &&
                       typeof campaign.combatPowerUSA === 'number' &&
                       typeof campaign.combatPowerCSA === 'number';
 
@@ -43,6 +48,41 @@ export const checkVictoryConditions = (campaign) => {
     if (result) return result;
   }
 
+  return null;
+};
+
+// ============================================================================
+// GRAND CAMPAIGN VICTORY
+// ============================================================================
+
+/**
+ * Grand Campaign victory: first side to reach vpToWin wins. VP comes from
+ * grandCampaign.vpEvents (capital captures + token wipes); the running
+ * totals are tracked in victoryPointsUSA / victoryPointsCSA.
+ */
+const checkGrandCampaignVictory = (campaign) => {
+  const target = campaign.grandCampaign?.settings?.vpToWin ?? 10;
+  const vpUSA = campaign.victoryPointsUSA || 0;
+  const vpCSA = campaign.victoryPointsCSA || 0;
+
+  if (vpUSA >= target && vpUSA >= vpCSA) {
+    return {
+      winner: 'USA',
+      type: 'Grand Campaign Victory',
+      description: `USA reached ${vpUSA} VP (target ${target}) via capital captures and token wipes.`,
+      vpUSA,
+      vpCSA,
+    };
+  }
+  if (vpCSA >= target && vpCSA >= vpUSA) {
+    return {
+      winner: 'CSA',
+      type: 'Grand Campaign Victory',
+      description: `CSA reached ${vpCSA} VP (target ${target}) via capital captures and token wipes.`,
+      vpUSA,
+      vpCSA,
+    };
+  }
   return null;
 };
 

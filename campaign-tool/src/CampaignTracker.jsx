@@ -10,6 +10,49 @@ import MapEditor from './components/MapEditor';
 import TerritoryEditor from './components/TerritoryEditor';
 import HelpGuide from './components/HelpGuide';
 import RegimentStats from './components/RegimentStats';
+import TokenPanel from './components/TokenPanel';
+import MapFeaturesPanel from './components/MapFeaturesPanel';
+import SetupWizard from './components/SetupWizard';
+import TurnTracker from './components/TurnTracker';
+import MoveConfirmModal from './components/MoveConfirmModal';
+import GrandBattleModal from './components/GrandBattleModal';
+import GrandBattleResolveModal from './components/GrandBattleResolveModal';
+import GarrisonModal from './components/GarrisonModal';
+import ReplenishModal from './components/ReplenishModal';
+import LSRetreatModal from './components/LSRetreatModal';
+import {
+  isGrandCampaign,
+  addToken as gcAddToken,
+  renameToken as gcRenameToken,
+  removeToken as gcRemoveToken,
+  updateToken as gcUpdateToken,
+  moveTokenTo as gcMoveTokenTo,
+  addMapPoint as gcAddMapPoint,
+  addMapLine as gcAddMapLine,
+  updateMapFeature as gcUpdateMapFeature,
+  removeMapFeature as gcRemoveMapFeature,
+  resolveCoinFlip as gcResolveCoinFlip,
+  drawNextSetupToken as gcDrawNextSetupToken,
+  placeSetupToken as gcPlaceSetupToken,
+  drawNextToken as gcDrawNextToken,
+  endTokenTurn as gcEndTokenTurn,
+  evaluateMove as gcEvaluateMove,
+  performMove as gcPerformMove,
+  createGCBattle as gcCreateBattle,
+  resolveGCBattle as gcResolveBattle,
+  performReplenish as gcPerformReplenish,
+  performGarrison as gcPerformGarrison,
+  performRecallGarrison as gcPerformRecallGarrison,
+  findStrongholdAtToken as gcFindStrongholdAtToken,
+  performBoardRail as gcPerformBoardRail,
+  performBoardRiver as gcPerformBoardRiver,
+  performDisembark as gcPerformDisembark,
+  findRailwaySnap as gcFindRailwaySnap,
+  performLSRetreat as gcPerformLSRetreat,
+  inchesToMiles as gcInchesToMiles,
+  distance as gcDistance,
+  loadEasternTheatrePreset as gcLoadEasternTheatrePreset,
+} from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
@@ -33,6 +76,43 @@ const CampaignTracker = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
   const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
+
+  // Grand Campaign: which token (if any) is currently in "click-to-place" mode
+  const [moveModeTokenId, setMoveModeTokenId] = useState(null);
+
+  // Grand Campaign: feature-edit mode state. `featureEditMode` is a top-level
+  // boolean that swaps the sidebar; `featureTool` is the currently selected
+  // placement tool (city/fort/station/railway/river). `lineDraft` accumulates
+  // points for in-progress railways/rivers.
+  const [featureEditMode, setFeatureEditMode] = useState(false);
+  const [featureTool, setFeatureTool] = useState(null);
+  const [featurePointSide, setFeaturePointSide] = useState('USA');
+  const [featurePointIsCapital, setFeaturePointIsCapital] = useState(false);
+  const [lineDraft, setLineDraft] = useState([]);
+
+  // Grand Campaign setup wizard state
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [setupError, setSetupError] = useState(null);
+
+  // Grand Campaign in-turn movement state. When a token's turn is active the
+  // user can click "Move", which enters targeting mode; the next valid map
+  // click computes an evaluation and pops the MoveConfirmModal.
+  const [turnMoveActive, setTurnMoveActive] = useState(false);
+  const [pendingMove, setPendingMove] = useState(null); // { evaluation, destination }
+
+  // Grand Campaign combat modals
+  const [showBattleModal, setShowBattleModal] = useState(false);
+  const [resolvingBattleId, setResolvingBattleId] = useState(null);
+
+  // Grand Campaign garrison modal
+  const [showGarrisonModal, setShowGarrisonModal] = useState(false);
+  // Grand Campaign replenish modal
+  const [showReplenishModal, setShowReplenishModal] = useState(false);
+  // Grand Campaign "may retreat" prompt for last-stand winners.
+  // lsRetreat: { tokenId, maxMP } | null — modal open
+  // lsRetreatPicking: { tokenId, maxMP } | null — map-click picking mode
+  const [lsRetreat, setLSRetreat] = useState(null);
+  const [lsRetreatPicking, setLSRetreatPicking] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -118,6 +198,14 @@ const CampaignTracker = () => {
   };
 
   const handleEditBattle = (battle) => {
+    // Grand Campaign battles use the dedicated resolve modal instead of the
+    // standard BattleRecorder.
+    if (battle?.mode === 'grand') {
+      if (battle.status === 'pending') {
+        setResolvingBattleId(battle.id);
+      }
+      return;
+    }
     setEditingBattle(battle);
     setShowBattleRecorder(true);
   };
@@ -337,8 +425,8 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
-    // Extract campaign name, regiments, terrain groups, viz, and settings
-    const { name, regiments, terrainGroups, terrainViz, ...settings } = newSettings;
+    // Extract campaign name, regiments, terrain groups, viz, GC settings, and standard settings
+    const { name, regiments, terrainGroups, terrainViz, gcSettings, ...settings } = newSettings;
 
     // Persist terrain groups & visualization config inside settings
     if (terrainGroups) {
@@ -355,6 +443,14 @@ const CampaignTracker = () => {
       settings: settings
     };
 
+    // Grand Campaign: merge edited gcSettings into campaign.grandCampaign.settings
+    if (gcSettings && campaign.grandCampaign) {
+      updatedCampaign.grandCampaign = {
+        ...campaign.grandCampaign,
+        settings: { ...campaign.grandCampaign.settings, ...gcSettings },
+      };
+    }
+
     // Update regiments if provided
     if (regiments) {
       updatedCampaign.regiments = regiments;
@@ -368,6 +464,347 @@ const CampaignTracker = () => {
 
     setCampaign(updatedCampaign);
     setShowSettings(false);
+  };
+
+  // === Grand Campaign handlers ===
+  const handleAddToken = (payload) => setCampaign(c => gcAddToken(c, payload));
+  const handleRenameToken = (tokenId, newName) => setCampaign(c => gcRenameToken(c, tokenId, newName));
+  const handleRemoveToken = (tokenId) => {
+    setCampaign(c => gcRemoveToken(c, tokenId));
+    if (moveModeTokenId === tokenId) setMoveModeTokenId(null);
+  };
+  const handleUpdateToken = (tokenId, patch) => setCampaign(c => gcUpdateToken(c, tokenId, patch));
+  const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
+  const handleCancelMoveMode = () => setMoveModeTokenId(null);
+  const handleMapPlaceClick = (point) => {
+    // Last-stand winner is picking a retreat destination.
+    if (isGC && lsRetreatPicking) {
+      handleLSRetreatClick({ x: point.x, y: point.y });
+      return;
+    }
+    // In-turn movement targeting has priority whenever a move is being
+    // chosen for the currently-drawn token.
+    if (isGC && turnMoveActive && campaign.grandCampaign.currentTokenId) {
+      const evaluation = gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, { x: point.x, y: point.y });
+      if (!evaluation.valid) {
+        // The ruler chip is already showing the reason in red — don't
+        // interrupt the player with a modal popup. Silently ignore.
+        return;
+      }
+      setPendingMove({ evaluation, destination: { x: point.x, y: point.y } });
+      return;
+    }
+    // Grand Campaign setup placement takes highest priority when active.
+    if (isGC && campaign.grandCampaign.phase === 'setup-placement') {
+      // Need the territory at the click point (supplied by MapView as point.territoryId).
+      const territory = point.territoryId
+        ? campaign.territories.find(t => t.id === point.territoryId)
+        : null;
+      const owner = territory?.owner || null;
+      const result = gcPlaceSetupToken(campaign, { x: point.x, y: point.y }, owner);
+      if (result.error) {
+        setSetupError(result.error);
+      } else {
+        setSetupError(null);
+        setCampaign(result.campaign);
+      }
+      return;
+    }
+    // Priority 1: placing a token in move mode
+    if (moveModeTokenId) {
+      setCampaign(c => gcMoveTokenTo(c, moveModeTokenId, point));
+      setMoveModeTokenId(null);
+      return;
+    }
+    // Priority 2: placing a map feature via the current tool
+    if (featureTool === 'city' || featureTool === 'fort' || featureTool === 'station') {
+      setCampaign(c => gcAddMapPoint(c, {
+        kind: featureTool,
+        x: point.x,
+        y: point.y,
+        side: featurePointSide,
+        isCapital: featurePointIsCapital,
+      }));
+      // Stay in tool so user can drop multiple points in sequence.
+      return;
+    }
+    if (featureTool === 'railway') {
+      // Railways must *start* at a city / fort / rail station. Subsequent
+      // points auto-snap to nearby anchors or other rail endpoints if the
+      // cursor is close enough — otherwise the raw click is used.
+      const snap = gcFindRailwaySnap(campaign, { x: point.x, y: point.y });
+      const isFirstPoint = lineDraft.length === 0;
+      if (isFirstPoint) {
+        if (!snap?.isAnchor) {
+          alert('Railways must start at a City, Fort, or Rail Station. Click one to begin.');
+          return;
+        }
+        setLineDraft([{ x: snap.x, y: snap.y }]);
+        return;
+      }
+      const next = snap ? { x: snap.x, y: snap.y } : { x: point.x, y: point.y };
+      setLineDraft(prev => [...prev, next]);
+      return;
+    }
+    if (featureTool === 'river') {
+      setLineDraft(prev => [...prev, { x: point.x, y: point.y }]);
+      return;
+    }
+  };
+
+  // === Setup wizard handlers ===
+  const handleOpenSetupWizard = () => {
+    if (!isGC) return;
+    // Reset any edit modes so the map is free for setup clicks.
+    setMoveModeTokenId(null);
+    setFeatureEditMode(false);
+    setFeatureTool(null);
+    setLineDraft([]);
+    setShowSetupWizard(true);
+  };
+  const handleCloseSetupWizard = () => setShowSetupWizard(false);
+  const handleCoinFlipCommit = (winner) => {
+    // resolveCoinFlip populates bags; then immediately draw the first token.
+    const withFlip = gcResolveCoinFlip(campaign, winner);
+    const drawn = gcDrawNextSetupToken(withFlip);
+    setCampaign(drawn);
+    setSetupError(null);
+  };
+
+  // === Turn-machine handlers (phase: 'playing') ===
+  const handleDrawNextToken = () => setCampaign(c => gcDrawNextToken(c));
+  const handleEndTokenTurn = () => {
+    // End the current token's turn, then immediately draw the next one.
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c)));
+    setTurnMoveActive(false);
+    setPendingMove(null);
+  };
+
+  // === Replenishment / garrison handlers ===
+  const handleOpenReplenish = () => setShowReplenishModal(true);
+  const handleCloseReplenish = () => setShowReplenishModal(false);
+  const handleConfirmReplenish = (men) => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformReplenish(campaign, tokenId, men);
+    if (result.error) {
+      alert(`Cannot replenish: ${result.error}`);
+      return;
+    }
+    // Replenish ends turn; immediately draw next token.
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setTurnMoveActive(false);
+    setShowReplenishModal(false);
+  };
+  const handleOpenGarrison = () => setShowGarrisonModal(true);
+  const handleCloseGarrison = () => setShowGarrisonModal(false);
+  const handleGarrisonAction = (featureId, men) => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformGarrison(campaign, tokenId, featureId, men);
+    if (result.error) { alert(`Cannot garrison: ${result.error}`); return; }
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setShowGarrisonModal(false);
+    setTurnMoveActive(false);
+  };
+  const handleRecallAction = (featureId, men) => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformRecallGarrison(campaign, tokenId, featureId, men);
+    if (result.error) { alert(`Cannot recall: ${result.error}`); return; }
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setShowGarrisonModal(false);
+    setTurnMoveActive(false);
+  };
+
+  // === Combat handlers ===
+  const handleOpenAttack = () => {
+    setTurnMoveActive(false);
+    setShowBattleModal(true);
+  };
+  const handleCreateBattle = (payload) => {
+    setCampaign(c => gcCreateBattle(c, payload));
+    setShowBattleModal(false);
+    // Attacker turn ended inside createGCBattle; immediately draw next.
+    setTimeout(() => setCampaign(c => gcDrawNextToken(c)), 0);
+  };
+  const handleOpenResolveBattle = (battle) => {
+    if (battle?.mode === 'grand' && battle.status === 'pending') {
+      setResolvingBattleId(battle.id);
+    } else {
+      // Legacy battle — delegate to existing handler
+      handleEditBattle(battle);
+    }
+  };
+  const handleResolveBattle = (payload) => {
+    if (!resolvingBattleId) return;
+    const result = gcResolveBattle(campaign, resolvingBattleId, payload);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setCampaign(result.campaign);
+    setResolvingBattleId(null);
+    // If a last-stand winner is eligible to retreat, queue the prompt. The
+    // modal lets the player choose to skip, auto-retreat to the nearest
+    // friendly stronghold, or pick a destination on the map within range.
+    if (result.mayRetreat) {
+      setLSRetreat(result.mayRetreat);
+    }
+  };
+
+  // === Last-stand retreat handlers ===
+  const handleLSRetreatSkip = () => setLSRetreat(null);
+  const handleLSRetreatAuto = () => {
+    if (!lsRetreat) return;
+    // Reuse the shared retreat helper by funnelling through a tiny inline
+    // retreat — applyRetreat lives inside grandCampaignLogic but isn't
+    // exported. Instead we auto-pick the nearest friendly stronghold and
+    // call performLSRetreat targeted there.
+    const gc = campaign.grandCampaign;
+    const token = gc.tokens.find(t => t.id === lsRetreat.tokenId);
+    if (!token) { setLSRetreat(null); return; }
+    const strongholds = [
+      ...gc.mapFeatures.cities.filter(c => c.side === token.side),
+      ...gc.mapFeatures.forts.filter(f => f.side === token.side),
+    ];
+    if (strongholds.length === 0) { setLSRetreat(null); return; }
+    const nearest = strongholds.reduce((best, s) =>
+      !best || gcDistance(token.position, s) < gcDistance(token.position, best) ? s : best
+    , null);
+    // Walk as far as retreat range permits along the direct line.
+    const maxInches = lsRetreat.maxMP * gc.settings.marchInchesPerMP;
+    const maxSvg = maxInches * (gc.settings.svgUnitsPerInch || 10);
+    const dx = nearest.x - token.position.x;
+    const dy = nearest.y - token.position.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const step = Math.min(d, maxSvg);
+    const dest = d === 0
+      ? { x: token.position.x, y: token.position.y }
+      : { x: token.position.x + (dx / d) * step, y: token.position.y + (dy / d) * step };
+    const result = gcPerformLSRetreat(campaign, lsRetreat.tokenId, dest, lsRetreat.maxMP);
+    if (!result.error) setCampaign(result.campaign);
+    setLSRetreat(null);
+  };
+  const handleLSRetreatPickSpot = () => {
+    if (!lsRetreat) return;
+    setLSRetreatPicking(lsRetreat);
+    setLSRetreat(null);
+  };
+  const handleLSRetreatClick = (point) => {
+    if (!lsRetreatPicking) return;
+    const result = gcPerformLSRetreat(campaign, lsRetreatPicking.tokenId, point, lsRetreatPicking.maxMP);
+    if (result.error) {
+      // The ruler chip already tells the user — silent no-op.
+      return;
+    }
+    setCampaign(result.campaign);
+    setLSRetreatPicking(null);
+  };
+
+  // === Board / disembark handlers (all end the turn) ===
+  const chainEndAndDraw = (updated) => {
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(updated)));
+    setTurnMoveActive(false);
+    setPendingMove(null);
+  };
+  const handleBoardRail = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformBoardRail(campaign, tokenId);
+    if (result.error) { alert(`Cannot board: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+  const handleBoardRiver = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformBoardRiver(campaign, tokenId);
+    if (result.error) { alert(`Cannot embark: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+  const handleDisembark = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformDisembark(campaign, tokenId);
+    if (result.error) { alert(`Cannot disembark: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+
+  // === In-turn movement handlers ===
+  const handleBeginMove = () => {
+    if (turnMoveActive) {
+      setTurnMoveActive(false);
+      setPendingMove(null);
+    } else {
+      setTurnMoveActive(true);
+    }
+  };
+  const handleCancelPendingMove = () => setPendingMove(null);
+  const handleConfirmMove = () => {
+    if (!pendingMove) return;
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformMove(campaign, tokenId, pendingMove.destination);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setCampaign(result.campaign);
+    setPendingMove(null);
+    // Keep the ruler / move mode open if the token still has MP (ruler
+    // updates live on the map). Only close when MP is exhausted, the turn
+    // was forcibly ended (capture), or a capture flow is kicking in.
+    if (result.turnEnds || (result.mpRemaining ?? 0) <= 0) {
+      setTurnMoveActive(false);
+    }
+    if (result.capture) {
+      const { feature, isCapital, payout, vpDelta } = result.capture;
+      const msg = isCapital
+        ? `Captured capital ${feature.name}! +$${payout}, +${vpDelta} VP.`
+        : `Captured ${feature.name}! +$${payout}.`;
+      alert(msg);
+      setTimeout(() => setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c))), 0);
+    }
+  };
+
+  // === Feature edit mode handlers ===
+  const enterFeatureEditMode = () => {
+    setFeatureEditMode(true);
+    setMoveModeTokenId(null); // don't mix modes
+  };
+  const exitFeatureEditMode = () => {
+    setFeatureEditMode(false);
+    setFeatureTool(null);
+    setLineDraft([]);
+  };
+  const handleSelectTool = (tool) => {
+    setFeatureTool(tool);
+    setLineDraft([]); // reset draft when switching tools
+  };
+  const handleFinishLine = () => {
+    if (!featureTool || lineDraft.length < 2) return;
+    setCampaign(c => gcAddMapLine(c, { kind: featureTool, points: lineDraft }));
+    setLineDraft([]);
+  };
+  const handleCancelLine = () => setLineDraft([]);
+  const handleUndoLinePoint = () => setLineDraft(d => d.slice(0, -1));
+  const handleUpdateFeature = (id, patch) => setCampaign(c => gcUpdateMapFeature(c, id, patch));
+  const handleRemoveFeature = (id) => setCampaign(c => gcRemoveMapFeature(c, id));
+
+  /** Fetch the county GeoJSON and overwrite the map with the historical preset. */
+  const handleLoadPreset = async () => {
+    if (!isGC) return;
+    const mf = campaign.grandCampaign.mapFeatures;
+    const hasExisting =
+      mf.cities.length || mf.forts.length || mf.stations.length ||
+      mf.railways.length || mf.rivers.length;
+    if (hasExisting && !confirm(
+      'Replace ALL current map features with the historical Eastern Theatre preset?\n' +
+      'Capitals, cities, forts, stations, railways, and rivers will be overwritten.'
+    )) return;
+    try {
+      const next = await gcLoadEasternTheatrePreset(campaign);
+      setCampaign(next);
+    } catch (e) {
+      alert(`Could not load preset: ${e.message || e}`);
+    }
   };
 
   const handleTerritoryClick = (territory) => {
@@ -402,6 +839,13 @@ const CampaignTracker = () => {
       </div>
     );
   }
+
+  const isGC = isGrandCampaign(campaign);
+  const gcTokens = isGC ? campaign.grandCampaign.tokens : null;
+  const gcMapFeatures = isGC ? campaign.grandCampaign.mapFeatures : null;
+  const gcPhase = isGC ? campaign.grandCampaign.phase : null;
+  const isSetupActive = gcPhase === 'setup-coinflip' || gcPhase === 'setup-placement';
+  const interactionLocked = gcPhase === 'setup-placement' || turnMoveActive || !!lsRetreatPicking;
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -516,15 +960,141 @@ const CampaignTracker = () => {
               }
               spSettings={spSettings}
               terrainViz={campaign.settings?.terrainViz}
+              tokens={gcTokens}
+              moveModeTokenId={moveModeTokenId}
+              onMapClick={handleMapPlaceClick}
+              mapFeatures={gcMapFeatures}
+              featureTool={featureTool}
+              lineDraft={lineDraft}
+              interactionLocked={interactionLocked}
+              influenceThreshold={isGC ? (campaign.grandCampaign.settings.influenceThreshold || 0) : 0}
+              rulerFromPoint={(() => {
+                if (!isGC) return null;
+                if (lsRetreatPicking) {
+                  return campaign.grandCampaign.tokens.find(t => t.id === lsRetreatPicking.tokenId)?.position || null;
+                }
+                if (turnMoveActive && campaign.grandCampaign.currentTokenId) {
+                  return campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId)?.position || null;
+                }
+                return null;
+              })()}
+              rulerEvaluator={(() => {
+                if (!isGC) return null;
+                if (lsRetreatPicking) {
+                  // Retreat evaluator: valid if within maxMP march-MP of the
+                  // token's current position. No mode/cost — it's a free
+                  // post-battle reposition.
+                  const gc = campaign.grandCampaign;
+                  const token = gc.tokens.find(t => t.id === lsRetreatPicking.tokenId);
+                  return (point) => {
+                    if (!token?.position) return { valid: false, reason: 'no position' };
+                    const svgPerInch = gc.settings.svgUnitsPerInch || 10;
+                    const inches = Math.sqrt(
+                      (point.x - token.position.x) ** 2 + (point.y - token.position.y) ** 2
+                    ) / svgPerInch;
+                    const maxInches = lsRetreatPicking.maxMP * gc.settings.marchInchesPerMP;
+                    const miles = gcInchesToMiles(inches, gc.settings);
+                    const maxMiles = gcInchesToMiles(maxInches, gc.settings);
+                    if (inches > maxInches) {
+                      return { valid: false, reason: `out of retreat range (${miles} mi / ${maxMiles} mi)` };
+                    }
+                    return {
+                      valid: true,
+                      inches,
+                      miles,
+                      crossings: 0,
+                      mode: 'retreat',
+                      cost: 0,
+                      ratesMilesPerMP: {},
+                    };
+                  };
+                }
+                if (turnMoveActive && campaign.grandCampaign.currentTokenId) {
+                  return (point) => gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, point);
+                }
+                return null;
+              })()}
             />
           </div>
 
-          {/* Right Sidebar - Stats */}
-          <div>
-            <CampaignStats
-              campaign={campaign}
-              onUpdateCampaign={setCampaign}
-            />
+          {/* Right Sidebar — swaps based on mode:
+              - Standard campaign: CampaignStats
+              - Grand Campaign (default): TokenPanel (+ "Edit Map Features" button)
+              - Grand Campaign (features-edit mode): MapFeaturesPanel */}
+          <div className="space-y-6">
+            {isGC && featureEditMode && (
+              <MapFeaturesPanel
+                campaign={campaign}
+                tool={featureTool}
+                pointSide={featurePointSide}
+                pointIsCapital={featurePointIsCapital}
+                lineDraft={lineDraft}
+                onSelectTool={handleSelectTool}
+                onChangePointSide={setFeaturePointSide}
+                onTogglePointCapital={() => setFeaturePointIsCapital(v => !v)}
+                onFinishLine={handleFinishLine}
+                onCancelLine={handleCancelLine}
+                onUndoLinePoint={handleUndoLinePoint}
+                onUpdateFeature={handleUpdateFeature}
+                onRemoveFeature={handleRemoveFeature}
+                onExitEditMode={exitFeatureEditMode}
+                onLoadPreset={handleLoadPreset}
+              />
+            )}
+            {isGC && !featureEditMode && (
+              <>
+                {gcPhase === 'setup-coinflip' && gcTokens.length > 0 && (
+                  <button
+                    onClick={handleOpenSetupWizard}
+                    className="w-full px-3 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-bold animate-pulse"
+                  >
+                    Begin Setup — Coin Flip & Placement
+                  </button>
+                )}
+                {gcPhase === 'setup-placement' && (
+                  <div className="px-3 py-2 bg-amber-900/50 border border-amber-600 text-amber-200 rounded-lg text-xs">
+                    Setup in progress — follow the floating panel to place tokens.
+                  </div>
+                )}
+                {gcPhase === 'playing' && (
+                  <TurnTracker
+                    campaign={campaign}
+                    onDrawNext={handleDrawNextToken}
+                    onEndTurn={handleEndTokenTurn}
+                    onBeginMove={handleBeginMove}
+                    turnMoveActive={turnMoveActive}
+                    onAttack={handleOpenAttack}
+                    onReplenish={handleOpenReplenish}
+                    onGarrison={handleOpenGarrison}
+                    onBoardRail={handleBoardRail}
+                    onBoardRiver={handleBoardRiver}
+                    onDisembark={handleDisembark}
+                  />
+                )}
+                <button
+                  onClick={enterFeatureEditMode}
+                  className="w-full px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold"
+                >
+                  Edit Map Features (cities / forts / rails / rivers)
+                </button>
+                <TokenPanel
+                  campaign={campaign}
+                  moveModeTokenId={moveModeTokenId}
+                  onAddToken={handleAddToken}
+                  onRenameToken={handleRenameToken}
+                  onRemoveToken={handleRemoveToken}
+                  onUpdateToken={handleUpdateToken}
+                  onEnterMoveMode={handleEnterMoveMode}
+                  onCancelMoveMode={handleCancelMoveMode}
+                />
+              </>
+            )}
+            {!isGC && (
+              <CampaignStats
+                campaign={campaign}
+                onUpdateCampaign={setCampaign}
+              />
+            )}
           </div>
         </div>
 
@@ -535,47 +1105,49 @@ const CampaignTracker = () => {
           </div>
         )}
 
-        {/* Bottom Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Territory List */}
-          <div>
-            <TerritoryList
-              territories={campaign.territories}
-              onTerritorySelect={handleTerritoryClick}
-              spSettings={spSettings}
-            />
-          </div>
-
-          {/* Battle Controls and History */}
-          <div className="space-y-6">
-            {/* Battle Controls */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-              <h3 className="text-xl font-bold text-amber-400 mb-4">
-                Campaign Actions
-              </h3>
-              <div className="space-y-3">
-                <button
-                  onClick={() => setShowBattleRecorder(true)}
-                  className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                >
-                  <Swords className="w-5 h-5" />
-                  Record Battle
-                </button>
-                <button
-                  onClick={advanceTurn}
-                  className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                >
-                  <SkipForward className="w-5 h-5" />
-                  Advance Turn
-                </button>
-              </div>
+        {/* Bottom Section — in Grand Campaign the territory list + manual
+            'Campaign Actions' (Record Battle / Advance Turn) are hidden;
+            the month advances automatically on bag rollover and battles are
+            initiated from the token turn tracker. */}
+        <div className={isGC ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 lg:grid-cols-2 gap-6'}>
+          {!isGC && (
+            <div>
+              <TerritoryList
+                territories={campaign.territories}
+                onTerritorySelect={handleTerritoryClick}
+                spSettings={spSettings}
+              />
             </div>
+          )}
 
-            {/* Battle History Preview */}
+          <div className="space-y-6">
+            {!isGC && (
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+                <h3 className="text-xl font-bold text-amber-400 mb-4">Campaign Actions</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setShowBattleRecorder(true)}
+                    className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                  >
+                    <Swords className="w-5 h-5" />
+                    Record Battle
+                  </button>
+                  <button
+                    onClick={advanceTurn}
+                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                  >
+                    <SkipForward className="w-5 h-5" />
+                    Advance Turn
+                  </button>
+                </div>
+              </div>
+            )}
+
             <BattleHistory
               battles={campaign.battles}
               territories={campaign.territories}
               onEditBattle={handleEditBattle}
+              campaign={campaign}
             />
           </div>
         </div>
@@ -627,7 +1199,127 @@ const CampaignTracker = () => {
         <HelpGuide
           isOpen={showHelpGuide}
           onClose={() => setShowHelpGuide(false)}
+          campaignStyle={isGC ? 'grand' : 'standard'}
         />
+
+        {/* Grand Campaign Setup Wizard — opened either explicitly from the
+            sidebar button, or automatically once the placement phase begins. */}
+        {isGC && (showSetupWizard || gcPhase === 'setup-placement') && (
+          <SetupWizard
+            campaign={campaign}
+            lastPlacementError={setupError}
+            onFlip={handleCoinFlipCommit}
+            onClose={handleCloseSetupWizard}
+            onClearError={() => setSetupError(null)}
+          />
+        )}
+
+        {/* Grand Campaign — replenishment */}
+        {isGC && showReplenishModal && (() => {
+          const tokenId = campaign.grandCampaign.currentTokenId;
+          const token = campaign.grandCampaign.tokens.find(t => t.id === tokenId);
+          if (!token) return null;
+          return (
+            <ReplenishModal
+              campaign={campaign}
+              token={token}
+              onConfirm={handleConfirmReplenish}
+              onCancel={handleCloseReplenish}
+            />
+          );
+        })()}
+
+        {/* Grand Campaign — last-stand winner may retreat */}
+        {isGC && lsRetreat && (
+          <LSRetreatModal
+            campaign={campaign}
+            tokenId={lsRetreat.tokenId}
+            maxMP={lsRetreat.maxMP}
+            onSkip={handleLSRetreatSkip}
+            onAuto={handleLSRetreatAuto}
+            onPickSpot={handleLSRetreatPickSpot}
+          />
+        )}
+
+        {/* Grand Campaign — LS retreat destination picker HUD */}
+        {isGC && lsRetreatPicking && (() => {
+          const token = campaign.grandCampaign.tokens.find(t => t.id === lsRetreatPicking.tokenId);
+          if (!token) return null;
+          const maxInches = lsRetreatPicking.maxMP * campaign.grandCampaign.settings.marchInchesPerMP;
+          const maxMiles = gcInchesToMiles(maxInches, campaign.grandCampaign.settings);
+          return (
+            <div className="fixed top-24 right-6 z-40 bg-slate-900/95 border-2 border-orange-500 rounded-lg shadow-xl p-3 w-72">
+              <div className="text-sm font-bold text-orange-300 mb-1">LS Retreat — pick a spot</div>
+              <div className="text-xs text-slate-300">
+                Click within <span className="text-white font-semibold">{maxMiles} miles</span> of {token.name}.
+                Out-of-range hovers show in red.
+              </div>
+              <button
+                onClick={() => setLSRetreatPicking(null)}
+                className="mt-2 w-full bg-slate-700 hover:bg-slate-600 text-white rounded py-1 text-xs"
+              >
+                Cancel (hold position)
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Grand Campaign — garrison / recall */}
+        {isGC && showGarrisonModal && (() => {
+          const tokenId = campaign.grandCampaign.currentTokenId;
+          const token = campaign.grandCampaign.tokens.find(t => t.id === tokenId);
+          const feature = gcFindStrongholdAtToken(campaign, tokenId);
+          if (!token || !feature) return null;
+          return (
+            <GarrisonModal
+              campaign={campaign}
+              token={token}
+              feature={feature}
+              onGarrison={handleGarrisonAction}
+              onRecall={handleRecallAction}
+              onCancel={handleCloseGarrison}
+            />
+          );
+        })()}
+
+        {/* Grand Campaign — attack initiator */}
+        {isGC && showBattleModal && (
+          <GrandBattleModal
+            campaign={campaign}
+            onCreate={handleCreateBattle}
+            onCancel={() => setShowBattleModal(false)}
+          />
+        )}
+
+        {/* Grand Campaign — resolve a pending battle */}
+        {isGC && resolvingBattleId && (() => {
+          const battle = campaign.battles.find(b => b.id === resolvingBattleId);
+          if (!battle) return null;
+          return (
+            <GrandBattleResolveModal
+              campaign={campaign}
+              battle={battle}
+              onResolve={handleResolveBattle}
+              onCancel={() => setResolvingBattleId(null)}
+            />
+          );
+        })()}
+
+        {/* Grand Campaign in-turn move confirmation */}
+        {isGC && pendingMove && (() => {
+          const token = campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId);
+          const mpLeft = campaign.grandCampaign.settings.movementPointsPerTurn - (token?.movementPointsUsed || 0);
+          return (
+            <MoveConfirmModal
+              evaluation={pendingMove.evaluation}
+              token={token}
+              destination={pendingMove.destination}
+              mpLeft={mpLeft}
+              onConfirm={handleConfirmMove}
+              onCancel={handleCancelPendingMove}
+            />
+          );
+        })()}
 
         {/* Campaign Template Selector Modal */}
         {showTemplateSelector && (

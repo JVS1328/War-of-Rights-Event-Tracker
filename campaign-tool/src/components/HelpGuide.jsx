@@ -1,15 +1,25 @@
 import { useState } from 'react';
-import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target } from 'lucide-react';
+import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target, Flag, Train, Waves, Shield, Package, Coins } from 'lucide-react';
 
-const HelpGuide = ({ isOpen, onClose }) => {
+const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
+  const isGrand = campaignStyle === 'grand';
   const [expandedSections, setExpandedSections] = useState({
-    overview: true,
+    // Grand Campaign sections
+    gcOverview: isGrand,
+    gcSetup: false,
+    gcTurn: false,
+    gcMovement: false,
+    gcCombat: false,
+    gcReplenishGarrison: false,
+    gcVictory: false,
+    // Legacy sections
+    overview: !isGrand,
     howToPlay: false,
     spSystem: false,
     battles: false,
     abilities: false,
     victory: false,
-    tips: false
+    tips: false,
   });
 
   const toggleSection = (section) => {
@@ -53,8 +63,14 @@ const HelpGuide = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-3">
             <HelpCircle className="w-8 h-8 text-amber-400" />
             <div>
-              <h2 className="text-2xl font-bold text-amber-400">Campaign Tracker Guide</h2>
-              <p className="text-slate-400 text-sm">For War of Rights Regiment Leaders</p>
+              <h2 className="text-2xl font-bold text-amber-400">
+                {isGrand ? 'Grand Campaign Guide' : 'Campaign Tracker Guide'}
+              </h2>
+              <p className="text-slate-400 text-sm">
+                {isGrand
+                  ? 'Tabletop ruleset adaptation — tokens, movement, combat, victory'
+                  : 'For War of Rights Regiment Leaders'}
+              </p>
             </div>
           </div>
           <button
@@ -67,7 +83,163 @@ const HelpGuide = ({ isOpen, onClose }) => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          <Section id="overview" title="What is the Campaign Tracker?" icon={Map}>
+          {isGrand && (
+            <>
+              <Section id="gcOverview" title="Grand Campaign — Overview" icon={Map}>
+                <p className="mb-3">
+                  Grand Campaign adapts Maj. Tindall's tabletop ruleset to this app.
+                  Instead of territory-for-VP, both sides push <strong>tokens</strong> (1:1 with
+                  your regiments) around the Eastern Theatre map. Victory Points come
+                  from <strong>capital captures</strong> and <strong>token wipes</strong>, not from owning ground.
+                  Territory colour is flavour: tokens sitting in a territory slowly
+                  shift its influence toward their side over months.
+                </p>
+                <p className="mb-3">
+                  Each side has a national <strong>treasury</strong> and <strong>manpower pool</strong>; both grow
+                  monthly per owned city. You'll see the live figures and per-month
+                  adds in the sidebar TurnTracker.
+                </p>
+                <p className="text-slate-400 text-xs">
+                  Every number you see here — starting strength, pool sizes, movement
+                  rates, casualty modifiers, VP to win — is tunable under Settings →
+                  Grand Campaign.
+                </p>
+              </Section>
+
+              <Section id="gcSetup" title="Setup — Coin Flip & Placement" icon={Flag}>
+                <ol className="list-decimal pl-5 space-y-2">
+                  <li>Draw your map first: use <strong>Edit Map Features</strong> to drop cities,
+                      forts, rail stations, railway polylines, and rivers.
+                      Capitals get a gold ring. Railways must start at a city, fort,
+                      or rail station and snap to anchors as you draw.</li>
+                  <li>Add one <strong>token</strong> per regiment, each side, using the sidebar.
+                      Rename/edit anytime.</li>
+                  <li>Hit <strong>Begin Setup</strong>. A coin is flipped (Heads = USA, Tails = CSA).
+                      The winner draws their first token from the bag and places it
+                      by clicking the map — placement is restricted to friendly
+                      territory. Sides alternate until every token is placed.</li>
+                  <li>Month 1 begins. The first drawer of each month flips between
+                      sides (it's always the opposite of last month's starter).</li>
+                </ol>
+              </Section>
+
+              <Section id="gcTurn" title="Turn Flow — Drawing & Ending" icon={Clock}>
+                <p className="mb-3">
+                  Each month, token tiles are drawn one at a time from their side's
+                  bag, alternating sides. Click <strong>Draw Next Token</strong> in the TurnTracker
+                  to bring up that token for its turn. A token already in a pending
+                  battle is auto-skipped to the discard pile.
+                </p>
+                <p className="mb-3">
+                  During a token's turn you can: <strong>Move</strong>, <strong>Attack</strong>, <strong>Board Rail</strong>,
+                  <strong> Embark River</strong>, <strong>Disembark</strong>, <strong>Replenish</strong>, <strong>Garrison</strong>, or simply hit
+                  <strong> End</strong>. Each button only shows when the action is legal for that
+                  token's current situation.
+                </p>
+                <p>
+                  When both bags empty, the month rolls over automatically: income
+                  ticks in, manpower regens per city, bags refill, the first drawer
+                  flips sides. The real calendar date advances one month.
+                </p>
+              </Section>
+
+              <Section id="gcMovement" title="Movement — Miles, MP, Rail & River" icon={Train}>
+                <p className="mb-3">
+                  Every token has <strong>2 movement points</strong> per turn (tunable). Distances
+                  are shown in <strong>miles</strong>, with each mode granting a different mi/MP rate.
+                  Click <strong>Move</strong> — a dashed ruler follows your cursor showing live
+                  distance, MP cost, and mode. Confirm by clicking the destination.
+                </p>
+                <p className="mb-3">
+                  <strong>March</strong> is the default. River crossings on a march add +1 MP each.
+                  The ruler stays active between marches as long as you have MP.
+                </p>
+                <p className="mb-3">
+                  <strong>Rail</strong> and <strong>river</strong> movement aren't automatic — they're <em>explicit</em>
+                  actions:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 mb-3">
+                  <li><strong>Board Rail</strong> — must be at a city, fort, or rail station that's on
+                      a railway. Ends the turn.</li>
+                  <li><strong>Embark River</strong> — must be adjacent to a river. Ends the turn.</li>
+                  <li>Once boarded, all movement is locked to that rail/river polyline
+                      until you <strong>Disembark</strong>. Trying to move off it shows a red "must
+                      disembark first" warning on the ruler.</li>
+                  <li><strong>Disembark</strong> drops you where you stopped and ends the turn.</li>
+                </ul>
+                <p className="text-slate-400 text-xs">
+                  You cannot attack from a train or river — disembark first, then
+                  attack next turn.
+                </p>
+              </Section>
+
+              <Section id="gcCombat" title="Combat — Attack, Support, Resolve" icon={Swords}>
+                <p className="mb-3">
+                  A token's <strong>Attack</strong> button appears when enemy tokens are within
+                  combat adjacency. The attack modal walks you through:
+                </p>
+                <ol className="list-decimal pl-5 space-y-2 mb-3">
+                  <li><strong>Target + Supporters.</strong> Pick the defender; each side may optionally
+                      add <strong>one</strong> supporter within support range (max 4 tokens total).</li>
+                  <li><strong>Terrain / Weather / Time.</strong> Weighted rolls based on the defender's
+                      territory and campaign settings. Re-roll or manually override.</li>
+                  <li><strong>Map Pick/Ban.</strong> 3 maps are drawn from the rolled terrain's pool
+                      (cooldown-aware). Defender bans 1, attacker picks 1.</li>
+                </ol>
+                <p className="mb-3">
+                  The battle is now <strong>pending</strong> and the attacker's turn ends. Go play
+                  War of Rights; when you return, open the battle from the History
+                  list and hit <strong>Resolve</strong>. You enter <em>raw</em> WoR casualties; the tool
+                  applies modifiers (fatigue +5%/pt, winter attacker +25%, train/river
+                  +15%) and subtracts the result from engaged tokens. Supporters
+                  absorb 40% of their side's total.
+                </p>
+                <p className="mb-3">
+                  <strong>Last Stand</strong> (100–500 manpower) kicks in automatically. A LS token
+                  caps enemy casualties at 2× its strength; if it wins, it takes zero
+                  casualties and retreats 4 march-MP. If it loses, it's wiped
+                  outright. LS tokens can't attack, reinforce, or capture.
+                </p>
+                <p>
+                  Losing the battle auto-retreats the engaged token 4 march-MP toward
+                  its nearest friendly city/fort. A wipe (&lt;100 manpower) awards the
+                  enemy +{2} VP and drops the token from the map (still visible in
+                  the roster, marked WIPED).
+                </p>
+              </Section>
+
+              <Section id="gcReplenishGarrison" title="Replenishment & Garrison" icon={Package}>
+                <p className="mb-3">
+                  <strong>Replenish</strong> — only at a friendly city or fort. The modal lets you
+                  buy men in 100-unit blocks at <em>replenishMoneyCost</em> treasury +
+                  <em> replenishManpowerCost</em> national manpower per block. Live cost preview,
+                  capped by whichever pool runs out first. Ends the turn.
+                </p>
+                <p className="mb-3">
+                  <strong>Garrison</strong> — at a friendly city or fort, detach up to 500 men from
+                  your token into the feature, or recall them. Ends the turn. On
+                  attack, the garrison absorbs defender casualties first and inflicts
+                  +100 attacker casualties per 100 garrison men (counter-fire).
+                </p>
+              </Section>
+
+              <Section id="gcVictory" title="Victory Conditions" icon={Trophy}>
+                <p className="mb-3">
+                  First side to <strong>10 VP</strong> wins (tunable). VP comes from two events:
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><strong>Capital capture</strong> — walk an active token into an undefended
+                      enemy capital (a city flagged as a capital). +2 VP + $750.</li>
+                  <li><strong>Token wipe</strong> — reduce an enemy token below 100 manpower. +2 VP.</li>
+                </ul>
+                <p className="mt-3 text-slate-400 text-xs">
+                  Capital-capture VP is re-awarded every time a capital flips sides,
+                  so recapturing a lost capital pays out again.
+                </p>
+              </Section>
+            </>
+          )}
+          <Section id="overview" title={isGrand ? 'Legacy Campaign Notes' : 'What is the Campaign Tracker?'} icon={Map}>
             <p className="mb-3">
               The <strong className="text-amber-400">Campaign Tracker</strong> is a strategic meta-game layer for War of Rights events.
               It allows regiment leaders to fight for control of territories across a campaign map, with each battle in War of Rights

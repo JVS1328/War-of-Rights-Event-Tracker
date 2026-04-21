@@ -124,6 +124,28 @@ export const validateCampaignState = (data) => {
     errors.push('Missing or invalid CP history array');
   }
 
+  // === CAMPAIGN STYLE / GRAND CAMPAIGN ===
+  // campaignStyle is optional; absent means legacy territory-VP campaign.
+  if (data.campaignStyle !== undefined && typeof data.campaignStyle !== 'string') {
+    errors.push('Invalid campaignStyle (must be string if present)');
+  }
+  if (data.campaignStyle === 'grand') {
+    if (!data.grandCampaign || typeof data.grandCampaign !== 'object') {
+      errors.push('Grand Campaign style requires a grandCampaign state block');
+    } else {
+      const gc = data.grandCampaign;
+      if (typeof gc.phase !== 'string') errors.push('grandCampaign.phase missing');
+      if (!Array.isArray(gc.tokens)) errors.push('grandCampaign.tokens must be an array');
+      if (!gc.pools || !gc.pools.USA || !gc.pools.CSA) errors.push('grandCampaign.pools missing USA/CSA');
+      if (!gc.bags || !Array.isArray(gc.bags.USA) || !Array.isArray(gc.bags.CSA)) {
+        errors.push('grandCampaign.bags missing or malformed');
+      }
+      if (!gc.mapFeatures || typeof gc.mapFeatures !== 'object') {
+        errors.push('grandCampaign.mapFeatures missing');
+      }
+    }
+  }
+
   // === BATTLES ===
   if (!Array.isArray(data.battles)) {
     errors.push('Missing or invalid battles array');
@@ -324,6 +346,11 @@ const normalizeCampaignData = (campaign) => {
   // Ensure battles exists
   if (!Array.isArray(normalized.battles)) {
     normalized.battles = [];
+  }
+
+  // Preserve Grand Campaign block as-is; downstream hooks handle migrations.
+  if (normalized.campaignStyle === 'grand' && normalized.grandCampaign) {
+    normalized.grandCampaign = { ...normalized.grandCampaign };
   }
 
   return normalized;

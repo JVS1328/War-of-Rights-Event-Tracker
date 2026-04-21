@@ -107,7 +107,29 @@ const convertFipsToPaths = (geoJson, fipsCodes, bounds) => {
   return paths;
 };
 
-const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, isCountyView = false, pendingBattleTerritoryIds = [], recentBattleTerritoryIds = [], spSettings = null, terrainViz = null }) => {
+const MapView = ({
+  territories,
+  selectedTerritory,
+  onTerritoryClick,
+  onTerritoryDoubleClick,
+  onTerritoryCtrlDoubleClick,
+  isCountyView = false,
+  pendingBattleTerritoryIds = [],
+  recentBattleTerritoryIds = [],
+  spSettings = null,
+  terrainViz = null,
+  tokens = null,          // Grand Campaign: array of tokens to render as overlays
+  moveModeTokenId = null, // Grand Campaign: id of token awaiting placement
+  onMapClick = null,      // Grand Campaign: called with { x, y } in SVG coords when in move mode
+  onTokenClick = null,    // Grand Campaign: called with a token object on click
+  mapFeatures = null,     // Grand Campaign: { cities, forts, stations, railways, rivers }
+  featureTool = null,     // Grand Campaign: 'city' | 'fort' | 'station' | 'railway' | 'river' | null
+  lineDraft = null,       // Grand Campaign: [{x,y},...] points already clicked for in-progress polyline
+  interactionLocked = false, // Any edit/setup mode active — suppresses territory click handlers.
+  influenceThreshold = 0, // Grand Campaign: when > 0, territory.influence drives gradient colour.
+  rulerFromPoint = null, // Grand Campaign: {x,y} SVG origin for the live movement ruler.
+  rulerEvaluator = null, // Grand Campaign: fn(point) -> { miles, cost, mode, valid, reason }
+}) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -123,14 +145,60 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
   // Mouse position relative to map container (for tooltip placement)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // Cursor in SVG viewBox coords — updated inside handleMouseMove when the
+  // ruler is active, so the ruler overlay can render live.
+  const [svgCursor, setSvgCursor] = useState(null);
   const mapContainerRef = useRef(null);
 
   // Click timeout ref to distinguish single-click from double-click
   const clickTimeoutRef = useRef(null);
   const lastClickEventRef = useRef(null);
 
-  // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
+  // SVG refs used for coordinate conversion (Grand Campaign move-mode placement)
+  const svgRef = useRef(null);
+  const transformGroupRef = useRef(null);
+
+  // Track whether Ctrl/Cmd is currently held — the territory tooltip only
+  // shows while it is, and single-click only pins while it is.
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+  useEffect(() => {
+    const sync = (e) => setCtrlHeld(e.ctrlKey || e.metaKey);
+    const clear = () => setCtrlHeld(false);
+    window.addEventListener('keydown', sync);
+    window.addEventListener('keyup', sync);
+    // If focus leaves the window we can't see a keyup — reset defensively.
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', sync);
+      window.removeEventListener('keyup', sync);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
+
+  // Convert a client (screen) point to SVG viewBox coordinates, accounting
+  // for the <g> pan/zoom transform. Used when placing / moving tokens.
+  const clientToSvgCoords = useCallback((clientX, clientY) => {
+    const svg = svgRef.current;
+    const g = transformGroupRef.current;
+    if (!svg || !g) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = g.getScreenCTM();
+    if (!ctm) return null;
+    const inv = ctm.inverse();
+    const svgP = pt.matrixTransform(inv);
+    return { x: svgP.x, y: svgP.y };
+  }, []);
+
+  // Territory click routing:
+  //   Ctrl+single-click  → pin / unpin the tooltip (onTerritoryClick)
+  //   Plain single-click → no-op
+  //   Double-click       → open battle recorder
+  //   Ctrl+double-click  → open territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
+    // In any edit/setup mode, territories don't respond — SVG-level handler takes over.
+    if (moveModeTokenId || featureTool || interactionLocked) return;
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
@@ -143,13 +211,31 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
       lastClickEventRef.current = null;
     } else {
       lastClickEventRef.current = e;
+      const wasCtrlSingle = !!(e?.ctrlKey || e?.metaKey);
       clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
         lastClickEventRef.current = null;
-        onTerritoryClick(territory);
+        // Only Ctrl/Cmd + click pins; plain single-click is a no-op.
+        if (wasCtrlSingle) onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool, interactionLocked]);
+
+  // Map-level click for token move mode OR feature edit tools OR setup
+  // placement — fires onMapClick with { x, y, territoryId } in SVG coords.
+  // Shift-clicks are pan gestures and ignored.
+  const handleSvgClick = useCallback((e) => {
+    if (!onMapClick) return;
+    if (e.shiftKey) return;
+    const point = clientToSvgCoords(e.clientX, e.clientY);
+    if (!point) return;
+    // Identify the territory at the click point via the DOM stack (topmost
+    // element under the cursor that carries a data-territory-id).
+    const stack = document.elementsFromPoint(e.clientX, e.clientY);
+    const territoryEl = stack.find(el => el?.dataset?.territoryId);
+    const territoryId = territoryEl?.dataset?.territoryId || null;
+    onMapClick({ ...point, territoryId });
+  }, [onMapClick, clientToSvgCoords]);
 
   // Cleanup click timeout on unmount
   useEffect(() => {
@@ -235,6 +321,15 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
   };
 
   const getTerritoryColor = (territory) => {
+    // Grand Campaign: blend the side colour with neutral amber based on how
+    // saturated the territory's influence is. Fully held = full side colour;
+    // freshly contested = amber mixed in.
+    if (typeof territory.influence === 'number' && influenceThreshold > 0) {
+      const strength = Math.min(1, Math.abs(territory.influence) / influenceThreshold);
+      if (territory.influence === 0) return '#f59e0b';
+      const sideColor = territory.influence > 0 ? '#3b82f6' : '#ef4444';
+      return interpolateColor('#f59e0b', sideColor, strength);
+    }
     if (territory.transitionState?.isTransitioning) {
       const transition = territory.transitionState;
       const previousColor = getOwnerColor(transition.previousOwner);
@@ -259,14 +354,27 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
   };
 
   // Zoom and pan handlers
-  const handleWheel = (e) => {
-    if (e.shiftKey) {
+  // React attaches onWheel as a passive listener, so preventDefault() is a
+  // no-op there. Install a non-passive wheel listener on the SVG element
+  // directly via a callback ref — plain useEffect won't re-run when the SVG
+  // finally mounts after the county-data loading screen.
+  const attachSvg = useCallback((node) => {
+    // Detach from the previous element, if any.
+    if (svgRef.current && svgRef.current._wheelCleanup) {
+      svgRef.current._wheelCleanup();
+      svgRef.current._wheelCleanup = null;
+    }
+    svgRef.current = node;
+    if (!node) return;
+    const onWheel = (e) => {
+      if (!e.shiftKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.5, Math.min(5, zoom * delta));
-      setZoom(newZoom);
-    }
-  };
+      setZoom(z => Math.max(0.5, Math.min(5, z * delta)));
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    node._wheelCleanup = () => node.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handleMouseDown = (e) => {
     const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
@@ -286,6 +394,13 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
     if (mapContainerRef.current) {
       const rect = mapContainerRef.current.getBoundingClientRect();
       setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }
+    // Live SVG-coord cursor for the movement ruler.
+    if (rulerFromPoint) {
+      const pt = clientToSvgCoords(e.clientX, e.clientY);
+      if (pt) setSvgCursor(pt);
+    } else if (svgCursor) {
+      setSvgCursor(null);
     }
   };
 
@@ -494,13 +609,14 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
       <div ref={mapContainerRef} className="relative bg-slate-900 rounded-lg p-4" onMouseMove={handleMouseMove}>
         <svg
+          ref={attachSvg}
           viewBox="0 0 1000 589"
           className="w-full h-full"
-          style={{ cursor: isPanning ? 'grabbing' : 'default' }}
-          onWheel={handleWheel}
+          style={{ cursor: (moveModeTokenId || featureTool || interactionLocked) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onClick={handleSvgClick}
         >
           <defs>
             <filter id="battle-smoke" x="-100%" y="-100%" width="300%" height="300%">
@@ -513,7 +629,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
             {/* Terrain patterns — generated from vizConfig for all terrain groups */}
             {Object.entries(vizConfig).flatMap(([name, cfg]) => generateTerrainPatterns(name, cfg))}
           </defs>
-          <g transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+          <g ref={transformGroupRef} transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
             {/* Territory polygons */}
             {territories.map(territory => {
               const center = getTerritoryCenter(territory);
@@ -538,6 +654,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
+                        data-territory-id={territory.id}
                       />
                     ))}
                     {renderTerrainOverlay(paths, territory)}
@@ -566,6 +683,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                           onClick={(e) => handleTerritoryPathClick(territory, e)}
                           onMouseEnter={() => setHoveredTerritory(territory)}
                           onMouseLeave={() => setHoveredTerritory(null)}
+                          data-territory-id={territory.id}
                         />
                       );
                     })}
@@ -605,6 +723,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                         onClick={(e) => handleTerritoryPathClick(territory, e)}
                         onMouseEnter={() => setHoveredTerritory(territory)}
                         onMouseLeave={() => setHoveredTerritory(null)}
+                        data-territory-id={territory.id}
                       />
                     ))}
                     {renderTerrainOverlay(territory.countyPaths, territory)}
@@ -640,6 +759,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                     onClick={(e) => handleTerritoryPathClick(territory, e)}
                     onMouseEnter={() => setHoveredTerritory(territory)}
                     onMouseLeave={() => setHoveredTerritory(null)}
+                    data-territory-id={territory.id}
                   />
                   {renderTerrainOverlay([pathData], territory)}
                   {territory.isCapital && (
@@ -658,14 +778,256 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
                 </g>
               );
             })}
+
+            {/* Grand Campaign map features — rivers + rails drawn under points so
+                cities/forts/stations sit on top. Tokens render last (topmost). */}
+            {mapFeatures?.rivers?.map(river => (
+              <polyline
+                key={river.id}
+                points={river.points.map(p => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#0ea5e9"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.85"
+                className="pointer-events-none"
+              />
+            ))}
+            {mapFeatures?.railways?.map(rail => (
+              <g key={rail.id} className="pointer-events-none">
+                <polyline
+                  points={rail.points.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <polyline
+                  points={rail.points.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#e2e8f0"
+                  strokeWidth="1"
+                  strokeDasharray="1,2"
+                  strokeLinecap="round"
+                />
+              </g>
+            ))}
+
+            {/* In-progress polyline preview while user is drawing */}
+            {lineDraft && lineDraft.length > 0 && featureTool && (featureTool === 'railway' || featureTool === 'river') && (
+              <g className="pointer-events-none">
+                <polyline
+                  points={lineDraft.map(p => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke={featureTool === 'river' ? '#0ea5e9' : '#e2e8f0'}
+                  strokeWidth="2"
+                  strokeDasharray="3,2"
+                  opacity="0.9"
+                />
+                {lineDraft.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r="2" fill="#fbbf24" />
+                ))}
+              </g>
+            )}
+
+            {/* Stations — small circle with cross bar */}
+            {mapFeatures?.stations?.map(s => (
+              <g key={s.id} className="pointer-events-none">
+                <circle cx={s.x} cy={s.y} r="3.5" fill="#475569" stroke="#0f172a" strokeWidth="0.8" />
+                <line x1={s.x - 2.2} y1={s.y} x2={s.x + 2.2} y2={s.y} stroke="#e2e8f0" strokeWidth="0.8" />
+                <text x={s.x} y={s.y + 8} textAnchor="middle" fontSize="4" fill="#cbd5e1" className="select-none">
+                  {s.name}
+                </text>
+              </g>
+            ))}
+
+            {/* Forts — square + diagonal cross */}
+            {mapFeatures?.forts?.map(f => {
+              const fill = f.side === 'USA' ? '#3b82f6' : f.side === 'CSA' ? '#ef4444' : '#f59e0b';
+              return (
+                <g key={f.id} className="pointer-events-none">
+                  <rect x={f.x - 4} y={f.y - 4} width="8" height="8" fill={fill} stroke="#0f172a" strokeWidth="1" />
+                  <line x1={f.x - 4} y1={f.y - 4} x2={f.x + 4} y2={f.y + 4} stroke="#0f172a" strokeWidth="0.8" />
+                  <line x1={f.x + 4} y1={f.y - 4} x2={f.x - 4} y2={f.y + 4} stroke="#0f172a" strokeWidth="0.8" />
+                  <text x={f.x} y={f.y + 10} textAnchor="middle" fontSize="4" fontWeight="bold" fill="#fef3c7" stroke="#0f172a" strokeWidth="0.3" paintOrder="stroke" className="select-none">
+                    {f.name}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Cities — diamond, capitals get a gold star ring */}
+            {mapFeatures?.cities?.map(c => {
+              const fill = c.side === 'USA' ? '#3b82f6' : c.side === 'CSA' ? '#ef4444' : '#f59e0b';
+              return (
+                <g key={c.id} className="pointer-events-none">
+                  {c.isCapital && (
+                    <circle cx={c.x} cy={c.y} r="8" fill="none" stroke="#fbbf24" strokeWidth="1.2" />
+                  )}
+                  <polygon
+                    points={`${c.x},${c.y - 5} ${c.x + 5},${c.y} ${c.x},${c.y + 5} ${c.x - 5},${c.y}`}
+                    fill={fill}
+                    stroke="#0f172a"
+                    strokeWidth="1"
+                  />
+                  <text x={c.x} y={c.y + 11} textAnchor="middle" fontSize="4.5" fontWeight="bold" fill="#fef3c7" stroke="#0f172a" strokeWidth="0.35" paintOrder="stroke" className="select-none">
+                    {c.name}{c.isCapital ? ' ★' : ''}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Grand Campaign movement ruler — a dashed tracer from the
+                acting token to the cursor, with a colour tint for the
+                currently-suggested movement mode. Drawn under tokens so the
+                markers stay on top. */}
+            {rulerFromPoint && svgCursor && (() => {
+              const evalResult = rulerEvaluator?.(svgCursor);
+              // Invalid (e.g. off-rail while boarded) tints the tracer red
+              // so the user sees the reject before they click.
+              const isInvalid = evalResult && evalResult.valid === false;
+              const mode = evalResult?.mode || 'march';
+              const tint = isInvalid ? '#f87171'
+                : mode === 'rail' ? '#fbbf24'
+                : mode === 'river' ? '#0ea5e9'
+                : '#e2e8f0';
+              return (
+                <g className="pointer-events-none">
+                  <line
+                    x1={rulerFromPoint.x}
+                    y1={rulerFromPoint.y}
+                    x2={svgCursor.x}
+                    y2={svgCursor.y}
+                    stroke={tint}
+                    strokeOpacity="0.85"
+                    strokeWidth="1.2"
+                    strokeDasharray="3,2"
+                  />
+                  <circle cx={rulerFromPoint.x} cy={rulerFromPoint.y} r="2" fill={tint} />
+                  <circle cx={svgCursor.x} cy={svgCursor.y} r="2.2" fill="#0f172a" stroke={tint} strokeWidth="0.8" />
+                </g>
+              );
+            })()}
+
+            {/* Grand Campaign token overlays — small side-colored markers */}
+            {tokens && tokens.map(token => {
+              if (!token.position || token.status === 'wiped') return null;
+              const { x, y } = token.position;
+              const isMoving = moveModeTokenId === token.id;
+              const fill = token.side === 'USA' ? '#3b82f6' : '#ef4444';
+              const stroke = isMoving ? '#fbbf24' : '#0f172a';
+              return (
+                <g
+                  key={token.id}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onTokenClick && !moveModeTokenId) onTokenClick(token);
+                  }}
+                >
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r="6"
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={isMoving ? 2 : 1.2}
+                  />
+                  {token.status === 'last-stand' && (
+                    <circle cx={x} cy={y} r="9" fill="none" stroke="#f97316" strokeWidth="1.2" strokeDasharray="2,1.5" />
+                  )}
+                  {token.inCombat && (
+                    <circle cx={x} cy={y} r="11" fill="none" stroke="#fbbf24" strokeWidth="0.8" opacity="0.8" />
+                  )}
+                  {token.boarded?.type === 'rail' && (
+                    <text x={x + 5} y={y - 4} fontSize="5" fill="#fbbf24" className="pointer-events-none select-none">🚂</text>
+                  )}
+                  {token.boarded?.type === 'river' && (
+                    <text x={x + 5} y={y - 4} fontSize="5" fill="#0ea5e9" className="pointer-events-none select-none">⛵</text>
+                  )}
+                  <text
+                    x={x}
+                    y={y - 9}
+                    textAnchor="middle"
+                    fontSize="6"
+                    fontWeight="bold"
+                    fill="#fef3c7"
+                    stroke="#0f172a"
+                    strokeWidth="0.3"
+                    paintOrder="stroke"
+                    className="pointer-events-none select-none"
+                  >
+                    {token.name}
+                  </text>
+                </g>
+              );
+            })}
           </g>
         </svg>
 
-        {/* Tooltip - follows cursor, flips quadrant to stay visible */}
+        {/* Movement ruler chip — floats near the cursor while the ruler is
+            active, shows live distance (miles), MP cost, and the derived
+            mode. Switches to a red "invalid" state when the evaluator
+            rejects the destination (e.g. off the boarded rail/river). */}
+        {rulerFromPoint && svgCursor && rulerEvaluator && (() => {
+          const r = rulerEvaluator(svgCursor);
+          if (!r) return null;
+          const containerEl = mapContainerRef.current;
+          const containerW = containerEl?.clientWidth || 800;
+          const containerH = containerEl?.clientHeight || 500;
+          const placeLeft = mousePos.x > containerW / 2;
+          const placeAbove = mousePos.y > containerH / 2;
+          const style = {
+            ...(placeLeft
+              ? { right: Math.max(0, containerW - mousePos.x + 14) }
+              : { left: mousePos.x + 14 }),
+            ...(placeAbove
+              ? { bottom: Math.max(0, containerH - mousePos.y + 14) }
+              : { top: mousePos.y + 14 }),
+          };
+          // Invalid destination — show the evaluator's reason in a red chip.
+          if (!r.valid) {
+            return (
+              <div
+                className="absolute z-20 bg-red-950/95 border border-red-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap text-red-200"
+                style={style}
+              >
+                ✕ {r.reason || 'invalid destination'}
+              </div>
+            );
+          }
+          const mode = r.mode || 'march';
+          const cost = r.cost;
+          const miles = r.miles ?? 0;
+          const modeColor = mode === 'rail' ? 'text-amber-300'
+            : mode === 'river' ? 'text-sky-300'
+            : 'text-slate-200';
+          return (
+            <div
+              className="absolute z-20 bg-slate-900/95 border border-amber-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap"
+              style={style}
+            >
+              <span className="text-white font-semibold">{miles} mi</span>
+              <span className="mx-1 text-slate-600">·</span>
+              <span className="text-white">{cost} MP</span>
+              <span className="mx-1 text-slate-600">·</span>
+              <span className={`font-semibold uppercase tracking-wide ${modeColor}`}>{mode}</span>
+              {r.crossings > 0 && (
+                <span className="ml-1 text-orange-400">+{r.crossings} ford</span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Tooltip — shown only while Ctrl/Cmd is held (hover) or when pinned. */}
         {(() => {
-          const tooltipTerritory = hoveredTerritory || selectedTerritory;
+          // Hover tooltip requires Ctrl/Cmd; the pinned tooltip stays regardless.
+          const hoverVisible = ctrlHeld && hoveredTerritory;
+          const tooltipTerritory = hoverVisible ? hoveredTerritory : selectedTerritory;
           if (!tooltipTerritory) return null;
-          const isPinned = !hoveredTerritory && selectedTerritory;
+          const isPinned = !hoverVisible && selectedTerritory;
 
           // Compute dynamic position: offset from cursor, flip to stay in-bounds
           const tooltipOffset = 16;
@@ -774,7 +1136,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
               </div>
               {isPinned && (
                 <div className="text-[9px] text-slate-500 mt-1 pt-0.5 border-t border-slate-700">
-                  Click deselect · Dbl-click battle · Ctrl+dbl edit
+                  Ctrl+click to unpin · Dbl-click battle · Ctrl+dbl edit
                 </div>
               )}
             </div>
@@ -784,7 +1146,7 @@ const MapView = ({ territories, selectedTerritory, onTerritoryClick, onTerritory
 
       {/* Zoom/Pan hint */}
       <div className="mt-2 text-xs text-slate-500 text-center">
-        Click to pin info | Double-click to record battle | Ctrl+double-click to edit territory | Shift+scroll to zoom | Shift+drag to pan
+        Hold Ctrl to see territory info · Ctrl+click to pin · Double-click for battle · Ctrl+double-click to edit · Shift+scroll to zoom · Shift+drag to pan
       </div>
     </div>
   );
