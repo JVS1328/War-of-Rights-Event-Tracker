@@ -472,7 +472,8 @@ const CampaignTracker = () => {
     if (isGC && turnMoveActive && campaign.grandCampaign.currentTokenId) {
       const evaluation = gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, { x: point.x, y: point.y });
       if (!evaluation.valid) {
-        alert(`Cannot move there: ${evaluation.error}`);
+        // The ruler chip is already showing the reason in red — don't
+        // interrupt the player with a modal popup. Silently ignore.
         return;
       }
       setPendingMove({ evaluation, destination: { x: point.x, y: point.y } });

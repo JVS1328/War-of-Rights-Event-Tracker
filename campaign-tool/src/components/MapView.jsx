@@ -885,8 +885,14 @@ const MapView = ({
                 markers stay on top. */}
             {rulerFromPoint && svgCursor && (() => {
               const evalResult = rulerEvaluator?.(svgCursor);
-              const mode = evalResult?.suggested || 'march';
-              const tint = mode === 'rail' ? '#fbbf24' : mode === 'river' ? '#0ea5e9' : '#e2e8f0';
+              // Invalid (e.g. off-rail while boarded) tints the tracer red
+              // so the user sees the reject before they click.
+              const isInvalid = evalResult && evalResult.valid === false;
+              const mode = evalResult?.mode || 'march';
+              const tint = isInvalid ? '#f87171'
+                : mode === 'rail' ? '#fbbf24'
+                : mode === 'river' ? '#0ea5e9'
+                : '#e2e8f0';
               return (
                 <g className="pointer-events-none">
                   <line
@@ -962,18 +968,12 @@ const MapView = ({
         </svg>
 
         {/* Movement ruler chip — floats near the cursor while the ruler is
-            active, shows live distance (miles), MP cost, and the cheapest
-            available mode. */}
+            active, shows live distance (miles), MP cost, and the derived
+            mode. Switches to a red "invalid" state when the evaluator
+            rejects the destination (e.g. off the boarded rail/river). */}
         {rulerFromPoint && svgCursor && rulerEvaluator && (() => {
           const r = rulerEvaluator(svgCursor);
           if (!r) return null;
-          const mode = r.suggested || 'march';
-          const option = r.options?.[mode];
-          const cost = option?.cost ?? '?';
-          const miles = r.miles ?? 0;
-          const modeColor = mode === 'rail' ? 'text-amber-300'
-            : mode === 'river' ? 'text-sky-300'
-            : 'text-slate-200';
           const containerEl = mapContainerRef.current;
           const containerW = containerEl?.clientWidth || 800;
           const containerH = containerEl?.clientHeight || 500;
@@ -987,6 +987,23 @@ const MapView = ({
               ? { bottom: Math.max(0, containerH - mousePos.y + 14) }
               : { top: mousePos.y + 14 }),
           };
+          // Invalid destination — show the evaluator's reason in a red chip.
+          if (!r.valid) {
+            return (
+              <div
+                className="absolute z-20 bg-red-950/95 border border-red-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap text-red-200"
+                style={style}
+              >
+                ✕ {r.reason || 'invalid destination'}
+              </div>
+            );
+          }
+          const mode = r.mode || 'march';
+          const cost = r.cost;
+          const miles = r.miles ?? 0;
+          const modeColor = mode === 'rail' ? 'text-amber-300'
+            : mode === 'river' ? 'text-sky-300'
+            : 'text-slate-200';
           return (
             <div
               className="absolute z-20 bg-slate-900/95 border border-amber-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap"
@@ -994,9 +1011,7 @@ const MapView = ({
             >
               <span className="text-white font-semibold">{miles} mi</span>
               <span className="mx-1 text-slate-600">·</span>
-              <span className="text-white">
-                {cost === '?' ? '?' : cost} MP
-              </span>
+              <span className="text-white">{cost} MP</span>
               <span className="mx-1 text-slate-600">·</span>
               <span className={`font-semibold uppercase tracking-wide ${modeColor}`}>{mode}</span>
               {r.crossings > 0 && (
