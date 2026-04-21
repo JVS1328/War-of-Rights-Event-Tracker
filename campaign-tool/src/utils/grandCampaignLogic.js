@@ -380,6 +380,175 @@ export const drawNextSetupToken = (campaign) => {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Core turn loop (phase: 'playing')
+// ---------------------------------------------------------------------------
+
+/** Count owned cities by side — economy driver. */
+export const countOwnedCities = (campaign, side) => {
+  if (!isGrandCampaign(campaign)) return 0;
+  return campaign.grandCampaign.mapFeatures.cities.filter(c => c.side === side).length;
+};
+
+/**
+ * Apply the start-of-month economy tick + refill draw bags. Called by
+ * drawNextToken when both bags are empty. Advances currentTurn (our "month"
+ * counter), swaps monthStartedBy, and resets activeSide to the new first-
+ * drawer of the month.
+ */
+export const advanceMonth = (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  const s = gc.settings;
+
+  // Monthly economy — per owned city per side.
+  const usaCities = countOwnedCities(campaign, 'USA');
+  const csaCities = countOwnedCities(campaign, 'CSA');
+
+  const newPools = {
+    USA: {
+      treasury: gc.pools.USA.treasury + usaCities * s.incomePerCity,
+      manpower: gc.pools.USA.manpower + usaCities * s.manpowerPerCity,
+    },
+    CSA: {
+      treasury: gc.pools.CSA.treasury + csaCities * s.incomePerCity,
+      manpower: gc.pools.CSA.manpower + csaCities * s.manpowerPerCity,
+    },
+  };
+
+  // First drawer of the new month flips.
+  const newMonthStartedBy = OPPOSITE_SIDE[gc.monthStartedBy] || 'USA';
+
+  // Refill bags from discards, reshuffled.
+  const newUsaBag = shuffleInPlace([...gc.bags.discardUSA]);
+  const newCsaBag = shuffleInPlace([...gc.bags.discardCSA]);
+
+  return {
+    ...campaign,
+    currentTurn: campaign.currentTurn + 1,
+    grandCampaign: {
+      ...gc,
+      pools: newPools,
+      bags: { USA: newUsaBag, CSA: newCsaBag, discardUSA: [], discardCSA: [] },
+      monthStartedBy: newMonthStartedBy,
+      activeSide: newMonthStartedBy,
+      currentTokenId: null,
+    },
+  };
+};
+
+/**
+ * Draw the next token for the current activeSide during play. Handles:
+ *   - empty bag → swap to the other side's bag
+ *   - both bags empty → advanceMonth() and try again
+ *   - drawn token is in combat → skip to discard and redraw
+ * Returns the updated campaign with currentTokenId set (or unchanged if no
+ * tokens exist at all).
+ */
+export const drawNextToken = (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  if (gc.phase !== 'playing') return campaign;
+
+  // Short-circuit: no tokens exist at all.
+  const totalInBags =
+    gc.bags.USA.length + gc.bags.CSA.length +
+    gc.bags.discardUSA.length + gc.bags.discardCSA.length;
+  if (totalInBags === 0) return campaign;
+
+  const side = gc.activeSide;
+  const bagKey = side;
+  const bag = gc.bags[bagKey];
+
+  if (bag.length === 0) {
+    const otherSide = OPPOSITE_SIDE[side];
+    if (gc.bags[otherSide].length === 0) {
+      // Both live bags empty → end of month.
+      return drawNextToken(advanceMonth(campaign));
+    }
+    return drawNextToken({
+      ...campaign,
+      grandCampaign: { ...gc, activeSide: otherSide },
+    });
+  }
+
+  const [drawnId, ...rest] = bag;
+  const drawnToken = gc.tokens.find(t => t.id === drawnId);
+  const discardKey = side === 'USA' ? 'discardUSA' : 'discardCSA';
+
+  // Skip tokens currently locked in a pending battle — per GC rules their
+  // tile goes into the discard bag immediately.
+  if (!drawnToken || drawnToken.status === 'wiped' || drawnToken.inCombat) {
+    return drawNextToken({
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        bags: {
+          ...gc.bags,
+          [bagKey]: rest,
+          [discardKey]: [...gc.bags[discardKey], drawnId],
+        },
+      },
+    });
+  }
+
+  // Fresh turn for the drawn token — reset per-turn counters.
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      bags: { ...gc.bags, [bagKey]: rest },
+      currentTokenId: drawnId,
+      lastDrawnTokenId: drawnId,
+      tokens: gc.tokens.map(t =>
+        t.id === drawnId
+          ? { ...t, movementPointsUsed: 0, combatThisTurn: false, lastActionMonth: campaign.currentTurn }
+          : t
+      ),
+    },
+  };
+};
+
+/**
+ * End the currently-drawn token's turn: fatigue resets if the token did not
+ * engage in combat this turn, token moves into the correct discard bag, and
+ * activeSide flips. Caller is responsible for drawing the next token.
+ */
+export const endTokenTurn = (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  if (!gc.currentTokenId) return campaign;
+
+  const side = gc.activeSide;
+  const discardKey = side === 'USA' ? 'discardUSA' : 'discardCSA';
+  const token = gc.tokens.find(t => t.id === gc.currentTokenId);
+
+  const updatedTokens = gc.tokens.map(t => {
+    if (t.id !== gc.currentTokenId) return t;
+    return {
+      ...t,
+      fatigue: t.combatThisTurn ? t.fatigue : 0,
+      combatThisTurn: false,
+      movementPointsUsed: 0,
+    };
+  });
+
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      tokens: updatedTokens,
+      bags: {
+        ...gc.bags,
+        [discardKey]: [...gc.bags[discardKey], gc.currentTokenId],
+      },
+      lastDrawnTokenId: gc.currentTokenId,
+      currentTokenId: null,
+      activeSide: OPPOSITE_SIDE[side],
+    },
+  };
+};
+
 /**
  * Place the currently-drawn setup token at point. Enforces:
  *   - the point's containing territory must be owned by the token's side

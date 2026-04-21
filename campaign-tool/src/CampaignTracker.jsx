@@ -13,6 +13,7 @@ import RegimentStats from './components/RegimentStats';
 import TokenPanel from './components/TokenPanel';
 import MapFeaturesPanel from './components/MapFeaturesPanel';
 import SetupWizard from './components/SetupWizard';
+import TurnTracker from './components/TurnTracker';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -27,6 +28,8 @@ import {
   resolveCoinFlip as gcResolveCoinFlip,
   drawNextSetupToken as gcDrawNextSetupToken,
   placeSetupToken as gcPlaceSetupToken,
+  drawNextToken as gcDrawNextToken,
+  endTokenTurn as gcEndTokenTurn,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -475,6 +478,13 @@ const CampaignTracker = () => {
     setSetupError(null);
   };
 
+  // === Turn-machine handlers (phase: 'playing') ===
+  const handleDrawNextToken = () => setCampaign(c => gcDrawNextToken(c));
+  const handleEndTokenTurn = () => {
+    // End the current token's turn, then immediately draw the next one.
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c)));
+  };
+
   // === Feature edit mode handlers ===
   const enterFeatureEditMode = () => {
     setFeatureEditMode(true);
@@ -699,6 +709,13 @@ const CampaignTracker = () => {
                   <div className="px-3 py-2 bg-amber-900/50 border border-amber-600 text-amber-200 rounded-lg text-xs">
                     Setup in progress — follow the floating panel to place tokens.
                   </div>
+                )}
+                {gcPhase === 'playing' && (
+                  <TurnTracker
+                    campaign={campaign}
+                    onDrawNext={handleDrawNextToken}
+                    onEndTurn={handleEndTokenTurn}
+                  />
                 )}
                 <button
                   onClick={enterFeatureEditMode}
