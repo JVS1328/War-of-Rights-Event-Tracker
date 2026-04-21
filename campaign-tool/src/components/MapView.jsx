@@ -153,6 +153,23 @@ const MapView = ({
   const svgRef = useRef(null);
   const transformGroupRef = useRef(null);
 
+  // Track whether Ctrl/Cmd is currently held — the territory tooltip only
+  // shows while it is, and single-click only pins while it is.
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+  useEffect(() => {
+    const sync = (e) => setCtrlHeld(e.ctrlKey || e.metaKey);
+    const clear = () => setCtrlHeld(false);
+    window.addEventListener('keydown', sync);
+    window.addEventListener('keyup', sync);
+    // If focus leaves the window we can't see a keyup — reset defensively.
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', sync);
+      window.removeEventListener('keyup', sync);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
+
   // Convert a client (screen) point to SVG viewBox coordinates, accounting
   // for the <g> pan/zoom transform. Used when placing / moving tokens.
   const clientToSvgCoords = useCallback((clientX, clientY) => {
@@ -169,7 +186,11 @@ const MapView = ({
     return { x: svgP.x, y: svgP.y };
   }, []);
 
-  // Unified click handler: single-click pins tooltip, double-click opens battle recorder, ctrl+double-click opens territory editor
+  // Territory click routing:
+  //   Ctrl+single-click  → pin / unpin the tooltip (onTerritoryClick)
+  //   Plain single-click → no-op
+  //   Double-click       → open battle recorder
+  //   Ctrl+double-click  → open territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
     // In any edit/setup mode, territories don't respond — SVG-level handler takes over.
     if (moveModeTokenId || featureTool || interactionLocked) return;
@@ -185,10 +206,12 @@ const MapView = ({
       lastClickEventRef.current = null;
     } else {
       lastClickEventRef.current = e;
+      const wasCtrlSingle = !!(e?.ctrlKey || e?.metaKey);
       clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
         lastClickEventRef.current = null;
-        onTerritoryClick(territory);
+        // Only Ctrl/Cmd + click pins; plain single-click is a no-op.
+        if (wasCtrlSingle) onTerritoryClick(territory);
       }, 250);
     }
   }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool, interactionLocked]);
@@ -888,11 +911,13 @@ const MapView = ({
           </g>
         </svg>
 
-        {/* Tooltip - follows cursor, flips quadrant to stay visible */}
+        {/* Tooltip — shown only while Ctrl/Cmd is held (hover) or when pinned. */}
         {(() => {
-          const tooltipTerritory = hoveredTerritory || selectedTerritory;
+          // Hover tooltip requires Ctrl/Cmd; the pinned tooltip stays regardless.
+          const hoverVisible = ctrlHeld && hoveredTerritory;
+          const tooltipTerritory = hoverVisible ? hoveredTerritory : selectedTerritory;
           if (!tooltipTerritory) return null;
-          const isPinned = !hoveredTerritory && selectedTerritory;
+          const isPinned = !hoverVisible && selectedTerritory;
 
           // Compute dynamic position: offset from cursor, flip to stay in-bounds
           const tooltipOffset = 16;
@@ -1001,7 +1026,7 @@ const MapView = ({
               </div>
               {isPinned && (
                 <div className="text-[9px] text-slate-500 mt-1 pt-0.5 border-t border-slate-700">
-                  Click deselect · Dbl-click battle · Ctrl+dbl edit
+                  Ctrl+click to unpin · Dbl-click battle · Ctrl+dbl edit
                 </div>
               )}
             </div>
@@ -1011,7 +1036,7 @@ const MapView = ({
 
       {/* Zoom/Pan hint */}
       <div className="mt-2 text-xs text-slate-500 text-center">
-        Click to pin info | Double-click to record battle | Ctrl+double-click to edit territory | Shift+scroll to zoom | Shift+drag to pan
+        Hold Ctrl to see territory info · Ctrl+click to pin · Double-click for battle · Ctrl+double-click to edit · Shift+scroll to zoom · Shift+drag to pan
       </div>
     </div>
   );
