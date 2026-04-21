@@ -85,6 +85,12 @@ export const GRAND_CAMPAIGN_DEFAULTS = {
   // Map calibration — all inch-measurements are multiplied by this to get
   // SVG units. The map editor should set this once territories are drawn.
   svgUnitsPerInch: 10,
+
+  // Display conversion — every tabletop inch represents this many real-world
+  // miles on the board. Used only for human-readable ruler / movement UI;
+  // internal math stays in SVG units. Distances are rounded up to whole
+  // miles for clarity.
+  milesPerInch: 5,
 };
 
 // ---------------------------------------------------------------------------

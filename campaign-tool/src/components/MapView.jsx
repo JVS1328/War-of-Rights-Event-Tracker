@@ -127,6 +127,8 @@ const MapView = ({
   lineDraft = null,       // Grand Campaign: [{x,y},...] points already clicked for in-progress polyline
   interactionLocked = false, // Any edit/setup mode active — suppresses territory click handlers.
   influenceThreshold = 0, // Grand Campaign: when > 0, territory.influence drives gradient colour.
+  rulerFromPoint = null, // Grand Campaign: {x,y} SVG origin for the live movement ruler.
+  rulerEvaluator = null, // Grand Campaign: fn(point) -> { miles, cost, mode, valid, reason }
 }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
@@ -143,6 +145,9 @@ const MapView = ({
 
   // Mouse position relative to map container (for tooltip placement)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // Cursor in SVG viewBox coords — updated inside handleMouseMove when the
+  // ruler is active, so the ruler overlay can render live.
+  const [svgCursor, setSvgCursor] = useState(null);
   const mapContainerRef = useRef(null);
 
   // Click timeout ref to distinguish single-click from double-click
@@ -389,6 +394,13 @@ const MapView = ({
     if (mapContainerRef.current) {
       const rect = mapContainerRef.current.getBoundingClientRect();
       setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }
+    // Live SVG-coord cursor for the movement ruler.
+    if (rulerFromPoint) {
+      const pt = clientToSvgCoords(e.clientX, e.clientY);
+      if (pt) setSvgCursor(pt);
+    } else if (svgCursor) {
+      setSvgCursor(null);
     }
   };
 
@@ -867,6 +879,32 @@ const MapView = ({
               );
             })}
 
+            {/* Grand Campaign movement ruler — a dashed tracer from the
+                acting token to the cursor, with a colour tint for the
+                currently-suggested movement mode. Drawn under tokens so the
+                markers stay on top. */}
+            {rulerFromPoint && svgCursor && (() => {
+              const evalResult = rulerEvaluator?.(svgCursor);
+              const mode = evalResult?.suggested || 'march';
+              const tint = mode === 'rail' ? '#fbbf24' : mode === 'river' ? '#0ea5e9' : '#e2e8f0';
+              return (
+                <g className="pointer-events-none">
+                  <line
+                    x1={rulerFromPoint.x}
+                    y1={rulerFromPoint.y}
+                    x2={svgCursor.x}
+                    y2={svgCursor.y}
+                    stroke={tint}
+                    strokeOpacity="0.85"
+                    strokeWidth="1.2"
+                    strokeDasharray="3,2"
+                  />
+                  <circle cx={rulerFromPoint.x} cy={rulerFromPoint.y} r="2" fill={tint} />
+                  <circle cx={svgCursor.x} cy={svgCursor.y} r="2.2" fill="#0f172a" stroke={tint} strokeWidth="0.8" />
+                </g>
+              );
+            })()}
+
             {/* Grand Campaign token overlays — small side-colored markers */}
             {tokens && tokens.map(token => {
               if (!token.position || token.status === 'wiped') return null;
@@ -916,6 +954,51 @@ const MapView = ({
             })}
           </g>
         </svg>
+
+        {/* Movement ruler chip — floats near the cursor while the ruler is
+            active, shows live distance (miles), MP cost, and the cheapest
+            available mode. */}
+        {rulerFromPoint && svgCursor && rulerEvaluator && (() => {
+          const r = rulerEvaluator(svgCursor);
+          if (!r) return null;
+          const mode = r.suggested || 'march';
+          const option = r.options?.[mode];
+          const cost = option?.cost ?? '?';
+          const miles = r.miles ?? 0;
+          const modeColor = mode === 'rail' ? 'text-amber-300'
+            : mode === 'river' ? 'text-sky-300'
+            : 'text-slate-200';
+          const containerEl = mapContainerRef.current;
+          const containerW = containerEl?.clientWidth || 800;
+          const containerH = containerEl?.clientHeight || 500;
+          const placeLeft = mousePos.x > containerW / 2;
+          const placeAbove = mousePos.y > containerH / 2;
+          const style = {
+            ...(placeLeft
+              ? { right: Math.max(0, containerW - mousePos.x + 14) }
+              : { left: mousePos.x + 14 }),
+            ...(placeAbove
+              ? { bottom: Math.max(0, containerH - mousePos.y + 14) }
+              : { top: mousePos.y + 14 }),
+          };
+          return (
+            <div
+              className="absolute z-20 bg-slate-900/95 border border-amber-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap"
+              style={style}
+            >
+              <span className="text-white font-semibold">{miles} mi</span>
+              <span className="mx-1 text-slate-600">·</span>
+              <span className="text-white">
+                {cost === '?' ? '?' : cost} MP
+              </span>
+              <span className="mx-1 text-slate-600">·</span>
+              <span className={`font-semibold uppercase tracking-wide ${modeColor}`}>{mode}</span>
+              {r.crossings > 0 && (
+                <span className="ml-1 text-orange-400">+{r.crossings} ford</span>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Tooltip — shown only while Ctrl/Cmd is held (hover) or when pinned. */}
         {(() => {

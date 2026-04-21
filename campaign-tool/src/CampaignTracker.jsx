@@ -18,6 +18,7 @@ import MoveConfirmModal from './components/MoveConfirmModal';
 import GrandBattleModal from './components/GrandBattleModal';
 import GrandBattleResolveModal from './components/GrandBattleResolveModal';
 import GarrisonModal from './components/GarrisonModal';
+import ReplenishModal from './components/ReplenishModal';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -96,6 +97,8 @@ const CampaignTracker = () => {
 
   // Grand Campaign garrison modal
   const [showGarrisonModal, setShowGarrisonModal] = useState(false);
+  // Grand Campaign replenish modal
+  const [showReplenishModal, setShowReplenishModal] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -540,10 +543,12 @@ const CampaignTracker = () => {
   };
 
   // === Replenishment / garrison handlers ===
-  const handleReplenish = () => {
+  const handleOpenReplenish = () => setShowReplenishModal(true);
+  const handleCloseReplenish = () => setShowReplenishModal(false);
+  const handleConfirmReplenish = (men) => {
     const tokenId = campaign.grandCampaign.currentTokenId;
     if (!tokenId) return;
-    const result = gcPerformReplenish(campaign, tokenId);
+    const result = gcPerformReplenish(campaign, tokenId, men);
     if (result.error) {
       alert(`Cannot replenish: ${result.error}`);
       return;
@@ -551,6 +556,7 @@ const CampaignTracker = () => {
     // Replenish ends turn; immediately draw next token.
     setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
     setTurnMoveActive(false);
+    setShowReplenishModal(false);
   };
   const handleOpenGarrison = () => setShowGarrisonModal(true);
   const handleCloseGarrison = () => setShowGarrisonModal(false);
@@ -821,6 +827,12 @@ const CampaignTracker = () => {
               lineDraft={lineDraft}
               interactionLocked={interactionLocked}
               influenceThreshold={isGC ? (campaign.grandCampaign.settings.influenceThreshold || 0) : 0}
+              rulerFromPoint={isGC && turnMoveActive && campaign.grandCampaign.currentTokenId
+                ? campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId)?.position || null
+                : null}
+              rulerEvaluator={isGC && turnMoveActive && campaign.grandCampaign.currentTokenId
+                ? (point) => gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, point)
+                : null}
             />
           </div>
 
@@ -870,7 +882,7 @@ const CampaignTracker = () => {
                     onBeginMove={handleBeginMove}
                     turnMoveActive={turnMoveActive}
                     onAttack={handleOpenAttack}
-                    onReplenish={handleReplenish}
+                    onReplenish={handleOpenReplenish}
                     onGarrison={handleOpenGarrison}
                   />
                 )}
@@ -1015,6 +1027,21 @@ const CampaignTracker = () => {
             onClearError={() => setSetupError(null)}
           />
         )}
+
+        {/* Grand Campaign — replenishment */}
+        {isGC && showReplenishModal && (() => {
+          const tokenId = campaign.grandCampaign.currentTokenId;
+          const token = campaign.grandCampaign.tokens.find(t => t.id === tokenId);
+          if (!token) return null;
+          return (
+            <ReplenishModal
+              campaign={campaign}
+              token={token}
+              onConfirm={handleConfirmReplenish}
+              onCancel={handleCloseReplenish}
+            />
+          );
+        })()}
 
         {/* Grand Campaign — garrison / recall */}
         {isGC && showGarrisonModal && (() => {

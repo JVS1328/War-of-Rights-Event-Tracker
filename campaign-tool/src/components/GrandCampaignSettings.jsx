@@ -55,6 +55,7 @@ const FIELD_GROUPS = [
       { key: 'riverInchesPerMP', label: 'River', type: 'number' },
       { key: 'railInchesPerMP', label: 'Rail', type: 'number' },
       { key: 'riverCrossCost', label: 'River crossing cost (MP)', type: 'number' },
+      { key: 'milesPerInch', label: 'Miles per board inch (display)', type: 'number', step: '0.5' },
     ],
   },
   {

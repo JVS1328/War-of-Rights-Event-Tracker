@@ -43,23 +43,26 @@ const MoveConfirmModal = ({ evaluation, token, destination, mpLeft, onConfirm, o
         <div className="bg-slate-900 rounded p-3 mb-3 text-sm">
           <div className="text-slate-200 font-semibold">{token.name}</div>
           <div className="text-xs text-slate-400 mt-1">
-            Distance: <span className="text-white">{evaluation.inches.toFixed(2)} in</span>
+            Distance: <span className="text-white">{evaluation.miles ?? 0} miles</span>
             {' · '}MP left: <span className="text-white">{mpLeft}</span>
             {evaluation.crossings > 0 && (
               <span className="text-orange-400">
-                {' · '}River crossings: {evaluation.crossings} (+{evaluation.crossings})
+                {' · '}River crossings: {evaluation.crossings} (+{evaluation.crossings} MP)
               </span>
             )}
           </div>
         </div>
 
-        {/* Mode selector — one button per available mode */}
+        {/* Mode selector — one button per available mode. The sub-line shows
+            MP cost for this specific move AND the per-MP distance rate so
+            the player sees why march=slow vs rail=fast. */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           {['march', 'river', 'rail'].map(m => {
             const opt = evaluation.options[m];
             const meta = MODE_META[m];
             const available = !!opt?.available;
             const isActive = mode === m;
+            const ratePerMp = evaluation.ratesMilesPerMP?.[m];
             return (
               <button
                 key={m}
@@ -78,6 +81,9 @@ const MoveConfirmModal = ({ evaluation, token, destination, mpLeft, onConfirm, o
                 <span className="text-[10px]">
                   {available ? `${opt.cost} MP` : 'n/a'}
                 </span>
+                {available && ratePerMp != null && (
+                  <span className="text-[9px] text-slate-400">{ratePerMp} mi/MP</span>
+                )}
               </button>
             );
           })}

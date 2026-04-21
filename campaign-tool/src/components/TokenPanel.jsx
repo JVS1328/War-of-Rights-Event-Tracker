@@ -122,35 +122,38 @@ const TokenPanel = ({
       );
     }
 
+    const isWiped = token.status === 'wiped';
     return (
       <div
         key={token.id}
         className={`bg-slate-700 rounded p-2 flex items-center justify-between gap-2 border ${
-          isMoving ? 'border-amber-400' : 'border-slate-600'
+          isMoving ? 'border-amber-400' : isWiped ? 'border-slate-700 opacity-60' : 'border-slate-600'
         }`}
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
-            <span className={`font-semibold text-sm truncate ${sideColor}`}>{token.name}</span>
+            <span className={`font-semibold text-sm truncate ${isWiped ? 'text-slate-400 line-through' : sideColor}`}>{token.name}</span>
             {statusBadge}
           </div>
           <div className="text-[10px] text-slate-400">
             MP: <span className="text-white">{token.manpower}</span>
             {' · '}Fat: <span className="text-white">{token.fatigue}</span>
-            {' · '}{token.position ? '📍 placed' : 'unplaced'}
+            {' · '}{isWiped ? 'off the board' : token.position ? '📍 placed' : 'unplaced'}
             {token.inCombat && <span className="text-amber-400 ml-1">· in combat</span>}
           </div>
         </div>
         <div className="flex gap-1">
-          <button
-            onClick={() => isMoving ? onCancelMoveMode() : onEnterMoveMode(token.id)}
-            className={`p-1 rounded ${
-              isMoving ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-600 hover:bg-slate-500'
-            } text-white`}
-            title={isMoving ? 'Cancel move' : 'Move / place token'}
-          >
-            <Crosshair className="w-3.5 h-3.5" />
-          </button>
+          {!isWiped && (
+            <button
+              onClick={() => isMoving ? onCancelMoveMode() : onEnterMoveMode(token.id)}
+              className={`p-1 rounded ${
+                isMoving ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-600 hover:bg-slate-500'
+              } text-white`}
+              title={isMoving ? 'Cancel move' : 'Move / place token'}
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => beginEdit(token)}
             className="p-1 rounded bg-slate-600 hover:bg-slate-500 text-white"

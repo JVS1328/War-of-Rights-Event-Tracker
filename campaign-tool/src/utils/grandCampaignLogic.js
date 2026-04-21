@@ -33,6 +33,14 @@ export const distance = (a, b) => {
 export const inchesToSvg = (inches, settings) =>
   inches * (settings?.svgUnitsPerInch || 10);
 
+/** Convert inches to display miles (rounded up to a whole number). */
+export const inchesToMiles = (inches, settings) =>
+  Math.ceil(inches * (settings?.milesPerInch || 5));
+
+/** Convert SVG units straight to display miles. */
+export const svgToMiles = (svgUnits, settings) =>
+  inchesToMiles(svgUnits / (settings?.svgUnitsPerInch || 10), settings);
+
 /**
  * Collision check — can this position hold a token without overlapping
  * another one? `ignoreTokenId` lets a token "move past itself" when editing.
@@ -697,9 +705,16 @@ export const evaluateMove = (campaign, tokenId, destination) => {
   return {
     valid: true,
     inches,
+    miles: inchesToMiles(inches, s),
     crossings,
     options,
     suggested,
+    // Per-mode "miles per MP" so UIs don't have to reinvent the conversion.
+    ratesMilesPerMP: {
+      march: inchesToMiles(s.marchInchesPerMP, s),
+      river: inchesToMiles(s.riverInchesPerMP, s),
+      rail:  inchesToMiles(s.railInchesPerMP,  s),
+    },
   };
 };
 
@@ -716,6 +731,8 @@ export const applyCaptureAtPosition = (campaign, tokenId) => {
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
   if (!token || !token.position) return { campaign, captured: null };
+  // Last stand tokens cannot capture per GC rules.
+  if (token.status !== 'active') return { campaign, captured: null };
 
   const radius = inchesToSvg(gc.settings.railSnapInches, gc.settings);
   const adjRadius = inchesToSvg(gc.settings.combatAdjacencyInches, gc.settings);
@@ -959,7 +976,12 @@ export const findTerritoryAtSvgPoint = (campaign, point) => {
 // Replenishment — active turn action at a friendly city/fort.
 // ---------------------------------------------------------------------------
 
-export const canReplenish = (campaign, tokenId) => {
+/**
+ * Replenishment eligibility, parameterised by how many men the player wants
+ * to buy. `men` is expected to be a multiple of 100; callers should round.
+ * Returns { ok, reason, units, moneyCost, manpowerCost, yield }.
+ */
+export const canReplenish = (campaign, tokenId, men = 100) => {
   if (!isGrandCampaign(campaign)) return { ok: false, reason: 'not GC' };
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
@@ -968,18 +990,24 @@ export const canReplenish = (campaign, tokenId) => {
   const mpLeft = gc.settings.movementPointsPerTurn - (token.movementPointsUsed || 0);
   if (mpLeft < 1) return { ok: false, reason: 'no MP' };
   if (!findStrongholdAtToken(campaign, tokenId)) return { ok: false, reason: 'not at friendly city/fort' };
+
+  const s = gc.settings;
+  const units = Math.max(1, Math.floor(men / s.replenishYield));
+  const moneyCost = units * s.replenishMoneyCost;
+  const manpowerCost = units * s.replenishManpowerCost;
+  const yieldMen = units * s.replenishYield;
+
   const pool = gc.pools[token.side];
-  if (pool.treasury < gc.settings.replenishMoneyCost) return { ok: false, reason: 'not enough treasury' };
-  if (pool.manpower < gc.settings.replenishManpowerCost) return { ok: false, reason: 'not enough national manpower' };
-  return { ok: true };
+  if (pool.treasury < moneyCost) return { ok: false, reason: `need $${moneyCost}, have $${pool.treasury}`, units, moneyCost, manpowerCost, yield: yieldMen };
+  if (pool.manpower < manpowerCost) return { ok: false, reason: `need ${manpowerCost} manpower, have ${pool.manpower}`, units, moneyCost, manpowerCost, yield: yieldMen };
+  return { ok: true, units, moneyCost, manpowerCost, yield: yieldMen };
 };
 
-export const performReplenish = (campaign, tokenId) => {
-  const check = canReplenish(campaign, tokenId);
+export const performReplenish = (campaign, tokenId, men = 100) => {
+  const check = canReplenish(campaign, tokenId, men);
   if (!check.ok) return { campaign, error: check.reason };
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
-  const s = gc.settings;
 
   return {
     campaign: {
@@ -989,19 +1017,20 @@ export const performReplenish = (campaign, tokenId) => {
         pools: {
           ...gc.pools,
           [token.side]: {
-            treasury: gc.pools[token.side].treasury - s.replenishMoneyCost,
-            manpower: gc.pools[token.side].manpower - s.replenishManpowerCost,
+            treasury: gc.pools[token.side].treasury - check.moneyCost,
+            manpower: gc.pools[token.side].manpower - check.manpowerCost,
           },
         },
         tokens: gc.tokens.map(t => t.id === tokenId ? {
           ...t,
-          manpower: t.manpower + s.replenishYield,
-          movementPointsUsed: s.movementPointsPerTurn, // ends turn
+          manpower: t.manpower + check.yield,
+          movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
         } : t),
       },
     },
     error: null,
     turnEnds: true,
+    replenished: { men: check.yield, moneyCost: check.moneyCost, manpowerCost: check.manpowerCost },
   };
 };
 
@@ -1128,11 +1157,13 @@ export const findSupporters = (campaign, engagedTokenId, exclude = []) => {
   const engaged = gc.tokens.find(t => t.id === engagedTokenId);
   if (!engaged || !engaged.position) return [];
   const radius = inchesToSvg(gc.settings.supportRangeInches, gc.settings);
+  // Last-stand tokens cannot reinforce per GC rules ("cannot … reinforce an
+  // allied token"). Only fully active tokens are eligible supporters.
   return gc.tokens.filter(t =>
     t.id !== engagedTokenId &&
     !exclude.includes(t.id) &&
     t.position &&
-    t.status !== 'wiped' &&
+    t.status === 'active' &&
     t.side === engaged.side &&
     !t.inCombat &&
     distance(engaged.position, t.position) <= radius
@@ -1346,6 +1377,33 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     onTrainOrRiver: defenderOnTrainRiver,
   }, gc.settings);
 
+  // ----- Last Stand combat adjustments (per GC rules) -----
+  //
+  //   * If the engaged token on a side is in last-stand, the enemy's total
+  //     casualties are capped at 2 × that token's manpower (the rule only
+  //     scales DOWN; it never inflates).
+  //   * A last-stand token that WINS takes 0 casualties.
+  //   * A last-stand token that LOSES is wiped from the game regardless of
+  //     the rolled casualties.
+  const attackerLS = attacker.status === 'last-stand';
+  const defenderLS = defender.status === 'last-stand';
+  if (defenderLS) {
+    attackerTotal = Math.min(attackerTotal, 2 * defender.manpower);
+  }
+  if (attackerLS) {
+    defenderTotal = Math.min(defenderTotal, 2 * attacker.manpower);
+  }
+  if (defenderLS && winner === 'CSA' && defender.side === 'CSA' || defenderLS && winner === 'USA' && defender.side === 'USA') {
+    // Defender is LS and won → 0 defender cas.
+    defenderTotal = 0;
+  }
+  if (attackerLS && ((winner === 'CSA' && attacker.side === 'CSA') || (winner === 'USA' && attacker.side === 'USA'))) {
+    // Attacker is LS and won → 0 attacker cas.
+    attackerTotal = 0;
+  }
+  // "LS loser is wiped" is applied after the generic cas application below
+  // via an explicit post-step so wipe VP logic still fires.
+
   // Garrison integration — if the defender is at a friendly city/fort with a
   // garrison, that garrison (a) takes defender casualties first, and (b)
   // inflicts extra casualties on the attacker (per rules: 100/100).
@@ -1422,14 +1480,45 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     },
   };
 
-  // Auto-retreat loser's engaged token (up to 4 march-MP toward friendly
-  // stronghold). Winner stays.
+  // A last-stand token that lost the battle is wiped outright, per rules.
   const loserTokenId = winner === 'USA' ? battle.defenderTokenId : battle.attackerTokenId;
+  const loserWasLS = (loserTokenId === battle.attackerTokenId && attackerLS)
+    || (loserTokenId === battle.defenderTokenId && defenderLS);
+  if (loserWasLS) {
+    workingCampaign = {
+      ...workingCampaign,
+      grandCampaign: {
+        ...workingCampaign.grandCampaign,
+        tokens: workingCampaign.grandCampaign.tokens.map(t =>
+          t.id === loserTokenId ? { ...t, manpower: 0, status: 'wiped', inCombat: false } : t
+        ),
+      },
+    };
+  }
+
+  // Auto-retreat the losing engaged token toward its nearest friendly
+  // city/fort (up to 4 march-MP). Winner stays. If the loser is already
+  // wiped (including LS-auto-wipe) skip the retreat.
   const loserSide = winner === 'USA' ? battle.defender : battle.attacker;
   if (loserSide === 'USA' || loserSide === 'CSA') {
     const loserToken = workingCampaign.grandCampaign.tokens.find(t => t.id === loserTokenId);
     if (loserToken && loserToken.status !== 'wiped') {
       workingCampaign = applyRetreat(workingCampaign, loserTokenId);
+    }
+  }
+
+  // A last-stand WINNER takes 0 cas (already handled) and MAY retreat 4
+  // hexes toward its nearest friendly city — we retreat automatically for
+  // simplicity so the LS unit disengages after surviving.
+  const winnerEngagedId = winner === 'USA'
+    ? (battle.attacker === 'USA' ? battle.attackerTokenId : battle.defenderTokenId)
+    : (battle.attacker === 'CSA' ? battle.attackerTokenId : battle.defenderTokenId);
+  const winnerWasLS = (winnerEngagedId === battle.attackerTokenId && attackerLS)
+    || (winnerEngagedId === battle.defenderTokenId && defenderLS);
+  if (winnerWasLS) {
+    const wToken = workingCampaign.grandCampaign.tokens.find(t => t.id === winnerEngagedId);
+    if (wToken && wToken.status !== 'wiped') {
+      workingCampaign = applyRetreat(workingCampaign, winnerEngagedId);
     }
   }
 
@@ -1477,6 +1566,20 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     },
   };
 
+  // Scrub wiped token IDs from every bag so they stop clogging the rotation.
+  const wipedIds = new Set(
+    workingCampaign.grandCampaign.tokens
+      .filter(t => t.status === 'wiped')
+      .map(t => t.id)
+  );
+  const strip = (arr) => arr.filter(id => !wipedIds.has(id));
+  const scrubbedBags = {
+    USA: strip(workingCampaign.grandCampaign.bags.USA),
+    CSA: strip(workingCampaign.grandCampaign.bags.CSA),
+    discardUSA: strip(workingCampaign.grandCampaign.bags.discardUSA),
+    discardCSA: strip(workingCampaign.grandCampaign.bags.discardCSA),
+  };
+
   return {
     campaign: {
       ...workingCampaign,
@@ -1487,6 +1590,7 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
         ...workingCampaign.grandCampaign,
         pools: newPools,
         vpEvents,
+        bags: scrubbedBags,
       },
     },
     error: null,
