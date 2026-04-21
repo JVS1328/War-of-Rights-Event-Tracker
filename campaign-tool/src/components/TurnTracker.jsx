@@ -1,5 +1,5 @@
-import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords, Package, Shield } from 'lucide-react';
-import { findAttackTargets, findStrongholdAtToken, canReplenish } from '../utils/grandCampaignLogic';
+import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords, Package, Shield, Train, Waves, LogOut } from 'lucide-react';
+import { findAttackTargets, findStrongholdAtToken, canReplenish, canBoardRail, canBoardRiver } from '../utils/grandCampaignLogic';
 
 /**
  * TurnTracker — the "whose turn is it" HUD for Grand Campaign.
@@ -9,7 +9,7 @@ import { findAttackTargets, findStrongholdAtToken, canReplenish } from '../utils
  *   - Draw Next Token: starts the next token's turn (from activeSide's bag)
  *   - End Turn: ends the currently-drawn token's turn, flips activeSide
  */
-const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive, onAttack, onReplenish, onGarrison }) => {
+const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive, onAttack, onReplenish, onGarrison, onBoardRail, onBoardRiver, onDisembark }) => {
   const gc = campaign?.grandCampaign;
   if (!gc || gc.phase !== 'playing') return null;
 
@@ -93,6 +93,33 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveAct
                   title="Garrison men here"
                 >
                   <Shield className="w-4 h-4" /> Garrison
+                </button>
+              )}
+              {onBoardRail && !currentToken.boarded && canBoardRail(campaign, currentToken.id).ok && (
+                <button
+                  onClick={onBoardRail}
+                  className="flex-1 min-w-[80px] bg-amber-700 hover:bg-amber-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                  title="Board the train at this stop (ends turn)"
+                >
+                  <Train className="w-4 h-4" /> Board Rail
+                </button>
+              )}
+              {onBoardRiver && !currentToken.boarded && canBoardRiver(campaign, currentToken.id).ok && (
+                <button
+                  onClick={onBoardRiver}
+                  className="flex-1 min-w-[80px] bg-sky-700 hover:bg-sky-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                  title="Embark onto the river (ends turn)"
+                >
+                  <Waves className="w-4 h-4" /> Embark River
+                </button>
+              )}
+              {onDisembark && currentToken.boarded && (
+                <button
+                  onClick={onDisembark}
+                  className="flex-1 min-w-[80px] bg-slate-600 hover:bg-slate-500 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                  title="Disembark (ends turn)"
+                >
+                  <LogOut className="w-4 h-4" /> Disembark
                 </button>
               )}
               <button

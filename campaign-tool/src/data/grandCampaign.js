@@ -113,6 +113,10 @@ export const createToken = ({ id, regimentId, name, side, manpower }) => ({
   garrisonedAt: null,      // { featureId, men }
   inCombat: false,         // true when a pending battle references this token
   status: 'active',        // 'active' | 'last-stand' | 'wiped'
+  // When set, the token is riding a rail or a river. Movement is then
+  // constrained to stay along that feature's polyline; march is unavailable
+  // until the player explicitly disembarks.
+  boarded: null,           // null | { type: 'rail' | 'river', featureId: string }
 });
 
 /**

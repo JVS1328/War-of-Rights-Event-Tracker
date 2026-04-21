@@ -935,6 +935,12 @@ const MapView = ({
                   {token.inCombat && (
                     <circle cx={x} cy={y} r="11" fill="none" stroke="#fbbf24" strokeWidth="0.8" opacity="0.8" />
                   )}
+                  {token.boarded?.type === 'rail' && (
+                    <text x={x + 5} y={y - 4} fontSize="5" fill="#fbbf24" className="pointer-events-none select-none">🚂</text>
+                  )}
+                  {token.boarded?.type === 'river' && (
+                    <text x={x + 5} y={y - 4} fontSize="5" fill="#0ea5e9" className="pointer-events-none select-none">⛵</text>
+                  )}
                   <text
                     x={x}
                     y={y - 9}

@@ -43,6 +43,10 @@ import {
   performGarrison as gcPerformGarrison,
   performRecallGarrison as gcPerformRecallGarrison,
   findStrongholdAtToken as gcFindStrongholdAtToken,
+  performBoardRail as gcPerformBoardRail,
+  performBoardRiver as gcPerformBoardRiver,
+  performDisembark as gcPerformDisembark,
+  findRailwaySnap as gcFindRailwaySnap,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -508,7 +512,25 @@ const CampaignTracker = () => {
       // Stay in tool so user can drop multiple points in sequence.
       return;
     }
-    if (featureTool === 'railway' || featureTool === 'river') {
+    if (featureTool === 'railway') {
+      // Railways must *start* at a city / fort / rail station. Subsequent
+      // points auto-snap to nearby anchors or other rail endpoints if the
+      // cursor is close enough — otherwise the raw click is used.
+      const snap = gcFindRailwaySnap(campaign, { x: point.x, y: point.y });
+      const isFirstPoint = lineDraft.length === 0;
+      if (isFirstPoint) {
+        if (!snap?.isAnchor) {
+          alert('Railways must start at a City, Fort, or Rail Station. Click one to begin.');
+          return;
+        }
+        setLineDraft([{ x: snap.x, y: snap.y }]);
+        return;
+      }
+      const next = snap ? { x: snap.x, y: snap.y } : { x: point.x, y: point.y };
+      setLineDraft(prev => [...prev, next]);
+      return;
+    }
+    if (featureTool === 'river') {
       setLineDraft(prev => [...prev, { x: point.x, y: point.y }]);
       return;
     }
@@ -607,6 +629,34 @@ const CampaignTracker = () => {
     setResolvingBattleId(null);
   };
 
+  // === Board / disembark handlers (all end the turn) ===
+  const chainEndAndDraw = (updated) => {
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(updated)));
+    setTurnMoveActive(false);
+    setPendingMove(null);
+  };
+  const handleBoardRail = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformBoardRail(campaign, tokenId);
+    if (result.error) { alert(`Cannot board: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+  const handleBoardRiver = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformBoardRiver(campaign, tokenId);
+    if (result.error) { alert(`Cannot embark: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+  const handleDisembark = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformDisembark(campaign, tokenId);
+    if (result.error) { alert(`Cannot disembark: ${result.error}`); return; }
+    chainEndAndDraw(result.campaign);
+  };
+
   // === In-turn movement handlers ===
   const handleBeginMove = () => {
     if (turnMoveActive) {
@@ -617,18 +667,20 @@ const CampaignTracker = () => {
     }
   };
   const handleCancelPendingMove = () => setPendingMove(null);
-  const handleConfirmMove = (mode) => {
+  const handleConfirmMove = () => {
     if (!pendingMove) return;
     const tokenId = campaign.grandCampaign.currentTokenId;
-    const result = gcPerformMove(campaign, tokenId, pendingMove.destination, mode);
+    const result = gcPerformMove(campaign, tokenId, pendingMove.destination);
     if (result.error) {
       alert(result.error);
       return;
     }
     setCampaign(result.campaign);
     setPendingMove(null);
-    // Rail/river disembark OR a capture ends the turn; chain into next draw.
-    if (result.turnEnds) {
+    // Keep the ruler / move mode open if the token still has MP (ruler
+    // updates live on the map). Only close when MP is exhausted, the turn
+    // was forcibly ended (capture), or a capture flow is kicking in.
+    if (result.turnEnds || (result.mpRemaining ?? 0) <= 0) {
       setTurnMoveActive(false);
     }
     if (result.capture) {
@@ -637,7 +689,6 @@ const CampaignTracker = () => {
         ? `Captured capital ${feature.name}! +$${payout}, +${vpDelta} VP.`
         : `Captured ${feature.name}! +$${payout}.`;
       alert(msg);
-      // Capture flagged turnEnds internally — draw next.
       setTimeout(() => setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c))), 0);
     }
   };
@@ -884,6 +935,9 @@ const CampaignTracker = () => {
                     onAttack={handleOpenAttack}
                     onReplenish={handleOpenReplenish}
                     onGarrison={handleOpenGarrison}
+                    onBoardRail={handleBoardRail}
+                    onBoardRiver={handleBoardRiver}
+                    onDisembark={handleDisembark}
                   />
                 )}
                 <button

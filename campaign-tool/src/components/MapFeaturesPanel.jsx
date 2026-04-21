@@ -212,6 +212,9 @@ const MapFeaturesPanel = ({
         <div className="mb-3 bg-slate-900 rounded p-2 space-y-2">
           <div className="text-[10px] text-amber-300">
             Click on the map to add points. Need at least 2 points.
+            {tool === 'railway' && (
+              <><br /><span className="text-amber-300">First point must be a City, Fort, or Rail Station.</span> Subsequent clicks snap to anchors or other rail endpoints when close.</>
+            )}
             <br />Points so far: <span className="font-bold text-white">{lineDraft.length}</span>
           </div>
           <div className="flex gap-1">

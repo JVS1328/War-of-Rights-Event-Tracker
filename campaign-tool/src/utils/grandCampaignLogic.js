@@ -42,6 +42,22 @@ export const svgToMiles = (svgUnits, settings) =>
   inchesToMiles(svgUnits / (settings?.svgUnitsPerInch || 10), settings);
 
 /**
+ * Derive a token's status purely from its manpower. Used every time a
+ * token's strength changes (replenish, garrison detach/recall, combat) so
+ * tokens enter AND exit last stand automatically when they cross either
+ * threshold. If the token is already 'wiped', it stays wiped — no revival.
+ */
+export const deriveTokenStatus = (manpower, settings, currentStatus = null) => {
+  if (currentStatus === 'wiped') return 'wiped';
+  const min = settings?.lastStandMin ?? 100;
+  const max = settings?.lastStandMax ?? 500;
+  if (manpower <= 0) return 'wiped';
+  if (manpower < min) return 'wiped';
+  if (manpower <= max) return 'last-stand';
+  return 'active';
+};
+
+/**
  * Collision check — can this position hold a token without overlapping
  * another one? `ignoreTokenId` lets a token "move past itself" when editing.
  */
@@ -650,13 +666,22 @@ const countRiverCrossings = (from, to, rivers) => {
  * available movement modes, their MP costs, the river crossing count, and
  * the suggested (cheapest available) mode. Does not mutate state.
  */
+/**
+ * Evaluate a proposed move. Mode is determined by the token's `boarded`
+ * state, not by proximity detection:
+ *   - boarded=rail  → rail movement, destination must stay on that railway
+ *   - boarded=river → river movement, destination must stay on that river
+ *   - boarded=null  → march; river crossings add MP per rules
+ * Embarking/disembarking are separate actions (see performBoardRail etc.),
+ * not side effects of movement.
+ */
 export const evaluateMove = (campaign, tokenId, destination) => {
-  if (!isGrandCampaign(campaign)) return { valid: false, error: 'not a grand campaign' };
+  if (!isGrandCampaign(campaign)) return { valid: false, reason: 'not a grand campaign' };
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
-  if (!token) return { valid: false, error: 'token not found' };
-  if (!token.position) return { valid: false, error: 'token has no position' };
-  if (token.status === 'wiped') return { valid: false, error: 'wiped token cannot move' };
+  if (!token) return { valid: false, reason: 'token not found' };
+  if (!token.position) return { valid: false, reason: 'token has no position' };
+  if (token.status === 'wiped') return { valid: false, reason: 'wiped token cannot move' };
 
   const s = gc.settings;
   const from = token.position;
@@ -664,57 +689,48 @@ export const evaluateMove = (campaign, tokenId, destination) => {
   const distSvg = distance(from, to);
   const inches = distSvg / (s.svgUnitsPerInch || 1);
 
-  const railSnap = inchesToSvg(s.railSnapInches, s);
-  const riverSnap = inchesToSvg(s.riverSnapInches, s);
+  let mode, inchesPerMP, crossings = 0;
+  const ratesMilesPerMP = {
+    march: inchesToMiles(s.marchInchesPerMP, s),
+    river: inchesToMiles(s.riverInchesPerMP, s),
+    rail:  inchesToMiles(s.railInchesPerMP,  s),
+  };
 
-  // Rail eligibility: token is at a city / fort / station AND destination is
-  // near the same railway.
-  const boardingFeatures = [
-    ...gc.mapFeatures.cities,
-    ...gc.mapFeatures.forts,
-    ...gc.mapFeatures.stations,
-  ];
-  const atRailBoarding = boardingFeatures.some(f => distance(from, f) <= railSnap);
-  const railAvailable = atRailBoarding && gc.mapFeatures.railways.some(r =>
-    distanceToPolyline(from, r.points) <= railSnap &&
-    distanceToPolyline(to, r.points) <= railSnap
-  );
+  if (token.boarded?.type === 'rail') {
+    const rail = gc.mapFeatures.railways.find(r => r.id === token.boarded.featureId);
+    if (!rail) return { valid: false, reason: 'boarded railway no longer exists' };
+    const snap = inchesToSvg(s.railSnapInches, s);
+    if (distanceToPolyline(to, rail.points) > snap) {
+      return { valid: false, reason: 'destination must stay on this railway — disembark first' };
+    }
+    mode = 'rail';
+    inchesPerMP = s.railInchesPerMP;
+  } else if (token.boarded?.type === 'river') {
+    const river = gc.mapFeatures.rivers.find(r => r.id === token.boarded.featureId);
+    if (!river) return { valid: false, reason: 'boarded river no longer exists' };
+    const snap = inchesToSvg(s.riverSnapInches, s);
+    if (distanceToPolyline(to, river.points) > snap) {
+      return { valid: false, reason: 'destination must stay on this river — disembark first' };
+    }
+    mode = 'river';
+    inchesPerMP = s.riverInchesPerMP;
+  } else {
+    mode = 'march';
+    inchesPerMP = s.marchInchesPerMP;
+    crossings = countRiverCrossings(from, to, gc.mapFeatures.rivers);
+  }
 
-  // River eligibility: both start and destination are on the same river.
-  const riverAvailable = gc.mapFeatures.rivers.some(r =>
-    distanceToPolyline(from, r.points) <= riverSnap &&
-    distanceToPolyline(to, r.points) <= riverSnap
-  );
-
-  // River crossings only add cost when marching — if travelling BY river you
-  // follow its course, not crossing it.
-  const crossings = riverAvailable ? 0 : countRiverCrossings(from, to, gc.mapFeatures.rivers);
-
-  const marchCost = Math.max(1, Math.ceil(inches / s.marchInchesPerMP)) + crossings * s.riverCrossCost;
-  const riverCost = riverAvailable ? Math.max(1, Math.ceil(inches / s.riverInchesPerMP)) : null;
-  const railCost = railAvailable ? Math.max(1, Math.ceil(inches / s.railInchesPerMP)) : null;
-
-  const options = { march: { cost: marchCost, available: true } };
-  if (riverAvailable) options.river = { cost: riverCost, available: true };
-  if (railAvailable) options.rail = { cost: railCost, available: true };
-
-  // Cheapest wins.
-  const suggested = Object.entries(options)
-    .sort((a, b) => a[1].cost - b[1].cost)[0][0];
+  const cost = Math.max(1, Math.ceil(inches / inchesPerMP)) + crossings * s.riverCrossCost;
 
   return {
     valid: true,
     inches,
     miles: inchesToMiles(inches, s),
     crossings,
-    options,
-    suggested,
-    // Per-mode "miles per MP" so UIs don't have to reinvent the conversion.
-    ratesMilesPerMP: {
-      march: inchesToMiles(s.marchInchesPerMP, s),
-      river: inchesToMiles(s.riverInchesPerMP, s),
-      rail:  inchesToMiles(s.railInchesPerMP,  s),
-    },
+    mode,
+    cost,
+    ratesMilesPerMP,
+    boardedType: token.boarded?.type || null,
   };
 };
 
@@ -819,31 +835,30 @@ export const applyCaptureAtPosition = (campaign, tokenId) => {
  * moves exhaust all remaining MP (board + disembark ends turn per rules).
  * Returns { campaign, error, turnEnds }.
  */
-export const performMove = (campaign, tokenId, destination, mode) => {
+/**
+ * Commit a move for the current token. Mode is derived internally from the
+ * token's boarded state — callers don't pass a mode anymore. No move ends
+ * the turn by itself; only capturing a city/fort does. Board/Disembark are
+ * separate actions (performBoardRail / performDisembark).
+ */
+export const performMove = (campaign, tokenId, destination) => {
   if (!isGrandCampaign(campaign)) return { campaign, error: 'not a grand campaign' };
-  const evalResult = evaluateMove(campaign, tokenId, destination);
-  if (!evalResult.valid) return { campaign, error: evalResult.error };
-
-  const option = evalResult.options[mode];
-  if (!option || !option.available) return { campaign, error: `Mode ${mode} not available` };
+  const ev = evaluateMove(campaign, tokenId, destination);
+  if (!ev.valid) return { campaign, error: ev.reason };
 
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
   const mpMax = gc.settings.movementPointsPerTurn;
   const mpLeft = mpMax - (token.movementPointsUsed || 0);
 
-  if (option.cost > mpLeft) {
-    return { campaign, error: `Not enough MP (need ${option.cost}, have ${mpLeft}).` };
+  if (ev.cost > mpLeft) {
+    return { campaign, error: `Not enough MP (need ${ev.cost}, have ${mpLeft}).` };
   }
   if (!isPositionClear(campaign, destination, tokenId)) {
     return { campaign, error: 'Destination overlaps another token.' };
   }
 
-  // Rail and river movement consume the remainder of the turn — disembarking
-  // ends your turn per the rules. March keeps your MP available.
-  const turnEnds = mode === 'rail' || mode === 'river';
-  const newMpUsed = turnEnds ? mpMax : (token.movementPointsUsed || 0) + option.cost;
-
+  const newMpUsed = (token.movementPointsUsed || 0) + ev.cost;
   const moved = {
     ...campaign,
     grandCampaign: {
@@ -856,13 +871,17 @@ export const performMove = (campaign, tokenId, destination, mode) => {
     },
   };
 
-  // Walking into an undefended enemy city/fort captures it and ends the turn.
+  // Walking into an undefended enemy city/fort still captures it and ends
+  // the turn — that's a hard rule regardless of mode.
   const captureResult = applyCaptureAtPosition(moved, tokenId);
 
   return {
     campaign: captureResult.campaign,
     error: null,
-    turnEnds: turnEnds || !!captureResult.captured,
+    mode: ev.mode,
+    cost: ev.cost,
+    mpRemaining: mpMax - newMpUsed,
+    turnEnds: !!captureResult.captured,
     capture: captureResult.captured,
   };
 };
@@ -910,6 +929,167 @@ export const endTokenTurn = (campaign) => {
 // ---------------------------------------------------------------------------
 // Station/city/fort proximity — replenishment & garrison eligibility.
 // ---------------------------------------------------------------------------
+
+/**
+ * Find the best snap target for a railway point at `point`. Returns an
+ * object describing the snap (or null if nothing is within railSnap).
+ *
+ *   { x, y, distance, isAnchor, label }
+ *
+ * Anchors (cities, forts, stations) take priority over generic rail
+ * endpoints because the rules require railways to *start* at an anchor.
+ */
+export const findRailwaySnap = (campaign, point) => {
+  if (!isGrandCampaign(campaign) || !point) return null;
+  const gc = campaign.grandCampaign;
+  const snap = inchesToSvg(gc.settings.railSnapInches, gc.settings);
+
+  let bestAnchor = null;
+  const anchors = [
+    ...gc.mapFeatures.cities.map(f => ({ ...f, _label: f.name })),
+    ...gc.mapFeatures.forts.map(f => ({ ...f, _label: f.name })),
+    ...gc.mapFeatures.stations.map(f => ({ ...f, _label: f.name })),
+  ];
+  for (const a of anchors) {
+    const d = distance(point, a);
+    if (d <= snap && (!bestAnchor || d < bestAnchor.distance)) {
+      bestAnchor = { x: a.x, y: a.y, distance: d, isAnchor: true, label: a._label };
+    }
+  }
+  if (bestAnchor) return bestAnchor;
+
+  // No anchor in range — fall back to existing rail endpoints.
+  let bestEndpoint = null;
+  for (const rail of gc.mapFeatures.railways) {
+    if (rail.points.length === 0) continue;
+    for (const ep of [rail.points[0], rail.points[rail.points.length - 1]]) {
+      const d = distance(point, ep);
+      if (d <= snap && (!bestEndpoint || d < bestEndpoint.distance)) {
+        bestEndpoint = { x: ep.x, y: ep.y, distance: d, isAnchor: false, label: `${rail.name} endpoint` };
+      }
+    }
+  }
+  return bestEndpoint;
+};
+
+// ---------------------------------------------------------------------------
+// Boarding — rail & river embarkation as explicit actions.
+// ---------------------------------------------------------------------------
+
+/**
+ * Can this token board a train right now?
+ * Per rules: "You can only board a train at a Fort, City, or Rail Station."
+ * Also requires being adjacent to a railway and not already boarded.
+ * Embarking ends the token's turn.
+ */
+export const canBoardRail = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return { ok: false, reason: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || token.status === 'wiped') return { ok: false, reason: 'ineligible' };
+  if (token.status !== 'active') return { ok: false, reason: 'last-stand token cannot board' };
+  if (token.boarded) return { ok: false, reason: 'already boarded' };
+  if ((token.movementPointsUsed || 0) >= gc.settings.movementPointsPerTurn) return { ok: false, reason: 'no MP' };
+  const snap = inchesToSvg(gc.settings.railSnapInches, gc.settings);
+  const boardingSpot = [
+    ...gc.mapFeatures.cities,
+    ...gc.mapFeatures.forts,
+    ...gc.mapFeatures.stations,
+  ].find(f => distance(token.position, f) <= snap);
+  if (!boardingSpot) return { ok: false, reason: 'must be at a city, fort, or rail station' };
+  const rail = gc.mapFeatures.railways.find(r =>
+    distanceToPolyline(token.position, r.points) <= snap
+  );
+  if (!rail) return { ok: false, reason: 'no railway here' };
+  return { ok: true, railId: rail.id, boardingSpot };
+};
+
+/** Board a train — sets boarded, ends turn. */
+export const performBoardRail = (campaign, tokenId) => {
+  const check = canBoardRail(campaign, tokenId);
+  if (!check.ok) return { campaign, error: check.reason };
+  const gc = campaign.grandCampaign;
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          boarded: { type: 'rail', featureId: check.railId },
+          movementPointsUsed: gc.settings.movementPointsPerTurn, // embark ends turn
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
+
+/** Can this token embark on a river? Must be adjacent to one and not boarded. */
+export const canBoardRiver = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return { ok: false, reason: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || token.status === 'wiped') return { ok: false, reason: 'ineligible' };
+  if (token.status !== 'active') return { ok: false, reason: 'last-stand token cannot board' };
+  if (token.boarded) return { ok: false, reason: 'already boarded' };
+  if ((token.movementPointsUsed || 0) >= gc.settings.movementPointsPerTurn) return { ok: false, reason: 'no MP' };
+  const snap = inchesToSvg(gc.settings.riverSnapInches, gc.settings);
+  const river = gc.mapFeatures.rivers.find(r =>
+    distanceToPolyline(token.position, r.points) <= snap
+  );
+  if (!river) return { ok: false, reason: 'not at a river' };
+  return { ok: true, riverId: river.id };
+};
+
+/** Embark onto a river — sets boarded, ends turn. */
+export const performBoardRiver = (campaign, tokenId) => {
+  const check = canBoardRiver(campaign, tokenId);
+  if (!check.ok) return { campaign, error: check.reason };
+  const gc = campaign.grandCampaign;
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          boarded: { type: 'river', featureId: check.riverId },
+          movementPointsUsed: gc.settings.movementPointsPerTurn, // embark ends turn
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
+
+/**
+ * Disembark — drop boarded state. Per rules, disembarking ends the turn
+ * (both rail and river). Position stays wherever the token got off.
+ */
+export const performDisembark = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || !token.boarded) return { campaign, error: 'not boarded' };
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          boarded: null,
+          movementPointsUsed: gc.settings.movementPointsPerTurn,
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
 
 /** Friendly city or fort within railSnapInches of this token, or null. */
 export const findStrongholdAtToken = (campaign, tokenId) => {
@@ -1021,11 +1201,16 @@ export const performReplenish = (campaign, tokenId, men = 100) => {
             manpower: gc.pools[token.side].manpower - check.manpowerCost,
           },
         },
-        tokens: gc.tokens.map(t => t.id === tokenId ? {
-          ...t,
-          manpower: t.manpower + check.yield,
-          movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
-        } : t),
+        tokens: gc.tokens.map(t => {
+          if (t.id !== tokenId) return t;
+          const newManpower = t.manpower + check.yield;
+          return {
+            ...t,
+            manpower: newManpower,
+            status: deriveTokenStatus(newManpower, gc.settings, t.status),
+            movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
+          };
+        }),
       },
     },
     error: null,
@@ -1070,11 +1255,16 @@ export const performGarrison = (campaign, tokenId, featureId, men) => {
           ...gc.mapFeatures,
           [bucket]: gc.mapFeatures[bucket].map(f => f.id === featureId ? { ...f, garrison: newGarrison } : f),
         },
-        tokens: gc.tokens.map(t => t.id === tokenId ? {
-          ...t,
-          manpower: t.manpower - amount,
-          movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
-        } : t),
+        tokens: gc.tokens.map(t => {
+          if (t.id !== tokenId) return t;
+          const newManpower = t.manpower - amount;
+          return {
+            ...t,
+            manpower: newManpower,
+            status: deriveTokenStatus(newManpower, gc.settings, t.status),
+            movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
+          };
+        }),
       },
     },
     error: null,
@@ -1114,11 +1304,16 @@ export const performRecallGarrison = (campaign, tokenId, featureId, men) => {
           ...gc.mapFeatures,
           [bucket]: gc.mapFeatures[bucket].map(f => f.id === featureId ? { ...f, garrison: newGarrison } : f),
         },
-        tokens: gc.tokens.map(t => t.id === tokenId ? {
-          ...t,
-          manpower: t.manpower + amount,
-          movementPointsUsed: gc.settings.movementPointsPerTurn,
-        } : t),
+        tokens: gc.tokens.map(t => {
+          if (t.id !== tokenId) return t;
+          const newManpower = t.manpower + amount;
+          return {
+            ...t,
+            manpower: newManpower,
+            status: deriveTokenStatus(newManpower, gc.settings, t.status),
+            movementPointsUsed: gc.settings.movementPointsPerTurn,
+          };
+        }),
       },
     },
     error: null,
@@ -1136,6 +1331,9 @@ export const findAttackTargets = (campaign, tokenId) => {
   const gc = campaign.grandCampaign;
   const attacker = gc.tokens.find(t => t.id === tokenId);
   if (!attacker || !attacker.position || attacker.status !== 'active') return [];
+  // Per rules: "You cannot attack from trains … you must jump off first to
+  // be able to attack next turn." Boarded tokens also can't initiate.
+  if (attacker.boarded) return [];
   const radius = inchesToSvg(gc.settings.combatAdjacencyInches, gc.settings);
   return gc.tokens.filter(t =>
     t.id !== tokenId &&
@@ -1338,7 +1536,12 @@ const applyRetreat = (campaign, tokenId) => {
     ...campaign,
     grandCampaign: {
       ...gc,
-      tokens: gc.tokens.map(t => t.id === tokenId ? { ...t, position: candidate } : t),
+      // Retreating clears any boarded state — you can't stay on a train
+      // after being routed off the line.
+      tokens: gc.tokens.map(t => t.id === tokenId
+        ? { ...t, position: candidate, boarded: null }
+        : t
+      ),
     },
   };
 };
@@ -1464,17 +1667,13 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
         if (t.id === battle.attackerTokenId && !battle.attackerSupportId) cas = attackerTotal;
         if (t.id === battle.defenderTokenId && !battle.defenderSupportId) cas = defenderTotal;
         const newManpower = Math.max(0, t.manpower - cas);
-        let newStatus = t.status;
-        if (newManpower < gc.settings.lastStandMin) newStatus = 'wiped';
-        else if (newManpower <= gc.settings.lastStandMax) newStatus = 'last-stand';
-        else newStatus = 'active';
         return {
           ...t,
           manpower: newManpower,
           fatigue: t.fatigue + 1,
           inCombat: false,
           combatThisTurn: true,
-          status: newStatus,
+          status: deriveTokenStatus(newManpower, gc.settings, t.status),
         };
       }),
     },
