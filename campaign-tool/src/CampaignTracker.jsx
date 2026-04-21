@@ -17,6 +17,8 @@ import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/date
 import { calculateCPGeneration } from './utils/cpSystem';
 import { validateImportedCampaign, prepareCampaignExport, formatImportError } from './utils/campaignValidation';
 import { generateShareUrl, generateShortShareUrl } from './utils/shareMap';
+import GrandCampaign from './grand-tabletop/GrandCampaign';
+import NewGrandCampaignModal from './grand-tabletop/components/NewGrandCampaignModal';
 
 const STORAGE_KEY = 'WarOfRightsCampaignTracker';
 
@@ -33,6 +35,7 @@ const CampaignTracker = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
   const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
+  const [showNewGrandModal, setShowNewGrandModal] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -211,6 +214,11 @@ const CampaignTracker = () => {
   };
 
   const handleTemplateSelect = (templateKey) => {
+    if (templateKey === 'grand-tabletop') {
+      setShowTemplateSelector(false);
+      setShowNewGrandModal(true);
+      return;
+    }
     const template = CAMPAIGN_TEMPLATES[templateKey];
     if (template) {
       const fresh = template.create();
@@ -219,6 +227,13 @@ const CampaignTracker = () => {
       setShowVictory(null);
     }
     setShowTemplateSelector(false);
+  };
+
+  const handleGrandCreate = (grandCampaign) => {
+    setCampaign(grandCampaign);
+    setSelectedTerritory(null);
+    setShowVictory(null);
+    setShowNewGrandModal(false);
   };
 
   const handleMapEditorSave = (modifiedTerritories) => {
@@ -400,6 +415,38 @@ const CampaignTracker = () => {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 flex items-center justify-center">
         <div className="text-amber-400 text-xl">Loading campaign...</div>
       </div>
+    );
+  }
+
+  // Branch: Grand Campaign tabletop type renders its own root
+  if (campaign.campaignType === 'grand-tabletop') {
+    return (
+      <>
+        <GrandCampaign
+          campaign={campaign}
+          onExit={() => {
+            if (!confirm('Switch back to the territory tracker? Grand Campaign state will be kept in its own storage.')) return;
+            // Load the territory campaign from its key, or create fresh
+            const territorySaved = localStorage.getItem(STORAGE_KEY);
+            if (territorySaved) {
+              try {
+                const parsed = JSON.parse(territorySaved);
+                if (parsed.campaignType !== 'grand-tabletop') {
+                  setCampaign(parsed);
+                  return;
+                }
+              } catch {}
+            }
+            setCampaign(createDefaultCampaign());
+          }}
+        />
+        {showNewGrandModal && (
+          <NewGrandCampaignModal
+            onCreate={handleGrandCreate}
+            onClose={() => setShowNewGrandModal(false)}
+          />
+        )}
+      </>
     );
   }
 
@@ -630,6 +677,13 @@ const CampaignTracker = () => {
         />
 
         {/* Campaign Template Selector Modal */}
+        {showNewGrandModal && (
+          <NewGrandCampaignModal
+            onCreate={handleGrandCreate}
+            onClose={() => setShowNewGrandModal(false)}
+          />
+        )}
+
         {showTemplateSelector && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-lg w-full p-6">

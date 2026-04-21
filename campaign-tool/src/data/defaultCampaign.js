@@ -593,5 +593,10 @@ export const CAMPAIGN_TEMPLATES = {
     name: 'Eastern Theatre of the War',
     description: 'Full Civil War campaign (April 1861 - December 1865) with county-based regions across MD, WV, VA, and PA',
     create: createMaryland1862Campaign
+  },
+  'grand-tabletop': {
+    name: 'Grand Campaign (Tabletop)',
+    description: 'Full hex-based tabletop ruleset: tokens, manpower/money economy, rail & river movement, fatigue, garrisons, Last Stand, 5 card decks, retreat, and 10-VP win condition. Configurable on creation.',
+    create: null // handled via NewGrandCampaignModal in CampaignTracker
   }
 };
