@@ -7,6 +7,13 @@
 
 import { createToken, createMapPoint, createMapLine } from '../data/grandCampaign';
 import { advanceTurn as advanceCampaignDate } from './dateSystem';
+import {
+  fetchCountyGeoJson,
+  calculateBoundsForFips,
+  projectLatLonToSvg,
+  collectTerritoryFips,
+} from './geoProjection';
+import { EASTERN_THEATRE_PRESET } from '../data/easternTheatrePresets';
 
 // ---------------------------------------------------------------------------
 // ID generator — short, readable, collision-free within a session.
@@ -310,6 +317,69 @@ export const allMapFeatures = (campaign) => {
     ...mf.railways,
     ...mf.rivers,
   ];
+};
+
+/**
+ * Wipe existing mapFeatures and load the Eastern Theatre historical preset
+ * (capitals/cities/forts/stations/railways/rivers with real lat/lon).
+ * Async because we fetch the county GeoJSON to compute projection bounds.
+ *
+ * Returns the next campaign. Callers should confirm-replace before calling;
+ * this function always overwrites.
+ */
+export const loadEasternTheatrePreset = async (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const fips = collectTerritoryFips(campaign.territories);
+  if (fips.length === 0) return campaign; // can't project without a bounding box
+  const geoJson = await fetchCountyGeoJson();
+  const bounds = calculateBoundsForFips(geoJson, fips);
+
+  const toPoint = ({ name, side, lat, lon, isCapital }) => {
+    const { x, y } = projectLatLonToSvg(lat, lon, bounds);
+    return createMapPoint({
+      id: nextId(isCapital ? 'city' : 'city'),
+      name, kind: 'city', x, y, side,
+      isCapital: !!isCapital,
+    });
+  };
+  const toFort = ({ name, side, lat, lon }) => {
+    const { x, y } = projectLatLonToSvg(lat, lon, bounds);
+    return createMapPoint({
+      id: nextId('fort'),
+      name, kind: 'fort', x, y, side,
+    });
+  };
+  const toStation = ({ name, lat, lon }) => {
+    const { x, y } = projectLatLonToSvg(lat, lon, bounds);
+    return createMapPoint({
+      id: nextId('station'),
+      name, kind: 'station', x, y, side: 'NEUTRAL',
+    });
+  };
+  const toLine = (kind) => ({ name, points }) => createMapLine({
+    id: nextId(kind),
+    name, kind,
+    points: points.map(p => projectLatLonToSvg(p.lat, p.lon, bounds)),
+  });
+
+  // Capitals are marked as cities with isCapital: true.
+  const cityEntries = [
+    ...EASTERN_THEATRE_PRESET.capitals.map(c => ({ ...c, isCapital: true })),
+    ...EASTERN_THEATRE_PRESET.cities.map(c => ({ ...c, isCapital: false })),
+  ];
+
+  const mapFeatures = {
+    cities:   cityEntries.map(toPoint),
+    forts:    EASTERN_THEATRE_PRESET.forts.map(toFort),
+    stations: EASTERN_THEATRE_PRESET.stations.map(toStation),
+    railways: EASTERN_THEATRE_PRESET.railways.map(toLine('railway')),
+    rivers:   EASTERN_THEATRE_PRESET.rivers.map(toLine('river')),
+  };
+
+  return {
+    ...campaign,
+    grandCampaign: { ...campaign.grandCampaign, mapFeatures },
+  };
 };
 
 // ---------------------------------------------------------------------------

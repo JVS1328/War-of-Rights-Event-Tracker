@@ -51,6 +51,7 @@ import {
   performLSRetreat as gcPerformLSRetreat,
   inchesToMiles as gcInchesToMiles,
   distance as gcDistance,
+  loadEasternTheatrePreset as gcLoadEasternTheatrePreset,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -787,6 +788,25 @@ const CampaignTracker = () => {
   const handleUpdateFeature = (id, patch) => setCampaign(c => gcUpdateMapFeature(c, id, patch));
   const handleRemoveFeature = (id) => setCampaign(c => gcRemoveMapFeature(c, id));
 
+  /** Fetch the county GeoJSON and overwrite the map with the historical preset. */
+  const handleLoadPreset = async () => {
+    if (!isGC) return;
+    const mf = campaign.grandCampaign.mapFeatures;
+    const hasExisting =
+      mf.cities.length || mf.forts.length || mf.stations.length ||
+      mf.railways.length || mf.rivers.length;
+    if (hasExisting && !confirm(
+      'Replace ALL current map features with the historical Eastern Theatre preset?\n' +
+      'Capitals, cities, forts, stations, railways, and rivers will be overwritten.'
+    )) return;
+    try {
+      const next = await gcLoadEasternTheatrePreset(campaign);
+      setCampaign(next);
+    } catch (e) {
+      alert(`Could not load preset: ${e.message || e}`);
+    }
+  };
+
   const handleTerritoryClick = (territory) => {
     setSelectedTerritory(prev => prev?.id === territory.id ? null : territory);
   };
@@ -1018,6 +1038,7 @@ const CampaignTracker = () => {
                 onUpdateFeature={handleUpdateFeature}
                 onRemoveFeature={handleRemoveFeature}
                 onExitEditMode={exitFeatureEditMode}
+                onLoadPreset={handleLoadPreset}
               />
             )}
             {isGC && !featureEditMode && (

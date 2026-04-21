@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   MapPin, Shield, Train, Zap, Waves, Pencil, Trash2, X, Check, Star,
-  CheckCheck, Undo2
+  CheckCheck, Undo2, Sparkles
 } from 'lucide-react';
 
 /**
@@ -29,6 +29,7 @@ const MapFeaturesPanel = ({
   onUpdateFeature,
   onRemoveFeature,
   onExitEditMode,
+  onLoadPreset,
 }) => {
   const gc = campaign?.grandCampaign;
   const [editingId, setEditingId] = useState(null);
@@ -177,6 +178,18 @@ const MapFeaturesPanel = ({
           <X className="w-3 h-3" /> Done
         </button>
       </div>
+
+      {/* One-click preset — loads the historical Eastern Theatre board. */}
+      {onLoadPreset && (
+        <button
+          onClick={onLoadPreset}
+          className="w-full mb-3 px-3 py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+          title="Replace all current features with the historical Eastern Theatre preset"
+        >
+          <Sparkles className="w-4 h-4" />
+          Load Historical Preset (Eastern Theatre)
+        </button>
+      )}
 
       {/* Tool palette */}
       <div className="grid grid-cols-5 gap-1 mb-3">
