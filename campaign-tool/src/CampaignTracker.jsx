@@ -21,6 +21,8 @@ import GrandCampaign from './grand-tabletop/GrandCampaign';
 import NewGrandCampaignModal from './grand-tabletop/components/NewGrandCampaignModal';
 
 const STORAGE_KEY = 'WarOfRightsCampaignTracker';
+const GRAND_STORAGE_KEY = 'WarOfRightsGrandCampaign';
+const ACTIVE_TYPE_KEY = 'WarOfRightsActiveCampaignType';
 
 const CampaignTracker = () => {
   // State management
@@ -37,12 +39,32 @@ const CampaignTracker = () => {
   const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
   const [showNewGrandModal, setShowNewGrandModal] = useState(false);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount — active-type pointer decides which campaign to resume
   useEffect(() => {
+    const activeType = localStorage.getItem(ACTIVE_TYPE_KEY);
+
+    if (activeType === 'grand-tabletop') {
+      const saved = localStorage.getItem(GRAND_STORAGE_KEY);
+      if (saved) {
+        try {
+          setCampaign(JSON.parse(saved));
+          return;
+        } catch (error) {
+          console.error('Error loading grand campaign:', error);
+        }
+      }
+    }
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setCampaign(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        if (parsed.campaignType === 'grand-tabletop') {
+          // Stale data in the wrong key — ignore it for the territory slot
+          setCampaign(createDefaultCampaign());
+        } else {
+          setCampaign(parsed);
+        }
       } catch (error) {
         console.error('Error loading campaign:', error);
         setCampaign(createDefaultCampaign());
@@ -52,16 +74,22 @@ const CampaignTracker = () => {
     }
   }, []);
 
-  // Save to localStorage on campaign changes
+  // Save to localStorage on campaign changes — separate keys per campaign type
   useEffect(() => {
-    if (campaign) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(campaign));
-      
-      // Check victory conditions
-      const victory = checkVictoryConditions(campaign);
-      if (victory && !showVictory) {
-        setShowVictory(victory);
-      }
+    if (!campaign) return;
+
+    if (campaign.campaignType === 'grand-tabletop') {
+      // GrandCampaign.jsx owns its own storage; just record which type is active.
+      localStorage.setItem(ACTIVE_TYPE_KEY, 'grand-tabletop');
+      return;
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(campaign));
+    localStorage.setItem(ACTIVE_TYPE_KEY, 'territory');
+
+    const victory = checkVictoryConditions(campaign);
+    if (victory && !showVictory) {
+      setShowVictory(victory);
     }
   }, [campaign]);
 
@@ -426,7 +454,7 @@ const CampaignTracker = () => {
           campaign={campaign}
           onExit={() => {
             if (!confirm('Switch back to the territory tracker? Grand Campaign state will be kept in its own storage.')) return;
-            // Load the territory campaign from its key, or create fresh
+            localStorage.setItem(ACTIVE_TYPE_KEY, 'territory');
             const territorySaved = localStorage.getItem(STORAGE_KEY);
             if (territorySaved) {
               try {
