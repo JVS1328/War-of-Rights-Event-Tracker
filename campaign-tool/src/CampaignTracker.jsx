@@ -408,8 +408,8 @@ const CampaignTracker = () => {
   const saveSettings = (newSettings) => {
     if (!campaign) return;
 
-    // Extract campaign name, regiments, terrain groups, viz, and settings
-    const { name, regiments, terrainGroups, terrainViz, ...settings } = newSettings;
+    // Extract campaign name, regiments, terrain groups, viz, GC settings, and standard settings
+    const { name, regiments, terrainGroups, terrainViz, gcSettings, ...settings } = newSettings;
 
     // Persist terrain groups & visualization config inside settings
     if (terrainGroups) {
@@ -425,6 +425,14 @@ const CampaignTracker = () => {
       name: name,
       settings: settings
     };
+
+    // Grand Campaign: merge edited gcSettings into campaign.grandCampaign.settings
+    if (gcSettings && campaign.grandCampaign) {
+      updatedCampaign.grandCampaign = {
+        ...campaign.grandCampaign,
+        settings: { ...campaign.grandCampaign.settings, ...gcSettings },
+      };
+    }
 
     // Update regiments if provided
     if (regiments) {
