@@ -6,6 +6,7 @@
  */
 
 import { createToken, createMapPoint, createMapLine } from '../data/grandCampaign';
+import { advanceTurn as advanceCampaignDate } from './dateSystem';
 
 // ---------------------------------------------------------------------------
 // ID generator — short, readable, collision-free within a session.
@@ -432,9 +433,22 @@ export const advanceMonth = (campaign) => {
   const newUsaBag = shuffleInPlace([...gc.bags.discardUSA]);
   const newCsaBag = shuffleInPlace([...gc.bags.discardCSA]);
 
+  // Advance campaign date by one real month (April 1861 → May 1861 → …).
+  const nextDate = campaign.campaignDate
+    ? advanceCampaignDate(campaign.campaignDate, 1)
+    : campaign.campaignDate;
+
+  // Accumulate territory influence from current token presence before the
+  // new month begins. Each USA token inside a territory pushes it +1;
+  // each CSA token pushes it -1. Magnitude capped at the threshold; when it
+  // hits +/- threshold the owner flips.
+  const tickedTerritories = applyInfluenceTick(campaign);
+
   return {
     ...campaign,
+    territories: tickedTerritories,
     currentTurn: campaign.currentTurn + 1,
+    campaignDate: nextDate,
     grandCampaign: {
       ...gc,
       pools: newPools,
@@ -444,6 +458,68 @@ export const advanceMonth = (campaign) => {
       currentTokenId: null,
     },
   };
+};
+
+// ---------------------------------------------------------------------------
+// Territory influence — tokens inside a territory shift it toward their side.
+// ---------------------------------------------------------------------------
+
+/** Default influence contribution cap (matches MapView gradient saturation). */
+export const INFLUENCE_THRESHOLD = 5;
+
+/**
+ * Scan all tokens and tally, per territory, the net influence delta:
+ *   +1 per USA token inside, -1 per CSA token inside.
+ * Returns the next territories array, with `influence` updated (clamped
+ * to ±threshold) and `owner` flipped when influence saturates.
+ */
+export const applyInfluenceTick = (campaign) => {
+  if (!isGrandCampaign(campaign)) return campaign.territories;
+  const threshold = campaign.grandCampaign.settings.influenceThreshold ?? INFLUENCE_THRESHOLD;
+  if (typeof document === 'undefined') return campaign.territories;
+  const svg = document.querySelector('svg[viewBox="0 0 1000 589"]');
+  if (!svg) return campaign.territories;
+
+  // Bucket each token to a territory via DOM hit-test; cheap enough at this
+  // scale (dozens of tokens × dozens of territories).
+  const deltas = new Map(); // territoryId → net delta
+  for (const token of campaign.grandCampaign.tokens) {
+    if (!token.position || token.status === 'wiped') continue;
+    const pt = svg.createSVGPoint();
+    pt.x = token.position.x;
+    pt.y = token.position.y;
+    const paths = svg.querySelectorAll('[data-territory-id]');
+    for (const path of paths) {
+      try {
+        if (path.isPointInFill && path.isPointInFill(pt)) {
+          const id = path.dataset.territoryId;
+          const d = token.side === 'USA' ? 1 : -1;
+          deltas.set(id, (deltas.get(id) || 0) + d);
+          break;
+        }
+      } catch (_) { /* ignore unsupported nodes */ }
+    }
+  }
+
+  return campaign.territories.map(t => {
+    const delta = deltas.get(t.id) || 0;
+    if (delta === 0) return t;
+    const current = typeof t.influence === 'number' ? t.influence : ownerToInfluence(t.owner, threshold);
+    const next = Math.max(-threshold, Math.min(threshold, current + delta));
+    let nextOwner = t.owner;
+    if (next >= threshold) nextOwner = 'USA';
+    else if (next <= -threshold) nextOwner = 'CSA';
+    else if (next === 0) nextOwner = 'NEUTRAL';
+    // If we crossed a sign boundary into a neutral zone, demote from side.
+    return { ...t, influence: next, owner: nextOwner };
+  });
+};
+
+/** Seed influence from a starting owner (used when creating a GC). */
+export const ownerToInfluence = (owner, threshold = INFLUENCE_THRESHOLD) => {
+  if (owner === 'USA') return threshold;
+  if (owner === 'CSA') return -threshold;
+  return 0;
 };
 
 /**

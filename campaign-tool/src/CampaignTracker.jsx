@@ -820,6 +820,7 @@ const CampaignTracker = () => {
               featureTool={featureTool}
               lineDraft={lineDraft}
               interactionLocked={interactionLocked}
+              influenceThreshold={isGC ? (campaign.grandCampaign.settings.influenceThreshold || 0) : 0}
             />
           </div>
 
@@ -907,43 +908,44 @@ const CampaignTracker = () => {
           </div>
         )}
 
-        {/* Bottom Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Territory List */}
-          <div>
-            <TerritoryList
-              territories={campaign.territories}
-              onTerritorySelect={handleTerritoryClick}
-              spSettings={spSettings}
-            />
-          </div>
-
-          {/* Battle Controls and History */}
-          <div className="space-y-6">
-            {/* Battle Controls */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-              <h3 className="text-xl font-bold text-amber-400 mb-4">
-                Campaign Actions
-              </h3>
-              <div className="space-y-3">
-                <button
-                  onClick={() => setShowBattleRecorder(true)}
-                  className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                >
-                  <Swords className="w-5 h-5" />
-                  Record Battle
-                </button>
-                <button
-                  onClick={advanceTurn}
-                  className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                >
-                  <SkipForward className="w-5 h-5" />
-                  Advance Turn
-                </button>
-              </div>
+        {/* Bottom Section — in Grand Campaign the territory list + manual
+            'Campaign Actions' (Record Battle / Advance Turn) are hidden;
+            the month advances automatically on bag rollover and battles are
+            initiated from the token turn tracker. */}
+        <div className={isGC ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 lg:grid-cols-2 gap-6'}>
+          {!isGC && (
+            <div>
+              <TerritoryList
+                territories={campaign.territories}
+                onTerritorySelect={handleTerritoryClick}
+                spSettings={spSettings}
+              />
             </div>
+          )}
 
-            {/* Battle History Preview */}
+          <div className="space-y-6">
+            {!isGC && (
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+                <h3 className="text-xl font-bold text-amber-400 mb-4">Campaign Actions</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setShowBattleRecorder(true)}
+                    className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                  >
+                    <Swords className="w-5 h-5" />
+                    Record Battle
+                  </button>
+                  <button
+                    onClick={advanceTurn}
+                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
+                  >
+                    <SkipForward className="w-5 h-5" />
+                    Advance Turn
+                  </button>
+                </div>
+              </div>
+            )}
+
             <BattleHistory
               battles={campaign.battles}
               territories={campaign.territories}

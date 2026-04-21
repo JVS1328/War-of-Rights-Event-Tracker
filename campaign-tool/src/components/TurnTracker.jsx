@@ -20,13 +20,16 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveAct
   const bagCSA = gc.bags.CSA.length;
   const discardUSA = gc.bags.discardUSA.length;
   const discardCSA = gc.bags.discardCSA.length;
-  const month = campaign.currentTurn;
+  // Prefer the real calendar label (April 1861 → May 1861 → …) over the raw
+  // turn counter. Falls back to "Month N" if a date isn't tracked.
+  const monthLabel = campaign.campaignDate?.displayString
+    || `Month ${campaign.currentTurn}`;
 
   return (
     <div className="bg-slate-800 rounded-lg border-2 border-amber-500 p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-          <Calendar className="w-5 h-5" /> Month {month}
+          <Calendar className="w-5 h-5" /> {monthLabel}
         </h3>
         <div className="text-xs text-slate-400">
           {gc.monthStartedBy && (

@@ -126,6 +126,7 @@ const MapView = ({
   featureTool = null,     // Grand Campaign: 'city' | 'fort' | 'station' | 'railway' | 'river' | null
   lineDraft = null,       // Grand Campaign: [{x,y},...] points already clicked for in-progress polyline
   interactionLocked = false, // Any edit/setup mode active — suppresses territory click handlers.
+  influenceThreshold = 0, // Grand Campaign: when > 0, territory.influence drives gradient colour.
 }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
@@ -292,6 +293,15 @@ const MapView = ({
   };
 
   const getTerritoryColor = (territory) => {
+    // Grand Campaign: blend the side colour with neutral amber based on how
+    // saturated the territory's influence is. Fully held = full side colour;
+    // freshly contested = amber mixed in.
+    if (typeof territory.influence === 'number' && influenceThreshold > 0) {
+      const strength = Math.min(1, Math.abs(territory.influence) / influenceThreshold);
+      if (territory.influence === 0) return '#f59e0b';
+      const sideColor = territory.influence > 0 ? '#3b82f6' : '#ef4444';
+      return interpolateColor('#f59e0b', sideColor, strength);
+    }
     if (territory.transitionState?.isTransitioning) {
       const transition = territory.transitionState;
       const previousColor = getOwnerColor(transition.previousOwner);

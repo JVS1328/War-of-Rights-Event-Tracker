@@ -75,6 +75,10 @@ export const GRAND_CAMPAIGN_DEFAULTS = {
   vpPerCapitalCapture: 2,
   vpPerTokenWipe: 2,
 
+  // Territory influence: each occupying token shifts the territory ±1 per
+  // month toward their side; at ±threshold the territory flips owner.
+  influenceThreshold: 5,
+
   // Winter months (1-12). Attacker takes extra casualties on these months.
   winterMonths: [12, 1, 2],
 
@@ -185,7 +189,17 @@ export const createGrandCampaignState = (settings = {}) => {
 // Template — a new campaign using the Eastern Theatre (MD/WV/VA/PA) map.
 // ---------------------------------------------------------------------------
 export const createGrandCampaign = () => {
-  const territories = createMaryland1862Territories();
+  const baseTerritories = createMaryland1862Territories();
+  // Seed influence from each territory's starting owner so the map renders
+  // at full saturation on day one.
+  const threshold = GRAND_CAMPAIGN_DEFAULTS.influenceThreshold;
+  const territories = baseTerritories.map(t => ({
+    ...t,
+    influence:
+      t.owner === 'USA' ? threshold :
+      t.owner === 'CSA' ? -threshold :
+      0,
+  }));
   const campaignDate = getDefaultStartDate();
 
   return {
