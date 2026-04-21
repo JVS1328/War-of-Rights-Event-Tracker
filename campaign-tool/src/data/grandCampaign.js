@@ -70,14 +70,22 @@ export const GRAND_CAMPAIGN_DEFAULTS = {
   lastStandMin: 100,
   lastStandMax: 500,
 
+  // Retreat distances in march-MP. Decisive loser (and LS winner's "may
+  // retreat") uses retreatMP; a conquest draw uses retreatMPDraw for both
+  // engaged tokens per rules.
+  retreatMP: 4,
+  retreatMPDraw: 2,
+
   // Victory
   vpToWin: 10,
   vpPerCapitalCapture: 2,
   vpPerTokenWipe: 2,
 
-  // Territory influence: each occupying token shifts the territory ±1 per
-  // month toward their side; at ±threshold the territory flips owner.
+  // Territory influence: each occupying token shifts the territory ±
+  // influencePerToken per month toward their side; at ±influenceThreshold
+  // the territory flips owner.
   influenceThreshold: 5,
+  influencePerToken: 1,
 
   // Winter months (1-12). Attacker takes extra casualties on these months.
   winterMonths: [12, 1, 2],

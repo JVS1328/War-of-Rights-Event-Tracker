@@ -11,6 +11,7 @@ import {
   selectMapsForPickBan,
   rollTerrainType,
   resolveTerrainMaps,
+  isConquestMap,
 } from '../utils/mapSelection';
 import {
   rollWeatherCondition,
@@ -90,11 +91,13 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
   const [bannedMap, setBannedMap] = useState(null);
   const [pickedMap, setPickedMap] = useState(null);
 
-  // Conquest — when toggled, we auto-flip a coin to decide if factions
-  // swap their represented side on the board (Heads = normal, Tails = swapped).
-  const [isConquest, setIsConquest] = useState(false);
+  // Conquest is auto-derived from the picked map against the campaign's
+  // terrain groups (maps that live in any "*Conquest" group). A sides-swap
+  // coin is flipped automatically the first time a conquest map is picked.
+  const terrainGroupsForConquest = campaign.settings?.terrainGroups || {};
+  const isConquest = pickedMap ? isConquestMap(pickedMap, terrainGroupsForConquest) : false;
   const [sidesSwapped, setSidesSwapped] = useState(false);
-  const [conquestFlipShown, setConquestFlipShown] = useState(false);
+  const [conquestFlipForMap, setConquestFlipForMap] = useState(null);
 
   const terrainWeights = defenderTerritory?.terrainWeights;
   const terrainGroups = campaign.settings?.terrainGroups || {};
@@ -164,23 +167,20 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
     });
   };
 
-  const toggleConquest = (checked) => {
-    setIsConquest(checked);
-    if (checked) {
-      // Flip the coin fresh each time conquest is turned on.
-      const swapped = Math.random() < 0.5;
-      setSidesSwapped(swapped);
-      setConquestFlipShown(true);
-    } else {
-      setSidesSwapped(false);
-      setConquestFlipShown(false);
+  // Auto-flip the sides-swap coin the first time we land on a particular
+  // conquest map. Changing to a different conquest map reflips; switching
+  // away and back also reflips. Re-flip button lets the player reroll.
+  useEffect(() => {
+    if (!isConquest) {
+      if (conquestFlipForMap !== null) setConquestFlipForMap(null);
+      return;
     }
-  };
-  const reflipConquest = () => {
-    const swapped = Math.random() < 0.5;
-    setSidesSwapped(swapped);
-    setConquestFlipShown(true);
-  };
+    if (conquestFlipForMap !== pickedMap) {
+      setSidesSwapped(Math.random() < 0.5);
+      setConquestFlipForMap(pickedMap);
+    }
+  }, [isConquest, pickedMap, conquestFlipForMap]);
+  const reflipConquest = () => setSidesSwapped(Math.random() < 0.5);
 
   const reset = () => {
     setBannedMap(null);
@@ -294,27 +294,20 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
 
         {step === 2 && (
           <>
-            {/* Conquest toggle — when active, flips a coin to decide if the
-                two sides swap their represented factions on the board. */}
-            <div className="bg-slate-900 rounded p-3 mb-3">
-              <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isConquest}
-                  onChange={(e) => toggleConquest(e.target.checked)}
-                  className="accent-amber-500"
-                />
-                <Coins className="w-3 h-3 text-amber-400" />
-                <span className="font-semibold">Conquest map</span>
-                <span className="text-[10px] text-slate-400">
-                  (draws allowed; on a coin flip sides may swap)
-                </span>
-              </label>
-              {isConquest && (
+            {/* Conquest auto-detected from the picked map. When active the
+                sides-swap coin is rolled on the fly; the player can re-flip
+                or leave it. Draws are permitted only on conquest maps. */}
+            {isConquest && (
+              <div className="bg-amber-900/30 border border-amber-600 rounded p-3 mb-3">
+                <div className="flex items-center gap-2 text-xs text-amber-200">
+                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-semibold">Conquest map detected</span>
+                  <span className="text-[10px] text-slate-400">— draws allowed, split payout</span>
+                </div>
                 <div className="mt-2 flex items-center gap-2 text-[11px]">
                   <span className="text-slate-400">Coin flip:</span>
                   <span className={`font-bold ${sidesSwapped ? 'text-orange-300' : 'text-green-300'}`}>
-                    {conquestFlipShown ? (sidesSwapped ? 'TAILS — sides swapped' : 'HEADS — normal sides') : '—'}
+                    {sidesSwapped ? 'TAILS — sides swapped' : 'HEADS — normal sides'}
                   </span>
                   <button
                     onClick={reflipConquest}
@@ -323,8 +316,8 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
                     <Dice6 className="w-3 h-3" /> Re-flip
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Terrain roll */}
             <div className="bg-slate-900 rounded p-3 mb-3">

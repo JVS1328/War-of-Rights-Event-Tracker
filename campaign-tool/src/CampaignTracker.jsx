@@ -19,6 +19,7 @@ import GrandBattleModal from './components/GrandBattleModal';
 import GrandBattleResolveModal from './components/GrandBattleResolveModal';
 import GarrisonModal from './components/GarrisonModal';
 import ReplenishModal from './components/ReplenishModal';
+import LSRetreatModal from './components/LSRetreatModal';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -47,6 +48,9 @@ import {
   performBoardRiver as gcPerformBoardRiver,
   performDisembark as gcPerformDisembark,
   findRailwaySnap as gcFindRailwaySnap,
+  performLSRetreat as gcPerformLSRetreat,
+  inchesToMiles as gcInchesToMiles,
+  distance as gcDistance,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -103,6 +107,11 @@ const CampaignTracker = () => {
   const [showGarrisonModal, setShowGarrisonModal] = useState(false);
   // Grand Campaign replenish modal
   const [showReplenishModal, setShowReplenishModal] = useState(false);
+  // Grand Campaign "may retreat" prompt for last-stand winners.
+  // lsRetreat: { tokenId, maxMP } | null — modal open
+  // lsRetreatPicking: { tokenId, maxMP } | null — map-click picking mode
+  const [lsRetreat, setLSRetreat] = useState(null);
+  const [lsRetreatPicking, setLSRetreatPicking] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -467,6 +476,11 @@ const CampaignTracker = () => {
   const handleEnterMoveMode = (tokenId) => setMoveModeTokenId(tokenId);
   const handleCancelMoveMode = () => setMoveModeTokenId(null);
   const handleMapPlaceClick = (point) => {
+    // Last-stand winner is picking a retreat destination.
+    if (isGC && lsRetreatPicking) {
+      handleLSRetreatClick({ x: point.x, y: point.y });
+      return;
+    }
     // In-turn movement targeting has priority whenever a move is being
     // chosen for the currently-drawn token.
     if (isGC && turnMoveActive && campaign.grandCampaign.currentTokenId) {
@@ -628,6 +642,61 @@ const CampaignTracker = () => {
     }
     setCampaign(result.campaign);
     setResolvingBattleId(null);
+    // If a last-stand winner is eligible to retreat, queue the prompt. The
+    // modal lets the player choose to skip, auto-retreat to the nearest
+    // friendly stronghold, or pick a destination on the map within range.
+    if (result.mayRetreat) {
+      setLSRetreat(result.mayRetreat);
+    }
+  };
+
+  // === Last-stand retreat handlers ===
+  const handleLSRetreatSkip = () => setLSRetreat(null);
+  const handleLSRetreatAuto = () => {
+    if (!lsRetreat) return;
+    // Reuse the shared retreat helper by funnelling through a tiny inline
+    // retreat — applyRetreat lives inside grandCampaignLogic but isn't
+    // exported. Instead we auto-pick the nearest friendly stronghold and
+    // call performLSRetreat targeted there.
+    const gc = campaign.grandCampaign;
+    const token = gc.tokens.find(t => t.id === lsRetreat.tokenId);
+    if (!token) { setLSRetreat(null); return; }
+    const strongholds = [
+      ...gc.mapFeatures.cities.filter(c => c.side === token.side),
+      ...gc.mapFeatures.forts.filter(f => f.side === token.side),
+    ];
+    if (strongholds.length === 0) { setLSRetreat(null); return; }
+    const nearest = strongholds.reduce((best, s) =>
+      !best || gcDistance(token.position, s) < gcDistance(token.position, best) ? s : best
+    , null);
+    // Walk as far as retreat range permits along the direct line.
+    const maxInches = lsRetreat.maxMP * gc.settings.marchInchesPerMP;
+    const maxSvg = maxInches * (gc.settings.svgUnitsPerInch || 10);
+    const dx = nearest.x - token.position.x;
+    const dy = nearest.y - token.position.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const step = Math.min(d, maxSvg);
+    const dest = d === 0
+      ? { x: token.position.x, y: token.position.y }
+      : { x: token.position.x + (dx / d) * step, y: token.position.y + (dy / d) * step };
+    const result = gcPerformLSRetreat(campaign, lsRetreat.tokenId, dest, lsRetreat.maxMP);
+    if (!result.error) setCampaign(result.campaign);
+    setLSRetreat(null);
+  };
+  const handleLSRetreatPickSpot = () => {
+    if (!lsRetreat) return;
+    setLSRetreatPicking(lsRetreat);
+    setLSRetreat(null);
+  };
+  const handleLSRetreatClick = (point) => {
+    if (!lsRetreatPicking) return;
+    const result = gcPerformLSRetreat(campaign, lsRetreatPicking.tokenId, point, lsRetreatPicking.maxMP);
+    if (result.error) {
+      // The ruler chip already tells the user — silent no-op.
+      return;
+    }
+    setCampaign(result.campaign);
+    setLSRetreatPicking(null);
   };
 
   // === Board / disembark handlers (all end the turn) ===
@@ -756,7 +825,7 @@ const CampaignTracker = () => {
   const gcMapFeatures = isGC ? campaign.grandCampaign.mapFeatures : null;
   const gcPhase = isGC ? campaign.grandCampaign.phase : null;
   const isSetupActive = gcPhase === 'setup-coinflip' || gcPhase === 'setup-placement';
-  const interactionLocked = gcPhase === 'setup-placement' || turnMoveActive;
+  const interactionLocked = gcPhase === 'setup-placement' || turnMoveActive || !!lsRetreatPicking;
 
   const spSettings = campaign.cpSystemEnabled ? {
     vpBase: campaign.settings?.vpBase || 1,
@@ -879,12 +948,52 @@ const CampaignTracker = () => {
               lineDraft={lineDraft}
               interactionLocked={interactionLocked}
               influenceThreshold={isGC ? (campaign.grandCampaign.settings.influenceThreshold || 0) : 0}
-              rulerFromPoint={isGC && turnMoveActive && campaign.grandCampaign.currentTokenId
-                ? campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId)?.position || null
-                : null}
-              rulerEvaluator={isGC && turnMoveActive && campaign.grandCampaign.currentTokenId
-                ? (point) => gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, point)
-                : null}
+              rulerFromPoint={(() => {
+                if (!isGC) return null;
+                if (lsRetreatPicking) {
+                  return campaign.grandCampaign.tokens.find(t => t.id === lsRetreatPicking.tokenId)?.position || null;
+                }
+                if (turnMoveActive && campaign.grandCampaign.currentTokenId) {
+                  return campaign.grandCampaign.tokens.find(t => t.id === campaign.grandCampaign.currentTokenId)?.position || null;
+                }
+                return null;
+              })()}
+              rulerEvaluator={(() => {
+                if (!isGC) return null;
+                if (lsRetreatPicking) {
+                  // Retreat evaluator: valid if within maxMP march-MP of the
+                  // token's current position. No mode/cost — it's a free
+                  // post-battle reposition.
+                  const gc = campaign.grandCampaign;
+                  const token = gc.tokens.find(t => t.id === lsRetreatPicking.tokenId);
+                  return (point) => {
+                    if (!token?.position) return { valid: false, reason: 'no position' };
+                    const svgPerInch = gc.settings.svgUnitsPerInch || 10;
+                    const inches = Math.sqrt(
+                      (point.x - token.position.x) ** 2 + (point.y - token.position.y) ** 2
+                    ) / svgPerInch;
+                    const maxInches = lsRetreatPicking.maxMP * gc.settings.marchInchesPerMP;
+                    const miles = gcInchesToMiles(inches, gc.settings);
+                    const maxMiles = gcInchesToMiles(maxInches, gc.settings);
+                    if (inches > maxInches) {
+                      return { valid: false, reason: `out of retreat range (${miles} mi / ${maxMiles} mi)` };
+                    }
+                    return {
+                      valid: true,
+                      inches,
+                      miles,
+                      crossings: 0,
+                      mode: 'retreat',
+                      cost: 0,
+                      ratesMilesPerMP: {},
+                    };
+                  };
+                }
+                if (turnMoveActive && campaign.grandCampaign.currentTokenId) {
+                  return (point) => gcEvaluateMove(campaign, campaign.grandCampaign.currentTokenId, point);
+                }
+                return null;
+              })()}
             />
           </div>
 
@@ -1096,6 +1205,41 @@ const CampaignTracker = () => {
               onConfirm={handleConfirmReplenish}
               onCancel={handleCloseReplenish}
             />
+          );
+        })()}
+
+        {/* Grand Campaign — last-stand winner may retreat */}
+        {isGC && lsRetreat && (
+          <LSRetreatModal
+            campaign={campaign}
+            tokenId={lsRetreat.tokenId}
+            maxMP={lsRetreat.maxMP}
+            onSkip={handleLSRetreatSkip}
+            onAuto={handleLSRetreatAuto}
+            onPickSpot={handleLSRetreatPickSpot}
+          />
+        )}
+
+        {/* Grand Campaign — LS retreat destination picker HUD */}
+        {isGC && lsRetreatPicking && (() => {
+          const token = campaign.grandCampaign.tokens.find(t => t.id === lsRetreatPicking.tokenId);
+          if (!token) return null;
+          const maxInches = lsRetreatPicking.maxMP * campaign.grandCampaign.settings.marchInchesPerMP;
+          const maxMiles = gcInchesToMiles(maxInches, campaign.grandCampaign.settings);
+          return (
+            <div className="fixed top-24 right-6 z-40 bg-slate-900/95 border-2 border-orange-500 rounded-lg shadow-xl p-3 w-72">
+              <div className="text-sm font-bold text-orange-300 mb-1">LS Retreat — pick a spot</div>
+              <div className="text-xs text-slate-300">
+                Click within <span className="text-white font-semibold">{maxMiles} miles</span> of {token.name}.
+                Out-of-range hovers show in red.
+              </div>
+              <button
+                onClick={() => setLSRetreatPicking(null)}
+                className="mt-2 w-full bg-slate-700 hover:bg-slate-600 text-white rounded py-1 text-xs"
+              >
+                Cancel (hold position)
+              </button>
+            </div>
           );
         })()}
 

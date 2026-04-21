@@ -117,6 +117,21 @@ export const getMapCooldownMessage = (mapName, cooldownMaps, currentTurn, mapCoo
 };
 
 /**
+ * Is `mapName` a Conquest-type map? We detect by checking every terrain
+ * group whose name contains "conquest" (case-insensitive) and looking for
+ * the map in its list. Matches the structure in data/territories.js where
+ * dedicated "*Conquest" groups hold the conquest variants.
+ */
+export const isConquestMap = (mapName, terrainGroups = {}) => {
+  if (!mapName || !terrainGroups) return false;
+  for (const [groupName, maps] of Object.entries(terrainGroups)) {
+    if (!groupName || !groupName.toLowerCase().includes('conquest')) continue;
+    if (Array.isArray(maps) && maps.includes(mapName)) return true;
+  }
+  return false;
+};
+
+/**
  * Randomly select maps for the pick/ban phase
  * Uses Fisher-Yates shuffle for unbiased random selection
  *

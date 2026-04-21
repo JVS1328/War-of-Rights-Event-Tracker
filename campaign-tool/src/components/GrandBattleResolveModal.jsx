@@ -136,33 +136,48 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
           </div>
         )}
 
-        {/* Winner */}
+        {/* Winner — labelled by the engaged token's name + campaign side.
+            The underlying value we send to resolveGCBattle is still the
+            side string, derived from the clicked token's side. */}
         <div className="mb-3">
           <div className="text-xs font-semibold text-slate-300 mb-1">Outcome</div>
           <div className={`grid ${battle.isConquest ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-            {['USA', 'CSA'].map(s => (
-              <button
-                key={s}
-                onClick={() => setWinner(s)}
-                className={`p-2 rounded border-2 text-sm font-semibold ${
-                  winner === s
-                    ? s === 'USA' ? 'bg-blue-700 border-blue-300 text-white' : 'bg-red-700 border-red-300 text-white'
-                    : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
-                }`}
-              >
-                {s} Wins
-              </button>
-            ))}
+            {[
+              { token: attacker, label: 'Attacker wins' },
+              { token: defender, label: 'Defender wins' },
+            ].map(({ token, label }) => {
+              const side = token.side;
+              return (
+                <button
+                  key={token.id}
+                  onClick={() => setWinner(side)}
+                  className={`p-2 rounded border-2 text-sm font-semibold flex flex-col items-center gap-0.5 ${
+                    winner === side
+                      ? side === 'USA' ? 'bg-blue-700 border-blue-300 text-white' : 'bg-red-700 border-red-300 text-white'
+                      : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+                  }`}
+                >
+                  <span className="truncate max-w-full">
+                    {token.name}
+                    <span className={`text-[10px] font-bold ml-1 ${side === 'USA' ? 'text-blue-300' : 'text-red-300'}`}>
+                      ({side})
+                    </span>
+                  </span>
+                  <span className="text-[10px] text-slate-300/80 font-normal">{label}</span>
+                </button>
+              );
+            })}
             {battle.isConquest && (
               <button
                 onClick={() => setWinner('DRAW')}
-                className={`p-2 rounded border-2 text-sm font-semibold ${
+                className={`p-2 rounded border-2 text-sm font-semibold flex flex-col items-center gap-0.5 ${
                   winner === 'DRAW'
                     ? 'bg-amber-600 border-amber-300 text-white'
                     : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
                 }`}
               >
-                Draw
+                <span>Draw</span>
+                <span className="text-[10px] text-slate-300/80 font-normal">split payout, both retreat</span>
               </button>
             )}
           </div>

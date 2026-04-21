@@ -85,6 +85,20 @@ const FIELD_GROUPS = [
     ],
   },
   {
+    title: 'Retreat (march-MP)',
+    fields: [
+      { key: 'retreatMP', label: 'Decisive loser / LS winner', type: 'number' },
+      { key: 'retreatMPDraw', label: 'Conquest draw (each side)', type: 'number' },
+    ],
+  },
+  {
+    title: 'Territory Influence',
+    fields: [
+      { key: 'influencePerToken', label: 'Influence per occupying token / month', type: 'number' },
+      { key: 'influenceThreshold', label: 'Influence to fully capture a territory', type: 'number' },
+    ],
+  },
+  {
     title: 'Victory',
     fields: [
       { key: 'vpToWin', label: 'VP to win', type: 'number' },

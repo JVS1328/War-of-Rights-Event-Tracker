@@ -507,6 +507,7 @@ export const applyInfluenceTick = (campaign) => {
   // Bucket each token to a territory via DOM hit-test; cheap enough at this
   // scale (dozens of tokens × dozens of territories).
   const deltas = new Map(); // territoryId → net delta
+  const perToken = campaign.grandCampaign.settings.influencePerToken ?? 1;
   for (const token of campaign.grandCampaign.tokens) {
     if (!token.position || token.status === 'wiped') continue;
     const pt = svg.createSVGPoint();
@@ -517,7 +518,7 @@ export const applyInfluenceTick = (campaign) => {
       try {
         if (path.isPointInFill && path.isPointInFill(pt)) {
           const id = path.dataset.territoryId;
-          const d = token.side === 'USA' ? 1 : -1;
+          const d = token.side === 'USA' ? perToken : -perToken;
           deltas.set(id, (deltas.get(id) || 0) + d);
           break;
         }
@@ -1698,6 +1699,9 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     },
   };
 
+  // Track an optional LS-winner "may retreat" prompt — resolved in the UI.
+  let mayRetreat = null;
+
   if (!isDraw) {
     // Decisive battle — the LS-loser-is-wiped, retreat-loser, and retreat-
     // LS-winner rules all key off a specific loser/winner.
@@ -1717,17 +1721,18 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     }
 
     // Auto-retreat the losing engaged token toward its nearest friendly
-    // city/fort (up to 4 march-MP). Winner stays unless they were in LS.
+    // city/fort. Distance is the configured retreatMP (default 4).
     const loserSide = winner === 'USA' ? battle.defender : battle.attacker;
     if (loserSide === 'USA' || loserSide === 'CSA') {
       const loserToken = workingCampaign.grandCampaign.tokens.find(t => t.id === loserTokenId);
       if (loserToken && loserToken.status !== 'wiped') {
-        workingCampaign = applyRetreat(workingCampaign, loserTokenId, 4);
+        workingCampaign = applyRetreat(workingCampaign, loserTokenId, gc.settings.retreatMP);
       }
     }
 
-    // A last-stand WINNER takes 0 cas and MAY retreat 4 hexes — we retreat
-    // automatically so the LS unit disengages after surviving.
+    // A last-stand WINNER survives with 0 cas and MAY retreat up to
+    // retreatMP. We surface a prompt instead of auto-retreating so the
+    // player can choose to hold or pick a destination.
     const winnerEngagedId = winner === 'USA'
       ? (battle.attacker === 'USA' ? battle.attackerTokenId : battle.defenderTokenId)
       : (battle.attacker === 'CSA' ? battle.attackerTokenId : battle.defenderTokenId);
@@ -1736,16 +1741,16 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     if (winnerWasLS) {
       const wToken = workingCampaign.grandCampaign.tokens.find(t => t.id === winnerEngagedId);
       if (wToken && wToken.status !== 'wiped') {
-        workingCampaign = applyRetreat(workingCampaign, winnerEngagedId, 4);
+        mayRetreat = { tokenId: winnerEngagedId, maxMP: gc.settings.retreatMP };
       }
     }
   } else {
-    // Conquest draw — both engaged tokens retreat 2 march-MP toward their
-    // own side's nearest friendly city/fort. No LS auto-wipe (nobody lost).
+    // Conquest draw — both engaged tokens retreat retreatMPDraw march-MP
+    // toward their own side's nearest friendly city/fort. No LS auto-wipe.
     for (const engagedId of [battle.attackerTokenId, battle.defenderTokenId]) {
       const t = workingCampaign.grandCampaign.tokens.find(tt => tt.id === engagedId);
       if (t && t.status !== 'wiped') {
-        workingCampaign = applyRetreat(workingCampaign, engagedId, 2);
+        workingCampaign = applyRetreat(workingCampaign, engagedId, gc.settings.retreatMPDraw);
       }
     }
   }
@@ -1889,6 +1894,41 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
         pools: newPools,
         vpEvents,
         bags: scrubbedBags,
+      },
+    },
+    error: null,
+    mayRetreat,
+  };
+};
+
+/**
+ * Perform a "may retreat" move for an LS winner. Validates that the
+ * destination is within `maxMP` march-MP of the token's current position
+ * and the spot is clear. No MP cost, no turn effect (the turn already
+ * ended via combat).
+ */
+export const performLSRetreat = (campaign, tokenId, destination, maxMP) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || !token.position) return { campaign, error: 'token has no position' };
+  const maxInches = maxMP * gc.settings.marchInchesPerMP;
+  const inches = distance(token.position, destination) / (gc.settings.svgUnitsPerInch || 1);
+  if (inches > maxInches) {
+    return { campaign, error: `out of retreat range (${inchesToMiles(inches, gc.settings)} miles — limit ${inchesToMiles(maxInches, gc.settings)})` };
+  }
+  if (!isPositionClear(campaign, destination, tokenId)) {
+    return { campaign, error: 'destination overlaps another token' };
+  }
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        tokens: gc.tokens.map(t => t.id === tokenId
+          ? { ...t, position: { x: destination.x, y: destination.y }, boarded: null }
+          : t
+        ),
       },
     },
     error: null,
