@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Swords, X, Shield, Users, Map as MapIcon, Cloud, Sun, Moon, CloudRain, Dice6, Trees } from 'lucide-react';
+import { Swords, X, Shield, Users, Map as MapIcon, Cloud, Sun, Moon, CloudRain, Dice6, Trees, Coins } from 'lucide-react';
 import {
   findAttackTargets,
   findSupporters,
@@ -90,6 +90,12 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
   const [bannedMap, setBannedMap] = useState(null);
   const [pickedMap, setPickedMap] = useState(null);
 
+  // Conquest — when toggled, we auto-flip a coin to decide if factions
+  // swap their represented side on the board (Heads = normal, Tails = swapped).
+  const [isConquest, setIsConquest] = useState(false);
+  const [sidesSwapped, setSidesSwapped] = useState(false);
+  const [conquestFlipShown, setConquestFlipShown] = useState(false);
+
   const terrainWeights = defenderTerritory?.terrainWeights;
   const terrainGroups = campaign.settings?.terrainGroups || {};
   const mapCooldownTurns = campaign.settings?.mapCooldownTurns ?? 2;
@@ -153,7 +159,27 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
         id: timeResult.condition.id,
         name: timeResult.condition.name,
       } : null,
+      isConquest,
+      sidesSwapped: isConquest ? sidesSwapped : false,
     });
+  };
+
+  const toggleConquest = (checked) => {
+    setIsConquest(checked);
+    if (checked) {
+      // Flip the coin fresh each time conquest is turned on.
+      const swapped = Math.random() < 0.5;
+      setSidesSwapped(swapped);
+      setConquestFlipShown(true);
+    } else {
+      setSidesSwapped(false);
+      setConquestFlipShown(false);
+    }
+  };
+  const reflipConquest = () => {
+    const swapped = Math.random() < 0.5;
+    setSidesSwapped(swapped);
+    setConquestFlipShown(true);
   };
 
   const reset = () => {
@@ -268,6 +294,38 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
 
         {step === 2 && (
           <>
+            {/* Conquest toggle — when active, flips a coin to decide if the
+                two sides swap their represented factions on the board. */}
+            <div className="bg-slate-900 rounded p-3 mb-3">
+              <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isConquest}
+                  onChange={(e) => toggleConquest(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                <Coins className="w-3 h-3 text-amber-400" />
+                <span className="font-semibold">Conquest map</span>
+                <span className="text-[10px] text-slate-400">
+                  (draws allowed; on a coin flip sides may swap)
+                </span>
+              </label>
+              {isConquest && (
+                <div className="mt-2 flex items-center gap-2 text-[11px]">
+                  <span className="text-slate-400">Coin flip:</span>
+                  <span className={`font-bold ${sidesSwapped ? 'text-orange-300' : 'text-green-300'}`}>
+                    {conquestFlipShown ? (sidesSwapped ? 'TAILS — sides swapped' : 'HEADS — normal sides') : '—'}
+                  </span>
+                  <button
+                    onClick={reflipConquest}
+                    className="ml-auto bg-amber-700 hover:bg-amber-600 text-white rounded px-2 py-0.5 text-[10px] flex items-center gap-1"
+                  >
+                    <Dice6 className="w-3 h-3" /> Re-flip
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Terrain roll */}
             <div className="bg-slate-900 rounded p-3 mb-3">
               <div className="flex items-center justify-between mb-1.5">

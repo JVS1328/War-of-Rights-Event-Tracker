@@ -123,10 +123,23 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
           Supporters absorb 40% of their side's total.
         </div>
 
+        {/* Conquest indicator — so players remember whether the sides were
+            swapped on the WoR board. */}
+        {battle.isConquest && (
+          <div className="mb-3 bg-amber-900/40 border border-amber-600 rounded p-2 text-[11px] text-amber-200">
+            <span className="font-bold">Conquest map.</span>{' '}
+            {battle.sidesSwapped
+              ? 'Coin flip: TAILS — sides were swapped (USA plays CSA and vice versa on the WoR side).'
+              : 'Coin flip: HEADS — teams played their normal factions.'}
+            <br />
+            Draws are allowed and split the battle payout evenly; both engaged tokens retreat 2 march-MP.
+          </div>
+        )}
+
         {/* Winner */}
         <div className="mb-3">
-          <div className="text-xs font-semibold text-slate-300 mb-1">Winner</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="text-xs font-semibold text-slate-300 mb-1">Outcome</div>
+          <div className={`grid ${battle.isConquest ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
             {['USA', 'CSA'].map(s => (
               <button
                 key={s}
@@ -137,9 +150,21 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
                     : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
                 }`}
               >
-                {s}
+                {s} Wins
               </button>
             ))}
+            {battle.isConquest && (
+              <button
+                onClick={() => setWinner('DRAW')}
+                className={`p-2 rounded border-2 text-sm font-semibold ${
+                  winner === 'DRAW'
+                    ? 'bg-amber-600 border-amber-300 text-white'
+                    : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+                }`}
+              >
+                Draw
+              </button>
+            )}
           </div>
         </div>
 

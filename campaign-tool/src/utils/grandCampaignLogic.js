@@ -1406,6 +1406,8 @@ export const createGCBattle = (campaign, payload) => {
     terrainType = null,
     weather = null,
     time = null,
+    isConquest = false,
+    sidesSwapped = false,
   } = payload;
 
   const attacker = gc.tokens.find(t => t.id === attackerId);
@@ -1437,6 +1439,8 @@ export const createGCBattle = (campaign, payload) => {
     terrainType,
     weather,
     time,
+    isConquest,
+    sidesSwapped,
     // territoryId — real one if we resolved it, else sentinel for validation.
     territoryId: defenderTerritory?.id || 'grand-campaign',
   };
@@ -1505,7 +1509,7 @@ const nearestFriendlyStronghold = (gc, side, from) => {
 };
 
 /** Retreat `tokenId` toward its side's nearest city/fort, up to 4 march-MP. */
-const applyRetreat = (campaign, tokenId) => {
+const applyRetreat = (campaign, tokenId, mp = 4) => {
   if (!isGrandCampaign(campaign)) return campaign;
   const gc = campaign.grandCampaign;
   const token = gc.tokens.find(t => t.id === tokenId);
@@ -1514,7 +1518,7 @@ const applyRetreat = (campaign, tokenId) => {
   const target = nearestFriendlyStronghold(gc, token.side, token.position);
   if (!target) return campaign;
 
-  const maxInches = 4 * gc.settings.marchInchesPerMP; // per rules: 4 hexes
+  const maxInches = mp * gc.settings.marchInchesPerMP; // per rules: 4 hexes for a win/loss; 2 for a conquest draw
   const maxSvg = inchesToSvg(maxInches, gc.settings);
   const dx = target.x - token.position.x;
   const dy = target.y - token.position.y;
@@ -1559,7 +1563,10 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
   const battle = campaign.battles.find(b => b.id === battleId);
   if (!battle || battle.mode !== 'grand') return { campaign, error: 'battle not found' };
   if (battle.status !== 'pending') return { campaign, error: 'battle already resolved' };
-  if (winner !== 'USA' && winner !== 'CSA') return { campaign, error: 'invalid winner' };
+  const isDraw = winner === 'DRAW';
+  if (!isDraw && winner !== 'USA' && winner !== 'CSA') return { campaign, error: 'invalid winner' };
+  // A draw is only possible for conquest battles per GC rules.
+  if (isDraw && !battle.isConquest) return { campaign, error: 'only conquest battles can end in a draw' };
 
   const gc = campaign.grandCampaign;
   const attacker = gc.tokens.find(t => t.id === battle.attackerTokenId);
@@ -1650,6 +1657,25 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     battle.defenderSupportId,
   ].filter(Boolean);
 
+  // Pre-compute the per-token casualty each participant will take. A side
+  // with a supporter splits 60/40 (engaged / supporter) per rules; without
+  // a supporter the engaged token takes the full hit. Used by both the
+  // manpower update AND the regiment-leaderboard bookkeeping below, so
+  // we only compute it once.
+  const tokenCas = new Map();
+  if (battle.attackerSupportId) {
+    tokenCas.set(battle.attackerTokenId, Math.round(attackerTotal * 0.6));
+    tokenCas.set(battle.attackerSupportId, Math.round(attackerTotal * 0.4));
+  } else {
+    tokenCas.set(battle.attackerTokenId, attackerTotal);
+  }
+  if (battle.defenderSupportId) {
+    tokenCas.set(battle.defenderTokenId, Math.round(defenderTotal * 0.6));
+    tokenCas.set(battle.defenderSupportId, Math.round(defenderTotal * 0.4));
+  } else {
+    tokenCas.set(battle.defenderTokenId, defenderTotal);
+  }
+
   // Apply manpower changes. Supporters absorb 40% of their side's casualties.
   let workingCampaign = {
     ...campaign,
@@ -1658,14 +1684,7 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
       mapFeatures: workingCampaignMapFeatures,
       tokens: gc.tokens.map(t => {
         if (!participantIds.includes(t.id)) return t;
-        let cas = 0;
-        if (t.id === battle.attackerTokenId) cas = Math.round(attackerTotal * 0.6);
-        else if (t.id === battle.attackerSupportId) cas = Math.round(attackerTotal * 0.4);
-        else if (t.id === battle.defenderTokenId) cas = Math.round(defenderTotal * 0.6);
-        else if (t.id === battle.defenderSupportId) cas = Math.round(defenderTotal * 0.4);
-        // With no supporter, the engaged token takes the full hit.
-        if (t.id === battle.attackerTokenId && !battle.attackerSupportId) cas = attackerTotal;
-        if (t.id === battle.defenderTokenId && !battle.defenderSupportId) cas = defenderTotal;
+        const cas = tokenCas.get(t.id) || 0;
         const newManpower = Math.max(0, t.manpower - cas);
         return {
           ...t,
@@ -1679,45 +1698,55 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     },
   };
 
-  // A last-stand token that lost the battle is wiped outright, per rules.
-  const loserTokenId = winner === 'USA' ? battle.defenderTokenId : battle.attackerTokenId;
-  const loserWasLS = (loserTokenId === battle.attackerTokenId && attackerLS)
-    || (loserTokenId === battle.defenderTokenId && defenderLS);
-  if (loserWasLS) {
-    workingCampaign = {
-      ...workingCampaign,
-      grandCampaign: {
-        ...workingCampaign.grandCampaign,
-        tokens: workingCampaign.grandCampaign.tokens.map(t =>
-          t.id === loserTokenId ? { ...t, manpower: 0, status: 'wiped', inCombat: false } : t
-        ),
-      },
-    };
-  }
-
-  // Auto-retreat the losing engaged token toward its nearest friendly
-  // city/fort (up to 4 march-MP). Winner stays. If the loser is already
-  // wiped (including LS-auto-wipe) skip the retreat.
-  const loserSide = winner === 'USA' ? battle.defender : battle.attacker;
-  if (loserSide === 'USA' || loserSide === 'CSA') {
-    const loserToken = workingCampaign.grandCampaign.tokens.find(t => t.id === loserTokenId);
-    if (loserToken && loserToken.status !== 'wiped') {
-      workingCampaign = applyRetreat(workingCampaign, loserTokenId);
+  if (!isDraw) {
+    // Decisive battle — the LS-loser-is-wiped, retreat-loser, and retreat-
+    // LS-winner rules all key off a specific loser/winner.
+    const loserTokenId = winner === 'USA' ? battle.defenderTokenId : battle.attackerTokenId;
+    const loserWasLS = (loserTokenId === battle.attackerTokenId && attackerLS)
+      || (loserTokenId === battle.defenderTokenId && defenderLS);
+    if (loserWasLS) {
+      workingCampaign = {
+        ...workingCampaign,
+        grandCampaign: {
+          ...workingCampaign.grandCampaign,
+          tokens: workingCampaign.grandCampaign.tokens.map(t =>
+            t.id === loserTokenId ? { ...t, manpower: 0, status: 'wiped', inCombat: false } : t
+          ),
+        },
+      };
     }
-  }
 
-  // A last-stand WINNER takes 0 cas (already handled) and MAY retreat 4
-  // hexes toward its nearest friendly city — we retreat automatically for
-  // simplicity so the LS unit disengages after surviving.
-  const winnerEngagedId = winner === 'USA'
-    ? (battle.attacker === 'USA' ? battle.attackerTokenId : battle.defenderTokenId)
-    : (battle.attacker === 'CSA' ? battle.attackerTokenId : battle.defenderTokenId);
-  const winnerWasLS = (winnerEngagedId === battle.attackerTokenId && attackerLS)
-    || (winnerEngagedId === battle.defenderTokenId && defenderLS);
-  if (winnerWasLS) {
-    const wToken = workingCampaign.grandCampaign.tokens.find(t => t.id === winnerEngagedId);
-    if (wToken && wToken.status !== 'wiped') {
-      workingCampaign = applyRetreat(workingCampaign, winnerEngagedId);
+    // Auto-retreat the losing engaged token toward its nearest friendly
+    // city/fort (up to 4 march-MP). Winner stays unless they were in LS.
+    const loserSide = winner === 'USA' ? battle.defender : battle.attacker;
+    if (loserSide === 'USA' || loserSide === 'CSA') {
+      const loserToken = workingCampaign.grandCampaign.tokens.find(t => t.id === loserTokenId);
+      if (loserToken && loserToken.status !== 'wiped') {
+        workingCampaign = applyRetreat(workingCampaign, loserTokenId, 4);
+      }
+    }
+
+    // A last-stand WINNER takes 0 cas and MAY retreat 4 hexes — we retreat
+    // automatically so the LS unit disengages after surviving.
+    const winnerEngagedId = winner === 'USA'
+      ? (battle.attacker === 'USA' ? battle.attackerTokenId : battle.defenderTokenId)
+      : (battle.attacker === 'CSA' ? battle.attackerTokenId : battle.defenderTokenId);
+    const winnerWasLS = (winnerEngagedId === battle.attackerTokenId && attackerLS)
+      || (winnerEngagedId === battle.defenderTokenId && defenderLS);
+    if (winnerWasLS) {
+      const wToken = workingCampaign.grandCampaign.tokens.find(t => t.id === winnerEngagedId);
+      if (wToken && wToken.status !== 'wiped') {
+        workingCampaign = applyRetreat(workingCampaign, winnerEngagedId, 4);
+      }
+    }
+  } else {
+    // Conquest draw — both engaged tokens retreat 2 march-MP toward their
+    // own side's nearest friendly city/fort. No LS auto-wipe (nobody lost).
+    for (const engagedId of [battle.attackerTokenId, battle.defenderTokenId]) {
+      const t = workingCampaign.grandCampaign.tokens.find(tt => tt.id === engagedId);
+      if (t && t.status !== 'wiped') {
+        workingCampaign = applyRetreat(workingCampaign, engagedId, 2);
+      }
     }
   }
 
@@ -1755,15 +1784,24 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
       : b
   );
 
-  // Battle victor gets the $400 prize.
+  // Victor payout — or split evenly on a conquest draw per rules.
   const winPayout = gc.settings.moneyPerBattleWin;
-  const newPools = {
-    ...workingCampaign.grandCampaign.pools,
-    [winner]: {
-      ...workingCampaign.grandCampaign.pools[winner],
-      treasury: workingCampaign.grandCampaign.pools[winner].treasury + winPayout,
-    },
-  };
+  let newPools;
+  if (isDraw) {
+    const half = Math.floor(winPayout / 2);
+    newPools = {
+      USA: { ...workingCampaign.grandCampaign.pools.USA, treasury: workingCampaign.grandCampaign.pools.USA.treasury + half },
+      CSA: { ...workingCampaign.grandCampaign.pools.CSA, treasury: workingCampaign.grandCampaign.pools.CSA.treasury + half },
+    };
+  } else {
+    newPools = {
+      ...workingCampaign.grandCampaign.pools,
+      [winner]: {
+        ...workingCampaign.grandCampaign.pools[winner],
+        treasury: workingCampaign.grandCampaign.pools[winner].treasury + winPayout,
+      },
+    };
+  }
 
   // Scrub wiped token IDs from every bag so they stop clogging the rotation.
   const wipedIds = new Set(
@@ -1779,12 +1817,73 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     discardCSA: strip(workingCampaign.grandCampaign.bags.discardCSA),
   };
 
+  // Update the regiment leaderboard. Every participant's regiment gets
+  // credited with a win or loss, their share of the casualties, and a
+  // summary entry in stats.battles. VP credit for wiping an enemy goes to
+  // every regiment on the winning side (team effort); VP is deducted when
+  // your own token is the one wiped.
+  const participants = [
+    { id: battle.attackerTokenId,    role: 'Attacker' },
+    { id: battle.defenderTokenId,    role: 'Defender' },
+    ...(battle.attackerSupportId ? [{ id: battle.attackerSupportId, role: 'Attacker Support' }] : []),
+    ...(battle.defenderSupportId ? [{ id: battle.defenderSupportId, role: 'Defender Support' }] : []),
+  ];
+  const enemySide = winner === 'USA' ? 'CSA' : 'USA';
+  const enemyWipesThisBattle = participants
+    .map(p => workingCampaign.grandCampaign.tokens.find(t => t.id === p.id))
+    .filter(t => t && t.side === enemySide && wipedIds.has(t.id))
+    .length;
+  const vpEarnedPerWinner = enemyWipesThisBattle * gc.settings.vpPerTokenWipe;
+
+  const updatedRegimentStats = { ...(workingCampaign.regimentStats || {}) };
+  for (const p of participants) {
+    const token = workingCampaign.grandCampaign.tokens.find(t => t.id === p.id);
+    if (!token || !token.regimentId) continue;
+    const regId = token.regimentId;
+    if (!updatedRegimentStats[regId]) {
+      updatedRegimentStats[regId] = {
+        wins: 0, losses: 0, casualties: 0, spLost: 0,
+        vpGained: 0, vpLost: 0, battles: [],
+      };
+    }
+    const stats = updatedRegimentStats[regId];
+    const won = !isDraw && winner === token.side;
+    const cas = tokenCas.get(p.id) || 0;
+    const wasWiped = wipedIds.has(p.id);
+    // In a draw nobody "won", so VP gain goes by wipes only on each side.
+    const vpGained = (!isDraw && won) ? vpEarnedPerWinner : 0;
+    const vpLost = wasWiped ? gc.settings.vpPerTokenWipe : 0;
+
+    // Draws don't increment wins/losses — the battle counts in stats.battles
+    // but doesn't change W/L record.
+    if (!isDraw) {
+      if (won) stats.wins += 1; else stats.losses += 1;
+    }
+    stats.casualties += cas;
+    stats.vpGained += vpGained;
+    stats.vpLost += vpLost;
+    stats.battles.push({
+      battleId,
+      turn: campaign.currentTurn,
+      territoryName: battle.locationLabel || 'Grand Campaign',
+      mapName: battle.mapName,
+      role: p.role,
+      won,
+      draw: isDraw,
+      casualties: cas,
+      spLost: 0,
+      vpGained,
+      vpLost,
+    });
+  }
+
   return {
     campaign: {
       ...workingCampaign,
       battles: updatedBattles,
       victoryPointsUSA: vpUSA,
       victoryPointsCSA: vpCSA,
+      regimentStats: updatedRegimentStats,
       grandCampaign: {
         ...workingCampaign.grandCampaign,
         pools: newPools,

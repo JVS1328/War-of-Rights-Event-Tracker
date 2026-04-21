@@ -1,4 +1,4 @@
-import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords, Package, Shield, Train, Waves, LogOut } from 'lucide-react';
+import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords, Package, Shield, Train, Waves, LogOut, Trophy, MapPin, Skull, Medal } from 'lucide-react';
 import { findAttackTargets, findStrongholdAtToken, canReplenish, canBoardRail, canBoardRiver } from '../utils/grandCampaignLogic';
 
 /**
@@ -163,34 +163,79 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveAct
         </div>
       </div>
 
-      {/* National pools */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-slate-900 rounded p-2">
-          <div className="text-[10px] uppercase tracking-wide text-blue-400 mb-1">USA Pool</div>
-          <div className="text-xs text-slate-300 flex items-center gap-1">
-            <DollarSign className="w-3 h-3 text-green-400" />
-            <span className="text-white font-semibold">${gc.pools.USA.treasury.toLocaleString()}</span>
+      {/* National pools — treasury / manpower / monthly income preview /
+          cities / battle wins / total casualties suffered / current VP. */}
+      {(() => {
+        const cityUSA = gc.mapFeatures.cities.filter(c => c.side === 'USA').length;
+        const cityCSA = gc.mapFeatures.cities.filter(c => c.side === 'CSA').length;
+        const winsUSA = campaign.battles.filter(b => b.status === 'completed' && b.winner === 'USA').length;
+        const winsCSA = campaign.battles.filter(b => b.status === 'completed' && b.winner === 'CSA').length;
+        const incomePerCity = gc.settings.incomePerCity;
+        const manpowerPerCity = gc.settings.manpowerPerCity;
+        const incomeUSA = cityUSA * incomePerCity;
+        const incomeCSA = cityCSA * incomePerCity;
+        const manpowerRegenUSA = cityUSA * manpowerPerCity;
+        const manpowerRegenCSA = cityCSA * manpowerPerCity;
+
+        // Total casualties suffered per side across every resolved GC
+        // battle. casualties.{attacker,defender}Total are the modified
+        // numbers we actually took off tokens, including support splits.
+        let casUSA = 0, casCSA = 0;
+        for (const b of campaign.battles) {
+          if (b.mode !== 'grand' || b.status !== 'completed' || !b.casualties) continue;
+          const atkSide = b.attacker;
+          const defSide = b.defender;
+          if (atkSide === 'USA') casUSA += b.casualties.attackerTotal || 0;
+          else if (atkSide === 'CSA') casCSA += b.casualties.attackerTotal || 0;
+          if (defSide === 'USA') casUSA += b.casualties.defenderTotal || 0;
+          else if (defSide === 'CSA') casCSA += b.casualties.defenderTotal || 0;
+        }
+        const vpUSA = campaign.victoryPointsUSA || 0;
+        const vpCSA = campaign.victoryPointsCSA || 0;
+        const vpToWin = gc.settings.vpToWin;
+
+        const sideCard = (label, tone, treasury, manpower, income, manpowerRegen, wins, cities, casualties, vp) => (
+          <div className="bg-slate-900 rounded p-2">
+            <div className={`text-[10px] uppercase tracking-wide ${tone} mb-1`}>{label}</div>
+            <div className="text-xs text-slate-300 flex items-center gap-1">
+              <DollarSign className="w-3 h-3 text-green-400" />
+              <span className="text-white font-semibold">${treasury.toLocaleString()}</span>
+              <span className="text-[10px] text-green-400/80 ml-auto">+${income}/mo</span>
+            </div>
+            <div className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
+              <Users className="w-3 h-3 text-amber-400" />
+              <span className="text-white font-semibold">{manpower.toLocaleString()}</span>
+              <span className="text-[10px] text-amber-400/80 ml-auto">+{manpowerRegen}/mo</span>
+            </div>
+            <div className="text-xs text-slate-300 flex items-center gap-1 mt-0.5 pt-1 border-t border-slate-700">
+              <MapPin className="w-3 h-3 text-slate-400" />
+              <span className="text-white">{cities}</span>
+              <span className="text-[10px] text-slate-500">cities</span>
+              <Trophy className="w-3 h-3 text-slate-400 ml-auto" />
+              <span className="text-white">{wins}</span>
+              <span className="text-[10px] text-slate-500">wins</span>
+            </div>
+            <div className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
+              <Skull className="w-3 h-3 text-slate-400" />
+              <span className="text-white">{casualties.toLocaleString()}</span>
+              <span className="text-[10px] text-slate-500">lost</span>
+              <Medal className="w-3 h-3 text-amber-400 ml-auto" />
+              <span className="text-amber-300 font-semibold">{vp}</span>
+              <span className="text-[10px] text-slate-500">/ {vpToWin} VP</span>
+            </div>
           </div>
-          <div className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
-            <Users className="w-3 h-3 text-amber-400" />
-            <span className="text-white font-semibold">{gc.pools.USA.manpower.toLocaleString()}</span>
+        );
+
+        return (
+          <div className="grid grid-cols-2 gap-2">
+            {sideCard('USA Pool', 'text-blue-400', gc.pools.USA.treasury, gc.pools.USA.manpower, incomeUSA, manpowerRegenUSA, winsUSA, cityUSA, casUSA, vpUSA)}
+            {sideCard('CSA Pool', 'text-red-400', gc.pools.CSA.treasury, gc.pools.CSA.manpower, incomeCSA, manpowerRegenCSA, winsCSA, cityCSA, casCSA, vpCSA)}
           </div>
-        </div>
-        <div className="bg-slate-900 rounded p-2">
-          <div className="text-[10px] uppercase tracking-wide text-red-400 mb-1">CSA Pool</div>
-          <div className="text-xs text-slate-300 flex items-center gap-1">
-            <DollarSign className="w-3 h-3 text-green-400" />
-            <span className="text-white font-semibold">${gc.pools.CSA.treasury.toLocaleString()}</span>
-          </div>
-          <div className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
-            <Users className="w-3 h-3 text-amber-400" />
-            <span className="text-white font-semibold">{gc.pools.CSA.manpower.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       <div className="text-[10px] text-slate-500 mt-2 italic">
-        When both bags empty, the month rolls over: income, manpower regen, and the first drawer flips.
+        When both bags empty, the month rolls over: income, manpower regen, and the first drawer flips. Per-month adds shown above reflect {gc.settings.incomePerCity}$ and {gc.settings.manpowerPerCity} manpower per owned city.
       </div>
     </div>
   );

@@ -1069,6 +1069,7 @@ const CampaignTracker = () => {
         <HelpGuide
           isOpen={showHelpGuide}
           onClose={() => setShowHelpGuide(false)}
+          campaignStyle={isGC ? 'grand' : 'standard'}
         />
 
         {/* Grand Campaign Setup Wizard — opened either explicitly from the
