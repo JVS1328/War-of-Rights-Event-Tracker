@@ -160,6 +160,24 @@ const BattleHistory = ({ battles, territories, onEditBattle, campaign = null }) 
                             : (getTerritoryName(battle.territoryId) || 'Unknown')}
                         </span>
                       </div>
+                      {battle.mode === 'grand' && battle.terrainType && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Terrain:</span>
+                          <span className="text-white font-semibold text-right">{battle.terrainType}</span>
+                        </div>
+                      )}
+                      {battle.mode === 'grand' && battle.weather?.name && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Weather:</span>
+                          <span className="text-white font-semibold text-right">{battle.weather.name}</span>
+                        </div>
+                      )}
+                      {battle.mode === 'grand' && battle.time?.name && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Time:</span>
+                          <span className="text-white font-semibold text-right">{battle.time.name}</span>
+                        </div>
+                      )}
                       {battle.mode === 'grand' && campaign?.grandCampaign && (() => {
                         const gc = campaign.grandCampaign;
                         const t = (id) => gc.tokens.find(x => x.id === id)?.name || '—';

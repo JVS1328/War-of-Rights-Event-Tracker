@@ -350,19 +350,25 @@ const MapView = ({
 
   // Zoom and pan handlers
   // React attaches onWheel as a passive listener, so preventDefault() is a
-  // no-op there. Attach a non-passive wheel listener on the SVG element
-  // directly so shift-scroll can consume the page scroll when zooming.
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return undefined;
+  // no-op there. Install a non-passive wheel listener on the SVG element
+  // directly via a callback ref — plain useEffect won't re-run when the SVG
+  // finally mounts after the county-data loading screen.
+  const attachSvg = useCallback((node) => {
+    // Detach from the previous element, if any.
+    if (svgRef.current && svgRef.current._wheelCleanup) {
+      svgRef.current._wheelCleanup();
+      svgRef.current._wheelCleanup = null;
+    }
+    svgRef.current = node;
+    if (!node) return;
     const onWheel = (e) => {
       if (!e.shiftKey) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       setZoom(z => Math.max(0.5, Math.min(5, z * delta)));
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    node.addEventListener('wheel', onWheel, { passive: false });
+    node._wheelCleanup = () => node.removeEventListener('wheel', onWheel);
   }, []);
 
   const handleMouseDown = (e) => {
@@ -591,7 +597,7 @@ const MapView = ({
 
       <div ref={mapContainerRef} className="relative bg-slate-900 rounded-lg p-4" onMouseMove={handleMouseMove}>
         <svg
-          ref={svgRef}
+          ref={attachSvg}
           viewBox="0 0 1000 589"
           className="w-full h-full"
           style={{ cursor: (moveModeTokenId || featureTool || interactionLocked) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}

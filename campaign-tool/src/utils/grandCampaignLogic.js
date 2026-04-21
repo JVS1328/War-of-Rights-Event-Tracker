@@ -1171,7 +1171,13 @@ export const describeBattleLocation = (campaign, position) => {
 export const createGCBattle = (campaign, payload) => {
   if (!isGrandCampaign(campaign)) return campaign;
   const gc = campaign.grandCampaign;
-  const { attackerId, defenderId, attackerSupportId, defenderSupportId, mapName, battleId } = payload;
+  const {
+    attackerId, defenderId, attackerSupportId, defenderSupportId,
+    mapName, battleId,
+    terrainType = null,
+    weather = null,
+    time = null,
+  } = payload;
 
   const attacker = gc.tokens.find(t => t.id === attackerId);
   const defender = gc.tokens.find(t => t.id === defenderId);
@@ -1199,6 +1205,9 @@ export const createGCBattle = (campaign, payload) => {
     casualties: null,
     resolution: null,
     locationLabel: locationLabel || null,
+    terrainType,
+    weather,
+    time,
     // territoryId — real one if we resolved it, else sentinel for validation.
     territoryId: defenderTerritory?.id || 'grand-campaign',
   };
