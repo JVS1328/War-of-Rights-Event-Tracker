@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { Map, Trophy, Calendar, Zap, MapPin, ChevronDown, ChevronRight, Star, ExternalLink, Skull } from 'lucide-react';
+import { Map, Trophy, Calendar, Zap, MapPin, ChevronDown, ChevronRight, Star, ExternalLink, Skull, DollarSign, Users, Swords } from 'lucide-react';
 import MapView from './MapView';
 import RegimentStats from './RegimentStats';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
+import { GRAND_CAMPAIGN_DEFAULTS } from '../data/grandCampaign';
 
 const SharedMapView = ({ shareData }) => {
   const [selectedTerritory, setSelectedTerritory] = useState(null);
   const [expandedTerritory, setExpandedTerritory] = useState(null);
   const [filterOwner, setFilterOwner] = useState('ALL');
 
-  const { territories, pendingTerritoryIds = [] } = shareData;
+  const { territories, pendingTerritoryIds = [], grandCampaign: gc = null } = shareData;
+  const isGC = !!gc;
+  const influenceThreshold = isGC ? GRAND_CAMPAIGN_DEFAULTS.influenceThreshold : 0;
 
   // VP calculations (mirrors CampaignStats logic)
   const usaTerritoryVP = territories
@@ -106,16 +109,81 @@ const SharedMapView = ({ shareData }) => {
               pendingBattleTerritoryIds={pendingTerritoryIds}
               spSettings={shareData.spSettings}
               terrainViz={shareData.terrainViz}
+              tokens={gc?.tokens || null}
+              mapFeatures={gc?.mapFeatures || null}
+              influenceThreshold={influenceThreshold}
             />
           </div>
 
           {/* Stats sidebar */}
           <div className="space-y-6">
+            {/* Grand Campaign — pools, VP (capital captures / token wipes), and token counts.
+                Territory VP is flavor-only in GC mode and shown below for context. */}
+            {isGC && (() => {
+              const aliveUSA = gc.tokens.filter(t => t.side === 'USA' && t.status !== 'wiped').length;
+              const aliveCSA = gc.tokens.filter(t => t.side === 'CSA' && t.status !== 'wiped').length;
+              const wipedUSA = gc.tokens.filter(t => t.side === 'USA' && t.status === 'wiped').length;
+              const wipedCSA = gc.tokens.filter(t => t.side === 'CSA' && t.status === 'wiped').length;
+              return (
+                <div className="bg-slate-800 rounded-lg border border-amber-700/50 p-6">
+                  <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2 mb-1">
+                    <Swords className="w-5 h-5" />
+                    Grand Campaign
+                  </h3>
+                  <div className="text-[11px] uppercase tracking-wide text-amber-500/70 mb-4">
+                    First to 10 VP — capital captures & token wipes
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-slate-900/50 rounded p-3 border border-blue-900/40">
+                      <div className="text-blue-400 text-xs font-semibold mb-1">USA</div>
+                      <div className="text-white text-2xl font-bold">{gc.vpUSA} <span className="text-sm font-normal text-slate-400">VP</span></div>
+                    </div>
+                    <div className="bg-slate-900/50 rounded p-3 border border-red-900/40">
+                      <div className="text-red-400 text-xs font-semibold mb-1">CSA</div>
+                      <div className="text-white text-2xl font-bold">{gc.vpCSA} <span className="text-sm font-normal text-slate-400">VP</span></div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> USA Treasury</span>
+                      <span className="text-white font-semibold">${gc.pools.USA.treasury.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> CSA Treasury</span>
+                      <span className="text-white font-semibold">${gc.pools.CSA.treasury.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> USA Manpower</span>
+                      <span className="text-white font-semibold">{gc.pools.USA.manpower.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> CSA Manpower</span>
+                      <span className="text-white font-semibold">{gc.pools.CSA.manpower.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-slate-700 flex justify-between items-center">
+                      <span className="text-blue-400">USA Tokens:</span>
+                      <span className="text-white font-semibold">
+                        {aliveUSA}{wipedUSA > 0 && <span className="text-slate-500 text-xs ml-1">(+{wipedUSA} wiped)</span>}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-red-400">CSA Tokens:</span>
+                      <span className="text-white font-semibold">
+                        {aliveCSA}{wipedCSA > 0 && <span className="text-slate-500 text-xs ml-1">(+{wipedCSA} wiped)</span>}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Victory Points */}
             <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
               <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2 mb-4">
                 <Trophy className="w-5 h-5" />
-                Victory Points
+                {isGC ? 'Territory VP (flavor)' : 'Victory Points'}
               </h3>
 
               <div className="mb-4">

@@ -21,6 +21,72 @@ const C2O = { 'U': 'USA', 'C': 'CSA', 'N': 'NEUTRAL' };
 const encodeTransition = (ts) => [ts.turnsRemaining, ts.totalTurns, O2C[ts.previousOwner] || 'N'];
 const decodeTransition = ([r, t, p]) => ({ isTransitioning: true, turnsRemaining: r, totalTurns: t, previousOwner: C2O[p] || 'NEUTRAL' });
 
+// Round numeric coordinates to 1 decimal place — matches the projector's
+// precision (MapView uses .toFixed(1)) and keeps the compressed payload small.
+const r1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * Encode Grand Campaign state (tokens + map features + national pools)
+ * into a compact share block. Keys are 1-2 chars for payload size.
+ *
+ * GC VP (capital captures + token wipes) lives on the campaign root as
+ * `victoryPointsUSA` / `victoryPointsCSA` — the caller passes them in.
+ */
+const encodeGC = (gc, vpUSA, vpCSA) => {
+  const pt = (p) => [r1(p.x), r1(p.y)];
+  const line = (l) => ({ i: l.id, n: l.name, p: (l.points || []).map(pt) });
+  return {
+    ph: gc.phase,
+    tr: { u: gc.pools?.USA?.treasury ?? 0, c: gc.pools?.CSA?.treasury ?? 0 },
+    mp: { u: gc.pools?.USA?.manpower ?? 0, c: gc.pools?.CSA?.manpower ?? 0 },
+    tk: (gc.tokens || []).map(t => ({
+      i: t.id, n: t.name, s: O2C[t.side] || 'N',
+      m: t.manpower, f: t.fatigue || 0, st: t.status || 'active',
+      p: t.position ? pt(t.position) : null,
+      ...(t.boarded ? { b: [t.boarded.type === 'rail' ? 'R' : 'V', t.boarded.featureId] } : {}),
+      ...(t.garrisonedAt ? { g: [t.garrisonedAt.featureId, t.garrisonedAt.men] } : {}),
+    })),
+    mf: {
+      c:  (gc.mapFeatures?.cities   || []).map(f => ({ i: f.id, n: f.name, s: O2C[f.side] || 'N', x: r1(f.x), y: r1(f.y), ...(f.isCapital ? { cap: 1 } : {}) })),
+      f:  (gc.mapFeatures?.forts    || []).map(f => ({ i: f.id, n: f.name, s: O2C[f.side] || 'N', x: r1(f.x), y: r1(f.y) })),
+      st: (gc.mapFeatures?.stations || []).map(f => ({ i: f.id, n: f.name,                          x: r1(f.x), y: r1(f.y) })),
+      r:  (gc.mapFeatures?.railways || []).map(line),
+      rv: (gc.mapFeatures?.rivers   || []).map(line),
+    },
+    v: { u: vpUSA || 0, c: vpCSA || 0 },
+  };
+};
+
+/** Inverse of encodeGC. */
+const decodeGC = (g) => {
+  if (!g) return null;
+  const pt = ([x, y]) => ({ x, y });
+  const line = (l) => ({ id: l.i, name: l.n, points: (l.p || []).map(pt) });
+  return {
+    phase: g.ph || 'playing',
+    pools: {
+      USA: { treasury: g.tr?.u ?? 0, manpower: g.mp?.u ?? 0 },
+      CSA: { treasury: g.tr?.c ?? 0, manpower: g.mp?.c ?? 0 },
+    },
+    tokens: (g.tk || []).map(t => ({
+      id: t.i, name: t.n, side: C2O[t.s] || 'NEUTRAL',
+      manpower: t.m, fatigue: t.f || 0, status: t.st || 'active',
+      position: t.p ? pt(t.p) : null,
+      boarded: t.b ? { type: t.b[0] === 'R' ? 'rail' : 'river', featureId: t.b[1] } : null,
+      garrisonedAt: t.g ? { featureId: t.g[0], men: t.g[1] } : null,
+    })),
+    mapFeatures: {
+      cities:   (g.mf?.c  || []).map(f => ({ id: f.i, name: f.n, kind: 'city',    side: C2O[f.s] || 'NEUTRAL', x: f.x, y: f.y, isCapital: !!f.cap })),
+      forts:    (g.mf?.f  || []).map(f => ({ id: f.i, name: f.n, kind: 'fort',    side: C2O[f.s] || 'NEUTRAL', x: f.x, y: f.y })),
+      stations: (g.mf?.st || []).map(f => ({ id: f.i, name: f.n, kind: 'station', side: 'NEUTRAL',              x: f.x, y: f.y })),
+      railways: (g.mf?.r  || []).map(line),
+      rivers:   (g.mf?.rv || []).map(line),
+    },
+    vpUSA: g.v?.u || 0,
+    vpCSA: g.v?.c || 0,
+  };
+};
+
 /**
  * Create a minimal share payload from the full campaign state.
  */
@@ -76,6 +142,12 @@ export const createSharePayload = (campaign) => {
       C: regs.CSA.map(r => ({ i: r.id, n: r.name })),
       s,
     };
+  }
+
+  // Grand Campaign: pack tokens, map features, and national pools so the
+  // shared map actually shows the board — not just the territory ownership.
+  if (campaign.grandCampaign) {
+    base.g = encodeGC(campaign.grandCampaign, campaign.victoryPointsUSA, campaign.victoryPointsCSA);
   }
 
   const tplKey = campaign.mapTemplate;
@@ -171,6 +243,7 @@ const normalize = (raw, territories, pendingTerritoryIds) => {
   const cas = raw.cas;
   const casU = cas?.u || 0, casC = cas?.c || 0;
   const rg = decodeRegiments(raw.rg);
+  const gc = decodeGC(raw.g);
 
   return {
     name: raw.n ?? raw.name,
@@ -194,6 +267,7 @@ const normalize = (raw, territories, pendingTerritoryIds) => {
     regimentStats: rg?.regimentStats || null,
     territories,
     pendingTerritoryIds,
+    grandCampaign: gc,
   };
 };
 
@@ -207,6 +281,11 @@ const reconstructFromOwnerString = (payload) => {
   const fresh = template.create();
   const vpOverrides = payload.vp || {};
   const tsOverrides = payload.ts || {};
+  // GC uses a fresh-ownership influence gradient in the shared view — we
+  // don't serialize mid-transition influence. `reseed` lines influence up
+  // with the decoded owner so the gradient colour matches the map state.
+  const reseedInfluence = !!payload.g && fresh.grandCampaign != null;
+  const threshold = fresh.grandCampaign?.settings?.influenceThreshold ?? 0;
 
   const territories = fresh.territories.map((t, i) => {
     const owner = C2O[payload.o[i]] || 'NEUTRAL';
@@ -216,6 +295,9 @@ const reconstructFromOwnerString = (payload) => {
       result.pointValue = vpOverrides[i];
     }
     if (tsOverrides[i]) result.transitionState = decodeTransition(tsOverrides[i]);
+    if (reseedInfluence) {
+      result.influence = owner === 'USA' ? threshold : owner === 'CSA' ? -threshold : 0;
+    }
     return result;
   });
 

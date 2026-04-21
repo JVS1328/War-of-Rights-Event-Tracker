@@ -6,7 +6,7 @@
  */
 
 import { createToken, createMapPoint, createMapLine } from '../data/grandCampaign';
-import { advanceTurn as advanceCampaignDate } from './dateSystem';
+import { advanceTurn as advanceCampaignDate, isCampaignOver } from './dateSystem';
 import {
   fetchCountyGeoJson,
   calculateBoundsForFips,
@@ -528,7 +528,10 @@ export const advanceMonth = (campaign) => {
   const newCsaBag = shuffleInPlace([...gc.bags.discardCSA]);
 
   // Advance campaign date by one real month (April 1861 → May 1861 → …).
-  const nextDate = campaign.campaignDate
+  // Once we've hit the end date (Dec 1865) freeze it — advancing past
+  // December 1865 would throw from createCampaignDate's year validator.
+  const atEnd = campaign.campaignDate && isCampaignOver(campaign.campaignDate);
+  const nextDate = campaign.campaignDate && !atEnd
     ? advanceCampaignDate(campaign.campaignDate, 1)
     : campaign.campaignDate;
 
