@@ -1,4 +1,4 @@
-import { ALL_MAPS } from '../data/territories';
+import { ALL_MAPS, MAPS_BY_MAPSET } from '../data/territories';
 
 /**
  * Roll a weighted random terrain type from a territory's terrain weights.
@@ -117,18 +117,24 @@ export const getMapCooldownMessage = (mapName, cooldownMaps, currentTurn, mapCoo
 };
 
 /**
- * Is `mapName` a Conquest-type map? We detect by checking every terrain
- * group whose name contains "conquest" (case-insensitive) and looking for
- * the map in its list. Matches the structure in data/territories.js where
- * dedicated "*Conquest" groups hold the conquest variants.
+ * Is `mapName` a Conquest-type map?
+ *
+ * The canonical list lives in MAPS_BY_MAPSET (data/territories.js) where
+ * dedicated "*Conquest" buckets hold the conquest variants
+ * ("Antietam Conquest", "South Mountain Conquest", etc). We also check any
+ * caller-supplied terrainGroups that match the same pattern so the user
+ * can add their own conquest maps via settings later.
  */
 export const isConquestMap = (mapName, terrainGroups = {}) => {
-  if (!mapName || !terrainGroups) return false;
-  for (const [groupName, maps] of Object.entries(terrainGroups)) {
-    if (!groupName || !groupName.toLowerCase().includes('conquest')) continue;
-    if (Array.isArray(maps) && maps.includes(mapName)) return true;
-  }
-  return false;
+  if (!mapName) return false;
+  const scan = (bucket) => {
+    for (const [groupName, maps] of Object.entries(bucket || {})) {
+      if (!groupName || !groupName.toLowerCase().includes('conquest')) continue;
+      if (Array.isArray(maps) && maps.includes(mapName)) return true;
+    }
+    return false;
+  };
+  return scan(MAPS_BY_MAPSET) || scan(terrainGroups);
 };
 
 /**
