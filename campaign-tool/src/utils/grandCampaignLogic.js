@@ -619,6 +619,100 @@ export const evaluateMove = (campaign, tokenId, destination) => {
 };
 
 /**
+ * After a token arrives at a position, check whether it has walked into an
+ * undefended enemy city/fort — if so, flip ownership, pay out $750, award
+ * capital capture VP (if applicable), and end the token's turn per rules.
+ *
+ * Defended = an enemy token is within combat adjacency of the feature, OR
+ * the feature carries a non-empty enemy garrison.
+ */
+export const applyCaptureAtPosition = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return { campaign, captured: null };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || !token.position) return { campaign, captured: null };
+
+  const radius = inchesToSvg(gc.settings.railSnapInches, gc.settings);
+  const adjRadius = inchesToSvg(gc.settings.combatAdjacencyInches, gc.settings);
+  const candidates = [
+    ...gc.mapFeatures.cities.map(f => ({ ...f, bucket: 'cities' })),
+    ...gc.mapFeatures.forts.map(f => ({ ...f, bucket: 'forts' })),
+  ];
+
+  const target = candidates.find(f =>
+    f.side !== token.side &&
+    distance(token.position, f) <= radius &&
+    // Undefended by an enemy token?
+    !gc.tokens.some(t2 =>
+      t2.id !== tokenId && t2.side !== token.side && t2.position && t2.status !== 'wiped' &&
+      distance(t2.position, f) <= adjRadius
+    ) &&
+    // No enemy garrison.
+    (!f.garrison || f.garrison.men === 0 || f.garrison.side === token.side)
+  );
+
+  if (!target) return { campaign, captured: null };
+
+  const isCapital = !!target.isCapital && target.bucket === 'cities';
+  const payout = gc.settings.moneyPerCityCapture;
+  const vpDelta = isCapital ? gc.settings.vpPerCapitalCapture : 0;
+
+  // Update the feature: side flips, garrison cleared, capture history appended.
+  const newFeature = {
+    ...target,
+    side: token.side,
+    garrison: null,
+    capturedBy: [...(target.capturedBy || []), { side: token.side, month: campaign.currentTurn }],
+  };
+  delete newFeature.bucket;
+
+  let vpUSA = campaign.victoryPointsUSA || 0;
+  let vpCSA = campaign.victoryPointsCSA || 0;
+  if (token.side === 'USA') vpUSA += vpDelta;
+  else vpCSA += vpDelta;
+
+  const vpEvents = [...(gc.vpEvents || [])];
+  if (isCapital) {
+    vpEvents.push({
+      type: 'capital',
+      turn: campaign.currentTurn,
+      side: token.side,
+      featureId: target.id,
+      vp: vpDelta,
+    });
+  }
+
+  return {
+    campaign: {
+      ...campaign,
+      victoryPointsUSA: vpUSA,
+      victoryPointsCSA: vpCSA,
+      grandCampaign: {
+        ...gc,
+        mapFeatures: {
+          ...gc.mapFeatures,
+          [target.bucket]: gc.mapFeatures[target.bucket].map(f => f.id === target.id ? newFeature : f),
+        },
+        pools: {
+          ...gc.pools,
+          [token.side]: {
+            ...gc.pools[token.side],
+            treasury: gc.pools[token.side].treasury + payout,
+          },
+        },
+        vpEvents,
+        // Capture ends the token's turn per rules.
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          movementPointsUsed: gc.settings.movementPointsPerTurn,
+        } : t),
+      },
+    },
+    captured: { feature: newFeature, isCapital, payout, vpDelta },
+  };
+};
+
+/**
  * Commit a move for a token using a specific mode. Deducts MP; rail/river
  * moves exhaust all remaining MP (board + disembark ends turn per rules).
  * Returns { campaign, error, turnEnds }.
@@ -648,20 +742,26 @@ export const performMove = (campaign, tokenId, destination, mode) => {
   const turnEnds = mode === 'rail' || mode === 'river';
   const newMpUsed = turnEnds ? mpMax : (token.movementPointsUsed || 0) + option.cost;
 
-  return {
-    campaign: {
-      ...campaign,
-      grandCampaign: {
-        ...gc,
-        tokens: gc.tokens.map(t => t.id === tokenId ? {
-          ...t,
-          position: { x: destination.x, y: destination.y },
-          movementPointsUsed: newMpUsed,
-        } : t),
-      },
+  const moved = {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      tokens: gc.tokens.map(t => t.id === tokenId ? {
+        ...t,
+        position: { x: destination.x, y: destination.y },
+        movementPointsUsed: newMpUsed,
+      } : t),
     },
+  };
+
+  // Walking into an undefended enemy city/fort captures it and ends the turn.
+  const captureResult = applyCaptureAtPosition(moved, tokenId);
+
+  return {
+    campaign: captureResult.campaign,
     error: null,
-    turnEnds,
+    turnEnds: turnEnds || !!captureResult.captured,
+    capture: captureResult.captured,
   };
 };
 

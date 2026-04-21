@@ -613,10 +613,18 @@ const CampaignTracker = () => {
     }
     setCampaign(result.campaign);
     setPendingMove(null);
-    // Rail/river disembark ends the turn. March leaves the "Move" mode on so
-    // the user can continue if MP remain.
+    // Rail/river disembark OR a capture ends the turn; chain into next draw.
     if (result.turnEnds) {
       setTurnMoveActive(false);
+    }
+    if (result.capture) {
+      const { feature, isCapital, payout, vpDelta } = result.capture;
+      const msg = isCapital
+        ? `Captured capital ${feature.name}! +$${payout}, +${vpDelta} VP.`
+        : `Captured ${feature.name}! +$${payout}.`;
+      alert(msg);
+      // Capture flagged turnEnds internally — draw next.
+      setTimeout(() => setCampaign(c => gcDrawNextToken(gcEndTokenTurn(c))), 0);
     }
   };
 
