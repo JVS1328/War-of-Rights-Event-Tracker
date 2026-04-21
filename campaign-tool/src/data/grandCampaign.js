@@ -107,6 +107,9 @@ export const createToken = ({ id, regimentId, name, side, manpower }) => ({
 
 /**
  * Create a point-type map feature (city / fort / station).
+ *
+ * `garrison` stores detached men from a friendly token: { side, men }. Only
+ * cities and forts can host garrisons per rules.
  */
 export const createMapPoint = ({ id, name, kind, x, y, side = 'NEUTRAL', isCapital = false }) => ({
   id,
@@ -117,6 +120,7 @@ export const createMapPoint = ({ id, name, kind, x, y, side = 'NEUTRAL', isCapit
   y,
   isCapital,
   capturedBy: [], // history of capture events, each: { side, month }
+  garrison: null, // { side: 'USA'|'CSA', men: number } | null
 });
 
 /**

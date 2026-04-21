@@ -706,6 +706,166 @@ export const endTokenTurn = (campaign) => {
 };
 
 // ---------------------------------------------------------------------------
+// Station/city/fort proximity — replenishment & garrison eligibility.
+// ---------------------------------------------------------------------------
+
+/** Friendly city or fort within railSnapInches of this token, or null. */
+export const findStrongholdAtToken = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return null;
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || !token.position) return null;
+  const radius = inchesToSvg(gc.settings.railSnapInches, gc.settings);
+  const candidates = [
+    ...gc.mapFeatures.cities.map(c => ({ ...c, bucket: 'cities' })),
+    ...gc.mapFeatures.forts.map(f => ({ ...f, bucket: 'forts' })),
+  ].filter(f => f.side === token.side && distance(token.position, f) <= radius);
+  return candidates[0] || null;
+};
+
+// ---------------------------------------------------------------------------
+// Replenishment — active turn action at a friendly city/fort.
+// ---------------------------------------------------------------------------
+
+export const canReplenish = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return { ok: false, reason: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token) return { ok: false, reason: 'no token' };
+  if (token.status === 'wiped') return { ok: false, reason: 'wiped' };
+  const mpLeft = gc.settings.movementPointsPerTurn - (token.movementPointsUsed || 0);
+  if (mpLeft < 1) return { ok: false, reason: 'no MP' };
+  if (!findStrongholdAtToken(campaign, tokenId)) return { ok: false, reason: 'not at friendly city/fort' };
+  const pool = gc.pools[token.side];
+  if (pool.treasury < gc.settings.replenishMoneyCost) return { ok: false, reason: 'not enough treasury' };
+  if (pool.manpower < gc.settings.replenishManpowerCost) return { ok: false, reason: 'not enough national manpower' };
+  return { ok: true };
+};
+
+export const performReplenish = (campaign, tokenId) => {
+  const check = canReplenish(campaign, tokenId);
+  if (!check.ok) return { campaign, error: check.reason };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  const s = gc.settings;
+
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        pools: {
+          ...gc.pools,
+          [token.side]: {
+            treasury: gc.pools[token.side].treasury - s.replenishMoneyCost,
+            manpower: gc.pools[token.side].manpower - s.replenishManpowerCost,
+          },
+        },
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          manpower: t.manpower + s.replenishYield,
+          movementPointsUsed: s.movementPointsPerTurn, // ends turn
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Garrison — detach up to maxGarrison men into a friendly city/fort.
+// ---------------------------------------------------------------------------
+
+/** Detach `men` from the drawn token into the stronghold at its position. */
+export const performGarrison = (campaign, tokenId, featureId, men) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || token.status === 'wiped') return { campaign, error: 'invalid token' };
+
+  // Find the feature — search cities then forts.
+  const bucket = gc.mapFeatures.cities.find(c => c.id === featureId)
+    ? 'cities'
+    : gc.mapFeatures.forts.find(f => f.id === featureId)
+      ? 'forts' : null;
+  if (!bucket) return { campaign, error: 'feature not a city/fort' };
+
+  const feature = gc.mapFeatures[bucket].find(f => f.id === featureId);
+  if (feature.side !== token.side) return { campaign, error: 'not a friendly stronghold' };
+
+  const currentGarrison = feature.garrison?.men || 0;
+  const amount = Math.max(0, Math.min(men, token.manpower, gc.settings.maxGarrison - currentGarrison));
+  if (amount === 0) return { campaign, error: 'nothing to garrison' };
+
+  const newGarrison = { side: token.side, men: currentGarrison + amount };
+
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        mapFeatures: {
+          ...gc.mapFeatures,
+          [bucket]: gc.mapFeatures[bucket].map(f => f.id === featureId ? { ...f, garrison: newGarrison } : f),
+        },
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          manpower: t.manpower - amount,
+          movementPointsUsed: gc.settings.movementPointsPerTurn, // ends turn
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
+
+/** Recall `men` from a friendly garrison back into the drawn token. Ends turn. */
+export const performRecallGarrison = (campaign, tokenId, featureId, men) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not GC' };
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token) return { campaign, error: 'no token' };
+
+  const bucket = gc.mapFeatures.cities.find(c => c.id === featureId)
+    ? 'cities'
+    : gc.mapFeatures.forts.find(f => f.id === featureId)
+      ? 'forts' : null;
+  if (!bucket) return { campaign, error: 'feature not a city/fort' };
+
+  const feature = gc.mapFeatures[bucket].find(f => f.id === featureId);
+  if (!feature.garrison || feature.garrison.side !== token.side) {
+    return { campaign, error: 'no friendly garrison' };
+  }
+  const amount = Math.max(0, Math.min(men, feature.garrison.men));
+  if (amount === 0) return { campaign, error: 'nothing to recall' };
+
+  const newMen = feature.garrison.men - amount;
+  const newGarrison = newMen > 0 ? { ...feature.garrison, men: newMen } : null;
+
+  return {
+    campaign: {
+      ...campaign,
+      grandCampaign: {
+        ...gc,
+        mapFeatures: {
+          ...gc.mapFeatures,
+          [bucket]: gc.mapFeatures[bucket].map(f => f.id === featureId ? { ...f, garrison: newGarrison } : f),
+        },
+        tokens: gc.tokens.map(t => t.id === tokenId ? {
+          ...t,
+          manpower: t.manpower + amount,
+          movementPointsUsed: gc.settings.movementPointsPerTurn,
+        } : t),
+      },
+    },
+    error: null,
+    turnEnds: true,
+  };
+};
+
+// ---------------------------------------------------------------------------
 // Combat — adjacency, supporters, casualty resolution, retreat, VP events.
 // ---------------------------------------------------------------------------
 
@@ -908,16 +1068,52 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
   const winter = isWinterMonth(campaign);
 
   // Compute modified casualties on each side.
-  const attackerTotal = applyCasualtyModifiers(Number(attackerRaw) || 0, {
+  let attackerTotal = applyCasualtyModifiers(Number(attackerRaw) || 0, {
     fatigue: attacker.fatigue,
     isAttackerInWinter: winter,
     onTrainOrRiver: attackerOnTrainRiver,
   }, gc.settings);
-  const defenderTotal = applyCasualtyModifiers(Number(defenderRaw) || 0, {
+  let defenderTotal = applyCasualtyModifiers(Number(defenderRaw) || 0, {
     fatigue: defender.fatigue,
     isAttackerInWinter: false,
     onTrainOrRiver: defenderOnTrainRiver,
   }, gc.settings);
+
+  // Garrison integration — if the defender is at a friendly city/fort with a
+  // garrison, that garrison (a) takes defender casualties first, and (b)
+  // inflicts extra casualties on the attacker (per rules: 100/100).
+  const defenderStronghold = (() => {
+    const radius = inchesToSvg(gc.settings.railSnapInches, gc.settings);
+    const candidates = [
+      ...gc.mapFeatures.cities.map(c => ({ ...c, bucket: 'cities' })),
+      ...gc.mapFeatures.forts.map(f => ({ ...f, bucket: 'forts' })),
+    ];
+    return candidates.find(f =>
+      f.side === defender.side &&
+      f.garrison?.side === defender.side &&
+      distance(defender.position, f) <= radius
+    ) || null;
+  })();
+
+  let garrisonAbsorbed = 0;
+  let workingCampaignMapFeatures = gc.mapFeatures;
+  if (defenderStronghold) {
+    const g = defenderStronghold.garrison;
+    // Garrison counter-fire: +100 attacker cas per 100 garrison men.
+    const extraAttackerCas = Math.floor(g.men / 100) * gc.settings.garrisonCasPer100;
+    attackerTotal += extraAttackerCas;
+    // Defender casualties drained from garrison first.
+    garrisonAbsorbed = Math.min(defenderTotal, g.men);
+    defenderTotal -= garrisonAbsorbed;
+    const remaining = g.men - garrisonAbsorbed;
+    const newGarrison = remaining > 0 ? { ...g, men: remaining } : null;
+    workingCampaignMapFeatures = {
+      ...gc.mapFeatures,
+      [defenderStronghold.bucket]: gc.mapFeatures[defenderStronghold.bucket].map(f =>
+        f.id === defenderStronghold.id ? { ...f, garrison: newGarrison } : f
+      ),
+    };
+  }
 
   const participantIds = [
     battle.attackerTokenId,
@@ -931,6 +1127,7 @@ export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defen
     ...campaign,
     grandCampaign: {
       ...gc,
+      mapFeatures: workingCampaignMapFeatures,
       tokens: gc.tokens.map(t => {
         if (!participantIds.includes(t.id)) return t;
         let cas = 0;

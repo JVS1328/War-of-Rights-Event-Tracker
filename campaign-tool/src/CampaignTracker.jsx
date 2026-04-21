@@ -17,6 +17,7 @@ import TurnTracker from './components/TurnTracker';
 import MoveConfirmModal from './components/MoveConfirmModal';
 import GrandBattleModal from './components/GrandBattleModal';
 import GrandBattleResolveModal from './components/GrandBattleResolveModal';
+import GarrisonModal from './components/GarrisonModal';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -37,6 +38,10 @@ import {
   performMove as gcPerformMove,
   createGCBattle as gcCreateBattle,
   resolveGCBattle as gcResolveBattle,
+  performReplenish as gcPerformReplenish,
+  performGarrison as gcPerformGarrison,
+  performRecallGarrison as gcPerformRecallGarrison,
+  findStrongholdAtToken as gcFindStrongholdAtToken,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -88,6 +93,9 @@ const CampaignTracker = () => {
   // Grand Campaign combat modals
   const [showBattleModal, setShowBattleModal] = useState(false);
   const [resolvingBattleId, setResolvingBattleId] = useState(null);
+
+  // Grand Campaign garrison modal
+  const [showGarrisonModal, setShowGarrisonModal] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -523,6 +531,38 @@ const CampaignTracker = () => {
     setPendingMove(null);
   };
 
+  // === Replenishment / garrison handlers ===
+  const handleReplenish = () => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    if (!tokenId) return;
+    const result = gcPerformReplenish(campaign, tokenId);
+    if (result.error) {
+      alert(`Cannot replenish: ${result.error}`);
+      return;
+    }
+    // Replenish ends turn; immediately draw next token.
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setTurnMoveActive(false);
+  };
+  const handleOpenGarrison = () => setShowGarrisonModal(true);
+  const handleCloseGarrison = () => setShowGarrisonModal(false);
+  const handleGarrisonAction = (featureId, men) => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformGarrison(campaign, tokenId, featureId, men);
+    if (result.error) { alert(`Cannot garrison: ${result.error}`); return; }
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setShowGarrisonModal(false);
+    setTurnMoveActive(false);
+  };
+  const handleRecallAction = (featureId, men) => {
+    const tokenId = campaign.grandCampaign.currentTokenId;
+    const result = gcPerformRecallGarrison(campaign, tokenId, featureId, men);
+    if (result.error) { alert(`Cannot recall: ${result.error}`); return; }
+    setCampaign(c => gcDrawNextToken(gcEndTokenTurn(result.campaign)));
+    setShowGarrisonModal(false);
+    setTurnMoveActive(false);
+  };
+
   // === Combat handlers ===
   const handleOpenAttack = () => {
     setTurnMoveActive(false);
@@ -813,6 +853,8 @@ const CampaignTracker = () => {
                     onBeginMove={handleBeginMove}
                     turnMoveActive={turnMoveActive}
                     onAttack={handleOpenAttack}
+                    onReplenish={handleReplenish}
+                    onGarrison={handleOpenGarrison}
                   />
                 )}
                 <button
@@ -954,6 +996,24 @@ const CampaignTracker = () => {
             onClearError={() => setSetupError(null)}
           />
         )}
+
+        {/* Grand Campaign — garrison / recall */}
+        {isGC && showGarrisonModal && (() => {
+          const tokenId = campaign.grandCampaign.currentTokenId;
+          const token = campaign.grandCampaign.tokens.find(t => t.id === tokenId);
+          const feature = gcFindStrongholdAtToken(campaign, tokenId);
+          if (!token || !feature) return null;
+          return (
+            <GarrisonModal
+              campaign={campaign}
+              token={token}
+              feature={feature}
+              onGarrison={handleGarrisonAction}
+              onRecall={handleRecallAction}
+              onCancel={handleCloseGarrison}
+            />
+          );
+        })()}
 
         {/* Grand Campaign — attack initiator */}
         {isGC && showBattleModal && (

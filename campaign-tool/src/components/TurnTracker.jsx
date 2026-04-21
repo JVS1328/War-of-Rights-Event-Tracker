@@ -1,5 +1,5 @@
-import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords } from 'lucide-react';
-import { findAttackTargets } from '../utils/grandCampaignLogic';
+import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords, Package, Shield } from 'lucide-react';
+import { findAttackTargets, findStrongholdAtToken, canReplenish } from '../utils/grandCampaignLogic';
 
 /**
  * TurnTracker — the "whose turn is it" HUD for Grand Campaign.
@@ -9,7 +9,7 @@ import { findAttackTargets } from '../utils/grandCampaignLogic';
  *   - Draw Next Token: starts the next token's turn (from activeSide's bag)
  *   - End Turn: ends the currently-drawn token's turn, flips activeSide
  */
-const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive, onAttack }) => {
+const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive, onAttack, onReplenish, onGarrison }) => {
   const gc = campaign?.grandCampaign;
   if (!gc || gc.phase !== 'playing') return null;
 
@@ -72,6 +72,24 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveAct
                   className="flex-1 min-w-[80px] bg-red-700 hover:bg-red-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
                 >
                   <Swords className="w-4 h-4" /> Attack
+                </button>
+              )}
+              {onReplenish && canReplenish(campaign, currentToken.id).ok && (
+                <button
+                  onClick={onReplenish}
+                  className="flex-1 min-w-[80px] bg-emerald-700 hover:bg-emerald-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                  title="Replenish at city/fort"
+                >
+                  <Package className="w-4 h-4" /> Replenish
+                </button>
+              )}
+              {onGarrison && findStrongholdAtToken(campaign, currentToken.id) && currentToken.status === 'active' && (
+                <button
+                  onClick={onGarrison}
+                  className="flex-1 min-w-[80px] bg-slate-500 hover:bg-slate-400 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                  title="Garrison men here"
+                >
+                  <Shield className="w-4 h-4" /> Garrison
                 </button>
               )}
               <button
