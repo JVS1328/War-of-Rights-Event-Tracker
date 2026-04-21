@@ -1,4 +1,5 @@
-import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints } from 'lucide-react';
+import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprints, Swords } from 'lucide-react';
+import { findAttackTargets } from '../utils/grandCampaignLogic';
 
 /**
  * TurnTracker — the "whose turn is it" HUD for Grand Campaign.
@@ -8,7 +9,7 @@ import { Calendar, Archive, Flag, SkipForward, Play, DollarSign, Users, Footprin
  *   - Draw Next Token: starts the next token's turn (from activeSide's bag)
  *   - End Turn: ends the currently-drawn token's turn, flips activeSide
  */
-const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive }) => {
+const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveActive, onAttack }) => {
   const gc = campaign?.grandCampaign;
   if (!gc || gc.phase !== 'playing') return null;
 
@@ -51,25 +52,33 @@ const TurnTracker = ({ campaign, onDrawNext, onEndTurn, onBeginMove, turnMoveAct
               {' · '}Fatigue: <span className="text-white">{currentToken.fatigue}</span>
               {currentToken.status === 'last-stand' && <span className="text-orange-400 ml-1 font-bold">LAST STAND</span>}
             </div>
-            <div className="flex gap-1.5 mt-2">
+            <div className="flex flex-wrap gap-1.5 mt-2">
               {onBeginMove && (currentToken.movementPointsUsed || 0) < gc.settings.movementPointsPerTurn && currentToken.status !== 'wiped' && (
                 <button
                   onClick={onBeginMove}
-                  className={`flex-1 rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 min-w-[80px] rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1 ${
                     turnMoveActive
                       ? 'bg-amber-600 hover:bg-amber-500 text-white'
                       : 'bg-amber-700 hover:bg-amber-600 text-white'
                   }`}
                 >
                   <Footprints className="w-4 h-4" />
-                  {turnMoveActive ? 'Cancel Move' : 'Move'}
+                  {turnMoveActive ? 'Cancel' : 'Move'}
+                </button>
+              )}
+              {onAttack && currentToken.status === 'active' && findAttackTargets(campaign, currentToken.id).length > 0 && (
+                <button
+                  onClick={onAttack}
+                  className="flex-1 min-w-[80px] bg-red-700 hover:bg-red-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
+                >
+                  <Swords className="w-4 h-4" /> Attack
                 </button>
               )}
               <button
                 onClick={onEndTurn}
-                className="flex-1 bg-blue-700 hover:bg-blue-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1.5"
+                className="flex-1 min-w-[80px] bg-blue-700 hover:bg-blue-600 text-white rounded py-1.5 text-sm font-semibold flex items-center justify-center gap-1"
               >
-                <SkipForward className="w-4 h-4" /> End Turn
+                <SkipForward className="w-4 h-4" /> End
               </button>
             </div>
           </>

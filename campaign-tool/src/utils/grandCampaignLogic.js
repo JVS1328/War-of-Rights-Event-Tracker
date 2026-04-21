@@ -705,6 +705,330 @@ export const endTokenTurn = (campaign) => {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Combat — adjacency, supporters, casualty resolution, retreat, VP events.
+// ---------------------------------------------------------------------------
+
+/** Return opposite-side live tokens within combat adjacency of `tokenId`. */
+export const findAttackTargets = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return [];
+  const gc = campaign.grandCampaign;
+  const attacker = gc.tokens.find(t => t.id === tokenId);
+  if (!attacker || !attacker.position || attacker.status !== 'active') return [];
+  const radius = inchesToSvg(gc.settings.combatAdjacencyInches, gc.settings);
+  return gc.tokens.filter(t =>
+    t.id !== tokenId &&
+    t.position &&
+    t.status !== 'wiped' &&
+    t.side !== attacker.side &&
+    !t.inCombat &&
+    distance(attacker.position, t.position) <= radius
+  );
+};
+
+/**
+ * Return same-side live, free tokens within support range of the *engaged
+ * token* (attacker or defender) — exactly one of these may reinforce.
+ */
+export const findSupporters = (campaign, engagedTokenId, exclude = []) => {
+  if (!isGrandCampaign(campaign)) return [];
+  const gc = campaign.grandCampaign;
+  const engaged = gc.tokens.find(t => t.id === engagedTokenId);
+  if (!engaged || !engaged.position) return [];
+  const radius = inchesToSvg(gc.settings.supportRangeInches, gc.settings);
+  return gc.tokens.filter(t =>
+    t.id !== engagedTokenId &&
+    !exclude.includes(t.id) &&
+    t.position &&
+    t.status !== 'wiped' &&
+    t.side === engaged.side &&
+    !t.inCombat &&
+    distance(engaged.position, t.position) <= radius
+  );
+};
+
+/**
+ * Create a pending Grand Campaign battle. Marks all participants as inCombat
+ * so they're skipped if drawn, records the attacker's turn as over (per GC
+ * rules — an attack ends your turn), and appends a battle entry.
+ *
+ * payload: { attackerId, defenderId, attackerSupportId?, defenderSupportId?, mapName, battleId? }
+ */
+export const createGCBattle = (campaign, payload) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  const { attackerId, defenderId, attackerSupportId, defenderSupportId, mapName, battleId } = payload;
+
+  const attacker = gc.tokens.find(t => t.id === attackerId);
+  const defender = gc.tokens.find(t => t.id === defenderId);
+  if (!attacker || !defender) return campaign;
+
+  const participantIds = [attackerId, defenderId, attackerSupportId, defenderSupportId].filter(Boolean);
+
+  const battle = {
+    id: battleId || nextId('battle'),
+    mode: 'grand',
+    turn: campaign.currentTurn,
+    status: 'pending',
+    mapName: mapName || 'Unknown Map',
+    attacker: attacker.side,
+    defender: defender.side,
+    attackerTokenId: attackerId,
+    defenderTokenId: defenderId,
+    attackerSupportId: attackerSupportId || null,
+    defenderSupportId: defenderSupportId || null,
+    winner: null,
+    casualties: null,
+    resolution: null,
+    // territoryId is required by the existing validator; use defender's nearest
+    // territory or a placeholder. Grand Campaign doesn't consume territory VP.
+    territoryId: 'grand-campaign',
+  };
+
+  return {
+    ...campaign,
+    battles: [...campaign.battles, battle],
+    grandCampaign: {
+      ...gc,
+      tokens: gc.tokens.map(t => participantIds.includes(t.id) ? {
+        ...t,
+        inCombat: true,
+        combatThisTurn: true,
+      } : t),
+      // Attacker's turn ends when declaring an attack.
+      currentTokenId: null,
+      lastDrawnTokenId: attackerId,
+      activeSide: OPPOSITE_SIDE[gc.activeSide],
+      bags: {
+        ...gc.bags,
+        [gc.activeSide === 'USA' ? 'discardUSA' : 'discardCSA']: [
+          ...gc.bags[gc.activeSide === 'USA' ? 'discardUSA' : 'discardCSA'],
+          attackerId,
+        ],
+      },
+    },
+  };
+};
+
+/**
+ * Apply rule-based casualty modifiers to a raw number. Flags: fatigue points
+ * on the receiving token, whether the token is the attacker in a winter
+ * month, and whether the token is on a train/river at the time.
+ */
+export const applyCasualtyModifiers = (raw, { fatigue = 0, isAttackerInWinter = false, onTrainOrRiver = false }, settings) => {
+  const s = settings;
+  const mult =
+    1 +
+    (fatigue * s.fatigueCasPct) / 100 +
+    (isAttackerInWinter ? s.winterAttackerCasPct / 100 : 0) +
+    (onTrainOrRiver ? s.trainRiverCasPct / 100 : 0);
+  return Math.round(raw * mult);
+};
+
+/** Is the current campaign month a winter month? */
+export const isWinterMonth = (campaign) => {
+  if (!isGrandCampaign(campaign)) return false;
+  const s = campaign.grandCampaign.settings;
+  const winters = s.winterMonths || [];
+  // Derive game-month-of-year from currentTurn + campaignDate. If date isn't
+  // tracked precisely, assume turn N maps to month ((N-1) % 12) + 1.
+  const month = ((campaign.currentTurn - 1) % 12) + 1;
+  return winters.includes(month);
+};
+
+/** Nearest friendly city or fort to a point; null if none. */
+const nearestFriendlyStronghold = (gc, side, from) => {
+  const candidates = [
+    ...gc.mapFeatures.cities.filter(c => c.side === side),
+    ...gc.mapFeatures.forts.filter(f => f.side === side),
+  ];
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, c) =>
+    !best || distance(from, c) < distance(from, best) ? c : best
+  , null);
+};
+
+/** Retreat `tokenId` toward its side's nearest city/fort, up to 4 march-MP. */
+const applyRetreat = (campaign, tokenId) => {
+  if (!isGrandCampaign(campaign)) return campaign;
+  const gc = campaign.grandCampaign;
+  const token = gc.tokens.find(t => t.id === tokenId);
+  if (!token || !token.position) return campaign;
+
+  const target = nearestFriendlyStronghold(gc, token.side, token.position);
+  if (!target) return campaign;
+
+  const maxInches = 4 * gc.settings.marchInchesPerMP; // per rules: 4 hexes
+  const maxSvg = inchesToSvg(maxInches, gc.settings);
+  const dx = target.x - token.position.x;
+  const dy = target.y - token.position.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d === 0) return campaign;
+  const step = Math.min(d, maxSvg);
+  const nx = token.position.x + (dx / d) * step;
+  const ny = token.position.y + (dy / d) * step;
+
+  // If the retreat spot overlaps another token, nudge along until clear or
+  // give up (up to a few attempts).
+  let candidate = { x: nx, y: ny };
+  for (let i = 0; i < 5 && !isPositionClear(campaign, candidate, tokenId); i++) {
+    const nudge = inchesToSvg(gc.settings.tokenFootprintInches * 2, gc.settings);
+    candidate = { x: candidate.x + (dx / d) * nudge, y: candidate.y + (dy / d) * nudge };
+  }
+
+  return {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      tokens: gc.tokens.map(t => t.id === tokenId ? { ...t, position: candidate } : t),
+    },
+  };
+};
+
+/**
+ * Resolve a pending Grand Campaign battle. Casualties object:
+ *   { attackerRaw, defenderRaw, attackerOnTrainRiver, defenderOnTrainRiver }
+ *
+ * Applies modifiers, subtracts manpower from engaged tokens and their
+ * supporters (40%), increments fatigue on all participants, auto-retreats
+ * the loser, applies last-stand / wipe status, and logs VP events for wipes.
+ */
+export const resolveGCBattle = (campaign, battleId, { winner, attackerRaw, defenderRaw, attackerOnTrainRiver = false, defenderOnTrainRiver = false }) => {
+  if (!isGrandCampaign(campaign)) return { campaign, error: 'not a grand campaign' };
+  const battle = campaign.battles.find(b => b.id === battleId);
+  if (!battle || battle.mode !== 'grand') return { campaign, error: 'battle not found' };
+  if (battle.status !== 'pending') return { campaign, error: 'battle already resolved' };
+  if (winner !== 'USA' && winner !== 'CSA') return { campaign, error: 'invalid winner' };
+
+  const gc = campaign.grandCampaign;
+  const attacker = gc.tokens.find(t => t.id === battle.attackerTokenId);
+  const defender = gc.tokens.find(t => t.id === battle.defenderTokenId);
+  if (!attacker || !defender) return { campaign, error: 'participants missing' };
+
+  const winter = isWinterMonth(campaign);
+
+  // Compute modified casualties on each side.
+  const attackerTotal = applyCasualtyModifiers(Number(attackerRaw) || 0, {
+    fatigue: attacker.fatigue,
+    isAttackerInWinter: winter,
+    onTrainOrRiver: attackerOnTrainRiver,
+  }, gc.settings);
+  const defenderTotal = applyCasualtyModifiers(Number(defenderRaw) || 0, {
+    fatigue: defender.fatigue,
+    isAttackerInWinter: false,
+    onTrainOrRiver: defenderOnTrainRiver,
+  }, gc.settings);
+
+  const participantIds = [
+    battle.attackerTokenId,
+    battle.defenderTokenId,
+    battle.attackerSupportId,
+    battle.defenderSupportId,
+  ].filter(Boolean);
+
+  // Apply manpower changes. Supporters absorb 40% of their side's casualties.
+  let workingCampaign = {
+    ...campaign,
+    grandCampaign: {
+      ...gc,
+      tokens: gc.tokens.map(t => {
+        if (!participantIds.includes(t.id)) return t;
+        let cas = 0;
+        if (t.id === battle.attackerTokenId) cas = Math.round(attackerTotal * 0.6);
+        else if (t.id === battle.attackerSupportId) cas = Math.round(attackerTotal * 0.4);
+        else if (t.id === battle.defenderTokenId) cas = Math.round(defenderTotal * 0.6);
+        else if (t.id === battle.defenderSupportId) cas = Math.round(defenderTotal * 0.4);
+        // With no supporter, the engaged token takes the full hit.
+        if (t.id === battle.attackerTokenId && !battle.attackerSupportId) cas = attackerTotal;
+        if (t.id === battle.defenderTokenId && !battle.defenderSupportId) cas = defenderTotal;
+        const newManpower = Math.max(0, t.manpower - cas);
+        let newStatus = t.status;
+        if (newManpower < gc.settings.lastStandMin) newStatus = 'wiped';
+        else if (newManpower <= gc.settings.lastStandMax) newStatus = 'last-stand';
+        else newStatus = 'active';
+        return {
+          ...t,
+          manpower: newManpower,
+          fatigue: t.fatigue + 1,
+          inCombat: false,
+          combatThisTurn: true,
+          status: newStatus,
+        };
+      }),
+    },
+  };
+
+  // Auto-retreat loser's engaged token (up to 4 march-MP toward friendly
+  // stronghold). Winner stays.
+  const loserTokenId = winner === 'USA' ? battle.defenderTokenId : battle.attackerTokenId;
+  const loserSide = winner === 'USA' ? battle.defender : battle.attacker;
+  if (loserSide === 'USA' || loserSide === 'CSA') {
+    const loserToken = workingCampaign.grandCampaign.tokens.find(t => t.id === loserTokenId);
+    if (loserToken && loserToken.status !== 'wiped') {
+      workingCampaign = applyRetreat(workingCampaign, loserTokenId);
+    }
+  }
+
+  // Award VP for every participant that was wiped; accumulate events.
+  const vpEvents = [...(workingCampaign.grandCampaign.vpEvents || [])];
+  let vpUSA = campaign.victoryPointsUSA || 0;
+  let vpCSA = campaign.victoryPointsCSA || 0;
+
+  for (const id of participantIds) {
+    const t = workingCampaign.grandCampaign.tokens.find(tt => tt.id === id);
+    if (t && t.status === 'wiped' && !vpEvents.some(e => e.type === 'wipe' && e.tokenId === id)) {
+      const killerSide = t.side === 'USA' ? 'CSA' : 'USA';
+      const award = gc.settings.vpPerTokenWipe;
+      if (killerSide === 'USA') vpUSA += award;
+      else vpCSA += award;
+      vpEvents.push({
+        type: 'wipe',
+        turn: campaign.currentTurn,
+        side: killerSide,
+        tokenId: id,
+        vp: award,
+      });
+    }
+  }
+
+  // Battle record closes out.
+  const updatedBattles = workingCampaign.battles.map(b =>
+    b.id === battleId
+      ? {
+          ...b,
+          status: 'completed',
+          winner,
+          casualties: { attackerRaw, defenderRaw, attackerTotal, defenderTotal },
+        }
+      : b
+  );
+
+  // Battle victor gets the $400 prize.
+  const winPayout = gc.settings.moneyPerBattleWin;
+  const newPools = {
+    ...workingCampaign.grandCampaign.pools,
+    [winner]: {
+      ...workingCampaign.grandCampaign.pools[winner],
+      treasury: workingCampaign.grandCampaign.pools[winner].treasury + winPayout,
+    },
+  };
+
+  return {
+    campaign: {
+      ...workingCampaign,
+      battles: updatedBattles,
+      victoryPointsUSA: vpUSA,
+      victoryPointsCSA: vpCSA,
+      grandCampaign: {
+        ...workingCampaign.grandCampaign,
+        pools: newPools,
+        vpEvents,
+      },
+    },
+    error: null,
+  };
+};
+
 /**
  * Place the currently-drawn setup token at point. Enforces:
  *   - the point's containing territory must be owned by the token's side

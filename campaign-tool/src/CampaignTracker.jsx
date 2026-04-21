@@ -15,6 +15,8 @@ import MapFeaturesPanel from './components/MapFeaturesPanel';
 import SetupWizard from './components/SetupWizard';
 import TurnTracker from './components/TurnTracker';
 import MoveConfirmModal from './components/MoveConfirmModal';
+import GrandBattleModal from './components/GrandBattleModal';
+import GrandBattleResolveModal from './components/GrandBattleResolveModal';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -33,6 +35,8 @@ import {
   endTokenTurn as gcEndTokenTurn,
   evaluateMove as gcEvaluateMove,
   performMove as gcPerformMove,
+  createGCBattle as gcCreateBattle,
+  resolveGCBattle as gcResolveBattle,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
 import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
@@ -80,6 +84,10 @@ const CampaignTracker = () => {
   // click computes an evaluation and pops the MoveConfirmModal.
   const [turnMoveActive, setTurnMoveActive] = useState(false);
   const [pendingMove, setPendingMove] = useState(null); // { evaluation, destination }
+
+  // Grand Campaign combat modals
+  const [showBattleModal, setShowBattleModal] = useState(false);
+  const [resolvingBattleId, setResolvingBattleId] = useState(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -165,6 +173,14 @@ const CampaignTracker = () => {
   };
 
   const handleEditBattle = (battle) => {
+    // Grand Campaign battles use the dedicated resolve modal instead of the
+    // standard BattleRecorder.
+    if (battle?.mode === 'grand') {
+      if (battle.status === 'pending') {
+        setResolvingBattleId(battle.id);
+      }
+      return;
+    }
     setEditingBattle(battle);
     setShowBattleRecorder(true);
   };
@@ -507,6 +523,36 @@ const CampaignTracker = () => {
     setPendingMove(null);
   };
 
+  // === Combat handlers ===
+  const handleOpenAttack = () => {
+    setTurnMoveActive(false);
+    setShowBattleModal(true);
+  };
+  const handleCreateBattle = (payload) => {
+    setCampaign(c => gcCreateBattle(c, payload));
+    setShowBattleModal(false);
+    // Attacker turn ended inside createGCBattle; immediately draw next.
+    setTimeout(() => setCampaign(c => gcDrawNextToken(c)), 0);
+  };
+  const handleOpenResolveBattle = (battle) => {
+    if (battle?.mode === 'grand' && battle.status === 'pending') {
+      setResolvingBattleId(battle.id);
+    } else {
+      // Legacy battle — delegate to existing handler
+      handleEditBattle(battle);
+    }
+  };
+  const handleResolveBattle = (payload) => {
+    if (!resolvingBattleId) return;
+    const result = gcResolveBattle(campaign, resolvingBattleId, payload);
+    if (result.error) {
+      alert(result.error);
+      return;
+    }
+    setCampaign(result.campaign);
+    setResolvingBattleId(null);
+  };
+
   // === In-turn movement handlers ===
   const handleBeginMove = () => {
     if (turnMoveActive) {
@@ -766,6 +812,7 @@ const CampaignTracker = () => {
                     onEndTurn={handleEndTokenTurn}
                     onBeginMove={handleBeginMove}
                     turnMoveActive={turnMoveActive}
+                    onAttack={handleOpenAttack}
                   />
                 )}
                 <button
@@ -907,6 +954,29 @@ const CampaignTracker = () => {
             onClearError={() => setSetupError(null)}
           />
         )}
+
+        {/* Grand Campaign — attack initiator */}
+        {isGC && showBattleModal && (
+          <GrandBattleModal
+            campaign={campaign}
+            onCreate={handleCreateBattle}
+            onCancel={() => setShowBattleModal(false)}
+          />
+        )}
+
+        {/* Grand Campaign — resolve a pending battle */}
+        {isGC && resolvingBattleId && (() => {
+          const battle = campaign.battles.find(b => b.id === resolvingBattleId);
+          if (!battle) return null;
+          return (
+            <GrandBattleResolveModal
+              campaign={campaign}
+              battle={battle}
+              onResolve={handleResolveBattle}
+              onCancel={() => setResolvingBattleId(null)}
+            />
+          );
+        })()}
 
         {/* Grand Campaign in-turn move confirmation */}
         {isGC && pendingMove && (() => {
