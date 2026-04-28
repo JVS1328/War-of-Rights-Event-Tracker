@@ -137,6 +137,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showRegistryModal, setShowRegistryModal] = useState(false);
+  const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
@@ -6317,10 +6318,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
+                  <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
                       <BarChart3 className="w-6 h-6" />
-                      Season Statistics
+                      Statistics — {activeEvent.name}
                     </h2>
                     <button
                       onClick={() => setShowStatsModal(false)}
@@ -6329,6 +6330,340 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
+
+                  {/* Tab toggle: per-season vs event-wide */}
+                  <div className="flex gap-1 mb-5 border-b border-border-default">
+                    <button
+                      onClick={() => setStatsTab('season')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        statsTab === 'season'
+                          ? 'border-indigo-500 text-indigo-400'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Season — {activeSeason.name}
+                    </button>
+                    <button
+                      onClick={() => setStatsTab('event')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        statsTab === 'event'
+                          ? 'border-indigo-500 text-indigo-400'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
+                    </button>
+                  </div>
+
+                  {statsTab === 'event' && (() => {
+                    // Event-wide aggregates: walk every season's rounds.
+                    const seasons = activeEvent.seasons;
+                    const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
+
+                    // Cross-season unit record (rounds-as-lead/assist won/lost) +
+                    // event-wide casualties (per side + per unit).
+                    const unitRecord = {};
+                    let usaCasTotal = 0, csaCasTotal = 0;
+                    let totalRoundsWithResult = 0;
+                    const ensure = (u) => unitRecord[u] ||= {
+                      rounds: 0, leadWins: 0, leadLosses: 0,
+                      assistWins: 0, assistLosses: 0,
+                      sweeps: 0, casualtiesTaken: 0,
+                    };
+
+                    for (const season of seasons) {
+                      for (const week of season.weeks || []) {
+                        const isPlayoffs = !!week.isPlayoffs;
+                        const isSingleRoundLeads = !!week.isSingleRoundLeads;
+                        const teamA = week.teamA || [];
+                        const teamB = week.teamB || [];
+
+                        // Sweep tally
+                        if (week.round1Winner && week.round1Winner === week.round2Winner) {
+                          const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
+                          sweepTeam.forEach(u => ensure(u).sweeps += 1);
+                        }
+
+                        for (const roundNum of [1, 2]) {
+                          const winner = week[`round${roundNum}Winner`];
+                          if (!winner) continue;
+                          totalRoundsWithResult += 1;
+
+                          // Effective rosters (per-round swaps)
+                          const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+                          const eA = swaps.size === 0 ? teamA :
+                            teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
+                          const eB = swaps.size === 0 ? teamB :
+                            teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
+
+                          const winningTeam = winner === 'A' ? eA : eB;
+                          const losingTeam = winner === 'A' ? eB : eA;
+                          const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
+                          const leadW = week[`lead${winner}${leadKey}`];
+                          const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
+
+                          winningTeam.forEach(u => {
+                            const r = ensure(u); r.rounds += 1;
+                            if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
+                          });
+                          losingTeam.forEach(u => {
+                            const r = ensure(u); r.rounds += 1;
+                            if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
+                          });
+
+                          // Side-aware casualty bucket
+                          const flipped = !!week[`round${roundNum}Flipped`];
+                          const usaSide = flipped ? 'B' : 'A';
+                          const casA = week[`r${roundNum}CasualtiesA`] || 0;
+                          const casB = week[`r${roundNum}CasualtiesB`] || 0;
+                          if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
+                          else                 { usaCasTotal += casB; csaCasTotal += casA; }
+
+                          // Per-unit casualties (lost) from weeklyCasualties
+                          const wc = week.weeklyCasualties || {};
+                          for (const sideKey of Object.keys(wc)) {
+                            const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
+                            for (const [u, n] of Object.entries(byUnit)) {
+                              ensure(u).casualtiesTaken += Number(n) || 0;
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    const eventElo = calculateEloRatings();
+                    const ladder = Object.entries(unitRecord)
+                      .map(([unit, r]) => ({
+                        unit, ...r,
+                        wins: r.leadWins + r.assistWins,
+                        losses: r.leadLosses + r.assistLosses,
+                        winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
+                        elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
+                      }))
+                      .filter(r => r.rounds > 0)
+                      .sort((a, b) => b.elo - a.elo);
+
+                    const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Event Overview */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                            <Trophy className="w-5 h-5" />
+                            Overview
+                          </h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Seasons</div>
+                              <div className="text-2xl font-bold text-indigo-400">{seasons.length}</div>
+                            </div>
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Weeks</div>
+                              <div className="text-2xl font-bold text-indigo-400">{totalWeeks}</div>
+                            </div>
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
+                              <div className="text-2xl font-bold text-indigo-400">{totalRoundsWithResult}</div>
+                            </div>
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Registry Units</div>
+                              <div className="text-2xl font-bold text-indigo-400">{Object.keys(activeEvent.unitRegistry).length}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Per-season cards */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                            <Calendar className="w-5 h-5" />
+                            Per-Season Summary
+                          </h3>
+                          <div className="space-y-2">
+                            {seasons.map(season => {
+                              const weekCount = season.weeks?.length || 0;
+                              let roundCount = 0;
+                              for (const w of season.weeks || []) {
+                                if (w.round1Winner) roundCount += 1;
+                                if (w.round2Winner) roundCount += 1;
+                              }
+                              const rosterSize = (season.units || []).length;
+                              const isActive = season.id === activeSeason.id;
+                              return (
+                                <button
+                                  key={season.id}
+                                  onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
+                                  className={`w-full text-left bg-bg-card rounded p-3 border transition ${
+                                    isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-semibold flex items-center gap-2">
+                                        {season.name}
+                                        {isActive && <span className="text-xs text-indigo-400">(active)</span>}
+                                      </div>
+                                      <div className="text-xs text-text-secondary mt-0.5">
+                                        {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
+                                      </div>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-text-secondary" />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Cross-season unit ladder */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                            <Award className="w-5 h-5" />
+                            Cross-Season Unit Record
+                          </h3>
+                          {ladder.length === 0 ? (
+                            <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-text-secondary border-b border-border-default">
+                                    <th className="text-left py-2 px-2">Unit</th>
+                                    <th className="text-center py-2 px-2">Elo</th>
+                                    <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
+                                    <th className="text-center py-2 px-2">W</th>
+                                    <th className="text-center py-2 px-2">L</th>
+                                    <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
+                                    <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
+                                    <th className="text-center py-2 px-2">Sweeps</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {ladder.map((r, idx) => (
+                                    <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                                      <td className="py-2 px-2 font-medium">{r.unit}</td>
+                                      <td className="text-indigo-400 text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
+                                      <td className="text-green-400 text-center py-2 px-2">{r.wins}</td>
+                                      <td className="text-red-400 text-center py-2 px-2">{r.losses}</td>
+                                      <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Cross-season casualties */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                            <Flame className="w-5 h-5" />
+                            Cross-Season Casualties
+                          </h3>
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">USA Total</div>
+                              <div className="text-xl font-bold text-blue-400">{usaCasTotal}</div>
+                            </div>
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">CSA Total</div>
+                              <div className="text-xl font-bold text-red-400">{csaCasTotal}</div>
+                            </div>
+                            <div className="bg-bg-card rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Combined</div>
+                              <div className="text-xl font-bold text-indigo-400">{usaCasTotal + csaCasTotal}</div>
+                            </div>
+                          </div>
+                          {totalCasUnits > 0 && (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-text-secondary border-b border-border-default">
+                                    <th className="text-left py-2 px-2">Unit</th>
+                                    <th className="text-center py-2 px-2">Lost</th>
+                                    <th className="text-center py-2 px-2" title="Average lost per round played">Lost / Round</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {ladder
+                                    .filter(r => r.casualtiesTaken > 0)
+                                    .sort((a, b) => b.casualtiesTaken - a.casualtiesTaken)
+                                    .map((r, idx) => (
+                                      <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                                        <td className="py-2 px-2 font-medium">{r.unit}</td>
+                                        <td className="text-red-400 text-center py-2 px-2">{r.casualtiesTaken}</td>
+                                        <td className="text-text-secondary text-center py-2 px-2">
+                                          {r.rounds > 0 ? (r.casualtiesTaken / r.rounds).toFixed(1) : '–'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Aggregate map stats — already event-wide via the engine */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                            <Map className="w-5 h-5" />
+                            Map Statistics (event-wide)
+                          </h3>
+                          {(() => {
+                            const { overall, byMap } = calculateMapStats();
+                            const pct = (w, t) => t > 0 ? ((w / t) * 100).toFixed(1) : '0.0';
+                            const playedMaps = Object.entries(byMap).sort((a, b) => b[1].plays - a[1].plays);
+                            if (overall.totalRounds === 0) return <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>;
+                            return (
+                              <>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                  <div className="bg-bg-card rounded p-3">
+                                    <div className="text-xs text-text-secondary mb-1">USA Win Rate</div>
+                                    <div className="text-lg font-bold text-blue-400">{pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span></div>
+                                  </div>
+                                  <div className="bg-bg-card rounded p-3">
+                                    <div className="text-xs text-text-secondary mb-1">Attacker Win Rate</div>
+                                    <div className="text-lg font-bold text-indigo-400">{pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span></div>
+                                  </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="text-text-secondary border-b border-border-default">
+                                        <th className="text-left py-2 px-2">Map</th>
+                                        <th className="text-center py-2 px-2">Plays</th>
+                                        <th className="text-center py-2 px-2">USA W</th>
+                                        <th className="text-center py-2 px-2">CSA W</th>
+                                        <th className="text-center py-2 px-2">USA %</th>
+                                        <th className="text-center py-2 px-2">Atk %</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {playedMaps.map(([name, s], idx) => (
+                                        <tr key={name} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                                          <td className="py-2 px-2">{name}</td>
+                                          <td className="text-text-secondary text-center py-2 px-2">{s.plays}</td>
+                                          <td className="text-blue-400 text-center py-2 px-2">{s.usaWins}</td>
+                                          <td className="text-red-400 text-center py-2 px-2">{s.csaWins}</td>
+                                          <td className="text-center py-2 px-2">{pct(s.usaWins, s.plays)}%</td>
+                                          <td className="text-center py-2 px-2">{pct(s.attackerWins, s.plays)}%</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {statsTab === 'season' && <>
 
                   {/* Map Statistics */}
                   <div className="bg-bg-inset rounded-lg p-4 mb-4">
@@ -7055,6 +7390,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       })()}
                     </div>
                   </div>
+                  </>}
                 </div>
               </div>
             </div>
