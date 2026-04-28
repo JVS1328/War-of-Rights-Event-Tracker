@@ -194,6 +194,47 @@ const cloneMapHistory = (src) => {
   return out;
 };
 
+// Fold one round's outcome into a mapHistory entry. Side-aware (uses the
+// flip toggle to decide which roster team is USA/CSA in-game) and tracks
+// casualties taken/inflicted per side.
+const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
+  const winner = week[`round${roundNum}Winner`];
+  const mapName = week[`round${roundNum}Map`];
+  if (!winner || !mapName) return;
+  const flipped = !!week[`round${roundNum}Flipped`];
+  const usaTeamKey = flipped ? 'B' : 'A';
+  const winnerSide = winner === usaTeamKey ? 'USA' : 'CSA';
+  const loseSide = winnerSide === 'USA' ? 'CSA' : 'USA';
+  const casA = week[`r${roundNum}CasualtiesA`] || 0;
+  const casB = week[`r${roundNum}CasualtiesB`] || 0;
+  const usaCas = usaTeamKey === 'A' ? casA : casB;
+  const csaCas = usaTeamKey === 'A' ? casB : casA;
+
+  const entry = (mapHistory[mapName] ||= emptyMapEntry());
+  entry.plays += 1;
+  entry[winnerSide].wins += 1;
+  entry[loseSide].losses += 1;
+  entry.USA.casualtiesTaken += usaCas;
+  entry.CSA.casualtiesTaken += csaCas;
+  entry.USA.casualtiesInflicted += csaCas;
+  entry.CSA.casualtiesInflicted += usaCas;
+};
+
+// Accumulate map outcomes from a list of seasons. Pure function; the same
+// fold logic the in-event replay uses. Reused for season-only map stats,
+// event-wide map stats, and the cross-event 'global' scope seed.
+export const accumulateMapHistoryFromSeasons = (seasons) => {
+  const mapHistory = {};
+  for (const season of seasons || []) {
+    for (const week of season.weeks || []) {
+      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
+      foldRoundIntoMapHistory(mapHistory, week, 1);
+      foldRoundIntoMapHistory(mapHistory, week, 2);
+    }
+  }
+  return mapHistory;
+};
+
 // Accumulate map outcomes from every event in `events[0..upToIdx-1]`. Used
 // as a seed when the active event has `eloConfig.mapStatsScope === 'global'`,
 // so its replay starts with prior events' map-side history already folded
@@ -201,39 +242,14 @@ const cloneMapHistory = (src) => {
 // unit identity (the registry) is event-scoped.
 export const accumulatePriorEventsMapHistory = (events, upToIdx) => {
   const mapHistory = {};
-  const fold = (entry, winnerSide, casA, casB, usaTeamKey) => {
-    const loseSide = winnerSide === 'USA' ? 'CSA' : 'USA';
-    const usaCas = usaTeamKey === 'A' ? casA : casB;
-    const csaCas = usaTeamKey === 'A' ? casB : casA;
-    entry.plays += 1;
-    entry[winnerSide].wins += 1;
-    entry[loseSide].losses += 1;
-    entry.USA.casualtiesTaken += usaCas;
-    entry.CSA.casualtiesTaken += csaCas;
-    entry.USA.casualtiesInflicted += csaCas;
-    entry.CSA.casualtiesInflicted += usaCas;
-  };
-
   const limit = Math.min(upToIdx ?? 0, events?.length ?? 0);
   for (let i = 0; i < limit; i++) {
     const event = events[i];
     for (const season of event.seasons || []) {
       for (const week of season.weeks || []) {
         if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
-        for (const roundNum of [1, 2]) {
-          const winner = week[`round${roundNum}Winner`];
-          const mapName = week[`round${roundNum}Map`];
-          if (!winner || !mapName) continue;
-          const flipped = !!week[`round${roundNum}Flipped`];
-          const usaTeamKey = flipped ? 'B' : 'A';
-          const winnerSide = winner === usaTeamKey ? 'USA' : 'CSA';
-          const entry = (mapHistory[mapName] ||= emptyMapEntry());
-          fold(entry,
-            winnerSide,
-            week[`r${roundNum}CasualtiesA`] || 0,
-            week[`r${roundNum}CasualtiesB`] || 0,
-            usaTeamKey);
-        }
+        foldRoundIntoMapHistory(mapHistory, week, 1);
+        foldRoundIntoMapHistory(mapHistory, week, 2);
       }
     }
   }

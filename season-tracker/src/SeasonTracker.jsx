@@ -40,6 +40,7 @@ import {
   replayEventFromAppState,
   replayActiveSeasonUpToWeekFromAppState,
   computeExpectedA,
+  accumulateMapHistoryFromSeasons,
   USA_ATTACK_MAPS,
 } from './utils/eloEngine';
 
@@ -138,6 +139,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [showRegistryModal, setShowRegistryModal] = useState(false);
   const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
+  const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
@@ -824,12 +826,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return grouped;
   };
 
-  // Calculate Map Statistics — derives the legacy { overall, byMap } shape
-  // from the engine's mapHistory. Attacker/defender breakdowns come from the
-  // USA_ATTACK_MAPS list since map identity is direction-agnostic.
-  const calculateMapStats = () => {
-    const { mapHistory } = replayEventFromAppState(appState, activeEvent.id);
-
+  // Project an engine mapHistory into the { overall, byMap } shape used by
+  // the UI. Attacker/defender breakdowns come from USA_ATTACK_MAPS since map
+  // identity is direction-agnostic.
+  const projectMapHistory = (mapHistory) => {
     const byMap = {};
     const overall = {
       totalRounds: 0, usaWins: 0, csaWins: 0,
@@ -847,9 +847,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const totalCasualties = entry.USA.casualtiesTaken + entry.CSA.casualtiesTaken;
 
       byMap[mapName] = {
-        plays: entry.plays,
-        usaWins,
-        csaWins,
+        plays: entry.plays, usaWins, csaWins,
         attackerWins: isUsaAttack ? usaWins : csaWins,
         defenderWins: isUsaAttack ? csaWins : usaWins,
         totalCasualties,
@@ -875,9 +873,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
         overall.defenderWins += usaWins;
       }
     }
-
     return { overall, byMap };
   };
+
+  // Map stats for an arbitrary slice of seasons. KISS: the engine's
+  // accumulator does the math; this just projects to the UI shape.
+  const mapStatsForSeasons = (seasons) =>
+    projectMapHistory(accumulateMapHistoryFromSeasons(seasons));
+
+  // Event-wide map stats — used by the engine-side win-prob path and the
+  // Event tab. `calculateMapStats` retains its legacy name (and event-wide
+  // semantics) so the existing call sites still work.
+  const calculateMapStats = () => mapStatsForSeasons(activeEvent.seasons);
+
+  // Active-season-only map stats for the Season tab.
+  const calculateSeasonMapStats = () => mapStatsForSeasons(activeSeason ? [activeSeason] : []);
 
   // Per-unit per-map combined record (sums USA + CSA sides). The engine
   // tracks per-side records; legacy callers want the combined view.
@@ -2347,50 +2357,62 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Calculate teammate composition heatmap (per-round, swap-aware)
-  const calculateTeammateHeatmap = () => {
-    const { teammate } = computeStats();
-    const heatmapData = [];
-
-    // Get all units that have played
-    const activeUnits = units.filter(unit => {
-      return weeks.some(week =>
-        week.teamA.includes(unit) || week.teamB.includes(unit)
-      );
-    }).sort();
-
-    // Calculate weeks and rounds where each unit was active
-    const unitActiveWeeks = {};
-    const unitActiveRounds = {};
-    activeUnits.forEach(unit => {
-      unitActiveWeeks[unit] = weeks.filter(week =>
-        week.teamA.includes(unit) || week.teamB.includes(unit)
-      ).length;
-      unitActiveRounds[unit] = unitActiveWeeks[unit] * 2;
+  // Build a teammate-composition heatmap from any list of seasons. KISS DRY:
+  // the active-season heatmap is just `seasons = [activeSeason]`; the
+  // event-wide heatmap is `seasons = activeEvent.seasons`. Pure aggregation —
+  // counts how often each pair was on the same team across all rounds in the
+  // supplied seasons (swap-aware via getEffectiveTeams).
+  const calculateTeammateHeatmapForSeasons = (seasons) => {
+    const allWeeks = (seasons || []).flatMap(s => s.weeks || []);
+    const teammate = {};
+    allWeeks.forEach(week => {
+      [1, 2].forEach(roundNum => {
+        const { teamA, teamB } = getEffectiveTeams(week, roundNum);
+        const ensure = (u) => (teammate[u] ||= {});
+        teamA.forEach(u1 => {
+          const m = ensure(u1);
+          teamA.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
+        });
+        teamB.forEach(u1 => {
+          const m = ensure(u1);
+          teamB.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
+        });
+      });
     });
 
-    // Build heatmap matrix with relative percentages
-    activeUnits.forEach(unit1 => {
-      activeUnits.forEach(unit2 => {
-        if (unit1 !== unit2) {
-          const count = teammate[unit1]?.[unit2] || 0;
-          const bothActiveWeeks = Math.min(unitActiveWeeks[unit1] || 0, unitActiveWeeks[unit2] || 0);
-          const bothActiveRounds = bothActiveWeeks * 2;
+    // Active units across the supplied seasons.
+    const allUnits = new Set();
+    for (const s of seasons || []) (s.units || []).forEach(u => allUnits.add(u));
+    const activeUnits = [...allUnits].filter(unit =>
+      allWeeks.some(w => (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit))
+    ).sort();
 
-          if (count > 0 || bothActiveRounds > 0) {
-            heatmapData.push({
-              unit1,
-              unit2,
-              count,
-              bothActiveWeeks,
-              bothActiveRounds
-            });
-          }
+    const unitActiveWeeks = {};
+    activeUnits.forEach(unit => {
+      unitActiveWeeks[unit] = allWeeks.filter(w =>
+        (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit)
+      ).length;
+    });
+
+    const heatmapData = [];
+    activeUnits.forEach(u1 => {
+      activeUnits.forEach(u2 => {
+        if (u1 === u2) return;
+        const count = teammate[u1]?.[u2] || 0;
+        const bothActiveWeeks = Math.min(unitActiveWeeks[u1] || 0, unitActiveWeeks[u2] || 0);
+        const bothActiveRounds = bothActiveWeeks * 2;
+        if (count > 0 || bothActiveRounds > 0) {
+          heatmapData.push({ unit1: u1, unit2: u2, count, bothActiveWeeks, bothActiveRounds });
         }
       });
     });
 
     return { heatmapData, activeUnits, unitActiveWeeks };
   };
+
+  // Active-season heatmap (legacy callers).
+  const calculateTeammateHeatmap = () =>
+    calculateTeammateHeatmapForSeasons(activeSeason ? [activeSeason] : []);
 
   // Calculate live preview stats for balancer
   const calculatePreviewStats = (teamA, teamB) => {
@@ -3740,6 +3762,157 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
     
     return bracket;
+  };
+
+  // Shared Map Stats block — overall card + per-skirmish-area collapsible
+  // groups. Used by both the Season tab (active-season scope) and the Event
+  // tab (event-wide scope). `keyPrefix` namespaces the toggleSection keys so
+  // the two tabs' expand/collapse state stay independent.
+  const renderMapStatsBlock = (stats, keyPrefix) => {
+    const { overall, byMap } = stats;
+    const pct = (wins, total) => total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
+
+    return (
+      <>
+        {overall.totalRounds > 0 && (
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bg-inset rounded p-3">
+                <div className="text-xs text-text-secondary mb-1">USA Overall</div>
+                <div className="text-lg font-bold text-blue-400">
+                  {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span>
+                </div>
+              </div>
+              <div className="bg-bg-inset rounded p-3">
+                <div className="text-xs text-text-secondary mb-1">CSA Overall</div>
+                <div className="text-lg font-bold text-red-400">
+                  {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaWins}/{overall.totalRounds})</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bg-inset rounded p-3">
+                <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
+                <div className="text-lg font-bold text-indigo-400">
+                  {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span>
+                </div>
+              </div>
+              <div className="bg-bg-inset rounded p-3">
+                <div className="text-xs text-text-secondary mb-1">Defenders Won</div>
+                <div className="text-lg font-bold text-green-400">
+                  {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.defenderWins}/{overall.totalRounds})</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="bg-bg-inset rounded p-2">
+                <div className="text-xs text-text-secondary">USA Attack</div>
+                <div className="text-sm font-semibold text-blue-400">
+                  {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
+                </div>
+              </div>
+              <div className="bg-bg-inset rounded p-2">
+                <div className="text-xs text-text-secondary">USA Defense</div>
+                <div className="text-sm font-semibold text-blue-400">
+                  {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
+                </div>
+              </div>
+              <div className="bg-bg-inset rounded p-2">
+                <div className="text-xs text-text-secondary">CSA Attack</div>
+                <div className="text-sm font-semibold text-red-400">
+                  {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
+                </div>
+              </div>
+              <div className="bg-bg-inset rounded p-2">
+                <div className="text-xs text-text-secondary">CSA Defense</div>
+                <div className="text-sm font-semibold text-red-400">
+                  {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
+            const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const playedMaps = areaMaps.filter(m => byMap[m]);
+            if (playedMaps.length === 0) return null;
+            const sectionKey = `${keyPrefix}_${areaKey}`;
+            return (
+              <div key={areaKey} className="bg-bg-inset rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleSection(sectionKey)}
+                  className="w-full flex items-center justify-between bg-bg-inset px-3 py-2 hover:bg-border-subtle transition"
+                >
+                  <span className="font-semibold text-text-secondary">{areaName} ({playedMaps.length})</span>
+                  {expandedSections[sectionKey] ? (
+                    <ChevronDown className="w-4 h-4 text-text-secondary" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-text-secondary" />
+                  )}
+                </button>
+                {expandedSections[sectionKey] && (
+                  <div className="p-2 space-y-2">
+                    {playedMaps
+                      .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
+                      .map(mapName => {
+                        const s = byMap[mapName];
+                        const avgCas = s.plays > 0 ? (s.totalCasualties / s.plays).toFixed(0) : 0;
+                        return (
+                          <div key={mapName} className="bg-bg-card rounded p-2">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm font-medium">{mapName}</span>
+                              <span className="text-xs text-text-secondary">{s.plays} rounds</span>
+                            </div>
+                            <div className="text-xs space-y-0.5">
+                              <div>
+                                <span className="text-blue-300">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+                                <span className="text-text-secondary mx-2">|</span>
+                                <span className="text-red-300">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+                              </div>
+                              <div className="text-text-secondary">Casualties: {s.totalCasualties} (avg {avgCas})</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {Object.keys(byMap).length === 0 && (
+          <p className="text-text-secondary text-center py-4">No map data available</p>
+        )}
+      </>
+    );
+  };
+
+  // Determine the season's champion based on playoffs. Returns
+  //   { side, lead, weekName, finalRound }
+  // or null when no playoffs occurred. The champion is the winner of the
+  // latest playoff week with a result; round 2 takes precedence over round 1.
+  // `side` is the in-game side they won as (USA / CSA), resolved through the
+  // round's flip flag — the roster team label is only meaningful relative to
+  // the in-game side they played, which the flip determines per round.
+  const seasonChampion = (season) => {
+    const weeks = season.weeks || [];
+    const playoffWeeks = weeks.filter(w => w.isPlayoffs && (w.round1Winner || w.round2Winner));
+    if (playoffWeeks.length === 0) return null;
+    const last = playoffWeeks[playoffWeeks.length - 1];
+    const winnerKey = last.round2Winner || last.round1Winner;
+    if (!winnerKey) return null;
+    const finalRound = last.round2Winner ? 2 : 1;
+    const flipped = !!last[`round${finalRound}Flipped`];
+    const usaTeamKey = flipped ? 'B' : 'A';
+    return {
+      side: winnerKey === usaTeamKey ? 'USA' : 'CSA',
+      lead: last[`lead${winnerKey}_r${finalRound}`] || last[`lead${winnerKey}`] || null,
+      weekName: last.name || `Week ${weeks.indexOf(last) + 1}`,
+      finalRound,
+    };
   };
 
   return (
@@ -6473,7 +6646,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                         </div>
 
-                        {/* Per-season cards */}
+                        {/* Per-season cards — surfaces playoff status and the
+                           champion when playoffs occurred (based on the latest
+                           playoff week's result). */}
                         <div className="bg-bg-inset rounded-lg p-4">
                           <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
                             <Calendar className="w-5 h-5" />
@@ -6481,14 +6656,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </h3>
                           <div className="space-y-2">
                             {seasons.map(season => {
-                              const weekCount = season.weeks?.length || 0;
+                              const seasonWeeks = season.weeks || [];
+                              const weekCount = seasonWeeks.length;
                               let roundCount = 0;
-                              for (const w of season.weeks || []) {
+                              let playoffsScheduled = false;
+                              for (const w of seasonWeeks) {
                                 if (w.round1Winner) roundCount += 1;
                                 if (w.round2Winner) roundCount += 1;
+                                if (w.isPlayoffs) playoffsScheduled = true;
                               }
                               const rosterSize = (season.units || []).length;
                               const isActive = season.id === activeSeason.id;
+                              const champion = seasonChampion(season);
                               return (
                                 <button
                                   key={season.id}
@@ -6497,17 +6676,39 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <div className="font-semibold flex items-center gap-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold flex items-center gap-2 flex-wrap">
                                         {season.name}
                                         {isActive && <span className="text-xs text-indigo-400">(active)</span>}
+                                        {playoffsScheduled && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                                            Playoffs
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="text-xs text-text-secondary mt-0.5">
                                         {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
                                       </div>
+                                      {champion && (
+                                        <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
+                                          <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
+                                          <span className="text-text-secondary">Champion:</span>
+                                          <span className={`font-semibold ${champion.side === 'USA' ? 'text-blue-400' : 'text-red-400'}`}>
+                                            {champion.side}
+                                          </span>
+                                          {champion.lead && (
+                                            <span className="text-text-secondary">
+                                              · led by <span className="text-text-primary">{champion.lead}</span>
+                                            </span>
+                                          )}
+                                          <span className="text-text-muted">
+                                            ({champion.weekName} R{champion.finalRound})
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
-                                    <ChevronRight className="w-4 h-4 text-text-secondary" />
+                                    <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
                                   </div>
                                 </button>
                               );
@@ -6606,58 +6807,34 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           )}
                         </div>
 
-                        {/* Aggregate map stats — already event-wide via the engine */}
+                        {/* Aggregate map stats — same UI as the Season tab,
+                           sourced from event-wide history. */}
                         <div className="bg-bg-inset rounded-lg p-4">
                           <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
                             <Map className="w-5 h-5" />
                             Map Statistics (event-wide)
                           </h3>
-                          {(() => {
-                            const { overall, byMap } = calculateMapStats();
-                            const pct = (w, t) => t > 0 ? ((w / t) * 100).toFixed(1) : '0.0';
-                            const playedMaps = Object.entries(byMap).sort((a, b) => b[1].plays - a[1].plays);
-                            if (overall.totalRounds === 0) return <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>;
-                            return (
-                              <>
-                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                  <div className="bg-bg-card rounded p-3">
-                                    <div className="text-xs text-text-secondary mb-1">USA Win Rate</div>
-                                    <div className="text-lg font-bold text-blue-400">{pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span></div>
-                                  </div>
-                                  <div className="bg-bg-card rounded p-3">
-                                    <div className="text-xs text-text-secondary mb-1">Attacker Win Rate</div>
-                                    <div className="text-lg font-bold text-indigo-400">{pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span></div>
-                                  </div>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="text-text-secondary border-b border-border-default">
-                                        <th className="text-left py-2 px-2">Map</th>
-                                        <th className="text-center py-2 px-2">Plays</th>
-                                        <th className="text-center py-2 px-2">USA W</th>
-                                        <th className="text-center py-2 px-2">CSA W</th>
-                                        <th className="text-center py-2 px-2">USA %</th>
-                                        <th className="text-center py-2 px-2">Atk %</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {playedMaps.map(([name, s], idx) => (
-                                        <tr key={name} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                                          <td className="py-2 px-2">{name}</td>
-                                          <td className="text-text-secondary text-center py-2 px-2">{s.plays}</td>
-                                          <td className="text-blue-400 text-center py-2 px-2">{s.usaWins}</td>
-                                          <td className="text-red-400 text-center py-2 px-2">{s.csaWins}</td>
-                                          <td className="text-center py-2 px-2">{pct(s.usaWins, s.plays)}%</td>
-                                          <td className="text-center py-2 px-2">{pct(s.attackerWins, s.plays)}%</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </>
-                            );
-                          })()}
+                          {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                        </div>
+
+                        {/* Cross-season teammate heatmap — opens the existing
+                           heatmap modal in event scope (DRY: same modal, same
+                           render path). */}
+                        <div className="bg-bg-inset rounded-lg p-4">
+                          <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
+                            <Swords className="w-5 h-5" />
+                            Cross-Season Teammate Composition
+                          </h3>
+                          <p className="text-xs text-text-secondary mb-3">
+                            How often each pair of units has played as teammates across every season in this event.
+                          </p>
+                          <button
+                            onClick={() => { setHeatmapScope('event'); setShowHeatmapModal(true); }}
+                            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
+                          >
+                            <Swords className="w-4 h-4" />
+                            Open Cross-Season Heatmap
+                          </button>
                         </div>
                       </div>
                     );
@@ -6665,138 +6842,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                   {statsTab === 'season' && <>
 
-                  {/* Map Statistics */}
+                  {/* Map Statistics — active season only */}
                   <div className="bg-bg-inset rounded-lg p-4 mb-4">
                     <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                       <Map className="w-5 h-5" />
                       Map Statistics
                     </h3>
-                    {(() => {
-                      const { overall, byMap } = calculateMapStats();
-                      const pct = (wins, total) => total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
-
-                      return (
-                        <>
-                          {/* Overall Statistics */}
-                          {overall.totalRounds > 0 && (
-                            <div className="mb-4 space-y-3">
-                              {/* Faction Win Rates */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-bg-inset rounded p-3">
-                                  <div className="text-xs text-text-secondary mb-1">USA Overall</div>
-                                  <div className="text-lg font-bold text-blue-400">
-                                    {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span>
-                                  </div>
-                                </div>
-                                <div className="bg-bg-inset rounded p-3">
-                                  <div className="text-xs text-text-secondary mb-1">CSA Overall</div>
-                                  <div className="text-lg font-bold text-red-400">
-                                    {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaWins}/{overall.totalRounds})</span>
-                                  </div>
-                                </div>
-                              </div>
-                              {/* Attacker/Defender Win Rates */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-bg-inset rounded p-3">
-                                  <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
-                                  <div className="text-lg font-bold text-indigo-400">
-                                    {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span>
-                                  </div>
-                                </div>
-                                <div className="bg-bg-inset rounded p-3">
-                                  <div className="text-xs text-text-secondary mb-1">Defenders Won</div>
-                                  <div className="text-lg font-bold text-green-400">
-                                    {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.defenderWins}/{overall.totalRounds})</span>
-                                  </div>
-                                </div>
-                              </div>
-                              {/* Faction Attack/Defense Breakdown */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div className="bg-bg-inset rounded p-2">
-                                  <div className="text-xs text-text-secondary">USA Attack</div>
-                                  <div className="text-sm font-semibold text-blue-400">
-                                    {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
-                                  </div>
-                                </div>
-                                <div className="bg-bg-inset rounded p-2">
-                                  <div className="text-xs text-text-secondary">USA Defense</div>
-                                  <div className="text-sm font-semibold text-blue-400">
-                                    {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
-                                  </div>
-                                </div>
-                                <div className="bg-bg-inset rounded p-2">
-                                  <div className="text-xs text-text-secondary">CSA Attack</div>
-                                  <div className="text-sm font-semibold text-red-400">
-                                    {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
-                                  </div>
-                                </div>
-                                <div className="bg-bg-inset rounded p-2">
-                                  <div className="text-xs text-text-secondary">CSA Defense</div>
-                                  <div className="text-sm font-semibold text-red-400">
-                                    {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Maps by Skirmish Area */}
-                          <div className="space-y-2">
-                            {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
-                              const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                              const playedMaps = areaMaps.filter(m => byMap[m]);
-                              if (playedMaps.length === 0) return null;
-
-                              return (
-                                <div key={areaKey} className="bg-bg-inset rounded-lg overflow-hidden">
-                                  <button
-                                    onClick={() => toggleSection(`mapStats_${areaKey}`)}
-                                    className="w-full flex items-center justify-between bg-bg-inset px-3 py-2 hover:bg-border-subtle transition"
-                                  >
-                                    <span className="font-semibold text-text-secondary">{areaName} ({playedMaps.length})</span>
-                                    {expandedSections[`mapStats_${areaKey}`] ? (
-                                      <ChevronDown className="w-4 h-4 text-text-secondary" />
-                                    ) : (
-                                      <ChevronRight className="w-4 h-4 text-text-secondary" />
-                                    )}
-                                  </button>
-                                  {expandedSections[`mapStats_${areaKey}`] && (
-                                    <div className="p-2 space-y-2">
-                                      {playedMaps
-                                        .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
-                                        .map(mapName => {
-                                          const stats = byMap[mapName];
-                                          const avgCas = stats.plays > 0 ? (stats.totalCasualties / stats.plays).toFixed(0) : 0;
-                                          return (
-                                            <div key={mapName} className="bg-bg-card rounded p-2">
-                                              <div className="flex justify-between items-center mb-1">
-                                                <span className="text-sm font-medium">{mapName}</span>
-                                                <span className="text-xs text-text-secondary">{stats.plays} rounds</span>
-                                              </div>
-                                              <div className="text-xs space-y-0.5">
-                                                <div>
-                                                  <span className="text-blue-300">USA: {stats.usaWins} ({pct(stats.usaWins, stats.plays)}%)</span>
-                                                  <span className="text-text-secondary mx-2">|</span>
-                                                  <span className="text-red-300">CSA: {stats.csaWins} ({pct(stats.csaWins, stats.plays)}%)</span>
-                                                </div>
-                                                <div className="text-text-secondary">Casualties: {stats.totalCasualties} (avg {avgCas})</div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {Object.keys(byMap).length === 0 && (
-                            <p className="text-text-secondary text-center py-4">No map data available</p>
-                          )}
-                        </>
-                      );
-                    })()}
+                    {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
                   </div>
 
                   {/* Casualties Summary */}
@@ -7743,7 +7795,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
+                  <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Swords className="w-6 h-6" />
                       Teammate Composition Heatmap
@@ -7756,15 +7808,43 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
+                  {/* Scope toggle — same UI as the stats modal tab strip */}
+                  <div className="flex gap-1 mb-4 border-b border-border-default">
+                    <button
+                      onClick={() => setHeatmapScope('season')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        heatmapScope === 'season'
+                          ? 'border-indigo-500 text-indigo-400'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Season — {activeSeason.name}
+                    </button>
+                    <button
+                      onClick={() => setHeatmapScope('event')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        heatmapScope === 'event'
+                          ? 'border-indigo-500 text-indigo-400'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
+                    </button>
+                  </div>
+
                   <div className="mb-4 bg-bg-inset rounded-lg p-4">
                     <p className="text-sm text-text-secondary">
-                      This heatmap shows how often units have played together as teammates per round, accounting for balance swaps.
-                      For example, 50% means they were teammates in half of the rounds where both units were present.
+                      How often units have played together as teammates per round, accounting for balance swaps.
+                      50% means they were teammates in half of the rounds where both units were present.
+                      {heatmapScope === 'event' && ' Aggregated across every season in this event.'}
                     </p>
                   </div>
 
                   {(() => {
-                    const { heatmapData, activeUnits, unitActiveWeeks } = calculateTeammateHeatmap();
+                    const seasonsToScan = heatmapScope === 'event'
+                      ? activeEvent.seasons
+                      : (activeSeason ? [activeSeason] : []);
+                    const { heatmapData, activeUnits, unitActiveWeeks } = calculateTeammateHeatmapForSeasons(seasonsToScan);
                     
                     if (activeUnits.length === 0) {
                       return (
