@@ -6,32 +6,20 @@ import {
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
 import { generateShareUrl, generateShortShareUrl } from './utils/shareSeason';
+import {
+  migrateToV2,
+  migrateLegacyFlatToV2,
+  makeDefaultAppState,
+  makeDefaultPlayoffConfig as getDefaultPlayoffConfig,
+  makeDefaultBalancerSettings as getDefaultBalancerSettings,
+  makeDefaultMapBiases as getDefaultMapBiases,
+  getActiveEvent,
+  getActiveSeason,
+  updateActiveSeason,
+  updateActiveEvent,
+} from './utils/eventStore';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
-
-// Default playoff configuration factory
-const getDefaultPlayoffConfig = () => ({
-  enabled: false,
-  useDivisions: false,
-  teamsPerDivision: 2,
-  wildcardTeams: 0,
-  roundFormats: {
-    wildcard: 1,
-    divisional: 1,
-    conference: 2,
-    finals: 2
-  }
-});
-
-// Default balancer settings
-const getDefaultBalancerSettings = () => ({
-  teammateWeight: 1.0,
-  avgDiffWeight: 1.0,
-  regimentCountWeight: 0.75,
-  rangeSimilarityWeight: 0.50,
-  divisionOppositionWeight: 0,
-  balanceOptionCount: 3
-});
 
 // Map data from maps.py
 const MAPS = {
@@ -64,96 +52,61 @@ const MAPS = {
 
 const ALL_MAPS = Object.values(MAPS).flat().sort();
 
-// Default map bias values (from tracker.py lines 2933-2954)
-const getDefaultMapBiases = () => ({
-  // ANTIETAM
-  "East Woods Skirmish": 2, "Hooker's Push": 2.5, "Hagerstown Turnpike": 1,
-  "Miller's Cornfield": 1.5, "East Woods": 2.5, "Nicodemus Hill": 2.5,
-  "Bloody Lane": 1.5, "Pry Ford": 2, "Pry Grist Mill": 1, "Pry House": 1.5,
-  "West Woods": 1.5, "Dunker Church": 1.5, "Burnside's Bridge": 2.5,
-  "Cooke's Countercharge": 1.5, "Otto and Sherrick Farms": 1,
-  "Roulette Lane": 1.5, "Piper Farm": 2, "Hill's Counterattack": 1,
-  // HARPERS FERRY
-  "Maryland Heights": 1.5, "River Crossing": 2.5, "Downtown": 1,
-  "School House Ridge": 1, "Bolivar Heights Camp": 1.5, "High Street": 1,
-  "Shenandoah Street": 1.5, "Harpers Ferry Graveyard": 1, "Washington Street": 1,
-  "Bolivar Heights Redoubt": 2,
-  // SOUTH MOUNTAIN
-  "Garland's Stand": 2.5, "Cox's Push": 2.5, "Hatch's Attack": 2,
-  "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defense": 2,
-  // DRILL CAMP
-  "Alexander Farm": 2, "Crossroads": 0, "Smith Field": 1,
-  "Crecy's Cornfield": 1.5, "Crossley Creek": 1, "Larsen Homestead": 1.5,
-  "South Woodlot": 1.5, "Flemming's Meadow": 2, "Wagon Road": 2,
-  "Union Camp": 1.5, "Pat's Turnpike": 1.5, "Stefan's Lot": 1,
-  "Confederate Encampment": 2
-});
-
-// Ensure all weeks have bias snapshots, stamping with fallback values where missing
-const stampWeekBiases = (weeksList, fallbackMapBiases, fallbackEloBiasPercentages) =>
-  weeksList.map(week => (week.mapBiases && week.eloBiasPercentages) ? week : {
-    ...week,
-    mapBiases: week.mapBiases || { ...fallbackMapBiases },
-    eloBiasPercentages: week.eloBiasPercentages || { ...fallbackEloBiasPercentages },
-  });
-
 const SeasonTracker = ({ initialShareData = null }) => {
-  // Load initial state from localStorage
-  const loadFromStorage = () => {
+  // v2 app state: events → seasons. All persisted state lives here. Existing
+  // top-level field names (units, weeks, etc.) are bound to the active
+  // season/event below so the rest of the component reads/writes them as
+  // before; only the underlying storage shape is new.
+  const [appState, setAppState] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      return migrateToV2(saved ? JSON.parse(saved) : null);
     } catch (error) {
       console.error('Error loading from localStorage:', error);
+      return makeDefaultAppState();
     }
-    return null;
-  };
-
-  const savedState = loadFromStorage();
-
-  // Resolve initial bias values (used for both state init and stamping old weeks)
-  const initialMapBiases = savedState?.mapBiases || getDefaultMapBiases();
-  const initialEloBiasPercentages = savedState?.eloBiasPercentages || {
-    lightAttacker: 15, heavyAttacker: 30, lightDefender: 15, heavyDefender: 30
-  };
-
-  // State management
-  const [units, setUnits] = useState(savedState?.units || []);
-  const [nonTokenUnits, setNonTokenUnits] = useState(savedState?.nonTokenUnits || []);
-  const [weeks, setWeeks] = useState(() =>
-    stampWeekBiases(savedState?.weeks || [], initialMapBiases, initialEloBiasPercentages)
-  );
-  const [selectedWeek, setSelectedWeek] = useState(savedState?.selectedWeek || null);
-  const [teamNames, setTeamNames] = useState(savedState?.teamNames || { A: 'USA', B: 'CSA' });
-  const [pointSystem, setPointSystem] = useState({
-    winLead: 4,
-    winAssist: 2,
-    lossLead: 0,
-    lossAssist: 1,
-    bonus2_0Lead: 0,
-    bonus2_0Assist: 1,
-    balancePoints: 0,
-    balancePointsStyle: 'perNight',
-    ...(savedState?.pointSystem || {})
   });
-  const [eloSystem, setEloSystem] = useState(savedState?.eloSystem || {
-    initialElo: 1500,
-    kFactorStandard: 96,
-    kFactorProvisional: 128,
-    provisionalRounds: 10,
-    sweepBonusMultiplier: 1.25,
-    leadMultiplier: 2.0,
-    sizeInfluence: 1.0,
-    playoffMultiplier: 1.25
-  });
-  const [eloBiasPercentages, setEloBiasPercentages] = useState(initialEloBiasPercentages);
-  const [unitPlayerCounts, setUnitPlayerCounts] = useState(savedState?.unitPlayerCounts || {});
-  const [manualAdjustments, setManualAdjustments] = useState(savedState?.manualAdjustments || {});
-  const [divisions, setDivisions] = useState(savedState?.divisions || []);
-  const [mapBiases, setMapBiases] = useState(initialMapBiases);
-  const [mapCooldown, setMapCooldown] = useState(savedState?.mapCooldown || 0);
+
+  const activeEvent = getActiveEvent(appState);
+  const activeSeason = getActiveSeason(appState);
+
+  // Bind a season-level field as a [value, setter] pair mirroring useState.
+  // Setter accepts either a value or an updater function.
+  const seasonField = (field) => [
+    activeSeason[field],
+    (next) => setAppState(prev => updateActiveSeason(prev, s => ({
+      ...s,
+      [field]: typeof next === 'function' ? next(s[field]) : next,
+    }))),
+  ];
+  const eventField = (field) => [
+    activeEvent[field],
+    (next) => setAppState(prev => updateActiveEvent(prev, e => ({
+      ...e,
+      [field]: typeof next === 'function' ? next(e[field]) : next,
+    }))),
+  ];
+
+  // Season-level persisted state
+  const [units, setUnits] = seasonField('units');
+  const [nonTokenUnits, setNonTokenUnits] = seasonField('nonTokenUnits');
+  const [weeks, setWeeks] = seasonField('weeks');
+  const [selectedWeek, setSelectedWeek] = seasonField('selectedWeek');
+  const [teamNames, setTeamNames] = seasonField('teamNames');
+  const [pointSystem, setPointSystem] = seasonField('pointSystem');
+  const [manualAdjustments, setManualAdjustments] = seasonField('manualAdjustments');
+  const [unitPlayerCounts, setUnitPlayerCounts] = seasonField('unitPlayerCounts');
+  const [divisions, setDivisions] = seasonField('divisions');
+  const [mapCooldown, setMapCooldown] = seasonField('mapCooldown');
+  const [playoffConfig, setPlayoffConfig] = seasonField('playoffConfig');
+  const [balancerSettings, setBalancerSettings] = seasonField('balancerSettings');
+
+  // Event-level persisted state
+  const [eloSystem, setEloSystem] = eventField('eloSystem');
+  const [mapBiases, setMapBiases] = eventField('mapBiases');
+  const [eloBiasPercentages, setEloBiasPercentages] = eventField('eloBiasPercentages');
+
+  // Session-only UI state
   const [showSettings, setShowSettings] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
@@ -197,26 +150,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
-  
-  // Playoff configuration state
-  const [playoffConfig, setPlayoffConfig] = useState(savedState?.playoffConfig || getDefaultPlayoffConfig());
-  
-  // Balancer settings state
-  const [balancerSettings, setBalancerSettings] = useState(() => {
-    const saved = savedState?.balancerSettings;
-    if (!saved) return getDefaultBalancerSettings();
-    const merged = { ...getDefaultBalancerSettings(), ...saved };
-    // Migrate old property names
-    if (saved.gapWeight !== undefined && saved.regimentCountWeight === undefined) {
-      merged.regimentCountWeight = saved.gapWeight;
-    }
-    if (saved.minDiffWeight !== undefined && saved.rangeSimilarityWeight === undefined) {
-      merged.rangeSimilarityWeight = saved.minDiffWeight;
-    }
-    delete merged.gapWeight;
-    delete merged.minDiffWeight;
-    return merged;
-  });
 
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
@@ -240,34 +173,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showOverflowMenu]);
 
-  // Save state to localStorage whenever relevant state changes
+  // Save the v2 app state to localStorage whenever it changes.
   useEffect(() => {
-    const stateToSave = {
-      units,
-      nonTokenUnits,
-      weeks,
-      selectedWeek,
-      teamNames,
-      pointSystem,
-      manualAdjustments,
-      eloSystem,
-      eloBiasPercentages,
-      unitPlayerCounts,
-      divisions,
-      mapBiases,
-      mapCooldown,
-      playoffConfig,
-      balancerSettings
-    };
-
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
     } catch (error) {
       console.error('Error saving to localStorage:', error);
     }
-  }, [units, nonTokenUnits, weeks, selectedWeek, teamNames, pointSystem, manualAdjustments, eloSystem, eloBiasPercentages, unitPlayerCounts, divisions, mapBiases, mapCooldown, playoffConfig, balancerSettings]);
+  }, [appState]);
 
-  // Load shared data from URL (once, on mount)
+  // Load shared data from URL (once, on mount). The shared payload uses the
+  // legacy flat shape; migrate it into v2 before adopting.
   useEffect(() => {
     if (!initialShareData) return;
 
@@ -280,27 +196,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       return;
     }
 
-    const data = initialShareData;
-    setUnits(data.units || []);
-    setNonTokenUnits(data.nonTokenUnits || []);
-    setWeeks(stampWeekBiases(
-      data.weeks || [],
-      data.mapBiases || getDefaultMapBiases(),
-      data.eloBiasPercentages || eloBiasPercentages
-    ));
-    setTeamNames(data.teamNames || { A: 'USA', B: 'CSA' });
-    setPointSystem(data.pointSystem || pointSystem);
-    setManualAdjustments(data.manualAdjustments || {});
-    setEloSystem(data.eloSystem || eloSystem);
-    setEloBiasPercentages(data.eloBiasPercentages || eloBiasPercentages);
-    setUnitPlayerCounts(data.unitPlayerCounts || {});
-    setDivisions(data.divisions || []);
-    setMapBiases(data.mapBiases || getDefaultMapBiases());
-    setMapCooldown(data.mapCooldown || 0);
-    setPlayoffConfig(data.playoffConfig || getDefaultPlayoffConfig());
-    setBalancerSettings({ ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) });
-    setSelectedWeek(null);
-
+    setAppState(migrateLegacyFlatToV2(initialShareData));
     window.history.replaceState(null, '', window.location.pathname);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1957,50 +1853,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setBalancerResults(null);
   };
 
-  // New Season function
+  // New Season function — clears all data and starts from a fresh app state.
   const newSeason = () => {
     if (!confirm('Start a new season? This will clear all current data (units, weeks, standings, etc.). Make sure to export your current season first!')) {
       return;
     }
-
-    // Reset all state to defaults
-    setUnits([]);
-    setNonTokenUnits([]);
-    setWeeks([]);
-    setSelectedWeek(null);
-    setTeamNames({ A: 'USA', B: 'CSA' });
-    setPointSystem({
-      winLead: 4,
-      winAssist: 2,
-      lossLead: 0,
-      lossAssist: 1,
-      bonus2_0Lead: 0,
-      bonus2_0Assist: 1
-    });
-    setEloSystem({
-      initialElo: 1500,
-      kFactorStandard: 96,
-      kFactorProvisional: 128,
-      provisionalRounds: 10,
-      sweepBonusMultiplier: 1.25,
-      leadMultiplier: 2.0,
-      sizeInfluence: 1.0,
-      playoffMultiplier: 1.25
-    });
-    setEloBiasPercentages({
-      lightAttacker: 15,
-      heavyAttacker: 30,
-      lightDefender: 15,
-      heavyDefender: 30
-    });
-    setUnitPlayerCounts({});
-    setManualAdjustments({});
-    setDivisions([]);
-    setMapBiases(getDefaultMapBiases());
-    setMapCooldown(0);
-    setPlayoffConfig(getDefaultPlayoffConfig());
-    setBalancerSettings(getDefaultBalancerSettings());
-
+    setAppState(makeDefaultAppState());
     alert('New season started! All data has been cleared.');
   };
 
@@ -2214,41 +2072,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
           importedMapBiases[mapName] = parseFloat(biasValue) || 0;
         });
 
-        setUnits(data.units || []);
-        setNonTokenUnits(data.nonTokenUnits || data.non_token_units || []);
-        setWeeks(stampWeekBiases(importedWeeks, importedMapBiases, importedEloBiasPercentages));
-        setTeamNames(importedTeamNames);
-        setPointSystem(importedPointSystem);
-        setManualAdjustments(importedManualAdjustments);
-        setEloSystem(importedEloSystem);
-        setEloBiasPercentages(importedEloBiasPercentages);
-        setUnitPlayerCounts(importedUnitPlayerCounts);
+        // Assemble a flat legacy-shape object, then migrate into v2 wholesale.
+        // migrateLegacyFlatToV2 handles balancerSettings prop-name migration,
+        // unit-registry generation, and week bias stamping internally.
+        const legacyImported = {
+          units: data.units || [],
+          nonTokenUnits: data.nonTokenUnits || data.non_token_units || [],
+          weeks: importedWeeks,
+          selectedWeek: null,
+          teamNames: importedTeamNames,
+          pointSystem: importedPointSystem,
+          manualAdjustments: importedManualAdjustments,
+          eloSystem: importedEloSystem,
+          eloBiasPercentages: importedEloBiasPercentages,
+          unitPlayerCounts: importedUnitPlayerCounts,
+          divisions: data.divisions || [],
+          mapBiases: importedMapBiases,
+          mapCooldown: parseInt(data.mapCooldown) || 0,
+          playoffConfig: data.playoffConfig,
+          balancerSettings: data.balancerSettings,
+        };
+        setAppState(migrateLegacyFlatToV2(legacyImported));
 
-        // Handle divisions
-        const importedDivisions = data.divisions || [];
-        setDivisions(importedDivisions);
-
-        setMapBiases(importedMapBiases);
-        setMapCooldown(parseInt(data.mapCooldown) || 0);
-
-        // Handle playoff configuration - always use default if not present
-        const importedPlayoffConfig = data.playoffConfig || getDefaultPlayoffConfig();
-        setPlayoffConfig(importedPlayoffConfig);
-        
-        // Handle balancer settings - use default if not present (backwards compatibility)
-        const importedBalancerSettings = { ...getDefaultBalancerSettings(), ...(data.balancerSettings || {}) };
-        // Migrate old property names
-        if (data.balancerSettings?.gapWeight !== undefined && data.balancerSettings?.regimentCountWeight === undefined) {
-          importedBalancerSettings.regimentCountWeight = data.balancerSettings.gapWeight;
-        }
-        if (data.balancerSettings?.minDiffWeight !== undefined && data.balancerSettings?.rangeSimilarityWeight === undefined) {
-          importedBalancerSettings.rangeSimilarityWeight = data.balancerSettings.minDiffWeight;
-        }
-        delete importedBalancerSettings.gapWeight;
-        delete importedBalancerSettings.minDiffWeight;
-        setBalancerSettings(importedBalancerSettings);
-        
-        setSelectedWeek(null);
         alert('Data imported successfully!');
       } catch (error) {
         alert('Error importing data: ' + error.message);
