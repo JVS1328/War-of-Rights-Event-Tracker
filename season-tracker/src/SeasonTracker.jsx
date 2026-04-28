@@ -12,12 +12,17 @@ import {
   makeDefaultAppState,
   makeDefaultPlayoffConfig as getDefaultPlayoffConfig,
   makeDefaultBalancerSettings as getDefaultBalancerSettings,
-  makeDefaultMapBiases as getDefaultMapBiases,
   getActiveEvent,
   getActiveSeason,
   updateActiveSeason,
   updateActiveEvent,
 } from './utils/eventStore';
+import {
+  replayEvent,
+  replayActiveSeasonUpToWeek,
+  computeExpectedA,
+  USA_ATTACK_MAPS,
+} from './utils/eloEngine';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -103,8 +108,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
   // Event-level persisted state
   const [eloSystem, setEloSystem] = eventField('eloSystem');
-  const [mapBiases, setMapBiases] = eventField('mapBiases');
-  const [eloBiasPercentages, setEloBiasPercentages] = eventField('eloBiasPercentages');
+  const [eloConfig, setEloConfig] = eventField('eloConfig');
 
   // Session-only UI state
   const [showSettings, setShowSettings] = useState(false);
@@ -271,8 +275,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
       r2CasualtiesA: 0,
       r2CasualtiesB: 0,
       unitPlayerCounts: inheritedUnitPlayerCounts,
-      mapBiases: { ...mapBiases },
-      eloBiasPercentages: { ...eloBiasPercentages },
       weeklyCasualties: {
         [teamNames.A]: { r1: {}, r2: {} },
         [teamNames.B]: { r1: {}, r2: {} }
@@ -742,277 +744,119 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return grouped;
   };
 
-  // Calculate Map Statistics
+  // Calculate Map Statistics — derives the legacy { overall, byMap } shape
+  // from the engine's mapHistory. Attacker/defender breakdowns come from the
+  // USA_ATTACK_MAPS list since map identity is direction-agnostic.
   const calculateMapStats = () => {
-    // USA Attack Maps (same as used in Elo calculation)
-    const usaAttackMaps = new Set([
-      "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
-      "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
-      "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
-      "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-      "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
-      "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
-    ]);
+    const { mapHistory } = replayEvent(activeEvent);
 
     const byMap = {};
     const overall = {
-      totalRounds: 0,
-      usaWins: 0, csaWins: 0,
+      totalRounds: 0, usaWins: 0, csaWins: 0,
       attackerWins: 0, defenderWins: 0,
       usaAttackWins: 0, usaAttackRounds: 0,
       usaDefenseWins: 0, usaDefenseRounds: 0,
       csaAttackWins: 0, csaAttackRounds: 0,
-      csaDefenseWins: 0, csaDefenseRounds: 0
+      csaDefenseWins: 0, csaDefenseRounds: 0,
     };
 
-    weeks.forEach(week => {
-      [1, 2].forEach(roundNum => {
-        const mapName = week[`round${roundNum}Map`];
-        const winner = week[`round${roundNum}Winner`];
-        const flipped = week[`round${roundNum}Flipped`] || false;
-        const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
-        const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
+    for (const [mapName, entry] of Object.entries(mapHistory)) {
+      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
+      const usaWins = entry.USA.wins;
+      const csaWins = entry.CSA.wins;
+      const totalCasualties = entry.USA.casualtiesTaken + entry.CSA.casualtiesTaken;
 
-        if (!mapName || !winner) return;
+      byMap[mapName] = {
+        plays: entry.plays,
+        usaWins,
+        csaWins,
+        attackerWins: isUsaAttack ? usaWins : csaWins,
+        defenderWins: isUsaAttack ? csaWins : usaWins,
+        totalCasualties,
+      };
 
-        if (!byMap[mapName]) {
-          byMap[mapName] = {
-            plays: 0, usaWins: 0, csaWins: 0,
-            attackerWins: 0, defenderWins: 0,
-            totalCasualties: 0
-          };
-        }
+      overall.totalRounds += entry.plays;
+      overall.usaWins += usaWins;
+      overall.csaWins += csaWins;
 
-        byMap[mapName].plays++;
-        byMap[mapName].totalCasualties += casualtiesA + casualtiesB;
-        overall.totalRounds++;
-
-        // Determine USA/CSA sides based on flipped state
-        const usaSide = flipped ? 'B' : 'A';
-        const isUsaAttack = usaAttackMaps.has(mapName);
-        const usaWon = winner === usaSide;
-        const attackerWon = isUsaAttack ? usaWon : !usaWon;
-
-        // USA/CSA wins
-        if (usaWon) {
-          byMap[mapName].usaWins++;
-          overall.usaWins++;
-        } else {
-          byMap[mapName].csaWins++;
-          overall.csaWins++;
-        }
-
-        // Attacker/Defender wins
-        if (attackerWon) {
-          byMap[mapName].attackerWins++;
-          overall.attackerWins++;
-        } else {
-          byMap[mapName].defenderWins++;
-          overall.defenderWins++;
-        }
-
-        // USA/CSA Attack/Defense breakdown
-        if (isUsaAttack) {
-          overall.usaAttackRounds++;
-          overall.csaDefenseRounds++;
-          if (usaWon) {
-            overall.usaAttackWins++;
-          } else {
-            overall.csaDefenseWins++;
-          }
-        } else {
-          overall.csaAttackRounds++;
-          overall.usaDefenseRounds++;
-          if (usaWon) {
-            overall.usaDefenseWins++;
-          } else {
-            overall.csaAttackWins++;
-          }
-        }
-      });
-    });
+      if (isUsaAttack) {
+        overall.usaAttackRounds += entry.plays;
+        overall.csaDefenseRounds += entry.plays;
+        overall.usaAttackWins += usaWins;
+        overall.csaDefenseWins += csaWins;
+        overall.attackerWins += usaWins;
+        overall.defenderWins += csaWins;
+      } else {
+        overall.csaAttackRounds += entry.plays;
+        overall.usaDefenseRounds += entry.plays;
+        overall.csaAttackWins += csaWins;
+        overall.usaDefenseWins += usaWins;
+        overall.attackerWins += csaWins;
+        overall.defenderWins += usaWins;
+      }
+    }
 
     return { overall, byMap };
   };
 
-  // Calculate per-unit per-map win/loss records from historical weeks
+  // Per-unit per-map combined record (sums USA + CSA sides). The engine
+  // tracks per-side records; legacy callers want the combined view.
   const calculateUnitMapStats = (maxWeekIndex = null) => {
-    const unitMapRecords = {}; // { unitName: { mapName: { wins, losses } } }
+    const result = maxWeekIndex !== null
+      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, maxWeekIndex)
+      : replayEvent(activeEvent);
 
-    const weeksToProcess = maxWeekIndex !== null
-      ? weeks.slice(0, maxWeekIndex + 1)
-      : weeks;
-
-    weeksToProcess.forEach(week => {
-      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
-
-      [1, 2].forEach(roundNum => {
-        const mapName = week[`round${roundNum}Map`];
-        const winner = week[`round${roundNum}Winner`];
-        if (!mapName || !winner) return;
-
-        const effective = getEffectiveTeams(week, roundNum);
-        const winningUnits = winner === 'A' ? effective.teamA : effective.teamB;
-        const losingUnits = winner === 'A' ? effective.teamB : effective.teamA;
-
-        winningUnits.forEach(unit => {
-          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
-          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
-          unitMapRecords[unit][mapName].wins++;
-        });
-
-        losingUnits.forEach(unit => {
-          if (!unitMapRecords[unit]) unitMapRecords[unit] = {};
-          if (!unitMapRecords[unit][mapName]) unitMapRecords[unit][mapName] = { wins: 0, losses: 0 };
-          unitMapRecords[unit][mapName].losses++;
-        });
-      });
-    });
-
-    return unitMapRecords;
+    const out = {};
+    for (const [unit, byMap] of Object.entries(result.unitOnMapSide)) {
+      out[unit] = {};
+      for (const [mapName, sides] of Object.entries(byMap)) {
+        out[unit][mapName] = {
+          wins: sides.USA.wins + sides.CSA.wins,
+          losses: sides.USA.losses + sides.CSA.losses,
+        };
+      }
+    }
+    return out;
   };
 
-  // Calculate win probability for a round combining Elo, global map history, and unit map history
-  // Returns { teamAProb, teamBProb } as percentages (0-100)
+  // Win probability uses the same engine math as Elo updates: pre-round Elo
+  // plus shrunk Elo-equivalent adjustments from map-side and unit-on-map-side
+  // history (controlled by event.eloConfig). Returns the legacy shape with a
+  // factors object so the existing UI breakdown badges keep working.
   const calculateWinProbability = (teamA, teamB, mapName, flipped, weekIndex) => {
     if (teamA.length === 0 || teamB.length === 0) return null;
 
     const previousWeekIdx = weekIndex != null ? weekIndex - 1 : weeks.length - 1;
+    const result = previousWeekIdx >= 0
+      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, previousWeekIdx)
+      : { unitElo: {}, mapHistory: {}, unitOnMapSide: {},
+          eloSystem: activeEvent.eloSystem, eloConfig: activeEvent.eloConfig };
 
-    // --- Factor 1: Elo-based expected outcome ---
-    const { eloRatings } = previousWeekIdx >= 0
-      ? calculateEloRatings(previousWeekIdx)
-      : { eloRatings: {} };
-
-    const getPlayerCt = (unit) => {
-      const counts = weekIndex != null && weeks[weekIndex]?.unitPlayerCounts?.[unit]
-        ? weeks[weekIndex].unitPlayerCounts[unit]
-        : unitPlayerCounts[unit];
+    const playerCountFor = (unit) => {
+      const week = weekIndex != null ? weeks[weekIndex] : null;
+      const counts = week?.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
       if (!counts) return 25;
       const min = parseInt(counts.min) || 0;
       const max = parseInt(counts.max) || 0;
       return (min + max) / 2 || 25;
     };
 
-    const totalPlayersA = teamA.reduce((sum, u) => sum + getPlayerCt(u), 0);
-    const totalPlayersB = teamB.reduce((sum, u) => sum + getPlayerCt(u), 0);
+    const exp = computeExpectedA(
+      { unitElo: result.unitElo, mapHistory: result.mapHistory, unitOnMapSide: result.unitOnMapSide },
+      { teamA, teamB, mapName, flipped, playerCountFor },
+      result.eloConfig,
+      result.eloSystem.initialElo,
+    );
 
-    const avgEloA = totalPlayersA > 0
-      ? teamA.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersA
-      : eloSystem.initialElo;
-    const avgEloB = totalPlayersB > 0
-      ? teamB.reduce((sum, u) => sum + (eloRatings[u] || eloSystem.initialElo) * getPlayerCt(u), 0) / totalPlayersB
-      : eloSystem.initialElo;
-
-    let eloProbA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
-
-    // Apply map bias to Elo probability (same logic as Elo calculation)
-    if (mapName) {
-      const week = weekIndex != null ? weeks[weekIndex] : null;
-      const weekMapBiases = week?.mapBiases || mapBiases;
-      const weekEloBiasPercentages = week?.eloBiasPercentages || eloBiasPercentages;
-      const mapBiasLevel = weekMapBiases[mapName] ?? 0;
-
-      const biasPercentMap = {
-        0: 1.00,
-        1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
-        1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
-        2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
-        2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
-      };
-      const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
-
-      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
-      const usaSide = flipped ? 'B' : 'A';
-      const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
-
-      if (attackerSide === 'A') {
-        eloProbA *= biasMultiplier;
-      } else {
-        eloProbA /= biasMultiplier;
-      }
-      eloProbA = Math.max(0.05, Math.min(0.95, eloProbA));
-    }
-
-    // --- Factor 2: Global map win rate (USA/CSA side history) ---
-    let globalMapProbA = 0.5; // neutral if no map or no data
-    if (mapName) {
-      const { byMap } = calculateMapStats();
-      const mapData = byMap[mapName];
-      if (mapData && mapData.plays >= 2) {
-        const usaSide = flipped ? 'B' : 'A';
-        const usaWinRate = mapData.plays > 0 ? mapData.usaWins / mapData.plays : 0.5;
-        // If team A is USA side, their global map probability is the USA win rate
-        globalMapProbA = usaSide === 'A' ? usaWinRate : (1 - usaWinRate);
-        // Regress toward 0.5 for small sample sizes (Bayesian shrinkage)
-        const confidence = Math.min(1, mapData.plays / 10);
-        globalMapProbA = 0.5 + (globalMapProbA - 0.5) * confidence;
-      }
-    }
-
-    // --- Factor 3: Unit-specific map history ---
-    let unitMapProbA = 0.5; // neutral if no data
-    if (mapName) {
-      const unitMapStats = calculateUnitMapStats(previousWeekIdx >= 0 ? previousWeekIdx : null);
-
-      const getTeamMapWinRate = (team) => {
-        let totalWins = 0;
-        let totalGames = 0;
-        team.forEach(unit => {
-          const record = unitMapStats[unit]?.[mapName];
-          if (record) {
-            totalWins += record.wins;
-            totalGames += record.wins + record.losses;
-          }
-        });
-        if (totalGames === 0) return null;
-        const raw = totalWins / totalGames;
-        // Regress toward 0.5 for small samples
-        const confidence = Math.min(1, totalGames / (team.length * 3));
-        return 0.5 + (raw - 0.5) * confidence;
-      };
-
-      const teamAMapRate = getTeamMapWinRate(teamA);
-      const teamBMapRate = getTeamMapWinRate(teamB);
-
-      if (teamAMapRate !== null && teamBMapRate !== null) {
-        // Both teams have data - combine their perspectives
-        unitMapProbA = (teamAMapRate + (1 - teamBMapRate)) / 2;
-      } else if (teamAMapRate !== null) {
-        unitMapProbA = teamAMapRate;
-      } else if (teamBMapRate !== null) {
-        unitMapProbA = 1 - teamBMapRate;
-      }
-      // else stays 0.5
-    }
-
-    // --- Combine factors using log-odds (Bayesian-style) ---
-    // Weights: Elo is primary, global map and unit map history are secondary signals
-    const toLogOdds = (p) => Math.log(Math.max(0.01, Math.min(0.99, p)) / (1 - Math.max(0.01, Math.min(0.99, p))));
-    const fromLogOdds = (lo) => 1 / (1 + Math.exp(-lo));
-
-    const eloWeight = 1.0;
-    const globalMapWeight = mapName ? 0.4 : 0;
-    const unitMapWeight = mapName ? 0.35 : 0;
-    const totalWeight = eloWeight + globalMapWeight + unitMapWeight;
-
-    const combinedLogOdds = (
-      toLogOdds(eloProbA) * eloWeight +
-      toLogOdds(globalMapProbA) * globalMapWeight +
-      toLogOdds(unitMapProbA) * unitMapWeight
-    ) / totalWeight;
-
-    let combinedProbA = fromLogOdds(combinedLogOdds);
-    combinedProbA = Math.max(0.05, Math.min(0.95, combinedProbA));
-
+    const probA = Math.max(0.05, Math.min(0.95, exp.expectedA));
     return {
-      teamAProb: Math.round(combinedProbA * 1000) / 10,
-      teamBProb: Math.round((1 - combinedProbA) * 1000) / 10,
+      teamAProb: Math.round(probA * 1000) / 10,
+      teamBProb: Math.round((1 - probA) * 1000) / 10,
       factors: {
-        elo: { probA: Math.round(eloProbA * 1000) / 10 },
-        globalMap: mapName ? { probA: Math.round(globalMapProbA * 1000) / 10 } : null,
-        unitMap: mapName ? { probA: Math.round(unitMapProbA * 1000) / 10 } : null
-      }
+        elo: { probA: Math.round(exp.eloOnlyProbA * 1000) / 10 },
+        globalMap: mapName ? { probA: Math.round(exp.eloPlusMapProbA * 1000) / 10 } : null,
+        unitMap: mapName ? { probA: Math.round(probA * 1000) / 10 } : null,
+      },
     };
   };
 
@@ -1191,161 +1035,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return { impactStats, globalAvgLossRate };
   };
 
-  // USA Attack Maps (from tracker.py)
-  const USA_ATTACK_MAPS = new Set([
-    "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
-    "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
-    "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
-    "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-    "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
-    "Flemming's Meadow", "Crossley Creek", "Confederate Encampment"
-  ]);
-
-  // Calculate Elo Ratings
+  // Calculate Elo Ratings — thin wrapper over the engine. The engine walks
+  // every round in (season, week, round) order and folds map/unit history
+  // back into expected probabilities, so map signals affect ratings whenever
+  // event.eloConfig.mapWeight or unitWeight is non-zero. Default knobs keep
+  // it pure-rating until the user opts in.
   const calculateEloRatings = (maxWeekIndex = null) => {
-    const {
-      initialElo,
-      kFactorStandard,
-      kFactorProvisional,
-      provisionalRounds,
-      sweepBonusMultiplier,
-      leadMultiplier,
-      sizeInfluence,
-      playoffMultiplier
-    } = eloSystem;
-
-    const eloRatings = {};
-    const roundsPlayed = {};
-    
-    // Initialize all units
-    units.forEach(unit => {
-      eloRatings[unit] = initialElo;
-      roundsPlayed[unit] = 0;
-    });
-
-    const weeksToProcess = maxWeekIndex !== null
-      ? weeks.slice(0, maxWeekIndex + 1)
-      : weeks;
-
-    weeksToProcess.forEach((week, weekIdx) => {
-      if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) return;
-
-      const isPlayoffs = week.isPlayoffs || false;
-      const round1Winner = week.round1Winner;
-      const round2Winner = week.round2Winner;
-
-      // Determine sweep bonuses
-      const sweepBonusA = (round1Winner === 'A' && round2Winner === 'A') ? sweepBonusMultiplier : 1.0;
-      const sweepBonusB = (round1Winner === 'B' && round2Winner === 'B') ? sweepBonusMultiplier : 1.0;
-
-      // Process each round
-      [1, 2].forEach(roundNum => {
-        const winner = week[`round${roundNum}Winner`];
-        if (!winner) return;
-
-        const effective = getEffectiveTeams(week, roundNum);
-        const teamAUnits = effective.teamA;
-        const teamBUnits = effective.teamB;
-
-        // Calculate team Elo averages with player count weighting
-        const totalPlayersA = teamAUnits.reduce((sum, u) => sum + getUnitPlayerCount(u, weekIdx), 0);
-        const totalPlayersB = teamBUnits.reduce((sum, u) => sum + getUnitPlayerCount(u, weekIdx), 0);
-
-        const avgEloA = totalPlayersA > 0
-          ? teamAUnits.reduce((sum, u) => sum + eloRatings[u] * getUnitPlayerCount(u, weekIdx), 0) / totalPlayersA
-          : initialElo;
-        const avgEloB = totalPlayersB > 0
-          ? teamBUnits.reduce((sum, u) => sum + eloRatings[u] * getUnitPlayerCount(u, weekIdx), 0) / totalPlayersB
-          : initialElo;
-
-        // Get leads for this round
-        let leadA, leadB;
-        if (isPlayoffs) {
-          leadA = week[`leadA_r${roundNum}`];
-          leadB = week[`leadB_r${roundNum}`];
-        } else {
-          leadA = week.leadA;
-          leadB = week.leadB;
-        }
-
-        // Calculate expected outcome
-        let expectedA = 1 / (1 + Math.pow(10, (avgEloB - avgEloA) / 400));
-
-        // Apply map bias if map is selected
-        const mapName = week[`round${roundNum}Map`];
-        if (mapName) {
-          const weekMapBiases = week.mapBiases || mapBiases;
-          const weekEloBiasPercentages = week.eloBiasPercentages || eloBiasPercentages;
-          const mapBiasLevel = weekMapBiases[mapName] ?? 0;
-
-          const biasPercentMap = {
-            0: 1.00,
-            1: 1.0 + (weekEloBiasPercentages.lightAttacker / 100.0),
-            1.5: 1.0 + (weekEloBiasPercentages.heavyAttacker / 100.0),
-            2: 1.0 - (weekEloBiasPercentages.lightDefender / 100.0),
-            2.5: 1.0 - (weekEloBiasPercentages.heavyDefender / 100.0)
-          };
-          const biasMultiplier = biasPercentMap[mapBiasLevel] ?? 1.0;
-
-          const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
-          const flipped = week[`round${roundNum}Flipped`] || false;
-          const usaSide = flipped ? 'B' : 'A';
-          const attackerSide = isUsaAttack ? usaSide : (usaSide === 'A' ? 'B' : 'A');
-
-          if (attackerSide === 'A') {
-            expectedA *= biasMultiplier;
-          } else {
-            expectedA /= biasMultiplier;
-          }
-
-          expectedA = Math.max(0.05, Math.min(0.95, expectedA));
-        }
-
-        const scoreA = winner === 'A' ? 1 : 0;
-        const baseChange = scoreA - expectedA;
-
-        // Apply Elo changes to teams
-        const applyEloChanges = (teamUnits, totalPlayers, leadUnit, sign, sweepBonus) => {
-          if (totalPlayers <= 0) return;
-
-          const weights = {};
-          let totalWeight = 0;
-
-          teamUnits.forEach(unit => {
-            const playerCount = getUnitPlayerCount(unit, weekIdx);
-            const weight = Math.pow(Math.log(1 + playerCount), sizeInfluence)
-              * (unit === leadUnit ? leadMultiplier : 1);
-            weights[unit] = weight;
-            totalWeight += weight;
-          });
-
-          Object.keys(weights).forEach(unit => {
-            weights[unit] /= totalWeight;
-          });
-
-          const teamAvgElo = teamUnits.reduce((sum, u) => sum + eloRatings[u], 0) / teamUnits.length;
-
-          teamUnits.forEach(unit => {
-            const k = roundsPlayed[unit] < provisionalRounds ? kFactorProvisional : kFactorStandard;
-            const roundMultiplier = isPlayoffs ? playoffMultiplier : 1.0;
-
-            const relativeFactor = Math.max(0.8, Math.min(1.2, Math.pow(teamAvgElo / eloRatings[unit], 0.5)));
-
-            const delta = k * baseChange * weights[unit] * sign * roundMultiplier * sweepBonus * relativeFactor;
-            eloRatings[unit] += delta;
-          });
-        };
-
-        applyEloChanges(teamAUnits, totalPlayersA, leadA, 1, sweepBonusA);
-        applyEloChanges(teamBUnits, totalPlayersB, leadB, -1, sweepBonusB);
-
-        // Increment rounds played
-        teamAUnits.forEach(unit => roundsPlayed[unit]++);
-        teamBUnits.forEach(unit => roundsPlayed[unit]++);
-      });
-    });
-
-    return { eloRatings, roundsPlayed };
+    const result = maxWeekIndex !== null
+      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, maxWeekIndex)
+      : replayEvent(activeEvent);
+    return { eloRatings: result.unitElo, roundsPlayed: result.roundsPlayed };
   };
 
   // Balancer Functions
@@ -1871,10 +1570,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
       pointSystem,
       manualAdjustments,
       eloSystem,
-      eloBiasPercentages,
+      eloConfig,
       unitPlayerCounts,
       divisions,
-      mapBiases,
       mapCooldown,
       playoffConfig,
       balancerSettings,
@@ -1905,10 +1603,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
       pointSystem,
       manualAdjustments,
       eloSystem,
-      eloBiasPercentages,
+      eloConfig,
       unitPlayerCounts,
       divisions,
-      mapBiases,
       mapCooldown,
       playoffConfig,
       balancerSettings,
@@ -2044,18 +1741,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           };
         }
         
-        // Handle Elo bias percentages
-        let importedEloBiasPercentages = data.eloBiasPercentages || eloBiasPercentages;
-        if (data.elo_bias_percentages) {
-          importedEloBiasPercentages = {
-            lightAttacker: parseInt(data.elo_bias_percentages.light_attacker) || 15,
-            heavyAttacker: parseInt(data.elo_bias_percentages.heavy_attacker) || 30,
-            lightDefender: parseInt(data.elo_bias_percentages.light_defender) || 15,
-            heavyDefender: parseInt(data.elo_bias_percentages.heavy_defender) || 30
-          };
-        }
-        
-        // Handle unit player counts - convert string values to numbers
+        // Unit player counts — convert string values to numbers
         let importedUnitPlayerCounts = {};
         const rawPlayerCounts = data.unitPlayerCounts || data.unit_player_counts || {};
         Object.entries(rawPlayerCounts).forEach(([unit, counts]) => {
@@ -2064,17 +1750,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
             max: parseInt(counts.max) || 0
           };
         });
-        
-        // Handle map biases - convert string values to numbers
-        let importedMapBiases = getDefaultMapBiases();
-        const rawMapBiases = data.mapBiases || data.map_biases || {};
-        Object.entries(rawMapBiases).forEach(([mapName, biasValue]) => {
-          importedMapBiases[mapName] = parseFloat(biasValue) || 0;
-        });
 
         // Assemble a flat legacy-shape object, then migrate into v2 wholesale.
-        // migrateLegacyFlatToV2 handles balancerSettings prop-name migration,
-        // unit-registry generation, and week bias stamping internally.
+        // Old bias fields (mapBiases, eloBiasPercentages) are intentionally
+        // dropped — phase 2 derives map adjustments from outcome history.
         const legacyImported = {
           units: data.units || [],
           nonTokenUnits: data.nonTokenUnits || data.non_token_units || [],
@@ -2084,10 +1763,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
           pointSystem: importedPointSystem,
           manualAdjustments: importedManualAdjustments,
           eloSystem: importedEloSystem,
-          eloBiasPercentages: importedEloBiasPercentages,
           unitPlayerCounts: importedUnitPlayerCounts,
           divisions: data.divisions || [],
-          mapBiases: importedMapBiases,
           mapCooldown: parseInt(data.mapCooldown) || 0,
           playoffConfig: data.playoffConfig,
           balancerSettings: data.balancerSettings,
@@ -4214,45 +3891,57 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
 
-              {/* Elo Bias Percentages */}
+              {/* Map & Unit History Influence */}
               <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Map Bias Elo Multipliers (%)</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Map &amp; Unit History Influence</h3>
+                <p className="text-xs text-text-secondary mb-3">
+                  Map-side and per-unit-on-side outcome history feed expected win probability via Bayesian-shrunk Elo equivalents.
+                  Both default to 0 (pure Elo). Raise the weights to let history influence ratings.
+                </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Light Attacker %</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="How much map-side win-rate history adjusts expected probability. 0 = ignored, 1 = full strength.">Map Weight</label>
                     <input
                       type="number"
-                      value={eloBiasPercentages.lightAttacker}
-                      onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, lightAttacker: parseInt(e.target.value) || 15 })}
+                      step="0.05"
+                      min="0"
+                      value={eloConfig.mapWeight}
+                      onChange={(e) => setEloConfig({ ...eloConfig, mapWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Heavy Attacker %</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="How much each unit's per-side record on the map adjusts expected probability.">Unit Weight</label>
                     <input
                       type="number"
-                      value={eloBiasPercentages.heavyAttacker}
-                      onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, heavyAttacker: parseInt(e.target.value) || 30 })}
+                      step="0.05"
+                      min="0"
+                      value={eloConfig.unitWeight}
+                      onChange={(e) => setEloConfig({ ...eloConfig, unitWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
                       className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Light Defender %</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="Bayesian shrinkage strength. Smaller = trust small samples more; larger = require more data before history matters.">Prior Rounds</label>
                     <input
                       type="number"
-                      value={eloBiasPercentages.lightDefender}
-                      onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, lightDefender: parseInt(e.target.value) || 15 })}
+                      step="1"
+                      min="1"
+                      value={eloConfig.priorRounds}
+                      onChange={(e) => setEloConfig({ ...eloConfig, priorRounds: Math.max(1, parseInt(e.target.value) || 10) })}
                       className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Heavy Defender %</label>
-                    <input
-                      type="number"
-                      value={eloBiasPercentages.heavyDefender}
-                      onChange={(e) => setEloBiasPercentages({ ...eloBiasPercentages, heavyDefender: parseInt(e.target.value) || 30 })}
+                    <label className="block text-sm text-text-secondary mb-1" title="Source of map history: this event only, or aggregated across every event.">Map Stats Scope</label>
+                    <select
+                      value={eloConfig.mapStatsScope}
+                      onChange={(e) => setEloConfig({ ...eloConfig, mapStatsScope: e.target.value })}
                       className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                    />
+                    >
+                      <option value="event">Event only</option>
+                      <option value="global">All events (global)</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -4385,7 +4074,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   className="flex items-center gap-2 px-4 py-2 border border-border-default hover:bg-bg-inset rounded-lg transition"
                 >
                   <Map className="w-4 h-4" />
-                  Configure Map Biases
+                  Map History
                 </button>
               </div>
             </div>
@@ -7230,91 +6919,107 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
-          {/* Map Bias Configuration Modal */}
-          {showMapBiasModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Map className="w-6 h-6" />
-                      Configure Map Biases
-                    </h2>
-                    <button
-                      onClick={() => setShowMapBiasModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
-
-                  <div className="mb-4 bg-bg-inset rounded-lg p-4">
-                    <h3 className="text-sm font-semibold text-text-secondary mb-2">Bias Scale:</h3>
-                    <div className="text-xs text-text-secondary space-y-1">
-                      <div><strong>0</strong> = Balanced</div>
-                      <div><strong>1</strong> = Light Attacker Bias</div>
-                      <div><strong>1.5</strong> = Heavy Attacker Bias</div>
-                      <div><strong>2</strong> = Light Defender Bias</div>
-                      <div><strong>2.5</strong> = Heavy Defender Bias</div>
-                    </div>
-                  </div>
-
-                  {/* Map Bias Inputs by Category */}
-                  {Object.entries(MAPS).map(([category, mapList]) => (
-                    <div key={category} className="mb-4">
+          {/* Map History Viewer Modal — derived from outcome history (no manual bias) */}
+          {showMapBiasModal && (() => {
+            const { byMap } = calculateMapStats();
+            return (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
+                  <div className="p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Map className="w-6 h-6" />
+                        Map History
+                      </h2>
                       <button
-                        onClick={() => toggleSection(category)}
-                        className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
+                        onClick={() => setShowMapBiasModal(false)}
+                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
                       >
-                        <h3 className="text-lg font-semibold">
-                          {category.replace(/_/g, ' ').toUpperCase()}
-                        </h3>
-                        {expandedSections[category] ? (
-                          <ChevronDown className="w-5 h-5 text-text-secondary" />
-                        ) : (
-                          <ChevronRight className="w-5 h-5 text-text-secondary" />
-                        )}
+                        <X className="w-5 h-5 text-text-muted" />
                       </button>
-                      
-                      {expandedSections[category] && (
-                        <div className="mt-2 bg-bg-inset rounded-lg p-4 space-y-3">
-                          {mapList.map(mapName => (
-                            <div key={mapName} className="grid grid-cols-2 gap-4 items-center">
-                              <label className="text-sm">{mapName}</label>
-                              <select
-                                value={mapBiases[mapName] || 0}
-                                onChange={(e) => setMapBiases({
-                                  ...mapBiases,
-                                  [mapName]: parseFloat(e.target.value)
-                                })}
-                                className="px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                              >
-                                <option value="0">Balanced</option>
-                                <option value="1">Light Attacker</option>
-                                <option value="1.5">Heavy Attacker</option>
-                                <option value="2">Light Defender</option>
-                                <option value="2.5">Heavy Defender</option>
-                              </select>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  ))}
 
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowMapBiasModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Close
-                    </button>
+                    <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                      <p className="text-sm text-text-secondary">
+                        Per-map outcome history. These numbers feed Elo expected-win-probability when{' '}
+                        <strong>Map Weight</strong> in Settings is non-zero, with Bayesian shrinkage controlled by{' '}
+                        <strong>Prior Rounds</strong>.
+                      </p>
+                    </div>
+
+                    {Object.entries(MAPS).map(([category, mapList]) => (
+                      <div key={category} className="mb-4">
+                        <button
+                          onClick={() => toggleSection(category)}
+                          className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
+                        >
+                          <h3 className="text-lg font-semibold">
+                            {category.replace(/_/g, ' ').toUpperCase()}
+                          </h3>
+                          {expandedSections[category] ? (
+                            <ChevronDown className="w-5 h-5 text-text-secondary" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5 text-text-secondary" />
+                          )}
+                        </button>
+
+                        {expandedSections[category] && (
+                          <div className="mt-2 bg-bg-inset rounded-lg p-4">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left text-text-secondary border-b border-border-default">
+                                  <th className="py-2 pr-2">Map</th>
+                                  <th className="py-2 pr-2 text-right">Plays</th>
+                                  <th className="py-2 pr-2 text-right">USA W</th>
+                                  <th className="py-2 pr-2 text-right">CSA W</th>
+                                  <th className="py-2 pr-2 text-right">USA Win %</th>
+                                  <th className="py-2 pr-2 text-right">Atk Win %</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {mapList.map(mapName => {
+                                  const data = byMap[mapName];
+                                  if (!data) {
+                                    return (
+                                      <tr key={mapName} className="border-b border-border-default/40">
+                                        <td className="py-2 pr-2">{mapName}</td>
+                                        <td colSpan={5} className="py-2 pr-2 text-text-muted text-right">No plays</td>
+                                      </tr>
+                                    );
+                                  }
+                                  const usaPct = data.plays > 0 ? Math.round((data.usaWins / data.plays) * 100) : 0;
+                                  const atkPct = data.plays > 0 ? Math.round((data.attackerWins / data.plays) * 100) : 0;
+                                  return (
+                                    <tr key={mapName} className="border-b border-border-default/40">
+                                      <td className="py-2 pr-2">{mapName}</td>
+                                      <td className="py-2 pr-2 text-right">{data.plays}</td>
+                                      <td className="py-2 pr-2 text-right">{data.usaWins}</td>
+                                      <td className="py-2 pr-2 text-right">{data.csaWins}</td>
+                                      <td className="py-2 pr-2 text-right">{usaPct}%</td>
+                                      <td className="py-2 pr-2 text-right">{atkPct}%</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
+                      <button
+                        onClick={() => setShowMapBiasModal(false)}
+                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Teammate Composition Heatmap Modal */}
           {showHeatmapModal && (

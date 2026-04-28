@@ -28,14 +28,7 @@ export const DEFAULT_ELO_SYSTEM = {
   playoffMultiplier: 1.25,
 };
 
-export const DEFAULT_ELO_BIAS_PERCENTAGES = {
-  lightAttacker: 15,
-  heavyAttacker: 30,
-  lightDefender: 15,
-  heavyDefender: 30,
-};
-
-// New event-level Elo config introduced with v2. Defaults to zero map/unit
+// Event-level Elo config introduced with v2. Defaults to zero map/unit
 // weighting so freshly migrated data computes identical Elo to the legacy
 // behavior until users opt in.
 export const DEFAULT_ELO_CONFIG = {
@@ -61,30 +54,6 @@ export const makeDefaultBalancerSettings = () => ({
   rangeSimilarityWeight: 0.50,
   divisionOppositionWeight: 0,
   balanceOptionCount: 3,
-});
-
-export const makeDefaultMapBiases = () => ({
-  // ANTIETAM
-  "East Woods Skirmish": 2, "Hooker's Push": 2.5, "Hagerstown Turnpike": 1,
-  "Miller's Cornfield": 1.5, "East Woods": 2.5, "Nicodemus Hill": 2.5,
-  "Bloody Lane": 1.5, "Pry Ford": 2, "Pry Grist Mill": 1, "Pry House": 1.5,
-  "West Woods": 1.5, "Dunker Church": 1.5, "Burnside's Bridge": 2.5,
-  "Cooke's Countercharge": 1.5, "Otto and Sherrick Farms": 1,
-  "Roulette Lane": 1.5, "Piper Farm": 2, "Hill's Counterattack": 1,
-  // HARPERS FERRY
-  "Maryland Heights": 1.5, "River Crossing": 2.5, "Downtown": 1,
-  "School House Ridge": 1, "Bolivar Heights Camp": 1.5, "High Street": 1,
-  "Shenandoah Street": 1.5, "Harpers Ferry Graveyard": 1, "Washington Street": 1,
-  "Bolivar Heights Redoubt": 2,
-  // SOUTH MOUNTAIN
-  "Garland's Stand": 2.5, "Cox's Push": 2.5, "Hatch's Attack": 2,
-  "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defense": 2,
-  // DRILL CAMP
-  "Alexander Farm": 2, "Crossroads": 0, "Smith Field": 1,
-  "Crecy's Cornfield": 1.5, "Crossley Creek": 1, "Larsen Homestead": 1.5,
-  "South Woodlot": 1.5, "Flemming's Meadow": 2, "Wagon Road": 2,
-  "Union Camp": 1.5, "Pat's Turnpike": 1.5, "Stefan's Lot": 1,
-  "Confederate Encampment": 2,
 });
 
 // --- ID + slug helpers -----------------------------------------------------
@@ -169,10 +138,6 @@ export const makeDefaultEvent = (overrides = {}) => ({
   unitRegistry: {},
   eloSystem: { ...DEFAULT_ELO_SYSTEM },
   eloConfig: { ...DEFAULT_ELO_CONFIG },
-  // Phase 1 keeps these here unchanged; phase 2 removes them in favor of
-  // the chronological replay engine.
-  mapBiases: makeDefaultMapBiases(),
-  eloBiasPercentages: { ...DEFAULT_ELO_BIAS_PERCENTAGES },
   seasons: [],
   ...overrides,
 });
@@ -205,17 +170,10 @@ const migrateBalancerSettings = (saved) => {
   return merged;
 };
 
-// Stamp every week with a bias snapshot using the supplied fallbacks for any
-// week missing them. Phase 2 removes the bias system entirely; for now this
-// preserves the legacy "snapshot biases at week-record-time" behavior.
-const stampWeeksWithBiases = (weeks, fallbackMapBiases, fallbackEloBiasPercentages) =>
-  (weeks || []).map(week =>
-    (week.mapBiases && week.eloBiasPercentages) ? week : {
-      ...week,
-      mapBiases: week.mapBiases || { ...fallbackMapBiases },
-      eloBiasPercentages: week.eloBiasPercentages || { ...fallbackEloBiasPercentages },
-    }
-  );
+// Strip legacy bias fields off any week object; the bias system was removed
+// in v2 and the engine derives map adjustments from outcome history instead.
+const stripLegacyBiasFields = (weeks) =>
+  (weeks || []).map(({ mapBiases, eloBiasPercentages, ...rest }) => rest);
 
 // Wrap a legacy flat-shape state into a v2 app state with one event and one
 // season. Used at load time, on file import, and on share import.
@@ -230,16 +188,11 @@ export const migrateLegacyFlatToV2 = (legacy, { eventName = 'Default Event', sea
 
   const unitRegistry = buildRegistryFromNames([...allNames]);
 
-  const eventMapBiases = legacy.mapBiases
-    ? { ...makeDefaultMapBiases(), ...legacy.mapBiases }
-    : makeDefaultMapBiases();
-  const eventEloBiasPercentages = { ...DEFAULT_ELO_BIAS_PERCENTAGES, ...(legacy.eloBiasPercentages || {}) };
-
   const season = makeDefaultSeason({
     name: seasonName,
     units: legacy.units || [],
     nonTokenUnits: legacy.nonTokenUnits || [],
-    weeks: stampWeeksWithBiases(legacy.weeks || [], eventMapBiases, eventEloBiasPercentages),
+    weeks: stripLegacyBiasFields(legacy.weeks || []),
     selectedWeek: legacy.selectedWeek ?? null,
     teamNames: legacy.teamNames || { ...DEFAULT_TEAM_NAMES },
     pointSystem: { ...DEFAULT_POINT_SYSTEM, ...(legacy.pointSystem || {}) },
@@ -255,8 +208,6 @@ export const migrateLegacyFlatToV2 = (legacy, { eventName = 'Default Event', sea
     name: eventName,
     unitRegistry,
     eloSystem: { ...DEFAULT_ELO_SYSTEM, ...(legacy.eloSystem || {}) },
-    mapBiases: eventMapBiases,
-    eloBiasPercentages: eventEloBiasPercentages,
     seasons: [season],
   });
 
@@ -324,10 +275,9 @@ export const flattenActiveToLegacy = (appState) => {
     pointSystem: season.pointSystem,
     manualAdjustments: season.manualAdjustments,
     eloSystem: event.eloSystem,
-    eloBiasPercentages: event.eloBiasPercentages,
+    eloConfig: event.eloConfig,
     unitPlayerCounts: season.unitPlayerCounts,
     divisions: season.divisions,
-    mapBiases: event.mapBiases,
     mapCooldown: season.mapCooldown,
     playoffConfig: season.playoffConfig,
     balancerSettings: season.balancerSettings,
