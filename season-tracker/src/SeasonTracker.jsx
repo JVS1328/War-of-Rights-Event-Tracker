@@ -37,6 +37,8 @@ import {
 import {
   replayEvent,
   replayActiveSeasonUpToWeek,
+  replayEventFromAppState,
+  replayActiveSeasonUpToWeekFromAppState,
   computeExpectedA,
   USA_ATTACK_MAPS,
 } from './utils/eloEngine';
@@ -134,6 +136,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
+  const [showRegistryModal, setShowRegistryModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
@@ -824,7 +827,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // from the engine's mapHistory. Attacker/defender breakdowns come from the
   // USA_ATTACK_MAPS list since map identity is direction-agnostic.
   const calculateMapStats = () => {
-    const { mapHistory } = replayEvent(activeEvent);
+    const { mapHistory } = replayEventFromAppState(appState, activeEvent.id);
 
     const byMap = {};
     const overall = {
@@ -879,8 +882,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // tracks per-side records; legacy callers want the combined view.
   const calculateUnitMapStats = (maxWeekIndex = null) => {
     const result = maxWeekIndex !== null
-      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, maxWeekIndex)
-      : replayEvent(activeEvent);
+      ? replayActiveSeasonUpToWeekFromAppState(appState, activeEvent.id, activeSeason.id, maxWeekIndex)
+      : replayEventFromAppState(appState, activeEvent.id);
 
     const out = {};
     for (const [unit, byMap] of Object.entries(result.unitOnMapSide)) {
@@ -903,10 +906,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (teamA.length === 0 || teamB.length === 0) return null;
 
     const previousWeekIdx = weekIndex != null ? weekIndex - 1 : weeks.length - 1;
-    const result = previousWeekIdx >= 0
-      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, previousWeekIdx)
-      : { unitElo: {}, mapHistory: {}, unitOnMapSide: {},
-          eloSystem: activeEvent.eloSystem, eloConfig: activeEvent.eloConfig };
+    // Even at week 0, global-scope events get prior-event map history as a
+    // seed — the engine produces an empty unit Elo + seeded mapHistory.
+    const result = replayActiveSeasonUpToWeekFromAppState(
+      appState, activeEvent.id, activeSeason.id,
+      previousWeekIdx >= 0 ? previousWeekIdx : -1,
+    );
 
     const playerCountFor = (unit) => {
       const week = weekIndex != null ? weeks[weekIndex] : null;
@@ -1118,8 +1123,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // it pure-rating until the user opts in.
   const calculateEloRatings = (maxWeekIndex = null) => {
     const result = maxWeekIndex !== null
-      ? replayActiveSeasonUpToWeek(activeEvent, activeSeason, maxWeekIndex)
-      : replayEvent(activeEvent);
+      ? replayActiveSeasonUpToWeekFromAppState(appState, activeEvent.id, activeSeason.id, maxWeekIndex)
+      : replayEventFromAppState(appState, activeEvent.id);
     return { eloRatings: result.unitElo, roundsPlayed: result.roundsPlayed };
   };
 
@@ -3933,10 +3938,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </button>
             </div>
 
-            {/* Registry summary */}
-            <div className="ml-auto text-xs text-text-secondary">
-              {Object.keys(activeEvent.unitRegistry).length} unit{Object.keys(activeEvent.unitRegistry).length === 1 ? '' : 's'} in event registry
-            </div>
+            {/* Registry summary — clickable to open the full editor */}
+            <button
+              onClick={() => setShowRegistryModal(true)}
+              className="ml-auto flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:bg-bg-inset rounded-md transition"
+              title="Manage event-level unit registry"
+            >
+              <Users className="w-3.5 h-3.5" />
+              {Object.keys(activeEvent.unitRegistry).length} unit{Object.keys(activeEvent.unitRegistry).length === 1 ? '' : 's'} in registry
+            </button>
           </div>
 
           {/* Settings Panel */}
@@ -7239,6 +7249,122 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                       <button
                         onClick={() => setShowMapBiasModal(false)}
+                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Unit Registry Editor Modal — event-level identity for every unit
+             ever associated with this event. Renames sweep all rosters; hard
+             delete is gated on whether the unit has any roster appearance. */}
+          {showRegistryModal && (() => {
+            const registryEntries = Object.entries(activeEvent.unitRegistry)
+              .map(([id, entry]) => ({ id, name: entry.name }))
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            const seasonsByUnit = {};
+            for (const s of activeEvent.seasons) {
+              const inRoster = new Set([...(s.units || []), ...(s.nonTokenUnits || [])]);
+              for (const w of s.weeks || []) {
+                (w.teamA || []).forEach(u => inRoster.add(u));
+                (w.teamB || []).forEach(u => inRoster.add(u));
+              }
+              for (const name of inRoster) {
+                (seasonsByUnit[name] ||= []).push(s.name);
+              }
+            }
+
+            return (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
+                   onClick={() => setShowRegistryModal(false)}>
+                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
+                     onClick={(e) => e.stopPropagation()}>
+                  <div className="p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Users className="w-6 h-6" />
+                        Unit Registry — {activeEvent.name}
+                      </h2>
+                      <button
+                        onClick={() => setShowRegistryModal(false)}
+                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      >
+                        <X className="w-5 h-5 text-text-muted" />
+                      </button>
+                    </div>
+
+                    <div className="mb-4 bg-bg-inset rounded-lg p-3">
+                      <p className="text-xs text-text-secondary">
+                        Every unit ever associated with this event. Renaming here propagates to all seasons (rosters, leads, swaps, casualties).
+                        Hard-delete is only available when a unit has no roster appearance anywhere in the event.
+                      </p>
+                    </div>
+
+                    {registryEntries.length === 0 ? (
+                      <div className="text-center text-text-muted py-8">No units in this event yet.</div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-text-secondary border-b border-border-default">
+                            <th className="py-2 pr-2">Unit</th>
+                            <th className="py-2 pr-2">In seasons</th>
+                            <th className="py-2 pr-2 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {registryEntries.map(({ id, name }) => {
+                            const seasons = seasonsByUnit[name] || [];
+                            const inUse = seasons.length > 0;
+                            return (
+                              <tr key={id} className="border-b border-border-default/40">
+                                <td className="py-2 pr-2 font-medium">{name}</td>
+                                <td className="py-2 pr-2 text-xs text-text-secondary">
+                                  {seasons.length === 0 ? <span className="text-text-muted italic">unused</span> : seasons.join(', ')}
+                                </td>
+                                <td className="py-2 pr-2">
+                                  <div className="flex gap-1 justify-end">
+                                    <button
+                                      onClick={() => {
+                                        const newName = window.prompt(`Rename "${name}" to:`, name);
+                                        if (newName == null) return;
+                                        const trimmed = newName.trim();
+                                        if (!trimmed || trimmed === name) return;
+                                        setAppState(prev => renameUnitInEvent(prev, name, trimmed));
+                                      }}
+                                      className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
+                                      title="Rename (sweeps all seasons)"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      disabled={inUse}
+                                      onClick={() => {
+                                        if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearance anywhere.`)) return;
+                                        setAppState(prev => removeUnitFromRegistry(prev, name));
+                                      }}
+                                      className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                                      title={inUse ? 'Cannot hard-delete — unit appears in roster data. Remove from each season first.' : 'Hard-delete from registry'}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+
+                    <div className="flex justify-end mt-6 pt-4 border-t border-border-default">
+                      <button
+                        onClick={() => setShowRegistryModal(false)}
                         className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                       >
                         Close

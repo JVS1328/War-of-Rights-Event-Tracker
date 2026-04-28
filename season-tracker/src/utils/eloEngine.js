@@ -180,17 +180,79 @@ export const computeExpectedA = (state, matchup, cfg, initialElo) => {
   };
 };
 
+// Deep-clone a mapHistory tree so seeded state can't be mutated by the
+// active event's replay.
+const cloneMapHistory = (src) => {
+  const out = {};
+  for (const [name, e] of Object.entries(src || {})) {
+    out[name] = {
+      plays: e.plays,
+      USA: { ...e.USA },
+      CSA: { ...e.CSA },
+    };
+  }
+  return out;
+};
+
+// Accumulate map outcomes from every event in `events[0..upToIdx-1]`. Used
+// as a seed when the active event has `eloConfig.mapStatsScope === 'global'`,
+// so its replay starts with prior events' map-side history already folded
+// in. Unit-on-map-side history is *not* aggregated across events because
+// unit identity (the registry) is event-scoped.
+export const accumulatePriorEventsMapHistory = (events, upToIdx) => {
+  const mapHistory = {};
+  const fold = (entry, winnerSide, casA, casB, usaTeamKey) => {
+    const loseSide = winnerSide === 'USA' ? 'CSA' : 'USA';
+    const usaCas = usaTeamKey === 'A' ? casA : casB;
+    const csaCas = usaTeamKey === 'A' ? casB : casA;
+    entry.plays += 1;
+    entry[winnerSide].wins += 1;
+    entry[loseSide].losses += 1;
+    entry.USA.casualtiesTaken += usaCas;
+    entry.CSA.casualtiesTaken += csaCas;
+    entry.USA.casualtiesInflicted += csaCas;
+    entry.CSA.casualtiesInflicted += usaCas;
+  };
+
+  const limit = Math.min(upToIdx ?? 0, events?.length ?? 0);
+  for (let i = 0; i < limit; i++) {
+    const event = events[i];
+    for (const season of event.seasons || []) {
+      for (const week of season.weeks || []) {
+        if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
+        for (const roundNum of [1, 2]) {
+          const winner = week[`round${roundNum}Winner`];
+          const mapName = week[`round${roundNum}Map`];
+          if (!winner || !mapName) continue;
+          const flipped = !!week[`round${roundNum}Flipped`];
+          const usaTeamKey = flipped ? 'B' : 'A';
+          const winnerSide = winner === usaTeamKey ? 'USA' : 'CSA';
+          const entry = (mapHistory[mapName] ||= emptyMapEntry());
+          fold(entry,
+            winnerSide,
+            week[`r${roundNum}CasualtiesA`] || 0,
+            week[`r${roundNum}CasualtiesB`] || 0,
+            usaTeamKey);
+        }
+      }
+    }
+  }
+  return mapHistory;
+};
+
 // Walk an event chronologically and produce final state + per-round snapshots.
 // `untilOrderKey` (optional) stops the replay after the given (sIdx, wIdx, rIdx)
 // is processed; useful for "state at end of week N" queries.
-export const replayEvent = (event, { untilOrderKey } = {}) => {
+// `seedMapHistory` (optional) initializes map history with prior aggregated
+// state — used by `mapStatsScope: 'global'` to fold in prior events.
+export const replayEvent = (event, { untilOrderKey, seedMapHistory } = {}) => {
   const cfg = { ...DEFAULT_ELO_CONFIG, ...(event?.eloConfig || {}) };
   const sys = { ...DEFAULT_ELO_SYSTEM, ...(event?.eloSystem || {}) };
   const seasons = event?.seasons || [];
 
   const unitElo = {};
   const roundsPlayed = {};
-  const mapHistory = {};                  // [mapName] → { USA, CSA, plays }
+  const mapHistory = seedMapHistory ? cloneMapHistory(seedMapHistory) : {};
   const unitOnMapSide = {};               // [unit][mapName][USA|CSA] → { wins, losses }
   const perRound = [];                    // snapshots of pre-round state + outcome
 
@@ -322,12 +384,40 @@ export const replayEvent = (event, { untilOrderKey } = {}) => {
 // season, mirroring the legacy `calculateEloRatings(maxWeekIndex)` signature.
 // Used by win-prob queries that want "state as of end-of-week-N" inside the
 // active season. Falls back to a full event replay when no cap is given.
-export const replayActiveSeasonUpToWeek = (event, activeSeason, maxWeekIndex) => {
+export const replayActiveSeasonUpToWeek = (event, activeSeason, maxWeekIndex, opts = {}) => {
   if (!event || !activeSeason) {
     return { unitElo: {}, roundsPlayed: {}, mapHistory: {}, unitOnMapSide: {}, perRound: [], eloSystem: { ...DEFAULT_ELO_SYSTEM }, eloConfig: { ...DEFAULT_ELO_CONFIG } };
   }
   const sIdx = event.seasons.findIndex(s => s.id === activeSeason.id);
-  if (sIdx < 0) return replayEvent(event);
-  if (maxWeekIndex == null) return replayEvent(event);
-  return replayEvent(event, { untilOrderKey: [sIdx, maxWeekIndex, 2] });
+  if (sIdx < 0) return replayEvent(event, opts);
+  if (maxWeekIndex == null) return replayEvent(event, opts);
+  return replayEvent(event, { ...opts, untilOrderKey: [sIdx, maxWeekIndex, 2] });
+};
+
+// Top-level entry: pulls scope handling from appState. When the active event
+// has `eloConfig.mapStatsScope === 'global'`, seeds map history with every
+// prior event's outcomes; otherwise behaves identically to replayEvent.
+export const replayEventFromAppState = (appState, eventId, opts = {}) => {
+  if (!appState?.events?.length) return replayEvent(null, opts);
+  const eventIdx = appState.events.findIndex(e => e.id === eventId);
+  if (eventIdx < 0) return replayEvent(null, opts);
+  const event = appState.events[eventIdx];
+  const scope = event?.eloConfig?.mapStatsScope || DEFAULT_ELO_CONFIG.mapStatsScope;
+  const seedMapHistory = scope === 'global'
+    ? accumulatePriorEventsMapHistory(appState.events, eventIdx)
+    : undefined;
+  return replayEvent(event, { ...opts, seedMapHistory });
+};
+
+export const replayActiveSeasonUpToWeekFromAppState = (appState, eventId, seasonId, maxWeekIndex) => {
+  if (!appState?.events?.length) return replayEvent(null);
+  const eventIdx = appState.events.findIndex(e => e.id === eventId);
+  if (eventIdx < 0) return replayEvent(null);
+  const event = appState.events[eventIdx];
+  const season = event.seasons.find(s => s.id === seasonId);
+  const scope = event?.eloConfig?.mapStatsScope || DEFAULT_ELO_CONFIG.mapStatsScope;
+  const seedMapHistory = scope === 'global'
+    ? accumulatePriorEventsMapHistory(appState.events, eventIdx)
+    : undefined;
+  return replayActiveSeasonUpToWeek(event, season, maxWeekIndex, { seedMapHistory });
 };
