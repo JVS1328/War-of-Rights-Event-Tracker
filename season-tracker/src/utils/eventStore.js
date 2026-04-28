@@ -28,12 +28,17 @@ export const DEFAULT_ELO_SYSTEM = {
   playoffMultiplier: 1.25,
 };
 
-// Event-level Elo config introduced with v2. Defaults to zero map/unit
-// weighting so freshly migrated data computes identical Elo to the legacy
-// behavior until users opt in.
+// Event-level Elo config. Map and unit-on-side history feed expected
+// win-probability via Bayesian-shrunk Elo equivalents:
+//   adj = weight × eloEquivOf(wins/total) × total / (total + priorRounds)
+// All prior rounds in the event (and across events under 'global' scope)
+// are used; `priorRounds` is the regularization strength — the sample size
+// at which the historical rate reaches half its asymptotic Elo equivalent.
+// Defaults are non-zero so map / unit history actually shape Elo out of the
+// box; the shrinkage protects new events with thin samples from noise.
 export const DEFAULT_ELO_CONFIG = {
-  mapWeight: 0,
-  unitWeight: 0,
+  mapWeight: 1.0,
+  unitWeight: 1.0,
   priorRounds: 10,
   carryAlpha: 0.5,
   mapStatsScope: 'event', // 'event' | 'global'

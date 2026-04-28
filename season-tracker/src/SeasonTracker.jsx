@@ -4125,14 +4125,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Map & Unit History Influence */}
               <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Map &amp; Unit History Influence</h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary">Map &amp; Unit History Influence</h3>
+                  <button
+                    onClick={() => setEloConfig({
+                      mapWeight: 1.0, unitWeight: 1.0, priorRounds: 10,
+                      carryAlpha: eloConfig.carryAlpha ?? 0.5,
+                      mapStatsScope: eloConfig.mapStatsScope ?? 'event',
+                    })}
+                    className="text-xs text-text-secondary hover:text-indigo-400 underline transition"
+                    title="Reset weights and shrinkage to recommended defaults"
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
                 <p className="text-xs text-text-secondary mb-3">
                   Map-side and per-unit-on-side outcome history feed expected win probability via Bayesian-shrunk Elo equivalents.
-                  Both default to 0 (pure Elo). Raise the weights to let history influence ratings.
+                  The engine uses <strong>every prior round</strong> in the event (and across events under <em>global</em> scope).
+                  Confidence Samples controls regularization, not how much data is used: at <em>n</em> samples a rate reaches
+                  <em> n / (n + samples)</em> of full strength, so a single 100% round can't slam ratings while a long pattern eventually approaches full influence.
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="How much map-side win-rate history adjusts expected probability. 0 = ignored, 1 = full strength.">Map Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on the map-side history's Elo-equivalent contribution. 0 ignores it; 1 uses full Bayesian-shrunk strength.">Map Weight</label>
                     <input
                       type="number"
                       step="0.05"
@@ -4143,7 +4158,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="How much each unit's per-side record on the map adjusts expected probability.">Unit Weight</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on each unit's per-side record on the map. 0 ignores per-unit history; 1 uses full Bayesian-shrunk strength.">Unit Weight</label>
                     <input
                       type="number"
                       step="0.05"
@@ -4154,7 +4169,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Bayesian shrinkage strength. Smaller = trust small samples more; larger = require more data before history matters.">Prior Rounds</label>
+                    <label
+                      className="block text-sm text-text-secondary mb-1"
+                      title="Sample size at which the historical rate reaches half its full Elo-equivalent strength. The engine still uses ALL prior rounds — this only controls regularization. Lower = trust small samples sooner (noisier); higher = require more data before signals matter."
+                    >
+                      Confidence Samples
+                    </label>
                     <input
                       type="number"
                       step="1"
@@ -4165,7 +4185,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Source of map history: this event only, or aggregated across every event.">Map Stats Scope</label>
+                    <label className="block text-sm text-text-secondary mb-1" title="Source of map history. 'Event only' uses just this event; 'All events (global)' folds in every prior event's rounds as a starting seed (unit-on-side history stays event-scoped since unit identity is per-event).">Map Stats Scope</label>
                     <select
                       value={eloConfig.mapStatsScope}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapStatsScope: e.target.value })}
@@ -7182,7 +7202,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <p className="text-sm text-text-secondary">
                         Per-map outcome history. These numbers feed Elo expected-win-probability when{' '}
                         <strong>Map Weight</strong> in Settings is non-zero, with Bayesian shrinkage controlled by{' '}
-                        <strong>Prior Rounds</strong>.
+                        <strong>Confidence Samples</strong>.
                       </p>
                     </div>
 
