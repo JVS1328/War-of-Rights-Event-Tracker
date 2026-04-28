@@ -16,6 +16,18 @@ import {
   getActiveSeason,
   updateActiveSeason,
   updateActiveEvent,
+  setActiveEvent,
+  setActiveSeason,
+  addEvent,
+  renameActiveEvent,
+  removeActiveEvent,
+  addSeasonToActiveEvent,
+  renameActiveSeason,
+  removeActiveSeason,
+  ensureUnitInRegistry,
+  renameUnitInEvent,
+  removeUnitFromRegistry,
+  isUnitReferencedInEvent,
 } from './utils/eventStore';
 import {
   replayEvent,
@@ -204,27 +216,48 @@ const SeasonTracker = ({ initialShareData = null }) => {
     window.history.replaceState(null, '', window.location.pathname);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Unit Management
+  // Unit Management — adding to a season's roster also ensures the unit is in
+  // the event-level registry. Removing only strips the active season's
+  // references; the registry entry persists so historical references in
+  // other seasons resolve unchanged.
   const addUnit = () => {
-    if (!newUnitName.trim()) return;
-    if (units.includes(newUnitName.trim())) {
+    const name = newUnitName.trim();
+    if (!name) return;
+    if (units.includes(name)) {
       alert('Unit already exists!');
       return;
     }
-    setUnits([...units, newUnitName.trim()].sort());
+    setAppState(prev => {
+      const withReg = ensureUnitInRegistry(prev, name);
+      return updateActiveSeason(withReg, s => ({ ...s, units: [...s.units, name].sort() }));
+    });
     setNewUnitName('');
   };
 
   const removeUnit = (unitName) => {
-    if (!confirm(`Remove ${unitName}? This will remove it from all weeks.`)) return;
-    
-    setUnits(units.filter(u => u !== unitName));
-    setNonTokenUnits(nonTokenUnits.filter(u => u !== unitName));
-    setWeeks(weeks.map(week => ({
-      ...week,
-      teamA: week.teamA.filter(u => u !== unitName),
-      teamB: week.teamB.filter(u => u !== unitName)
+    if (!confirm(`Remove ${unitName} from this season? It stays in the event registry so historical references in other seasons are preserved.`)) return;
+
+    setAppState(prev => updateActiveSeason(prev, s => ({
+      ...s,
+      units: (s.units || []).filter(u => u !== unitName),
+      nonTokenUnits: (s.nonTokenUnits || []).filter(u => u !== unitName),
+      weeks: (s.weeks || []).map(week => ({
+        ...week,
+        teamA: (week.teamA || []).filter(u => u !== unitName),
+        teamB: (week.teamB || []).filter(u => u !== unitName),
+      })),
     })));
+  };
+
+  // Rename a unit everywhere in the event: registry + every season's rosters,
+  // leads, lookups, casualties, swaps. Stable id under the hood means
+  // historical participation isn't lost.
+  const renameUnit = (oldName) => {
+    const newName = window.prompt(`Rename "${oldName}" to:`, oldName);
+    if (newName == null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    setAppState(prev => renameUnitInEvent(prev, oldName, trimmed));
   };
 
   // Toggle non-token status for a unit
@@ -3652,12 +3685,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 <span className="hidden sm:inline">Share</span>
               </button>
               <button
-                onClick={newSeason}
+                onClick={() => {
+                  const name = window.prompt('New event name:', 'New Event');
+                  if (!name) return;
+                  setAppState(prev => addEvent(prev, name.trim() || 'New Event'));
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                title="Start New Season"
+                title="Add a new event (separate ladder, separate registry)"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Season</span>
+                <span className="hidden sm:inline">New Event</span>
               </button>
               {/* Overflow Menu */}
               <div className="relative" ref={overflowMenuRef}>
@@ -3703,6 +3740,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     >
                       <Zap className="w-4 h-4" /> Simulate
                     </button>
+                    <div className="border-t border-border-default my-1" />
+                    <button
+                      onClick={() => { newSeason(); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-red-500/20 text-red-500 transition text-left"
+                      title="Wipe ALL data (every event, every season)"
+                    >
+                      <Trash2 className="w-4 h-4" /> Wipe Everything
+                    </button>
                   </div>
                 )}
               </div>
@@ -3714,6 +3759,104 @@ const SeasonTracker = ({ initialShareData = null }) => {
               >
                 {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
+            </div>
+          </div>
+
+          {/* Event + Season Nav */}
+          <div className="bg-bg-card border border-border-default rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
+            {/* Event picker */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wide text-text-secondary">Event</span>
+              <select
+                value={appState.activeEventId}
+                onChange={(e) => setAppState(prev => setActiveEvent(prev, e.target.value))}
+                className="px-2 py-1.5 bg-bg-input rounded-md border border-border-default text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {appState.events.map(e => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  const name = window.prompt('Rename event:', activeEvent.name);
+                  if (!name || !name.trim() || name.trim() === activeEvent.name) return;
+                  setAppState(prev => renameActiveEvent(prev, name.trim()));
+                }}
+                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
+                title="Rename event"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                disabled={appState.events.length <= 1}
+                onClick={() => {
+                  if (!confirm(`Delete event "${activeEvent.name}" and all its seasons? This cannot be undone.`)) return;
+                  setAppState(prev => removeActiveEvent(prev));
+                }}
+                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                title={appState.events.length <= 1 ? 'Cannot delete the last event' : 'Delete event'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="h-6 w-px bg-border-default" />
+
+            {/* Season tabs */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-xs uppercase tracking-wide text-text-secondary mr-1">Seasons</span>
+              {activeEvent.seasons.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setAppState(prev => setActiveSeason(prev, s.id))}
+                  className={`px-2.5 py-1 text-sm rounded-md border transition ${
+                    s.id === appState.activeSeasonId
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'border-border-default hover:bg-bg-inset text-text-secondary'
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  const name = window.prompt(`New season name:`, `Season ${activeEvent.seasons.length + 1}`);
+                  if (name === null) return;
+                  setAppState(prev => addSeasonToActiveEvent(prev, (name && name.trim()) || undefined));
+                }}
+                className="p-1.5 rounded-md hover:bg-bg-inset text-text-secondary"
+                title="Add a new season to this event (inherits the current roster)"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <div className="h-5 w-px bg-border-default mx-1" />
+              <button
+                onClick={() => {
+                  const name = window.prompt('Rename season:', activeSeason.name);
+                  if (!name || !name.trim() || name.trim() === activeSeason.name) return;
+                  setAppState(prev => renameActiveSeason(prev, name.trim()));
+                }}
+                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
+                title="Rename current season"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                disabled={activeEvent.seasons.length <= 1}
+                onClick={() => {
+                  if (!confirm(`Delete season "${activeSeason.name}"? This cannot be undone.`)) return;
+                  setAppState(prev => removeActiveSeason(prev));
+                }}
+                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                title={activeEvent.seasons.length <= 1 ? 'Cannot delete the last season' : 'Delete season'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Registry summary */}
+            <div className="ml-auto text-xs text-text-secondary">
+              {Object.keys(activeEvent.unitRegistry).length} unit{Object.keys(activeEvent.unitRegistry).length === 1 ? '' : 's'} in event registry
             </div>
           </div>
 
@@ -4254,6 +4397,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </button>
                           </>
                         )}
+                        <button
+                          onClick={() => renameUnit(unit)}
+                          className="p-1 rounded-md hover:bg-bg-inset text-text-secondary transition"
+                          title="Rename unit (updates everywhere in the event)"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => removeUnit(unit)}
                           className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"

@@ -260,6 +260,193 @@ export const updateActiveEvent = (appState, updater) => {
   };
 };
 
+// --- Event/season lifecycle ------------------------------------------------
+
+export const setActiveEvent = (appState, eventId) => {
+  const event = appState.events.find(e => e.id === eventId);
+  if (!event) return appState;
+  return { ...appState, activeEventId: eventId, activeSeasonId: event.seasons[0]?.id ?? null };
+};
+
+export const setActiveSeason = (appState, seasonId) => {
+  const event = getActiveEvent(appState);
+  if (!event?.seasons.some(s => s.id === seasonId)) return appState;
+  return { ...appState, activeSeasonId: seasonId };
+};
+
+// Append a new event with a single fresh season. The new event becomes active.
+export const addEvent = (appState, name = 'New Event') => {
+  const season = makeDefaultSeason({ name: 'Season 1' });
+  const event = makeDefaultEvent({ name, seasons: [season] });
+  return {
+    ...appState,
+    events: [...appState.events, event],
+    activeEventId: event.id,
+    activeSeasonId: season.id,
+  };
+};
+
+export const renameActiveEvent = (appState, name) =>
+  updateActiveEvent(appState, e => ({ ...e, name }));
+
+// Remove the active event. Falls back to the previous (or first remaining)
+// event. Refuses if it's the last one — callers should keep at least one.
+export const removeActiveEvent = (appState) => {
+  if (appState.events.length <= 1) return appState;
+  const idx = appState.events.findIndex(e => e.id === appState.activeEventId);
+  const remaining = appState.events.filter(e => e.id !== appState.activeEventId);
+  const nextEvent = remaining[Math.max(0, idx - 1)] ?? remaining[0];
+  return {
+    ...appState,
+    events: remaining,
+    activeEventId: nextEvent.id,
+    activeSeasonId: nextEvent.seasons[0]?.id ?? null,
+  };
+};
+
+// Add a season to the active event. The new season inherits the active
+// season's roster (units and player counts) so picking up a follow-up
+// doesn't require re-adding every regiment, but starts with empty weeks.
+export const addSeasonToActiveEvent = (appState, name) => {
+  const event = getActiveEvent(appState);
+  if (!event) return appState;
+  const prev = getActiveSeason(appState);
+  const season = makeDefaultSeason({
+    name: name || `Season ${event.seasons.length + 1}`,
+    units: prev ? [...prev.units] : [],
+    nonTokenUnits: prev ? [...prev.nonTokenUnits] : [],
+    unitPlayerCounts: prev ? { ...prev.unitPlayerCounts } : {},
+    teamNames: prev ? { ...prev.teamNames } : { ...DEFAULT_TEAM_NAMES },
+    pointSystem: prev ? { ...prev.pointSystem } : { ...DEFAULT_POINT_SYSTEM },
+  });
+  return {
+    ...appState,
+    events: appState.events.map(e =>
+      e.id !== event.id ? e : { ...e, seasons: [...e.seasons, season] }
+    ),
+    activeSeasonId: season.id,
+  };
+};
+
+export const renameActiveSeason = (appState, name) =>
+  updateActiveSeason(appState, s => ({ ...s, name }));
+
+export const removeActiveSeason = (appState) => {
+  const event = getActiveEvent(appState);
+  if (!event || event.seasons.length <= 1) return appState;
+  const idx = event.seasons.findIndex(s => s.id === appState.activeSeasonId);
+  const remaining = event.seasons.filter(s => s.id !== appState.activeSeasonId);
+  const next = remaining[Math.max(0, idx - 1)] ?? remaining[0];
+  return {
+    ...appState,
+    events: appState.events.map(e =>
+      e.id !== event.id ? e : { ...e, seasons: remaining }
+    ),
+    activeSeasonId: next.id,
+  };
+};
+
+// --- Unit registry mutations ----------------------------------------------
+
+// Ensure a unit name is in the active event's registry. Returns updated
+// appState; idempotent on existing names.
+export const ensureUnitInRegistry = (appState, name) => {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) return appState;
+  return updateActiveEvent(appState, e =>
+    findUnitIdByName(e.unitRegistry, trimmed)
+      ? e
+      : { ...e, unitRegistry: buildRegistryFromNames([trimmed], e.unitRegistry) }
+  );
+};
+
+// Replace a unit name everywhere it appears in the event: registry entry,
+// every season's rosters, leads, lookups, casualties, and swaps. The unit's
+// id stays stable so historical references resolve unchanged.
+export const renameUnitInEvent = (appState, oldName, newName) => {
+  const trimmedNew = String(newName ?? '').trim();
+  if (!trimmedNew || trimmedNew === oldName) return appState;
+
+  return updateActiveEvent(appState, event => {
+    const id = findUnitIdByName(event.unitRegistry, oldName);
+    if (!id) return event;
+    if (findUnitIdByName(event.unitRegistry, trimmedNew)) return event; // collision
+
+    const newRegistry = { ...event.unitRegistry, [id]: { ...event.unitRegistry[id], name: trimmedNew } };
+
+    const renameInArr = (arr) => (arr || []).map(u => u === oldName ? trimmedNew : u);
+    const renameKey = (obj) => {
+      if (!obj || !(oldName in obj)) return obj;
+      const { [oldName]: val, ...rest } = obj;
+      return { ...rest, [trimmedNew]: val };
+    };
+    const renameLead = (v) => v === oldName ? trimmedNew : v;
+
+    const newSeasons = event.seasons.map(season => ({
+      ...season,
+      units: renameInArr(season.units),
+      nonTokenUnits: renameInArr(season.nonTokenUnits),
+      unitPlayerCounts: renameKey(season.unitPlayerCounts),
+      manualAdjustments: renameKey(season.manualAdjustments),
+      divisions: (season.divisions || []).map(d => ({ ...d, units: renameInArr(d.units) })),
+      weeks: (season.weeks || []).map(week => ({
+        ...week,
+        teamA: renameInArr(week.teamA),
+        teamB: renameInArr(week.teamB),
+        leadA: renameLead(week.leadA),
+        leadB: renameLead(week.leadB),
+        leadA_r1: renameLead(week.leadA_r1),
+        leadB_r1: renameLead(week.leadB_r1),
+        leadA_r2: renameLead(week.leadA_r2),
+        leadB_r2: renameLead(week.leadB_r2),
+        unitPlayerCounts: renameKey(week.unitPlayerCounts),
+        roundSwaps: week.roundSwaps && {
+          r1: renameInArr(week.roundSwaps.r1),
+          r2: renameInArr(week.roundSwaps.r2),
+        },
+        weeklyCasualties: week.weeklyCasualties && Object.fromEntries(
+          Object.entries(week.weeklyCasualties).map(([side, rounds]) => [
+            side,
+            Object.fromEntries(
+              Object.entries(rounds).map(([rk, byUnit]) => [rk, renameKey(byUnit)])
+            ),
+          ])
+        ),
+      })),
+    }));
+
+    return { ...event, unitRegistry: newRegistry, seasons: newSeasons };
+  });
+};
+
+// Remove a unit from the registry. Soft-deletes by stripping the registry
+// entry; references in historical week data remain so old rounds still show
+// the original participant. Use only when the unit has no roster appearance
+// in any current season — caller should check.
+export const removeUnitFromRegistry = (appState, unitName) =>
+  updateActiveEvent(appState, event => {
+    const id = findUnitIdByName(event.unitRegistry, unitName);
+    if (!id) return event;
+    const { [id]: _, ...rest } = event.unitRegistry;
+    return { ...event, unitRegistry: rest };
+  });
+
+// Returns true if a unit is referenced anywhere in the event (rosters, leads,
+// stats, etc.). Useful before a hard-delete of a registry entry.
+export const isUnitReferencedInEvent = (event, unitName) => {
+  for (const season of event.seasons) {
+    if ((season.units || []).includes(unitName)) return true;
+    if ((season.nonTokenUnits || []).includes(unitName)) return true;
+    if (season.unitPlayerCounts?.[unitName]) return true;
+    if (season.manualAdjustments?.[unitName]) return true;
+    for (const w of season.weeks || []) {
+      if ((w.teamA || []).includes(unitName)) return true;
+      if ((w.teamB || []).includes(unitName)) return true;
+    }
+  }
+  return false;
+};
+
 // Flatten the active event/season into the legacy shape. Used by code paths
 // (share, export) that haven't been rewritten for v2 yet — phase 4.
 export const flattenActiveToLegacy = (appState) => {
