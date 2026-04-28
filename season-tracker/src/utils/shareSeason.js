@@ -279,6 +279,18 @@ const expandPayload = (p) => {
   };
 };
 
+// --- v2 payloads (plain JSON, discriminated by `t`) ------------------------
+// v1 used a tuple-compacted season shape. v2 ships plain JSON for both seasons
+// and full events; trades a little URL size for clarity and the ability to
+// share an entire event tree (registry + every season). v1 decoding stays so
+// old links still work.
+
+export const createV2SeasonPayload = (flatLegacy) =>
+  ({ v: 2, t: 'season', payload: flatLegacy });
+
+export const createV2EventPayload = (event) =>
+  ({ v: 2, t: 'event', event });
+
 // --- Encode / Decode (deflate + base64url) ---
 
 export const encodeSharePayload = (payload) => {
@@ -289,6 +301,8 @@ export const encodeSharePayload = (payload) => {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+// Returns null on parse failure, or { kind: 'season', payload: <flat legacy> }
+// for v1 / v2-season, or { kind: 'event', event: <Event> } for v2-event.
 export const decodeSharePayload = (encoded) => {
   try {
     const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
@@ -298,7 +312,10 @@ export const decodeSharePayload = (encoded) => {
     const json = pako.inflateRaw(bytes, { to: 'string' });
     const p = JSON.parse(json);
     if (!p?.v) return null;
-    return expandPayload(p);
+    if (p.v === 1) return { kind: 'season', payload: expandPayload(p) };
+    if (p.v === 2 && p.t === 'season') return { kind: 'season', payload: p.payload };
+    if (p.v === 2 && p.t === 'event')  return { kind: 'event', event: p.event };
+    return null;
   } catch {
     return null;
   }
@@ -307,12 +324,29 @@ export const decodeSharePayload = (encoded) => {
 // --- URL generation ---
 
 export const generateShareUrl = (state) => {
-  const encoded = encodeSharePayload(createSharePayload(state));
+  const encoded = encodeSharePayload(createV2SeasonPayload(state));
   return `${window.location.origin + window.location.pathname}#share=${encoded}`;
 };
 
 export const generateShortShareUrl = async (state) => {
-  const payload = encodeSharePayload(createSharePayload(state));
+  const payload = encodeSharePayload(createV2SeasonPayload(state));
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload }),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  const { id } = await res.json();
+  return `${window.location.origin + window.location.pathname}#s=${id}`;
+};
+
+export const generateEventShareUrl = (event) => {
+  const encoded = encodeSharePayload(createV2EventPayload(event));
+  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
+};
+
+export const generateShortEventShareUrl = async (event) => {
+  const payload = encodeSharePayload(createV2EventPayload(event));
   const res = await fetch('/api/share', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

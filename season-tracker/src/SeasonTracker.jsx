@@ -5,7 +5,10 @@ import {
   ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap, Share2,
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
-import { generateShareUrl, generateShortShareUrl } from './utils/shareSeason';
+import {
+  generateShareUrl, generateShortShareUrl,
+  generateEventShareUrl, generateShortEventShareUrl,
+} from './utils/shareSeason';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -22,12 +25,14 @@ import {
   renameActiveEvent,
   removeActiveEvent,
   addSeasonToActiveEvent,
+  appendSeasonToActiveEvent,
   renameActiveSeason,
   removeActiveSeason,
   ensureUnitInRegistry,
   renameUnitInEvent,
   removeUnitFromRegistry,
   isUnitReferencedInEvent,
+  flattenActiveToLegacy,
 } from './utils/eventStore';
 import {
   replayEvent,
@@ -198,22 +203,60 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
   }, [appState]);
 
-  // Load shared data from URL (once, on mount). The shared payload uses the
-  // legacy flat shape; migrate it into v2 before adopting.
+  // Load shared data from URL (once, on mount). v1 / v2-season payloads
+  // arrive as { kind: 'season', payload: <flat> }; v2-event payloads arrive
+  // as { kind: 'event', event: <Event> }. Each is offered with an
+  // appropriate prompt; "add to existing" appends without replacing.
   useEffect(() => {
     if (!initialShareData) return;
 
-    const confirmed = window.confirm(
-      'This link contains shared season data. Load it?\n\n' +
-      'This will replace your current season data.'
-    );
-    if (!confirmed) {
-      window.history.replaceState(null, '', window.location.pathname);
+    const dismiss = () => window.history.replaceState(null, '', window.location.pathname);
+
+    if (initialShareData.kind === 'event') {
+      const action = window.prompt(
+        'This link contains a shared EVENT (registry + every season).\n\n' +
+        'Type ADD to add it as a new event, REPLACE to replace your active event, or cancel:',
+        'ADD'
+      );
+      if (!action) { dismiss(); return; }
+      const choice = action.trim().toUpperCase();
+      if (choice === 'ADD') {
+        setAppState(prev => ({
+          ...prev,
+          events: [...prev.events, initialShareData.event],
+          activeEventId: initialShareData.event.id,
+          activeSeasonId: initialShareData.event.seasons[0]?.id ?? null,
+        }));
+      } else if (choice === 'REPLACE') {
+        setAppState(prev => ({
+          ...prev,
+          events: prev.events.map(e => e.id === prev.activeEventId ? initialShareData.event : e),
+          activeEventId: initialShareData.event.id,
+          activeSeasonId: initialShareData.event.seasons[0]?.id ?? null,
+        }));
+      }
+      dismiss();
       return;
     }
 
-    setAppState(migrateLegacyFlatToV2(initialShareData));
-    window.history.replaceState(null, '', window.location.pathname);
+    // Season payload (v1 or v2): user chooses whether to add it as a new
+    // season under the active event or start fresh with just this season.
+    const action = window.prompt(
+      'This link contains a shared SEASON.\n\n' +
+      'Type ADD to add it as a new season under the active event, NEW to start a fresh event with just this season, or cancel:',
+      'ADD'
+    );
+    if (!action) { dismiss(); return; }
+    const choice = action.trim().toUpperCase();
+    if (choice === 'NEW') {
+      setAppState(migrateLegacyFlatToV2(initialShareData.payload));
+    } else if (choice === 'ADD') {
+      const migrated = migrateLegacyFlatToV2(initialShareData.payload);
+      const importedSeason = migrated.events[0].seasons[0];
+      const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
+      setAppState(prev => appendSeasonToActiveEvent(prev, importedSeason, importedRegistryNames));
+    }
+    dismiss();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unit Management — adding to a season's roster also ensures the unit is in
@@ -1594,62 +1637,54 @@ const SeasonTracker = ({ initialShareData = null }) => {
     alert('New season started! All data has been cleared.');
   };
 
+  // Share — offers active season or whole event. Multi-season events default
+  // to event share (covers more ground); single-season events default to
+  // season share (matches legacy behavior).
   const shareSeason = async () => {
-    const state = {
-      units,
-      nonTokenUnits,
-      weeks,
-      teamNames,
-      pointSystem,
-      manualAdjustments,
-      eloSystem,
-      eloConfig,
-      unitPlayerCounts,
-      divisions,
-      mapCooldown,
-      playoffConfig,
-      balancerSettings,
-    };
+    const choice = activeEvent.seasons.length > 1
+      ? window.prompt(
+          `Share what?\n\nType EVENT to share the entire event "${activeEvent.name}" (registry + all ${activeEvent.seasons.length} seasons), or SEASON to share just the active season "${activeSeason.name}":`,
+          'EVENT'
+        )
+      : 'SEASON';
+    if (!choice) return;
+    const kind = choice.trim().toUpperCase() === 'EVENT' ? 'event' : 'season';
 
     let url;
-    try {
-      url = await generateShortShareUrl(state);
-    } catch {
-      url = generateShareUrl(state);
+    if (kind === 'event') {
+      try { url = await generateShortEventShareUrl(activeEvent); }
+      catch { url = generateEventShareUrl(activeEvent); }
+    } else {
+      const flat = flattenActiveToLegacy(appState);
+      try { url = await generateShortShareUrl(flat); }
+      catch { url = generateShareUrl(flat); }
     }
 
     try {
       await navigator.clipboard.writeText(url);
-      alert('Share link copied to clipboard! Anyone with this link can load your season data.');
+      alert(`Share link copied! (${kind === 'event' ? 'Whole event' : 'Active season'})`);
     } catch {
-      prompt('Copy this link to share your season data:', url);
+      prompt('Copy this link to share:', url);
     }
   };
 
-  // Export/Import
+  // Export/Import — JSON file download. For multi-season events the file
+  // contains the full event tree; otherwise the active-season legacy shape.
   const exportData = () => {
-    const data = {
-      units,
-      nonTokenUnits,
-      weeks,
-      teamNames,
-      pointSystem,
-      manualAdjustments,
-      eloSystem,
-      eloConfig,
-      unitPlayerCounts,
-      divisions,
-      mapCooldown,
-      playoffConfig,
-      balancerSettings,
-      exportDate: new Date().toISOString()
-    };
-    
+    const isEvent = activeEvent.seasons.length > 1;
+    const data = isEvent
+      ? { schemaVersion: 2, kind: 'event', event: activeEvent, exportDate: new Date().toISOString() }
+      : { ...flattenActiveToLegacy(appState), exportDate: new Date().toISOString() };
+
+    const filename = isEvent
+      ? `event-${activeEvent.name.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().split('T')[0]}.json`
+      : `season-tracker-${new Date().toISOString().split('T')[0]}.json`;
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `season-tracker-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1682,8 +1717,38 @@ const SeasonTracker = ({ initialShareData = null }) => {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        
-        // Handle different JSON formats
+
+        // v2 event export — full event tree. Offer the same ADD/REPLACE
+        // choice as the share-link import path.
+        if (data?.kind === 'event' && data.event) {
+          const action = window.prompt(
+            'This file contains a full event (registry + every season).\n\n' +
+            'Type ADD to add it as a new event, or REPLACE to replace your active event:',
+            'ADD'
+          );
+          if (!action) return;
+          const choice = action.trim().toUpperCase();
+          if (choice === 'ADD') {
+            setAppState(prev => ({
+              ...prev,
+              events: [...prev.events, data.event],
+              activeEventId: data.event.id,
+              activeSeasonId: data.event.seasons[0]?.id ?? null,
+            }));
+          } else if (choice === 'REPLACE') {
+            setAppState(prev => ({
+              ...prev,
+              events: prev.events.map(ev => ev.id === prev.activeEventId ? data.event : ev),
+              activeEventId: data.event.id,
+              activeSeasonId: data.event.seasons[0]?.id ?? null,
+            }));
+          }
+          alert('Event imported.');
+          return;
+        }
+
+        // Legacy season formats below — normalize fields, then ask whether
+        // to add as a new season under the active event or replace wholesale.
         let importedWeeks = data.weeks || data.season || [];
         
         // Transform season data to weeks format if needed
@@ -1784,9 +1849,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
           };
         });
 
-        // Assemble a flat legacy-shape object, then migrate into v2 wholesale.
-        // Old bias fields (mapBiases, eloBiasPercentages) are intentionally
-        // dropped — phase 2 derives map adjustments from outcome history.
+        // Assemble a flat legacy-shape object — bias fields intentionally
+        // dropped (phase 2 derives map adjustments from outcome history).
         const legacyImported = {
           units: data.units || [],
           nonTokenUnits: data.nonTokenUnits || data.non_token_units || [],
@@ -1802,7 +1866,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
           playoffConfig: data.playoffConfig,
           balancerSettings: data.balancerSettings,
         };
-        setAppState(migrateLegacyFlatToV2(legacyImported));
+
+        const action = window.prompt(
+          'This file contains a season.\n\n' +
+          'Type ADD to add it as a new season under the active event, or REPLACE to wipe everything and start fresh:',
+          'ADD'
+        );
+        if (!action) return;
+        const choice = action.trim().toUpperCase();
+        if (choice === 'REPLACE') {
+          setAppState(migrateLegacyFlatToV2(legacyImported));
+        } else if (choice === 'ADD') {
+          const migrated = migrateLegacyFlatToV2(legacyImported);
+          const importedSeason = migrated.events[0].seasons[0];
+          const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
+          setAppState(prev => appendSeasonToActiveEvent(prev, importedSeason, importedRegistryNames));
+        }
 
         alert('Data imported successfully!');
       } catch (error) {

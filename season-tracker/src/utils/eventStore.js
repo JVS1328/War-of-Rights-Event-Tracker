@@ -346,6 +346,32 @@ export const removeActiveSeason = (appState) => {
   };
 };
 
+// Append an externally-imported season to the active event, merging that
+// season's unit names into the event's registry so all rosters keep working.
+// Returns updated appState with the new season as active.
+export const appendSeasonToActiveEvent = (appState, importedSeason, importedRegistryNames = []) => {
+  const event = getActiveEvent(appState);
+  if (!event) return appState;
+  const allNames = new Set(importedRegistryNames);
+  (importedSeason.units || []).forEach(n => n && allNames.add(n));
+  (importedSeason.nonTokenUnits || []).forEach(n => n && allNames.add(n));
+  (importedSeason.weeks || []).forEach(w => {
+    (w.teamA || []).forEach(n => n && allNames.add(n));
+    (w.teamB || []).forEach(n => n && allNames.add(n));
+  });
+  const mergedRegistry = buildRegistryFromNames([...allNames], event.unitRegistry);
+  const updatedEvent = {
+    ...event,
+    unitRegistry: mergedRegistry,
+    seasons: [...event.seasons, importedSeason],
+  };
+  return {
+    ...appState,
+    events: appState.events.map(e => e.id !== event.id ? e : updatedEvent),
+    activeSeasonId: importedSeason.id,
+  };
+};
+
 // --- Unit registry mutations ----------------------------------------------
 
 // Ensure a unit name is in the active event's registry. Returns updated
