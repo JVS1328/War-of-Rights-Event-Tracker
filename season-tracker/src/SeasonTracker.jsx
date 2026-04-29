@@ -182,6 +182,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const overflowMenuRef = React.useRef(null);
 
+  // Generic choice dialog — used wherever we used to call window.prompt()
+  // for a discrete list of actions (Share kind, ADD vs REPLACE on import,
+  // etc). State holds the open dialog spec; askChoice returns a Promise
+  // that resolves to the chosen value (or null if dismissed).
+  const [choiceDialog, setChoiceDialog] = useState(null);
+  const askChoice = ({ title, message, choices }) => new Promise(resolve => {
+    setChoiceDialog({
+      title, message, choices,
+      onChoose: (value) => { setChoiceDialog(null); resolve(value); },
+      onClose:  ()      => { setChoiceDialog(null); resolve(null);  },
+    });
+  });
+
   const toggleTheme = () => {
     const next = !darkMode;
     setDarkMode(next);
@@ -211,58 +224,63 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
   // Load shared data from URL (once, on mount). v1 / v2-season payloads
   // arrive as { kind: 'season', payload: <flat> }; v2-event payloads arrive
-  // as { kind: 'event', event: <Event> }. Each is offered with an
-  // appropriate prompt; "add to existing" appends without replacing.
+  // as { kind: 'event', event: <Event> }. Each is offered an action via the
+  // ChoiceDialog; "add to existing" appends without replacing.
   useEffect(() => {
     if (!initialShareData) return;
-
     const dismiss = () => window.history.replaceState(null, '', window.location.pathname);
 
-    if (initialShareData.kind === 'event') {
-      const action = window.prompt(
-        'This link contains a shared EVENT (registry + every season).\n\n' +
-        'Type ADD to add it as a new event, REPLACE to replace your active event, or cancel:',
-        'ADD'
-      );
-      if (!action) { dismiss(); return; }
-      const choice = action.trim().toUpperCase();
-      if (choice === 'ADD') {
-        setAppState(prev => ({
-          ...prev,
-          events: [...prev.events, initialShareData.event],
-          activeEventId: initialShareData.event.id,
-          activeSeasonId: initialShareData.event.seasons[0]?.id ?? null,
-        }));
-      } else if (choice === 'REPLACE') {
-        setAppState(prev => ({
-          ...prev,
-          events: prev.events.map(e => e.id === prev.activeEventId ? initialShareData.event : e),
-          activeEventId: initialShareData.event.id,
-          activeSeasonId: initialShareData.event.seasons[0]?.id ?? null,
-        }));
+    (async () => {
+      if (initialShareData.kind === 'event') {
+        const evt = initialShareData.event;
+        const choice = await askChoice({
+          title: 'Import shared event',
+          message: `"${evt.name}" — ${evt.seasons.length} season${evt.seasons.length === 1 ? '' : 's'}, ${Object.keys(evt.unitRegistry || {}).length} units in registry.`,
+          choices: [
+            { value: 'add',     label: 'Add as new event',         description: 'Append a new event without touching your current one.', variant: 'primary' },
+            { value: 'replace', label: 'Replace active event',     description: 'Overwrites the current active event in place.',         variant: 'danger'  },
+            { value: null,      label: 'Cancel', variant: 'cancel' },
+          ],
+        });
+        if (choice === 'add') {
+          setAppState(prev => ({
+            ...prev,
+            events: [...prev.events, evt],
+            activeEventId: evt.id,
+            activeSeasonId: evt.seasons[0]?.id ?? null,
+          }));
+        } else if (choice === 'replace') {
+          setAppState(prev => ({
+            ...prev,
+            events: prev.events.map(e => e.id === prev.activeEventId ? evt : e),
+            activeEventId: evt.id,
+            activeSeasonId: evt.seasons[0]?.id ?? null,
+          }));
+        }
+        dismiss();
+        return;
+      }
+
+      // Season payload (v1 or v2)
+      const choice = await askChoice({
+        title: 'Import shared season',
+        message: 'A shared season payload — add it under your active event, or start a fresh event with just this season?',
+        choices: [
+          { value: 'add', label: 'Add as new season',  description: 'Appends under your active event; new unit names merge into the registry.', variant: 'primary'   },
+          { value: 'new', label: 'Start fresh event',  description: 'Wipes your current state and creates a new event with just this season.',  variant: 'danger'    },
+          { value: null,  label: 'Cancel', variant: 'cancel' },
+        ],
+      });
+      if (choice === 'new') {
+        setAppState(migrateLegacyFlatToV2(initialShareData.payload));
+      } else if (choice === 'add') {
+        const migrated = migrateLegacyFlatToV2(initialShareData.payload);
+        const importedSeason = migrated.events[0].seasons[0];
+        const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
+        setAppState(prev => appendSeasonToActiveEvent(prev, importedSeason, importedRegistryNames));
       }
       dismiss();
-      return;
-    }
-
-    // Season payload (v1 or v2): user chooses whether to add it as a new
-    // season under the active event or start fresh with just this season.
-    const action = window.prompt(
-      'This link contains a shared SEASON.\n\n' +
-      'Type ADD to add it as a new season under the active event, NEW to start a fresh event with just this season, or cancel:',
-      'ADD'
-    );
-    if (!action) { dismiss(); return; }
-    const choice = action.trim().toUpperCase();
-    if (choice === 'NEW') {
-      setAppState(migrateLegacyFlatToV2(initialShareData.payload));
-    } else if (choice === 'ADD') {
-      const migrated = migrateLegacyFlatToV2(initialShareData.payload);
-      const importedSeason = migrated.events[0].seasons[0];
-      const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
-      setAppState(prev => appendSeasonToActiveEvent(prev, importedSeason, importedRegistryNames));
-    }
-    dismiss();
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unit Management — adding to a season's roster also ensures the unit is in
@@ -1653,18 +1671,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
     alert('New season started! All data has been cleared.');
   };
 
-  // Share — offers active season or whole event. Multi-season events default
-  // to event share (covers more ground); single-season events default to
-  // season share (matches legacy behavior).
+  // Share — offers active season or whole event. Single-season events skip
+  // the dialog and share the season directly (matches legacy behavior).
   const shareSeason = async () => {
-    const choice = activeEvent.seasons.length > 1
-      ? window.prompt(
-          `Share what?\n\nType EVENT to share the entire event "${activeEvent.name}" (registry + all ${activeEvent.seasons.length} seasons), or SEASON to share just the active season "${activeSeason.name}":`,
-          'EVENT'
-        )
-      : 'SEASON';
-    if (!choice) return;
-    const kind = choice.trim().toUpperCase() === 'EVENT' ? 'event' : 'season';
+    let kind;
+    if (activeEvent.seasons.length > 1) {
+      const choice = await askChoice({
+        title: 'Share',
+        message: `What would you like to share?`,
+        choices: [
+          {
+            value: 'event',
+            label: `Whole event — ${activeEvent.name}`,
+            description: `Registry + all ${activeEvent.seasons.length} seasons. Recipients get the full picture.`,
+            variant: 'primary',
+          },
+          {
+            value: 'season',
+            label: `Active season only — ${activeSeason.name}`,
+            description: 'Just this season. Smaller payload; matches legacy share behavior.',
+            variant: 'secondary',
+          },
+          { value: null, label: 'Cancel', variant: 'cancel' },
+        ],
+      });
+      if (!choice) return;
+      kind = choice;
+    } else {
+      kind = 'season';
+    }
 
     let url;
     if (kind === 'event') {
@@ -1730,33 +1765,36 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target.result);
 
-        // v2 event export — full event tree. Offer the same ADD/REPLACE
-        // choice as the share-link import path.
+        // v2 event export — full event tree. Offer ADD vs REPLACE.
         if (data?.kind === 'event' && data.event) {
-          const action = window.prompt(
-            'This file contains a full event (registry + every season).\n\n' +
-            'Type ADD to add it as a new event, or REPLACE to replace your active event:',
-            'ADD'
-          );
-          if (!action) return;
-          const choice = action.trim().toUpperCase();
-          if (choice === 'ADD') {
+          const evt = data.event;
+          const choice = await askChoice({
+            title: 'Import event file',
+            message: `"${evt.name}" — ${evt.seasons.length} season${evt.seasons.length === 1 ? '' : 's'}, ${Object.keys(evt.unitRegistry || {}).length} units in registry.`,
+            choices: [
+              { value: 'add',     label: 'Add as new event',     description: 'Append a new event without touching your current one.', variant: 'primary' },
+              { value: 'replace', label: 'Replace active event', description: 'Overwrites the current active event in place.',         variant: 'danger'  },
+              { value: null,      label: 'Cancel', variant: 'cancel' },
+            ],
+          });
+          if (!choice) return;
+          if (choice === 'add') {
             setAppState(prev => ({
               ...prev,
-              events: [...prev.events, data.event],
-              activeEventId: data.event.id,
-              activeSeasonId: data.event.seasons[0]?.id ?? null,
+              events: [...prev.events, evt],
+              activeEventId: evt.id,
+              activeSeasonId: evt.seasons[0]?.id ?? null,
             }));
-          } else if (choice === 'REPLACE') {
+          } else if (choice === 'replace') {
             setAppState(prev => ({
               ...prev,
-              events: prev.events.map(ev => ev.id === prev.activeEventId ? data.event : ev),
-              activeEventId: data.event.id,
-              activeSeasonId: data.event.seasons[0]?.id ?? null,
+              events: prev.events.map(ev => ev.id === prev.activeEventId ? evt : ev),
+              activeEventId: evt.id,
+              activeSeasonId: evt.seasons[0]?.id ?? null,
             }));
           }
           alert('Event imported.');
@@ -1883,16 +1921,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
           balancerSettings: data.balancerSettings,
         };
 
-        const action = window.prompt(
-          'This file contains a season.\n\n' +
-          'Type ADD to add it as a new season under the active event, or REPLACE to wipe everything and start fresh:',
-          'ADD'
-        );
-        if (!action) return;
-        const choice = action.trim().toUpperCase();
-        if (choice === 'REPLACE') {
+        const choice = await askChoice({
+          title: 'Import season file',
+          message: `${(legacyImported.weeks || []).length} week${(legacyImported.weeks || []).length === 1 ? '' : 's'}, ${(legacyImported.units || []).length} units. Add it under your active event, or wipe everything and start fresh?`,
+          choices: [
+            { value: 'add',     label: 'Add as new season', description: 'Appends under your active event; new unit names merge into the registry.', variant: 'primary' },
+            { value: 'replace', label: 'Wipe and replace',   description: 'Clears all events and creates a fresh event with just this season.',        variant: 'danger'  },
+            { value: null,      label: 'Cancel', variant: 'cancel' },
+          ],
+        });
+        if (!choice) return;
+        if (choice === 'replace') {
           setAppState(migrateLegacyFlatToV2(legacyImported));
-        } else if (choice === 'ADD') {
+        } else if (choice === 'add') {
           const migrated = migrateLegacyFlatToV2(legacyImported);
           const importedSeason = migrated.events[0].seasons[0];
           const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
@@ -8794,6 +8835,59 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
         </div>
       </div>
+
+      {/* Generic Choice Dialog — replaces window.prompt() for action picks */}
+      {choiceDialog && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          onClick={choiceDialog.onClose}
+        >
+          <div
+            className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="flex justify-between items-start gap-3 mb-2">
+                <h2 className="text-base font-semibold">{choiceDialog.title}</h2>
+                <button
+                  onClick={choiceDialog.onClose}
+                  className="p-1 rounded-md hover:bg-bg-inset transition shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4 text-text-muted" />
+                </button>
+              </div>
+              {choiceDialog.message && (
+                <p className="text-sm text-text-secondary mb-4">{choiceDialog.message}</p>
+              )}
+              <div className="flex flex-col gap-2">
+                {choiceDialog.choices.map((c, idx) => {
+                  const variant = c.variant || 'secondary';
+                  const cls =
+                    variant === 'primary'   ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
+                  : variant === 'danger'    ? 'bg-red-600/90 hover:bg-red-600 text-white border-red-600'
+                  : variant === 'cancel'    ? 'bg-transparent hover:bg-bg-inset text-text-secondary border-border-default'
+                  :                           'bg-bg-inset hover:bg-border-subtle text-text-primary border-border-default';
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => choiceDialog.onChoose(c.value)}
+                      className={`text-left px-4 py-2.5 rounded-md border transition ${cls}`}
+                    >
+                      <div className="text-sm font-medium">{c.label}</div>
+                      {c.description && (
+                        <div className={`text-xs mt-0.5 ${variant === 'primary' || variant === 'danger' ? 'opacity-90' : 'text-text-secondary'}`}>
+                          {c.description}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
