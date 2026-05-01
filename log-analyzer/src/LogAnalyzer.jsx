@@ -766,26 +766,49 @@ const WarOfRightsLogAnalyzer = () => {
     setRegimentStats(stats);
   };
 
-  const parseScoreboardCSV = (csvText) => {
-    const lines = csvText.split('\n').filter(l => l.trim());
-    if (lines.length < 2) return null;
+  const parseCSVLine = (line) => {
+    const parts = [];
+    let current = '';
+    let inQuotes = false;
+    for (const ch of line) {
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === ',' && !inQuotes) { parts.push(current.trim()); current = ''; continue; }
+      current += ch;
+    }
+    parts.push(current.trim());
+    return parts;
+  };
 
-    const header = lines[0].toLowerCase();
+  const parseScoreboardCSV = (csvText) => {
+    const rawLines = csvText.split('\n');
+    if (rawLines.length < 2) return null;
+
+    const header = rawLines[0].toLowerCase();
     if (!header.includes('kills') || !header.includes('deaths')) return null;
 
-    const players = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = [];
-      let current = '';
-      let inQuotes = false;
-      for (const ch of lines[i]) {
-        if (ch === '"') { inQuotes = !inQuotes; continue; }
-        if (ch === ',' && !inQuotes) { parts.push(current.trim()); current = ''; continue; }
-        current += ch;
+    // Split into summary section and optional kill-log section
+    let summaryCutoff = rawLines.length;
+    let killLogStart = -1;
+    for (let i = 1; i < rawLines.length; i++) {
+      const lower = rawLines[i].trim().toLowerCase();
+      if (lower.startsWith('time,killer') || lower.startsWith('time,killer_team')) {
+        summaryCutoff = i;
+        killLogStart = i + 1;
+        break;
       }
-      parts.push(current.trim());
-      if (parts.length < 4) continue;
+      if (lower === '' && i + 1 < rawLines.length && rawLines[i + 1].trim().toLowerCase().startsWith('time,')) {
+        summaryCutoff = i;
+        killLogStart = i + 2;
+        break;
+      }
+    }
 
+    // Parse summary section
+    const players = [];
+    for (let i = 1; i < summaryCutoff; i++) {
+      if (!rawLines[i].trim()) continue;
+      const parts = parseCSVLine(rawLines[i]);
+      if (parts.length < 4) continue;
       const name = parts[0];
       const team = parseInt(parts[1]);
       const kills = parseInt(parts[2]);
@@ -796,20 +819,67 @@ const WarOfRightsLogAnalyzer = () => {
 
     if (players.length === 0) return null;
 
-    const deathEntries = [];
-    const playerKills = {};
-    players.forEach(p => {
-      playerKills[p.name] = p.kills;
-      for (let d = 0; d < p.deaths; d++) {
-        deathEntries.push({ player: p.name, time: null });
+    // Parse kill log if present
+    const killLog = [];
+    if (killLogStart > 0) {
+      for (let i = killLogStart; i < rawLines.length; i++) {
+        if (!rawLines[i].trim()) continue;
+        const parts = parseCSVLine(rawLines[i]);
+        if (parts.length < 5) continue;
+        const time = parts[0].trim();
+        if (!/^\d{2}:\d{2}:\d{2}$/.test(time)) continue;
+        killLog.push({
+          time,
+          killer: parts[1].trim(),
+          killerTeam: parseInt(parts[2]),
+          victim: parts[3].trim(),
+          victimTeam: parseInt(parts[4]),
+        });
       }
-    });
+    }
+
+    const hasKillLog = killLog.length > 0;
+    const playerKills = {};
+    players.forEach(p => { playerKills[p.name] = p.kills; });
+
+    let deathEntries;
+    let startTime = 'Unknown';
+    let endTime = 'Unknown';
+    let duration = null;
+
+    if (hasKillLog) {
+      // Build deaths from kill log (has timestamps + killer)
+      deathEntries = killLog.map(k => ({
+        player: k.victim,
+        time: k.time,
+        killer: k.killer,
+      }));
+
+      const times = killLog.map(k => k.time);
+      startTime = times[0];
+      endTime = times[times.length - 1];
+
+      const s = startTime.split(':').map(Number);
+      const e = endTime.split(':').map(Number);
+      const durSec = (e[0] * 3600 + e[1] * 60 + e[2]) - (s[0] * 3600 + s[1] * 60 + s[2]);
+      const mins = Math.floor(durSec / 60);
+      const secs = durSec % 60;
+      duration = `${mins}m ${secs}s`;
+    } else {
+      // No kill log — flat death entries without timestamps
+      deathEntries = [];
+      players.forEach(p => {
+        for (let d = 0; d < p.deaths; d++) {
+          deathEntries.push({ player: p.name, time: null });
+        }
+      });
+    }
 
     const round = {
       id: 1,
-      startTime: 'Unknown',
-      endTime: 'Unknown',
-      duration: null,
+      startTime,
+      endTime,
+      duration,
       kills: deathEntries,
       teamkills: [],
       playerSessions: {},
@@ -819,8 +889,11 @@ const WarOfRightsLogAnalyzer = () => {
       playerKills,
     };
 
+    // Give every player a full-round session so presence works
     players.forEach(p => {
-      round.playerSessions[p.name] = [];
+      round.playerSessions[p.name] = hasKillLog
+        ? [{ join: startTime, leave: endTime }]
+        : [];
     });
 
     return [round];
@@ -1279,43 +1352,43 @@ const WarOfRightsLogAnalyzer = () => {
       playerSessionCounts[playerName] = sessions.length;
     });
     
-    selectedRound.kills.forEach((death, index) => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-      
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
+    const isScoreboard = selectedRound.isScoreboard || false;
+    const roundStartSeconds = timeToSeconds(selectedRound.startTime);
 
+    const processKill = (death, index) => {
       const regiment = normalizeRegimentTag(
         assignments[death.player] || extractRegimentTag(death.player)
       );
-      
-      // Skip UNTAGGED
       if (regiment === 'UNTAGGED') return;
-      
-      // Track unique players per regiment
-      if (!regimentPlayerCounts[regiment]) {
-        regimentPlayerCounts[regiment] = new Set();
-      }
+
+      if (!regimentPlayerCounts[regiment]) regimentPlayerCounts[regiment] = new Set();
       regimentPlayerCounts[regiment].add(death.player);
-      
-      // Estimate death time based on position in kills array
-      const estimatedDeathTime = (index / selectedRound.kills.length) * roundDurationSeconds;
-      const bucketIndex = Math.floor(estimatedDeathTime / bucketSize);
-      
-      if (!regimentTimeline[regiment]) {
-        regimentTimeline[regiment] = Array(numBuckets).fill(0);
+
+      let deathTimeSec;
+      if (death.time && death.time !== 'Unknown') {
+        deathTimeSec = timeToSeconds(death.time) - roundStartSeconds;
+      } else {
+        deathTimeSec = (index / selectedRound.kills.length) * roundDurationSeconds;
       }
-      
-      if (bucketIndex < numBuckets) {
-        regimentTimeline[regiment][bucketIndex]++;
-      }
-    });
+      const bucketIndex = Math.floor(deathTimeSec / bucketSize);
+
+      if (!regimentTimeline[regiment]) regimentTimeline[regiment] = Array(numBuckets).fill(0);
+      if (bucketIndex >= 0 && bucketIndex < numBuckets) regimentTimeline[regiment][bucketIndex]++;
+    };
+
+    if (isScoreboard) {
+      selectedRound.kills.forEach((death, index) => processKill(death, index));
+    } else {
+      selectedRound.kills.forEach((death, index) => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        processKill(death, index);
+      });
+    }
     
     // Filter regiments with less than 2 players and sort by total deaths
     const filteredRegiments = Object.entries(regimentTimeline)
@@ -1420,59 +1493,49 @@ const WarOfRightsLogAnalyzer = () => {
       playerSessionCounts[playerName] = sessions.length;
     });
     
-    selectedRound.kills.forEach((death, index) => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-      
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
+    const isScoreboard = selectedRound.isScoreboard || false;
+    const roundStartSeconds = timeToSeconds(selectedRound.startTime);
 
+    const processCombatKill = (death, index) => {
       const regiment = normalizeRegimentTag(
         assignments[death.player] || extractRegimentTag(death.player)
       );
-      
-      // Skip UNTAGGED
       if (regiment === 'UNTAGGED') return;
-      
-      // Estimate death time based on position
-      const estimatedDeathTime = (index / selectedRound.kills.length) * roundDurationSeconds;
-      
-      // Track unique players per regiment
-      if (!regimentPlayerCounts[regiment]) {
-        regimentPlayerCounts[regiment] = new Set();
+
+      let deathTimeSec;
+      if (death.time && death.time !== 'Unknown') {
+        deathTimeSec = timeToSeconds(death.time) - roundStartSeconds;
+      } else {
+        deathTimeSec = (index / selectedRound.kills.length) * roundDurationSeconds;
       }
+
+      if (!regimentPlayerCounts[regiment]) regimentPlayerCounts[regiment] = new Set();
       regimentPlayerCounts[regiment].add(death.player);
-      
-      // Track death times for combat period calculation
-      if (!regimentDeathTimes[regiment]) {
-        regimentDeathTimes[regiment] = [];
-      }
-      regimentDeathTimes[regiment].push(estimatedDeathTime);
-      
+
+      if (!regimentDeathTimes[regiment]) regimentDeathTimes[regiment] = [];
+      regimentDeathTimes[regiment].push(deathTimeSec);
+
       if (!regimentCombatTime[regiment]) {
-        regimentCombatTime[regiment] = {
-          name: regiment,
-          firstDeath: estimatedDeathTime,
-          lastDeath: estimatedDeathTime,
-          totalDeaths: 0
-        };
+        regimentCombatTime[regiment] = { name: regiment, firstDeath: deathTimeSec, lastDeath: deathTimeSec, totalDeaths: 0 };
       }
-      
-      regimentCombatTime[regiment].firstDeath = Math.min(
-        regimentCombatTime[regiment].firstDeath,
-        estimatedDeathTime
-      );
-      regimentCombatTime[regiment].lastDeath = Math.max(
-        regimentCombatTime[regiment].lastDeath,
-        estimatedDeathTime
-      );
+      regimentCombatTime[regiment].firstDeath = Math.min(regimentCombatTime[regiment].firstDeath, deathTimeSec);
+      regimentCombatTime[regiment].lastDeath = Math.max(regimentCombatTime[regiment].lastDeath, deathTimeSec);
       regimentCombatTime[regiment].totalDeaths++;
-    });
+    };
+
+    if (isScoreboard) {
+      selectedRound.kills.forEach((death, index) => processCombatKill(death, index));
+    } else {
+      selectedRound.kills.forEach((death, index) => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        processCombatKill(death, index);
+      });
+    }
     
     const sorted = Object.values(regimentCombatTime)
       .filter(reg => regimentPlayerCounts[reg.name] && regimentPlayerCounts[reg.name].size >= 2)
@@ -1561,50 +1624,67 @@ const WarOfRightsLogAnalyzer = () => {
   // Get first and last deaths of the round (excluding initial spawns)
   const getFirstAndLastDeaths = () => {
     if (!selectedRound) return { firstDeath: null, lastDeath: null };
-    
+
     const assignments = playerAssignments || {};
-    const playerRespawnSkipCount = {};
-    const playerSessionCounts = {};
     const validDeaths = [];
-    
-    // Count sessions for each player
-    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
-      playerSessionCounts[playerName] = sessions.length;
-    });
-    
-    // Collect all valid deaths (excluding initial spawns)
-    selectedRound.kills.forEach((death, index) => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-      
-      // Skip initial spawns
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
-      
-      const regiment = normalizeRegimentTag(
-        assignments[death.player] || extractRegimentTag(death.player)
-      );
-      
-      validDeaths.push({
-        player: death.player,
-        regiment: regiment,
-        index: index
+
+    if (selectedRound.isScoreboard) {
+      selectedRound.kills.forEach((death, index) => {
+        validDeaths.push({
+          player: death.player,
+          regiment: normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player)),
+          killer: death.killer || null,
+          index
+        });
       });
-    });
-    
-    if (validDeaths.length === 0) {
-      return { firstDeath: null, lastDeath: null };
+    } else {
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
+      Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
+
+      selectedRound.kills.forEach((death, index) => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        validDeaths.push({
+          player: death.player,
+          regiment: normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player)),
+          killer: death.killer || null,
+          index
+        });
+      });
     }
-    
+
+    if (validDeaths.length === 0) return { firstDeath: null, lastDeath: null };
+
     return {
       firstDeath: validDeaths[0],
       lastDeath: validDeaths[validDeaths.length - 1]
     };
+  };
+
+  const getNemesisStats = () => {
+    if (!selectedRound) return [];
+
+    const killsWithKiller = selectedRound.kills.filter(k => k.killer);
+    if (killsWithKiller.length === 0) return [];
+
+    const pairCounts = {};
+    killsWithKiller.forEach(({ killer, player: victim }) => {
+      const key = `${killer} → ${victim}`;
+      if (!pairCounts[key]) pairCounts[key] = { killer, victim, count: 0 };
+      pairCounts[key].count++;
+    });
+
+    return Object.values(pairCounts)
+      .filter(p => p.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
   };
 
   const exportRegimentCasualtiesCSV = () => {
@@ -1924,7 +2004,7 @@ const WarOfRightsLogAnalyzer = () => {
                                         </span>
                                       </div>
                                     </div>
-                                    {selectedRound && !selectedRound.isScoreboard && (
+                                    {selectedRound && selectedRound.startTime !== 'Unknown' && (
                                       <div className="flex items-center gap-2">
                                         <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
                                           <div
@@ -1963,7 +2043,7 @@ const WarOfRightsLogAnalyzer = () => {
           {selectedRound && !showEditor && !showSmartMatchPreview && (
             <div className="mt-6 space-y-6">
               {/* Timeline Graph — hide for scoreboard rounds (no timestamps) */}
-              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
                 <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
                   <TrendingUp className="w-6 h-6" />
                   Regiment Losses Over Time
@@ -2426,7 +2506,7 @@ const WarOfRightsLogAnalyzer = () => {
               </div>
 
               {/* Time in Combat Table — hide for scoreboard rounds */}
-              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
                     <Timer className="w-6 h-6" />
@@ -2479,7 +2559,7 @@ const WarOfRightsLogAnalyzer = () => {
               </div>}
 
               {/* First and Last Deaths — hide for scoreboard rounds */}
-              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
                 <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
                   <Skull className="w-6 h-6" />
                   First & Last Deaths
@@ -2548,6 +2628,37 @@ const WarOfRightsLogAnalyzer = () => {
                   );
                 })()}
               </div>}
+
+              {/* Nemesis Stats */}
+              {(() => {
+                const nemeses = getNemesisStats();
+                if (nemeses.length === 0) return null;
+                return (
+                  <div className="bg-slate-700 rounded-lg p-6">
+                    <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                      <Skull className="w-6 h-6" />
+                      Nemesis Stats
+                    </h2>
+                    <p className="text-slate-400 text-sm mb-4">Players who killed the same opponent 2+ times</p>
+                    <div className="space-y-2">
+                      {nemeses.map((pair, index) => (
+                        <div key={index} className="bg-slate-600 rounded-lg p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-amber-400 font-bold w-6 text-right shrink-0">{index + 1}.</span>
+                            <span className="text-green-400 font-semibold truncate">{pair.killer}</span>
+                            <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span className="text-red-400 font-semibold truncate">{pair.victim}</span>
+                          </div>
+                          <div className="text-right ml-3 shrink-0">
+                            <span className="text-white font-bold text-lg">{pair.count}</span>
+                            <span className="text-slate-400 text-sm ml-1">{pair.count === 1 ? 'kill' : 'kills'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
