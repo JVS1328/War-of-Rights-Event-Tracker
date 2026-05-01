@@ -2077,13 +2077,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
       });
     });
 
-    // Second pass: distribute kills based on weighted formula
+    // Second pass: assign kills — use actual kills if available, else estimate
     weeksToProcess.forEach((week, weekIdx) => {
       const weeklyCas = week.weeklyCasualties || {};
       if (!weeklyCas || Object.keys(weeklyCas).length === 0) return;
 
+      const weekKills = week.weeklyKills || {};
       const teamAName = teamNames.A;
       const teamBName = teamNames.B;
+
+      const addActualKills = (killsData) => {
+        if (!killsData) return false;
+        const entries = Object.entries(killsData).filter(([, k]) => k > 0);
+        if (entries.length === 0) return false;
+        entries.forEach(([unit, kills]) => {
+          inflicted[unit] = (inflicted[unit] || 0) + kills;
+        });
+        return true;
+      };
 
       const distributeKills = (totalDeathsInflicted, friendlyUnitsData, currentWeekIdx) => {
         if (!friendlyUnitsData || Object.keys(friendlyUnitsData).length === 0) return;
@@ -2094,17 +2105,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
           deaths: lost[unit] || 0
         }));
 
-        // Compute participation weights
         regiments.forEach(r => {
-          const totalUnitDeaths = r.deaths;
-          r.weight = r.men * (totalUnitDeaths / (totalUnitDeaths + c));
+          r.weight = r.men * (r.deaths / (r.deaths + c));
         });
 
-        // Normalize weights
         const totalWeight = regiments.reduce((sum, r) => sum + (r.weight || 0), 0);
-        
+
         if (totalWeight === 0) {
-          // Fallback to even distribution
           if (regiments.length > 0) {
             const killsPerUnit = totalDeathsInflicted / regiments.length;
             regiments.forEach(r => {
@@ -2114,30 +2121,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
           return;
         }
 
-        // Assign kills
         regiments.forEach(r => {
           const estKills = totalDeathsInflicted * (r.weight / totalWeight);
           inflicted[r.name] = (inflicted[r.name] || 0) + estKills;
         });
       };
 
-      // Process Round 1
-      const usaCasR1 = Object.entries(weeklyCas[teamAName]?.r1 || {}).filter(([, d]) => d >= 0);
-      const csaCasR1 = Object.entries(weeklyCas[teamBName]?.r1 || {}).filter(([, d]) => d >= 0);
-      const totalUsaDeathsR1 = usaCasR1.reduce((sum, [, d]) => sum + d, 0);
-      const totalCsaDeathsR1 = csaCasR1.reduce((sum, [, d]) => sum + d, 0);
+      ['r1', 'r2'].forEach(roundKey => {
+        const teamAKills = weekKills[teamAName]?.[roundKey];
+        const teamBKills = weekKills[teamBName]?.[roundKey];
+        const hasActualA = addActualKills(teamAKills);
+        const hasActualB = addActualKills(teamBKills);
 
-      distributeKills(totalUsaDeathsR1, Object.fromEntries(csaCasR1), weekIdx);
-      distributeKills(totalCsaDeathsR1, Object.fromEntries(usaCasR1), weekIdx);
-
-      // Process Round 2
-      const usaCasR2 = Object.entries(weeklyCas[teamAName]?.r2 || {}).filter(([, d]) => d >= 0);
-      const csaCasR2 = Object.entries(weeklyCas[teamBName]?.r2 || {}).filter(([, d]) => d >= 0);
-      const totalUsaDeathsR2 = usaCasR2.reduce((sum, [, d]) => sum + d, 0);
-      const totalCsaDeathsR2 = csaCasR2.reduce((sum, [, d]) => sum + d, 0);
-
-      distributeKills(totalUsaDeathsR2, Object.fromEntries(csaCasR2), weekIdx);
-      distributeKills(totalCsaDeathsR2, Object.fromEntries(usaCasR2), weekIdx);
+        // Fall back to estimation for teams without actual kill data
+        const casA = Object.entries(weeklyCas[teamAName]?.[roundKey] || {}).filter(([, d]) => d >= 0);
+        const casB = Object.entries(weeklyCas[teamBName]?.[roundKey] || {}).filter(([, d]) => d >= 0);
+        if (!hasActualB) {
+          const totalADeaths = casA.reduce((sum, [, d]) => sum + d, 0);
+          distributeKills(totalADeaths, Object.fromEntries(casB), weekIdx);
+        }
+        if (!hasActualA) {
+          const totalBDeaths = casB.reduce((sum, [, d]) => sum + d, 0);
+          distributeKills(totalBDeaths, Object.fromEntries(casA), weekIdx);
+        }
+      });
     });
 
     return { inflicted, lost };
@@ -2157,23 +2164,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const teamBName = teamNames.B;
 
     const initialData = {
-      [teamAName]: { casualties: { r1: {}, r2: {} } },
-      [teamBName]: { casualties: { r1: {}, r2: {} } }
+      [teamAName]: { casualties: { r1: {}, r2: {} }, kills: { r1: {}, r2: {} } },
+      [teamBName]: { casualties: { r1: {}, r2: {} }, kills: { r1: {}, r2: {} } }
     };
 
     // Populate with existing data
     const existingCasualties = week.weeklyCasualties || {};
-    
+    const existingKills = week.weeklyKills || {};
+
     // Team A units
     week.teamA.forEach(unit => {
       initialData[teamAName].casualties.r1[unit] = existingCasualties[teamAName]?.r1?.[unit] || 0;
       initialData[teamAName].casualties.r2[unit] = existingCasualties[teamAName]?.r2?.[unit] || 0;
+      initialData[teamAName].kills.r1[unit] = existingKills[teamAName]?.r1?.[unit] || 0;
+      initialData[teamAName].kills.r2[unit] = existingKills[teamAName]?.r2?.[unit] || 0;
     });
 
     // Team B units
     week.teamB.forEach(unit => {
       initialData[teamBName].casualties.r1[unit] = existingCasualties[teamBName]?.r1?.[unit] || 0;
       initialData[teamBName].casualties.r2[unit] = existingCasualties[teamBName]?.r2?.[unit] || 0;
+      initialData[teamBName].kills.r1[unit] = existingKills[teamBName]?.r1?.[unit] || 0;
+      initialData[teamBName].kills.r2[unit] = existingKills[teamBName]?.r2?.[unit] || 0;
     });
 
     setCasualtyInputData(initialData);
@@ -2199,6 +2211,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
     };
 
+    // Build weekly kills structure
+    const weeklyKills = {
+      [teamAName]: {
+        r1: casualtyInputData[teamAName]?.kills?.r1 || {},
+        r2: casualtyInputData[teamAName]?.kills?.r2 || {}
+      },
+      [teamBName]: {
+        r1: casualtyInputData[teamBName]?.kills?.r1 || {},
+        r2: casualtyInputData[teamBName]?.kills?.r2 || {}
+      }
+    };
+
     // Calculate totals
     const r1CasualtiesA = Object.values(weeklyCasualties[teamAName].r1).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
     const r1CasualtiesB = Object.values(weeklyCasualties[teamBName].r1).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
@@ -2207,6 +2231,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
     updateWeek(selectedWeek.id, {
       weeklyCasualties,
+      weeklyKills,
       r1CasualtiesA,
       r1CasualtiesB,
       r2CasualtiesA,
@@ -2216,8 +2241,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setShowCasualtyModal(false);
   };
 
-  // Load Casualties from CSV
-  const loadCasualtiesFromCSV = (teamName, roundKey, event) => {
+  // Load Casualties from CSV — searches across both teams
+  const loadCasualtiesFromCSV = (roundKey, event) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -2226,23 +2251,37 @@ const SeasonTracker = ({ initialShareData = null }) => {
       try {
         const text = e.target.result;
         const lines = text.split('\n');
-        
-        // Skip header row
-        const dataLines = lines.slice(1);
-        
-        // Normalize name for fuzzy matching
-        const normalizeName = (name) => {
-          return name.replace(/\s/g, '').replace(/-/g, '').toLowerCase();
-        };
 
-        // Build normalized lookup map
-        const availableUnits = Object.keys(casualtyInputData[teamName]?.casualties?.[roundKey] || {});
-        const normalizedMap = {};
-        availableUnits.forEach(unit => {
-          normalizedMap[normalizeName(unit)] = unit;
+        // Detect column layout from header
+        const headerParts = lines[0].split(',').map(p => p.trim().toLowerCase());
+        let casualtiesCol = 1;
+        let playerCountCol = -1;
+        let killsCol = -1;
+
+        headerParts.forEach((h, i) => {
+          if (i === 0) return;
+          if (h.includes('casualt') || h === 'deaths') casualtiesCol = i;
+          else if (h.includes('kill')) killsCol = i;
+          else if (h.includes('player') || h.includes('count')) playerCountCol = i;
         });
 
+        const dataLines = lines.slice(1);
+
+        const normalizeName = (name) => name.replace(/\s/g, '').replace(/-/g, '').toLowerCase();
+
+        // Build lookup across both teams
+        const unitToTeam = {};
+        const normalizedMap = {};
+        [teamNames.A, teamNames.B].forEach(tn => {
+          Object.keys(casualtyInputData[tn]?.casualties?.[roundKey] || {}).forEach(unit => {
+            unitToTeam[unit] = tn;
+            normalizedMap[normalizeName(unit)] = unit;
+          });
+        });
+        const allUnits = Object.keys(unitToTeam);
+
         let casualtiesLoaded = 0;
+        let killsLoaded = 0;
         let playerCountsLoaded = 0;
         const unmatched = [];
 
@@ -2253,17 +2292,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
           const csvRegimentName = parts[0];
           if (!csvRegimentName) return;
 
-          const casualties = parseInt(parts[1]);
+          const casualties = parseInt(parts[casualtiesCol]);
           if (isNaN(casualties)) return;
 
-          const playerCount = parts.length >= 3 ? parseInt(parts[2]) : null;
+          const playerCount = playerCountCol >= 0 && parts.length > playerCountCol ? parseInt(parts[playerCountCol]) : null;
+          const killCount = killsCol >= 0 && parts.length > killsCol ? parseInt(parts[killsCol]) : null;
 
-          // Try exact match first
           let matchedUnit = null;
-          if (availableUnits.includes(csvRegimentName)) {
+          if (allUnits.includes(csvRegimentName)) {
             matchedUnit = csvRegimentName;
           } else {
-            // Try normalized fuzzy match
             const normalizedCsv = normalizeName(csvRegimentName);
             if (normalizedMap[normalizedCsv]) {
               matchedUnit = normalizedMap[normalizedCsv];
@@ -2273,43 +2311,43 @@ const SeasonTracker = ({ initialShareData = null }) => {
             }
           }
 
-          // Update casualties
           if (matchedUnit) {
-            setCasualtyInputData(prev => ({
-              ...prev,
-              [teamName]: {
-                ...prev[teamName],
-                casualties: {
-                  ...prev[teamName].casualties,
-                  [roundKey]: {
-                    ...prev[teamName].casualties[roundKey],
-                    [matchedUnit]: casualties
-                  }
-                }
+            const teamName = unitToTeam[matchedUnit];
+            setCasualtyInputData(prev => {
+              const updated = { ...prev };
+              updated[teamName] = { ...updated[teamName] };
+              updated[teamName].casualties = { ...updated[teamName].casualties };
+              updated[teamName].casualties[roundKey] = {
+                ...updated[teamName].casualties[roundKey],
+                [matchedUnit]: casualties
+              };
+              if (killCount !== null && !isNaN(killCount)) {
+                updated[teamName].kills = { ...updated[teamName].kills };
+                updated[teamName].kills[roundKey] = {
+                  ...updated[teamName].kills?.[roundKey],
+                  [matchedUnit]: killCount
+                };
               }
-            }));
+              return updated;
+            });
             casualtiesLoaded++;
+            if (killCount !== null && !isNaN(killCount)) killsLoaded++;
 
-            // Update player counts if available
             if (playerCount !== null && !isNaN(playerCount) && selectedWeek) {
               const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
               if (weekIdx !== -1) {
                 const updatedWeek = { ...weeks[weekIdx] };
-                if (!updatedWeek.unitPlayerCounts) {
-                  updatedWeek.unitPlayerCounts = {};
-                }
+                if (!updatedWeek.unitPlayerCounts) updatedWeek.unitPlayerCounts = {};
                 if (!updatedWeek.unitPlayerCounts[matchedUnit]) {
                   updatedWeek.unitPlayerCounts[matchedUnit] = { min: 0, max: 100 };
                 }
 
-                // R1 updates max, R2 updates min
                 if (roundKey === 'r1') {
                   updatedWeek.unitPlayerCounts[matchedUnit].max = playerCount;
-                } else if (roundKey === 'r2') {
+                } else {
                   updatedWeek.unitPlayerCounts[matchedUnit].min = playerCount;
                 }
 
-                // Swap if min > max
                 const minVal = parseInt(updatedWeek.unitPlayerCounts[matchedUnit].min);
                 const maxVal = parseInt(updatedWeek.unitPlayerCounts[matchedUnit].max);
                 if (minVal > maxVal) {
@@ -2325,14 +2363,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
         });
 
         let msg = `Loaded casualties for ${casualtiesLoaded} regiment(s).`;
-        if (playerCountsLoaded > 0) {
-          msg += `\nLoaded player counts for ${playerCountsLoaded} regiment(s).`;
-        }
+        if (killsLoaded > 0) msg += `\nLoaded kills for ${killsLoaded} regiment(s).`;
+        if (playerCountsLoaded > 0) msg += `\nLoaded player counts for ${playerCountsLoaded} regiment(s).`;
         if (unmatched.length > 0) {
           msg += `\n\nUnmatched regiments (${unmatched.length}):\n${unmatched.slice(0, 10).join('\n')}`;
-          if (unmatched.length > 10) {
-            msg += `\n... and ${unmatched.length - 10} more`;
-          }
+          if (unmatched.length > 10) msg += `\n... and ${unmatched.length - 10} more`;
         }
 
         alert(msg);
@@ -2341,6 +2376,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
     };
     reader.readAsText(file);
+    event.target.value = '';
   };
 
   // Division Management Functions
@@ -6384,8 +6420,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
+                  {/* Load CSV buttons — one per round, matches across both teams */}
+                  <div className="flex gap-3 mb-4">
+                    {[{ key: 'r1', label: 'Round 1' }, { key: 'r2', label: 'Round 2' }].map(({ key: roundKey, label }) => (
+                      <label key={roundKey} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
+                        Load {label} CSV
+                        <input
+                          type="file"
+                          accept=".csv"
+                          onChange={(e) => loadCasualtiesFromCSV(roundKey, e)}
+                          className="hidden"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Team A and B Casualties */}
                     {[teamNames.A, teamNames.B].map((teamName, teamIdx) => {
                       const teamId = teamIdx === 0 ? 'A' : 'B';
                       const rosterUnits = selectedWeek[`team${teamId}`] || [];
@@ -6393,107 +6443,76 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <div key={teamName} className="bg-bg-inset rounded-lg p-4">
                           <h3 className="text-lg font-semibold mb-4">{teamName} Units</h3>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Round 1 */}
-                            <div className="bg-bg-inset rounded-lg p-3">
-                              <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-semibold">Round 1 Casualties</h4>
-                                <label className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
-                                  Load CSV
-                                  <input
-                                    type="file"
-                                    accept=".csv"
-                                    onChange={(e) => loadCasualtiesFromCSV(teamName, 'r1', e)}
-                                    className="hidden"
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {rosterUnits.map(unit => (
-                                  <div key={unit} className="flex justify-between items-center">
-                                    <label className="text-sm truncate flex-1" title={unit}>
-                                      {unit}:
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={casualtyInputData[teamName]?.casualties?.r1?.[unit] || 0}
-                                      onChange={(e) => {
-                                        const value = parseInt(e.target.value) || 0;
-                                        setCasualtyInputData(prev => ({
-                                          ...prev,
-                                          [teamName]: {
-                                            ...prev[teamName],
-                                            casualties: {
-                                              ...prev[teamName]?.casualties,
-                                              r1: {
-                                                ...prev[teamName]?.casualties?.r1,
-                                                [unit]: value
-                                              }
-                                            }
-                                          }
-                                        }));
-                                      }}
-                                      className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
-                                    />
-                                  </div>
-                                ))}
-                                {rosterUnits.length === 0 && (
-                                  <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
-                                )}
-                              </div>
-                            </div>
 
-                            {/* Round 2 */}
-                            <div className="bg-bg-inset rounded-lg p-3">
-                              <div className="flex justify-between items-center mb-3">
-                                <h4 className="font-semibold">Round 2 Casualties</h4>
-                                <label className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
-                                  Load CSV
-                                  <input
-                                    type="file"
-                                    accept=".csv"
-                                    onChange={(e) => loadCasualtiesFromCSV(teamName, 'r2', e)}
-                                    className="hidden"
-                                  />
-                                </label>
-                              </div>
-                              <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {rosterUnits.map(unit => (
-                                  <div key={unit} className="flex justify-between items-center">
-                                    <label className="text-sm truncate flex-1" title={unit}>
-                                      {unit}:
-                                    </label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={casualtyInputData[teamName]?.casualties?.r2?.[unit] || 0}
-                                      onChange={(e) => {
-                                        const value = parseInt(e.target.value) || 0;
-                                        setCasualtyInputData(prev => ({
-                                          ...prev,
-                                          [teamName]: {
-                                            ...prev[teamName],
-                                            casualties: {
-                                              ...prev[teamName]?.casualties,
-                                              r2: {
-                                                ...prev[teamName]?.casualties?.r2,
-                                                [unit]: value
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {[{ key: 'r1', label: 'Round 1' }, { key: 'r2', label: 'Round 2' }].map(({ key: roundKey, label }) => (
+                              <div key={roundKey} className="bg-bg-inset rounded-lg p-3">
+                                <h4 className="font-semibold mb-3">{label}</h4>
+                                <div className="space-y-2 max-h-64 overflow-y-auto">
+                                  {rosterUnits.length > 0 && (
+                                    <div className="flex items-center text-xs text-text-secondary mb-1">
+                                      <span className="flex-1" />
+                                      <span className="w-14 text-center text-red-400">Deaths</span>
+                                      <span className="w-14 text-center text-green-400 ml-1">Kills</span>
+                                    </div>
+                                  )}
+                                  {rosterUnits.map(unit => (
+                                    <div key={unit} className="flex items-center">
+                                      <label className="text-sm truncate flex-1" title={unit}>
+                                        {unit}:
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={casualtyInputData[teamName]?.casualties?.[roundKey]?.[unit] || 0}
+                                        onChange={(e) => {
+                                          const value = parseInt(e.target.value) || 0;
+                                          setCasualtyInputData(prev => ({
+                                            ...prev,
+                                            [teamName]: {
+                                              ...prev[teamName],
+                                              casualties: {
+                                                ...prev[teamName]?.casualties,
+                                                [roundKey]: {
+                                                  ...prev[teamName]?.casualties?.[roundKey],
+                                                  [unit]: value
+                                                }
                                               }
                                             }
-                                          }
-                                        }));
-                                      }}
-                                      className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
-                                    />
-                                  </div>
-                                ))}
-                                {rosterUnits.length === 0 && (
-                                  <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
-                                )}
+                                          }));
+                                        }}
+                                        className="w-14 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
+                                      />
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={casualtyInputData[teamName]?.kills?.[roundKey]?.[unit] || 0}
+                                        onChange={(e) => {
+                                          const value = parseInt(e.target.value) || 0;
+                                          setCasualtyInputData(prev => ({
+                                            ...prev,
+                                            [teamName]: {
+                                              ...prev[teamName],
+                                              kills: {
+                                                ...prev[teamName]?.kills,
+                                                [roundKey]: {
+                                                  ...prev[teamName]?.kills?.[roundKey],
+                                                  [unit]: value
+                                                }
+                                              }
+                                            }
+                                          }));
+                                        }}
+                                        className="w-14 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-1"
+                                      />
+                                    </div>
+                                  ))}
+                                  {rosterUnits.length === 0 && (
+                                    <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            ))}
                           </div>
                         </div>
                       );

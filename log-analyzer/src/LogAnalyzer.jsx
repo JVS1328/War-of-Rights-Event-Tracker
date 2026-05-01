@@ -686,83 +686,77 @@ const WarOfRightsLogAnalyzer = () => {
   const analyzeRound = (round, customAssignments = null) => {
     const assignments = customAssignments || playerAssignments || {};
     const regimentCasualties = {};
-    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
-    const playerSessionCounts = {}; // Track how many sessions each player has
-    
-    // Calculate round duration from the round parameter
-    let roundDurationSeconds = 0;
-    if (round.startTime && round.endTime && round.startTime !== 'Unknown' && round.endTime !== 'Unknown') {
-      const start = round.startTime.split(':').map(Number);
-      const end = round.endTime.split(':').map(Number);
-      const startSeconds = start[0] * 3600 + start[1] * 60 + start[2];
-      const endSeconds = end[0] * 3600 + end[1] * 60 + end[2];
-      roundDurationSeconds = endSeconds - startSeconds;
-    }
+    const isScoreboard = round.isScoreboard || false;
 
-    // Count sessions for each player (for skipping reconnect spawns)
-    Object.entries(round.playerSessions).forEach(([playerName, sessions]) => {
-      playerSessionCounts[playerName] = sessions.length;
-    });
-
-    // First pass: Initialize all players (including those with only initial spawns)
-    round.kills.forEach((death) => {
-      let regiment = assignments[death.player] || extractRegimentTag(death.player);
-      regiment = normalizeRegimentTag(regiment);
-
+    const ensureRegiment = (regiment, playerName) => {
       if (!regimentCasualties[regiment]) {
         regimentCasualties[regiment] = {
           name: regiment,
           casualties: 0,
+          kills: 0,
           deaths: [],
-          players: {}
+          players: {},
+          playerKills: {},
         };
       }
-
-      // Initialize player with 0 deaths if not exists
-      if (!regimentCasualties[regiment].players[death.player]) {
-        regimentCasualties[regiment].players[death.player] = 0;
+      if (playerName && !regimentCasualties[regiment].players[playerName]) {
+        regimentCasualties[regiment].players[playerName] = 0;
       }
-    });
+    };
 
-    // Second pass: Count actual deaths (skipping initial spawns)
-    round.kills.forEach((death, index) => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
+    if (isScoreboard) {
+      // Scoreboard CSV: deaths are exact counts, no spawn-skip needed
+      round.kills.forEach(death => {
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        ensureRegiment(regiment, death.player);
+        regimentCasualties[regiment].casualties++;
+        regimentCasualties[regiment].deaths.push(death.player);
+        regimentCasualties[regiment].players[death.player]++;
+      });
+
+      // Aggregate kills from playerKills
+      if (round.playerKills) {
+        Object.entries(round.playerKills).forEach(([playerName, killCount]) => {
+          const regiment = normalizeRegimentTag(assignments[playerName] || extractRegimentTag(playerName));
+          ensureRegiment(regiment, playerName);
+          regimentCasualties[regiment].kills += killCount;
+          regimentCasualties[regiment].playerKills[playerName] = killCount;
+        });
       }
-      
-      // Skip initial spawns (one per session)
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
+    } else {
+      // Log file: skip initial spawns per session
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
 
-      let regiment = assignments[death.player] || extractRegimentTag(death.player);
-      regiment = normalizeRegimentTag(regiment);
+      Object.entries(round.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
 
-      regimentCasualties[regiment].casualties++;
-      regimentCasualties[regiment].deaths.push(death.player);
-      regimentCasualties[regiment].players[death.player]++;
-    });
+      // First pass: Initialize all players
+      round.kills.forEach(death => {
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        ensureRegiment(regiment, death.player);
+      });
+
+      // Second pass: Count actual deaths (skipping initial spawns)
+      round.kills.forEach(death => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        regimentCasualties[regiment].casualties++;
+        regimentCasualties[regiment].deaths.push(death.player);
+        regimentCasualties[regiment].players[death.player]++;
+      });
+    }
 
     // Include all known players (from joins and chat) even without casualties
     getKnownPlayers(round).forEach(playerName => {
-      let regiment = assignments[playerName] || extractRegimentTag(playerName);
-      regiment = normalizeRegimentTag(regiment);
-
-      if (!regimentCasualties[regiment]) {
-        regimentCasualties[regiment] = {
-          name: regiment,
-          casualties: 0,
-          deaths: [],
-          players: {}
-        };
-      }
-
-      if (!regimentCasualties[regiment].players[playerName]) {
-        regimentCasualties[regiment].players[playerName] = 0;
-      }
+      const regiment = normalizeRegimentTag(assignments[playerName] || extractRegimentTag(playerName));
+      ensureRegiment(regiment, playerName);
     });
 
     // Convert to array and sort by casualties
@@ -772,16 +766,96 @@ const WarOfRightsLogAnalyzer = () => {
     setRegimentStats(stats);
   };
 
+  const parseScoreboardCSV = (csvText) => {
+    const lines = csvText.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return null;
+
+    const header = lines[0].toLowerCase();
+    if (!header.includes('kills') || !header.includes('deaths')) return null;
+
+    const players = [];
+    for (let i = 1; i < lines.length; i++) {
+      const parts = [];
+      let current = '';
+      let inQuotes = false;
+      for (const ch of lines[i]) {
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { parts.push(current.trim()); current = ''; continue; }
+        current += ch;
+      }
+      parts.push(current.trim());
+      if (parts.length < 4) continue;
+
+      const name = parts[0];
+      const team = parseInt(parts[1]);
+      const kills = parseInt(parts[2]);
+      const deaths = parseInt(parts[3]);
+      if (!name || isNaN(team) || isNaN(kills) || isNaN(deaths)) continue;
+      players.push({ name, team, kills, deaths });
+    }
+
+    if (players.length === 0) return null;
+
+    const deathEntries = [];
+    const playerKills = {};
+    players.forEach(p => {
+      playerKills[p.name] = p.kills;
+      for (let d = 0; d < p.deaths; d++) {
+        deathEntries.push({ player: p.name, time: null });
+      }
+    });
+
+    const round = {
+      id: 1,
+      startTime: 'Unknown',
+      endTime: 'Unknown',
+      duration: null,
+      kills: deathEntries,
+      teamkills: [],
+      playerSessions: {},
+      chatPlayers: [],
+      adjustedCasualties: deathEntries.length,
+      isScoreboard: true,
+      playerKills,
+    };
+
+    players.forEach(p => {
+      round.playerSessions[p.name] = [];
+    });
+
+    return [round];
+  };
+
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     const fileName = file.name.toLowerCase();
     const isJsonFile = fileName.endsWith('.json');
+    const isCsvFile = fileName.endsWith('.csv');
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      if (isJsonFile) {
+      if (isCsvFile) {
+        const rounds = parseScoreboardCSV(e.target.result);
+        if (!rounds) {
+          alert('Could not parse CSV. Expected columns: name, team, kills, deaths, kd');
+          return;
+        }
+        setRounds(rounds);
+        setLogDate(null);
+        setSelectedRound(null);
+        setRegimentStats([]);
+        setSelectedRegiment(null);
+        setPlayerAssignments({});
+        setExpandedRegiments({});
+        setPinnedRegiment(null);
+        setTimeRangeStart(0);
+        setTimeRangeEnd(100);
+        setShowAllLossRates(false);
+        setShowAllTimeInCombat(false);
+        setShowWarning(true);
+      } else if (isJsonFile) {
         // Handle analysis file import
         try {
           const importedData = JSON.parse(e.target.result);
@@ -927,62 +1001,58 @@ const WarOfRightsLogAnalyzer = () => {
 
   const getPlayerPresenceData = (regimentName) => {
     if (!selectedRound) return [];
-    
-    const roundDuration = getRoundDurationSeconds();
-    if (roundDuration === 0) return [];
 
     const regiment = regimentStats.find(r => r.name === regimentName);
     if (!regiment) return [];
 
+    if (selectedRound.isScoreboard) {
+      return Object.entries(regiment.players).map(([playerName, deathCount]) => ({
+        name: playerName,
+        deaths: deathCount,
+        kills: regiment.playerKills?.[playerName] || 0,
+        presence: 100
+      })).sort((a, b) => b.kills - a.kills || b.deaths - a.deaths);
+    }
+
+    const roundDuration = getRoundDurationSeconds();
+    if (roundDuration === 0) return [];
+
     const roundStartSeconds = timeToSeconds(selectedRound.startTime);
     const roundEndSeconds = timeToSeconds(selectedRound.endTime);
 
-    // Get unique players and their death counts
     const playerData = Object.entries(regiment.players).map(([playerName, deathCount]) => {
       let presenceSeconds = 0;
       let hasValidSessionData = false;
 
-      // Calculate actual presence from join/leave sessions
-      // Sessions are already filtered to round boundaries during parsing
       const sessions = selectedRound.playerSessions[playerName];
       if (sessions && sessions.length > 0) {
         sessions.forEach(session => {
           const joinTime = timeToSeconds(session.join);
           const leaveTime = session.leave ? timeToSeconds(session.leave) : roundEndSeconds;
-          
-          // Skip sessions that occur entirely after the round ends
-          // (can happen in the last round when players join for a round that never starts)
-          if (joinTime > roundEndSeconds) {
-            return;
-          }
-          
-          // Sessions should already be within bounds, but clamp just to be safe
+          if (joinTime > roundEndSeconds) return;
           const effectiveJoin = Math.max(joinTime, roundStartSeconds);
           const effectiveLeave = Math.min(leaveTime, roundEndSeconds);
-          
           if (effectiveLeave > effectiveJoin) {
             hasValidSessionData = true;
             presenceSeconds += (effectiveLeave - effectiveJoin);
           }
         });
       }
-      
-      // If NO valid session data exists (no joins/leaves recorded within round), assume 100% presence
-      // Player was there before round started or logging didn't capture their session
+
       if (!hasValidSessionData) {
         presenceSeconds = roundDuration;
       }
-      
+
       const presencePercentage = Math.min(100, Math.round((presenceSeconds / roundDuration) * 100));
-      
+
       return {
         name: playerName,
         deaths: deathCount,
+        kills: regiment.playerKills?.[playerName] || 0,
         presence: presencePercentage
       };
     });
 
-    // Sort by death count (high to low)
     return playerData.sort((a, b) => b.deaths - a.deaths);
   };
 
@@ -1292,46 +1362,39 @@ const WarOfRightsLogAnalyzer = () => {
     return showAll ? filtered : filtered.slice(0, 10);
   };
 
-  // Get top 10 individual death counts
   const getTopIndividualDeaths = () => {
     if (!selectedRound) return [];
-    
+
     const assignments = playerAssignments || {};
     const playerDeaths = {};
-    const playerRespawnSkipCount = {}; // Track how many respawns we've skipped per player
-    const playerSessionCounts = {}; // Track how many sessions each player has
-    
-    // Count sessions for each player
-    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
-      playerSessionCounts[playerName] = sessions.length;
-    });
-    
-    selectedRound.kills.forEach(death => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-      
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-      
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
+    const isScoreboard = selectedRound.isScoreboard || false;
 
-      const regiment = normalizeRegimentTag(
-        assignments[death.player] || extractRegimentTag(death.player)
-      );
-      
-      if (!playerDeaths[death.player]) {
-        playerDeaths[death.player] = {
-          name: death.player,
-          regiment,
-          deaths: 0
-        };
-      }
-      playerDeaths[death.player].deaths++;
-    });
-    
+    if (isScoreboard) {
+      selectedRound.kills.forEach(death => {
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        if (!playerDeaths[death.player]) playerDeaths[death.player] = { name: death.player, regiment, deaths: 0 };
+        playerDeaths[death.player].deaths++;
+      });
+    } else {
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
+      Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
+
+      selectedRound.kills.forEach(death => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        if (!playerDeaths[death.player]) playerDeaths[death.player] = { name: death.player, regiment, deaths: 0 };
+        playerDeaths[death.player].deaths++;
+      });
+    }
+
     return Object.values(playerDeaths)
       .sort((a, b) => b.deaths - a.deaths)
       .slice(0, 10);
@@ -1547,13 +1610,20 @@ const WarOfRightsLogAnalyzer = () => {
   const exportRegimentCasualtiesCSV = () => {
     if (!regimentStats.length || !selectedRound) return;
 
+    const hasKills = regimentStats.some(r => r.kills > 0);
     const csvRows = [
-      ['Regiment Name', 'Casualties', 'Player Count'],
-      ...regimentStats.map(regiment => [
-        regiment.name,
-        regiment.casualties,
-        Object.keys(regiment.players).length
-      ])
+      hasKills
+        ? ['Regiment Name', 'Casualties', 'Player Count', 'Kills']
+        : ['Regiment Name', 'Casualties', 'Player Count'],
+      ...regimentStats.map(regiment => {
+        const row = [
+          regiment.name,
+          regiment.casualties,
+          Object.keys(regiment.players).length
+        ];
+        if (hasKills) row.push(regiment.kills || 0);
+        return row;
+      })
     ];
 
     const csvContent = csvRows.map(row => row.join(',')).join('\n');
@@ -1575,41 +1645,33 @@ const WarOfRightsLogAnalyzer = () => {
 
     const assignments = playerAssignments || {};
     const regimentData = {};
-    const playerRespawnSkipCount = {};
-    const playerSessionCounts = {};
+    const isScoreboard = selectedRound.isScoreboard || false;
 
-    // Count sessions for each player
-    Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
-      playerSessionCounts[playerName] = sessions.length;
-    });
+    if (isScoreboard) {
+      selectedRound.kills.forEach(death => {
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        if (!regimentData[regiment]) regimentData[regiment] = {};
+        regimentData[regiment][death.player] = (regimentData[regiment][death.player] || 0) + 1;
+      });
+    } else {
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
+      Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
 
-    // Collect all casualties by regiment
-    selectedRound.kills.forEach(death => {
-      const sessionCount = playerSessionCounts[death.player] || 1;
-
-      if (!playerRespawnSkipCount[death.player]) {
-        playerRespawnSkipCount[death.player] = 0;
-      }
-
-      // Skip initial spawns
-      if (playerRespawnSkipCount[death.player] < sessionCount) {
-        playerRespawnSkipCount[death.player]++;
-        return;
-      }
-
-      const regiment = normalizeRegimentTag(
-        assignments[death.player] || extractRegimentTag(death.player)
-      );
-
-      if (!regimentData[regiment]) {
-        regimentData[regiment] = {};
-      }
-
-      if (!regimentData[regiment][death.player]) {
-        regimentData[regiment][death.player] = 0;
-      }
-      regimentData[regiment][death.player]++;
-    });
+      selectedRound.kills.forEach(death => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
+        if (!regimentData[regiment]) regimentData[regiment] = {};
+        regimentData[regiment][death.player] = (regimentData[regiment][death.player] || 0) + 1;
+      });
+    }
 
     // Build text content
     let textContent = `Casualty List - Round ${selectedRound.id}\n`;
@@ -1699,7 +1761,7 @@ const WarOfRightsLogAnalyzer = () => {
               <input
                 type="file"
                 className="hidden"
-                accept=".txt,.log,.json"
+                accept=".txt,.log,.json,.csv"
                 onChange={handleFileUpload}
               />
             </label>
@@ -1744,10 +1806,12 @@ const WarOfRightsLogAnalyzer = () => {
                           : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
                       }`}
                     >
-                      <div className="font-semibold">Round {round.id}</div>
-                      <div className="text-sm opacity-90">
-                        {round.startTime} - {round.endTime}
-                      </div>
+                      <div className="font-semibold">{round.isScoreboard ? 'Scoreboard' : `Round ${round.id}`}</div>
+                      {!round.isScoreboard && (
+                        <div className="text-sm opacity-90">
+                          {round.startTime} - {round.endTime}
+                        </div>
+                      )}
                       {round.duration && (
                         <div className="text-sm opacity-75">
                           Duration: {round.duration}
@@ -1815,13 +1879,21 @@ const WarOfRightsLogAnalyzer = () => {
                                 {selectedRegiment?.name === regiment.name ? '▼' : '▶'}
                               </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className={`grid ${regimentStats.some(r => r.kills > 0) ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-sm`}>
                               <div>
                                 <span className="text-slate-400">Deaths:</span>
                                 <span className="text-red-400 font-semibold ml-2">
                                   {regiment.casualties}
                                 </span>
                               </div>
+                              {regimentStats.some(r => r.kills > 0) && (
+                                <div>
+                                  <span className="text-slate-400">Kills:</span>
+                                  <span className="text-green-400 font-semibold ml-2">
+                                    {regiment.kills}
+                                  </span>
+                                </div>
+                              )}
                               <div>
                                 <span className="text-slate-400">Players:</span>
                                 <span className="text-blue-400 font-semibold ml-2">
@@ -1841,21 +1913,30 @@ const WarOfRightsLogAnalyzer = () => {
                                       <span className="text-white text-sm font-medium flex-1 mr-2">
                                         {player.name}
                                       </span>
-                                      <span className="text-red-400 font-semibold text-sm whitespace-nowrap">
-                                        {player.deaths} {player.deaths === 1 ? 'death' : 'deaths'}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
-                                        <div
-                                          className="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full transition-all"
-                                          style={{ width: `${player.presence}%` }}
-                                        />
+                                      <div className="flex gap-3">
+                                        {player.kills > 0 && (
+                                          <span className="text-green-400 font-semibold text-sm whitespace-nowrap">
+                                            {player.kills} {player.kills === 1 ? 'kill' : 'kills'}
+                                          </span>
+                                        )}
+                                        <span className="text-red-400 font-semibold text-sm whitespace-nowrap">
+                                          {player.deaths} {player.deaths === 1 ? 'death' : 'deaths'}
+                                        </span>
                                       </div>
-                                      <span className="text-emerald-400 text-xs font-semibold whitespace-nowrap">
-                                        {player.presence}%
-                                      </span>
                                     </div>
+                                    {selectedRound && !selectedRound.isScoreboard && (
+                                      <div className="flex items-center gap-2">
+                                        <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
+                                          <div
+                                            className="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full transition-all"
+                                            style={{ width: `${player.presence}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-emerald-400 text-xs font-semibold whitespace-nowrap">
+                                          {player.presence}%
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -1881,8 +1962,8 @@ const WarOfRightsLogAnalyzer = () => {
           {/* New Analytics Section */}
           {selectedRound && !showEditor && !showSmartMatchPreview && (
             <div className="mt-6 space-y-6">
-              {/* Timeline Graph */}
-              <div className="bg-slate-700 rounded-lg p-6">
+              {/* Timeline Graph — hide for scoreboard rounds (no timestamps) */}
+              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
                 <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
                   <TrendingUp className="w-6 h-6" />
                   Regiment Losses Over Time
@@ -2255,7 +2336,7 @@ const WarOfRightsLogAnalyzer = () => {
                     </div>
                   );
                 })()}
-              </div>
+              </div>}
 
               {/* Two Column Layout for Tables */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2344,8 +2425,8 @@ const WarOfRightsLogAnalyzer = () => {
                 </div>
               </div>
 
-              {/* Time in Combat Table */}
-              <div className="bg-slate-700 rounded-lg p-6">
+              {/* Time in Combat Table — hide for scoreboard rounds */}
+              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
                     <Timer className="w-6 h-6" />
@@ -2395,10 +2476,10 @@ const WarOfRightsLogAnalyzer = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </div>}
 
-              {/* First and Last Deaths */}
-              <div className="bg-slate-700 rounded-lg p-6">
+              {/* First and Last Deaths — hide for scoreboard rounds */}
+              {!selectedRound.isScoreboard && <div className="bg-slate-700 rounded-lg p-6">
                 <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
                   <Skull className="w-6 h-6" />
                   First & Last Deaths
@@ -2466,7 +2547,7 @@ const WarOfRightsLogAnalyzer = () => {
                     </div>
                   );
                 })()}
-              </div>
+              </div>}
             </div>
           )}
 
