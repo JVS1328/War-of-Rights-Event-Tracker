@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle, Share2 } from 'lucide-react';
 import { generateRoundPDF } from './PDFExport';
+import { generateShareUrl, generateShortShareUrl } from './utils/shareAnalysis';
 
 const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
 
-const WarOfRightsLogAnalyzer = () => {
+const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
   // Load initial state from localStorage
   const loadFromStorage = () => {
     try {
@@ -79,6 +80,33 @@ const WarOfRightsLogAnalyzer = () => {
       }
     }
   }, []); // Only run once on mount
+
+  // Load shared state if present
+  useEffect(() => {
+    if (initialShareData) {
+      setRounds(initialShareData.rounds);
+      setPlayerAssignments(initialShareData.playerAssignments || {});
+      setDisabledDeathTypes(initialShareData.disabledDeathTypes || new Set());
+      setLogDate(null);
+      setSelectedRegiment(null);
+      setExpandedRegiments({});
+      setPinnedRegiment(null);
+      setTimeRangeStart(0);
+      setTimeRangeEnd(100);
+      setShowAllLossRates(false);
+      setShowAllTimeInCombat(false);
+
+      if (initialShareData.selectedRoundId != null) {
+        const round = initialShareData.rounds.find(r => r.id === initialShareData.selectedRoundId);
+        if (round) {
+          setSelectedRound(round);
+          setTimeout(() => analyzeRound(round, initialShareData.playerAssignments), 0);
+        }
+      }
+
+      window.location.hash = '';
+    }
+  }, [initialShareData]);
 
   // Re-analyze when death type filters change
   useEffect(() => {
@@ -1106,6 +1134,34 @@ const WarOfRightsLogAnalyzer = () => {
     setSelectedRegiment(selectedRegiment?.name === regiment.name ? null : regiment);
   };
 
+  const handleShare = async () => {
+    if (!rounds.length) {
+      alert('Nothing to share — upload a log or CSV first.');
+      return;
+    }
+
+    const state = {
+      rounds,
+      playerAssignments,
+      selectedRoundId: selectedRound?.id ?? null,
+      disabledDeathTypes,
+    };
+
+    let url;
+    try {
+      url = await generateShortShareUrl(state);
+    } catch {
+      url = generateShareUrl(state);
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard!');
+    } catch {
+      prompt('Copy this link to share:', url);
+    }
+  };
+
   const handleExportPDF = async () => {
     if (!selectedRound || !regimentStats.length) {
       alert('Please select a round to export');
@@ -2065,6 +2121,13 @@ const WarOfRightsLogAnalyzer = () => {
                     Rounds ({rounds.length}){logDate && ` - ${logDate}`}
                   </h2>
                   <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleShare}
+                      className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition"
+                      title="Copy share link to clipboard"
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
                     {selectedRound && (
                       <button
                         onClick={handleExportPDF}
