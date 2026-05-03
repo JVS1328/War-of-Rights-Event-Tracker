@@ -44,6 +44,9 @@ const WarOfRightsLogAnalyzer = () => {
   const [showAllLossRates, setShowAllLossRates] = useState(savedState?.showAllLossRates || false);
   const [showAllTimeInCombat, setShowAllTimeInCombat] = useState(savedState?.showAllTimeInCombat || false);
   const [showWarning, setShowWarning] = useState(false);
+  const [disabledDeathTypes, setDisabledDeathTypes] = useState(new Set());
+  const [casualtyBreakdownView, setCasualtyBreakdownView] = useState('overall');
+  const [showAllKillRates, setShowAllKillRates] = useState(false);
 
   // Save state to localStorage whenever relevant state changes!
   useEffect(() => {
@@ -76,6 +79,13 @@ const WarOfRightsLogAnalyzer = () => {
       }
     }
   }, []); // Only run once on mount
+
+  // Re-analyze when death type filters change
+  useEffect(() => {
+    if (selectedRound) {
+      analyzeRound(selectedRound);
+    }
+  }, [disabledDeathTypes]);
 
   const normalizeRegimentTag = (tag) => {
     if (!tag) return tag;
@@ -705,8 +715,9 @@ const WarOfRightsLogAnalyzer = () => {
     };
 
     if (isScoreboard) {
-      // Scoreboard CSV: deaths are exact counts, no spawn-skip needed
+      // Scoreboard CSV: deaths are exact counts, filter by disabled death types
       round.kills.forEach(death => {
+        if (death.cause && disabledDeathTypes.has(death.cause)) return;
         const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
         ensureRegiment(regiment, death.player);
         regimentCasualties[regiment].casualties++;
@@ -714,8 +725,18 @@ const WarOfRightsLogAnalyzer = () => {
         regimentCasualties[regiment].players[death.player]++;
       });
 
-      // Aggregate kills from playerKills
-      if (round.playerKills) {
+      // Aggregate kills from playerKills — if we have a kill log with causes, only count non-disabled
+      if (round.kills.some(k => k.cause)) {
+        // Re-derive kills from kill log filtered by cause
+        round.kills.forEach(death => {
+          if (death.cause && disabledDeathTypes.has(death.cause)) return;
+          if (!death.killer || death.killer === '(environment)') return;
+          const regiment = normalizeRegimentTag(assignments[death.killer] || extractRegimentTag(death.killer));
+          ensureRegiment(regiment, death.killer);
+          regimentCasualties[regiment].kills++;
+          regimentCasualties[regiment].playerKills[death.killer] = (regimentCasualties[regiment].playerKills[death.killer] || 0) + 1;
+        });
+      } else if (round.playerKills) {
         Object.entries(round.playerKills).forEach(([playerName, killCount]) => {
           const regiment = normalizeRegimentTag(assignments[playerName] || extractRegimentTag(playerName));
           ensureRegiment(regiment, playerName);
@@ -759,9 +780,12 @@ const WarOfRightsLogAnalyzer = () => {
       ensureRegiment(regiment, playerName);
     });
 
-    // Convert to array and sort by casualties
-    const stats = Object.values(regimentCasualties)
-      .sort((a, b) => b.casualties - a.casualties);
+    // Convert to array, compute K/D ratio, and sort by casualties
+    const stats = Object.values(regimentCasualties).map(r => ({
+      ...r,
+      playerCount: Object.keys(r.players).length,
+      kd: r.casualties > 0 ? (r.kills / r.casualties) : (r.kills > 0 ? r.kills : 0),
+    })).sort((a, b) => b.casualties - a.casualties);
 
     setRegimentStats(stats);
   };
@@ -779,61 +803,110 @@ const WarOfRightsLogAnalyzer = () => {
     return parts;
   };
 
-  const parseScoreboardCSV = (csvText) => {
-    const rawLines = csvText.split('\n');
+  const parseScoreboardCSV = (csvText, roundId = 1) => {
+    const rawLines = csvText.split('\n').map(l => l.replace(/\r$/, ''));
     if (rawLines.length < 2) return null;
 
-    const header = rawLines[0].toLowerCase();
-    if (!header.includes('kills') || !header.includes('deaths')) return null;
+    // Detect new format: metadata section starts with key,value pairs (no header row with "kills")
+    const firstLine = rawLines[0].toLowerCase();
+    const hasMetadataSection = !firstLine.includes('kills') && firstLine.includes(',') && firstLine.split(',').length === 2;
 
-    // Split into summary section and optional kill-log section
-    let summaryCutoff = rawLines.length;
-    let killLogStart = -1;
-    for (let i = 1; i < rawLines.length; i++) {
-      const lower = rawLines[i].trim().toLowerCase();
-      if (lower.startsWith('time,killer') || lower.startsWith('time,killer_team')) {
-        summaryCutoff = i;
-        killLogStart = i + 1;
-        break;
+    let metadata = {};
+    let playerStartIdx = 0;
+
+    if (hasMetadataSection) {
+      // Parse metadata key-value pairs until we hit a blank line or a header row
+      for (let i = 0; i < rawLines.length; i++) {
+        const line = rawLines[i].trim();
+        if (!line) { playerStartIdx = i + 1; break; }
+        const lower = line.toLowerCase();
+        if (lower.startsWith('name,team') || lower.includes('kills')) { playerStartIdx = i; break; }
+        const parts = parseCSVLine(rawLines[i]);
+        if (parts.length >= 2) {
+          metadata[parts[0].trim().toLowerCase()] = parts[1].trim();
+        }
       }
-      if (lower === '' && i + 1 < rawLines.length && rawLines[i + 1].trim().toLowerCase().startsWith('time,')) {
-        summaryCutoff = i;
-        killLogStart = i + 2;
+      // Skip blank lines to find player header
+      while (playerStartIdx < rawLines.length && !rawLines[playerStartIdx].trim()) playerStartIdx++;
+    }
+
+    // Find the player header row
+    let playerHeaderIdx = playerStartIdx;
+    for (let i = playerStartIdx; i < rawLines.length; i++) {
+      const lower = rawLines[i].trim().toLowerCase();
+      if (lower.startsWith('name,') && lower.includes('kills')) { playerHeaderIdx = i; break; }
+    }
+
+    const playerHeader = rawLines[playerHeaderIdx] ? parseCSVLine(rawLines[playerHeaderIdx]).map(h => h.toLowerCase()) : [];
+    if (!playerHeader.includes('kills') || !playerHeader.includes('deaths')) return null;
+
+    // Find kill log section
+    let playerEndIdx = rawLines.length;
+    let killLogHeaderIdx = -1;
+    for (let i = playerHeaderIdx + 1; i < rawLines.length; i++) {
+      const lower = rawLines[i].trim().toLowerCase();
+      if (lower.startsWith('time,killer')) { killLogHeaderIdx = i; playerEndIdx = i; break; }
+      if (lower === '' && i + 1 < rawLines.length && rawLines[i + 1].trim().toLowerCase().startsWith('time,killer')) {
+        playerEndIdx = i;
+        killLogHeaderIdx = i + 1;
         break;
       }
     }
 
-    // Parse summary section
+    // Parse players
+    const nameIdx = playerHeader.indexOf('name');
+    const teamIdx = playerHeader.indexOf('team');
+    const killsIdx = playerHeader.indexOf('kills');
+    const deathsIdx = playerHeader.indexOf('deaths');
+    const formIdx = playerHeader.indexOf('deaths_in_form');
+    const skirmIdx = playerHeader.indexOf('deaths_skirm');
+    const oobIdx = playerHeader.indexOf('deaths_oob');
+
     const players = [];
-    for (let i = 1; i < summaryCutoff; i++) {
+    for (let i = playerHeaderIdx + 1; i < playerEndIdx; i++) {
       if (!rawLines[i].trim()) continue;
       const parts = parseCSVLine(rawLines[i]);
       if (parts.length < 4) continue;
-      const name = parts[0];
-      const team = parseInt(parts[1]);
-      const kills = parseInt(parts[2]);
-      const deaths = parseInt(parts[3]);
+      const name = parts[nameIdx >= 0 ? nameIdx : 0];
+      const team = parseInt(parts[teamIdx >= 0 ? teamIdx : 1]);
+      const kills = parseInt(parts[killsIdx >= 0 ? killsIdx : 2]);
+      const deaths = parseInt(parts[deathsIdx >= 0 ? deathsIdx : 3]);
       if (!name || isNaN(team) || isNaN(kills) || isNaN(deaths)) continue;
-      players.push({ name, team, kills, deaths });
+      const player = { name, team, kills, deaths };
+      if (formIdx >= 0) player.deathsInForm = parseInt(parts[formIdx]) || 0;
+      if (skirmIdx >= 0) player.deathsSkirm = parseInt(parts[skirmIdx]) || 0;
+      if (oobIdx >= 0) player.deathsOob = parseInt(parts[oobIdx]) || 0;
+      players.push(player);
     }
 
     if (players.length === 0) return null;
 
     // Parse kill log if present
     const killLog = [];
-    if (killLogStart > 0) {
-      for (let i = killLogStart; i < rawLines.length; i++) {
+    if (killLogHeaderIdx > 0) {
+      const klHeader = parseCSVLine(rawLines[killLogHeaderIdx]).map(h => h.toLowerCase().trim());
+      const tIdx = klHeader.indexOf('time');
+      const krIdx = klHeader.indexOf('killer');
+      const ktIdx = klHeader.indexOf('killer_team');
+      const vIdx = klHeader.indexOf('victim');
+      const vtIdx = klHeader.indexOf('victim_team');
+      const vfIdx = klHeader.indexOf('victim_formation');
+      const cIdx = klHeader.indexOf('cause');
+
+      for (let i = killLogHeaderIdx + 1; i < rawLines.length; i++) {
         if (!rawLines[i].trim()) continue;
         const parts = parseCSVLine(rawLines[i]);
         if (parts.length < 5) continue;
-        const time = parts[0].trim();
+        const time = parts[tIdx >= 0 ? tIdx : 0].trim();
         if (!/^\d{2}:\d{2}:\d{2}$/.test(time)) continue;
         killLog.push({
           time,
-          killer: parts[1].trim(),
-          killerTeam: parseInt(parts[2]),
-          victim: parts[3].trim(),
-          victimTeam: parseInt(parts[4]),
+          killer: parts[krIdx >= 0 ? krIdx : 1].trim(),
+          killerTeam: parseInt(parts[ktIdx >= 0 ? ktIdx : 2]),
+          victim: parts[vIdx >= 0 ? vIdx : 3].trim(),
+          victimTeam: parseInt(parts[vtIdx >= 0 ? vtIdx : 4]),
+          victimFormation: vfIdx >= 0 ? parts[vfIdx].trim() : null,
+          cause: cIdx >= 0 ? parts[cIdx].trim() : null,
         });
       }
     }
@@ -842,17 +915,32 @@ const WarOfRightsLogAnalyzer = () => {
     const playerKills = {};
     players.forEach(p => { playerKills[p.name] = p.kills; });
 
+    // Build player formation data map
+    const playerFormations = {};
+    players.forEach(p => {
+      if (p.deathsInForm !== undefined) {
+        playerFormations[p.name] = {
+          inForm: p.deathsInForm,
+          skirm: p.deathsSkirm || 0,
+          oob: p.deathsOob || 0,
+        };
+      }
+    });
+
     let deathEntries;
     let startTime = 'Unknown';
     let endTime = 'Unknown';
     let duration = null;
 
     if (hasKillLog) {
-      // Build deaths from kill log (has timestamps + killer)
       deathEntries = killLog.map(k => ({
         player: k.victim,
         time: k.time,
         killer: k.killer,
+        cause: k.cause,
+        victimFormation: k.victimFormation,
+        victimTeam: k.victimTeam,
+        killerTeam: k.killerTeam,
       }));
 
       const times = killLog.map(k => k.time);
@@ -866,17 +954,16 @@ const WarOfRightsLogAnalyzer = () => {
       const secs = durSec % 60;
       duration = `${mins}m ${secs}s`;
     } else {
-      // No kill log — flat death entries without timestamps
       deathEntries = [];
       players.forEach(p => {
         for (let d = 0; d < p.deaths; d++) {
-          deathEntries.push({ player: p.name, time: null });
+          deathEntries.push({ player: p.name, time: null, cause: null });
         }
       });
     }
 
     const round = {
-      id: 1,
+      id: roundId,
       startTime,
       endTime,
       duration,
@@ -887,9 +974,11 @@ const WarOfRightsLogAnalyzer = () => {
       adjustedCasualties: deathEntries.length,
       isScoreboard: true,
       playerKills,
+      playerFormations,
+      metadata: Object.keys(metadata).length > 0 ? metadata : null,
+      players,
     };
 
-    // Give every player a full-round session so presence works
     players.forEach(p => {
       round.playerSessions[p.name] = hasKillLog
         ? [{ join: startTime, leave: endTime }]
@@ -900,22 +989,34 @@ const WarOfRightsLogAnalyzer = () => {
   };
 
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
 
-    const fileName = file.name.toLowerCase();
-    const isJsonFile = fileName.endsWith('.json');
-    const isCsvFile = fileName.endsWith('.csv');
+    const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
+    const jsonFile = files.find(f => f.name.toLowerCase().endsWith('.json'));
+    const logFile = files.find(f => !f.name.toLowerCase().endsWith('.csv') && !f.name.toLowerCase().endsWith('.json'));
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (isCsvFile) {
-        const rounds = parseScoreboardCSV(e.target.result);
-        if (!rounds) {
-          alert('Could not parse CSV. Expected columns: name, team, kills, deaths, kd');
+    if (csvFiles.length > 0) {
+      const readPromises = csvFiles.map(file => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsText(file);
+      }));
+
+      Promise.all(readPromises).then(results => {
+        const allRounds = [];
+        results.forEach((csvText, idx) => {
+          const parsed = parseScoreboardCSV(csvText, idx + 1);
+          if (parsed) allRounds.push(...parsed);
+        });
+
+        if (allRounds.length === 0) {
+          alert('Could not parse CSV(s). Expected columns: name, team, kills, deaths');
           return;
         }
-        setRounds(rounds);
+
+        allRounds.forEach((r, i) => { r.id = i + 1; });
+        setRounds(allRounds);
         setLogDate(null);
         setSelectedRound(null);
         setRegimentStats([]);
@@ -928,7 +1029,20 @@ const WarOfRightsLogAnalyzer = () => {
         setShowAllLossRates(false);
         setShowAllTimeInCombat(false);
         setShowWarning(true);
-      } else if (isJsonFile) {
+        setDisabledDeathTypes(new Set());
+      });
+
+      event.target.value = '';
+      return;
+    }
+
+    const file = jsonFile || logFile || files[0];
+    const fileName = file.name.toLowerCase();
+    const isJsonFile = fileName.endsWith('.json');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (isJsonFile) {
         // Handle analysis file import
         try {
           const importedData = JSON.parse(e.target.result);
@@ -1444,6 +1558,7 @@ const WarOfRightsLogAnalyzer = () => {
 
     if (isScoreboard) {
       selectedRound.kills.forEach(death => {
+        if (death.cause && disabledDeathTypes.has(death.cause)) return;
         const regiment = normalizeRegimentTag(assignments[death.player] || extractRegimentTag(death.player));
         if (!playerDeaths[death.player]) playerDeaths[death.player] = { name: death.player, regiment, deaths: 0 };
         playerDeaths[death.player].deaths++;
@@ -1471,6 +1586,98 @@ const WarOfRightsLogAnalyzer = () => {
     return Object.values(playerDeaths)
       .sort((a, b) => b.deaths - a.deaths)
       .slice(0, 10);
+  };
+
+  const getTopIndividualKills = () => {
+    if (!selectedRound) return [];
+
+    const assignments = playerAssignments || {};
+    const playerKillCounts = {};
+
+    if (selectedRound.kills.some(k => k.cause)) {
+      selectedRound.kills.forEach(death => {
+        if (death.cause && disabledDeathTypes.has(death.cause)) return;
+        if (!death.killer || death.killer === '(environment)') return;
+        const regiment = normalizeRegimentTag(assignments[death.killer] || extractRegimentTag(death.killer));
+        if (!playerKillCounts[death.killer]) playerKillCounts[death.killer] = { name: death.killer, regiment, kills: 0 };
+        playerKillCounts[death.killer].kills++;
+      });
+    } else if (selectedRound.playerKills) {
+      Object.entries(selectedRound.playerKills).forEach(([playerName, killCount]) => {
+        const regiment = normalizeRegimentTag(assignments[playerName] || extractRegimentTag(playerName));
+        playerKillCounts[playerName] = { name: playerName, regiment, kills: killCount };
+      });
+    }
+
+    return Object.values(playerKillCounts)
+      .sort((a, b) => b.kills - a.kills)
+      .slice(0, 10);
+  };
+
+  const getHighestKillRates = (showAll = false) => {
+    if (!regimentStats.length) return [];
+
+    const filtered = regimentStats
+      .filter(regiment => {
+        const playerCount = Object.keys(regiment.players).length;
+        return regiment.name !== 'UNTAGGED' && playerCount >= 2 && regiment.kills > 0;
+      })
+      .map(regiment => {
+        const playerCount = Object.keys(regiment.players).length;
+        const killRate = (regiment.kills / playerCount).toFixed(2);
+        return {
+          name: regiment.name,
+          kills: regiment.kills,
+          playerCount,
+          killRate: parseFloat(killRate),
+          kd: regiment.kd,
+        };
+      })
+      .sort((a, b) => b.killRate - a.killRate);
+
+    return showAll ? filtered : filtered.slice(0, 10);
+  };
+
+  const getCasualtyBreakdown = () => {
+    if (!selectedRound || !selectedRound.kills.some(k => k.cause)) return null;
+
+    const allDeathTypes = [...new Set(selectedRound.kills.map(k => k.cause).filter(Boolean))];
+    const activeKills = selectedRound.kills.filter(k => !k.cause || !disabledDeathTypes.has(k.cause));
+
+    const buildBreakdown = (deaths) => {
+      const byType = {};
+      allDeathTypes.forEach(t => { byType[t] = 0; });
+      deaths.forEach(d => {
+        if (d.cause && !disabledDeathTypes.has(d.cause)) byType[d.cause] = (byType[d.cause] || 0) + 1;
+      });
+      return Object.entries(byType)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1]);
+    };
+
+    const overall = buildBreakdown(activeKills);
+    const usaDeaths = activeKills.filter(k => k.victimTeam === 2);
+    const csaDeaths = activeKills.filter(k => k.victimTeam === 1);
+    const byFormation = {
+      in_form: buildBreakdown(activeKills.filter(k => k.victimFormation === 'in_form')),
+      skirm: buildBreakdown(activeKills.filter(k => k.victimFormation === 'skirm')),
+      oob: buildBreakdown(activeKills.filter(k => k.victimFormation === 'oob')),
+    };
+
+    return {
+      overall,
+      usa: buildBreakdown(usaDeaths),
+      csa: buildBreakdown(csaDeaths),
+      byFormation,
+      totals: {
+        overall: activeKills.length,
+        usa: usaDeaths.length,
+        csa: csaDeaths.length,
+        in_form: activeKills.filter(k => k.victimFormation === 'in_form').length,
+        skirm: activeKills.filter(k => k.victimFormation === 'skirm').length,
+        oob: activeKills.filter(k => k.victimFormation === 'oob').length,
+      },
+    };
   };
 
   // Get time in combat per regiment (based on periods with 5%+ casualty rate per minute)
@@ -1832,16 +2039,17 @@ const WarOfRightsLogAnalyzer = () => {
               <div className="flex flex-col items-center space-y-2">
                 <Upload className="w-8 h-8 text-amber-400" />
                 <span className="text-slate-300 font-medium">
-                  Click to upload log file or analysis file
+                  Click to upload log file, analysis file, or scoreboard CSVs
                 </span>
                 <span className="text-slate-500 text-sm">
-                  .txt, .log, or .json files
+                  .txt, .log, .json, or .csv (multiple CSVs supported)
                 </span>
               </div>
               <input
                 type="file"
                 className="hidden"
                 accept=".txt,.log,.json,.csv"
+                multiple
                 onChange={handleFileUpload}
               />
             </label>
@@ -1886,8 +2094,17 @@ const WarOfRightsLogAnalyzer = () => {
                           : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
                       }`}
                     >
-                      <div className="font-semibold">{round.isScoreboard ? 'Scoreboard' : `Round ${round.id}`}</div>
-                      {!round.isScoreboard && (
+                      <div className="font-semibold">
+                        {round.metadata?.area || round.metadata?.map
+                          ? `${round.metadata.area || round.metadata.map}`
+                          : round.isScoreboard ? `Round ${round.id}` : `Round ${round.id}`}
+                      </div>
+                      {round.metadata?.map && round.metadata?.mode && (
+                        <div className="text-sm opacity-90">
+                          {round.metadata.map} — {round.metadata.mode}
+                        </div>
+                      )}
+                      {!round.isScoreboard && !round.metadata && (
                         <div className="text-sm opacity-90">
                           {round.startTime} - {round.endTime}
                         </div>
@@ -1903,10 +2120,172 @@ const WarOfRightsLogAnalyzer = () => {
                       <div className="text-sm opacity-75">
                         {getKnownPlayers(round).length} players
                       </div>
+                      {round.metadata?.winner && (
+                        <div className="text-sm font-semibold mt-1" style={{ color: round.metadata.winner === 'USA' ? '#60a5fa' : '#f87171' }}>
+                          Winner: {round.metadata.winner}
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Round Metadata & Casualty Breakdown */}
+              {selectedRound?.metadata && (
+                <div className="bg-slate-700 rounded-lg p-6 lg:col-span-2">
+                  <h2 className="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" />
+                    Round Summary
+                  </h2>
+
+                  {/* Top-level stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+                    {selectedRound.metadata.casualties_usa && (
+                      <div className="bg-slate-600 rounded p-3">
+                        <div className="text-slate-400 text-xs">USA Losses</div>
+                        <div className="text-blue-400 font-bold text-lg">{selectedRound.metadata.casualties_usa}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Form: {selectedRound.metadata.casualties_usa_in_form || 0} | Skirm: {selectedRound.metadata.casualties_usa_skirm || 0} | OOL: {selectedRound.metadata.casualties_usa_oob || 0}
+                        </div>
+                      </div>
+                    )}
+                    {selectedRound.metadata.casualties_csa && (
+                      <div className="bg-slate-600 rounded p-3">
+                        <div className="text-slate-400 text-xs">CSA Losses</div>
+                        <div className="text-red-400 font-bold text-lg">{selectedRound.metadata.casualties_csa}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Form: {selectedRound.metadata.casualties_csa_in_form || 0} | Skirm: {selectedRound.metadata.casualties_csa_skirm || 0} | OOL: {selectedRound.metadata.casualties_csa_oob || 0}
+                        </div>
+                      </div>
+                    )}
+                    <div className="bg-slate-600 rounded p-3">
+                      <div className="text-slate-400 text-xs">Total Losses</div>
+                      <div className="text-amber-400 font-bold text-lg">
+                        {(parseInt(selectedRound.metadata.casualties_usa || 0) + parseInt(selectedRound.metadata.casualties_csa || 0)) || selectedRound.adjustedCasualties}
+                      </div>
+                    </div>
+                    {selectedRound.metadata.winner && (
+                      <div className="bg-slate-600 rounded p-3">
+                        <div className="text-slate-400 text-xs">Winner</div>
+                        <div className={`font-bold text-lg ${selectedRound.metadata.winner === 'USA' ? 'text-blue-400' : 'text-red-400'}`}>
+                          {selectedRound.metadata.winner}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          USA: {selectedRound.metadata.morale_usa || '—'} | CSA: {selectedRound.metadata.morale_csa || '—'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Death Type Toggles */}
+                  {selectedRound.kills.some(k => k.cause) && (
+                    <div className="mb-4">
+                      <div className="text-sm text-slate-400 mb-2">Death Type Filters (click to toggle):</div>
+                      <div className="flex flex-wrap gap-2">
+                        {(() => {
+                          const causes = [...new Set(selectedRound.kills.map(k => k.cause).filter(Boolean))];
+                          return causes.map(cause => {
+                            const isDisabled = disabledDeathTypes.has(cause);
+                            const count = selectedRound.kills.filter(k => k.cause === cause).length;
+                            return (
+                              <button
+                                key={cause}
+                                onClick={() => {
+                                  const next = new Set(disabledDeathTypes);
+                                  if (isDisabled) next.delete(cause);
+                                  else next.add(cause);
+                                  setDisabledDeathTypes(next);
+                                }}
+                                className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+                                  isDisabled
+                                    ? 'bg-slate-800 text-slate-500 line-through'
+                                    : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                                }`}
+                              >
+                                {cause} ({count})
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Casualty Breakdown by Death Type */}
+                  {(() => {
+                    const breakdown = getCasualtyBreakdown();
+                    if (!breakdown) return null;
+
+                    const views = [
+                      { key: 'overall', label: 'Overall' },
+                      { key: 'usa', label: 'USA' },
+                      { key: 'csa', label: 'CSA' },
+                      { key: 'in_form', label: 'In Formation' },
+                      { key: 'skirm', label: 'Skirmish' },
+                      { key: 'oob', label: 'Out of Line' },
+                    ];
+
+                    const currentData = casualtyBreakdownView === 'in_form' || casualtyBreakdownView === 'skirm' || casualtyBreakdownView === 'oob'
+                      ? breakdown.byFormation[casualtyBreakdownView]
+                      : breakdown[casualtyBreakdownView] || breakdown.overall;
+
+                    const currentTotal = breakdown.totals[casualtyBreakdownView] || breakdown.totals.overall;
+                    const maxCount = currentData.length > 0 ? currentData[0][1] : 1;
+
+                    const causeColors = {
+                      Minie: 'bg-blue-500',
+                      Cannon: 'bg-orange-500',
+                      Round: 'bg-yellow-500',
+                      Pellet: 'bg-lime-500',
+                      Pistol: 'bg-purple-500',
+                      Hexagonal: 'bg-pink-500',
+                      Melee: 'bg-red-500',
+                      Env: 'bg-slate-400',
+                      Compression: 'bg-teal-500',
+                    };
+
+                    return (
+                      <div>
+                        <div className="text-sm text-slate-400 mb-2">Casualty Breakdown by Cause:</div>
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {views.map(v => (
+                            <button
+                              key={v.key}
+                              onClick={() => setCasualtyBreakdownView(v.key)}
+                              className={`px-3 py-1 rounded text-sm font-medium transition ${
+                                casualtyBreakdownView === v.key
+                                  ? 'bg-amber-600 text-white'
+                                  : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                              }`}
+                            >
+                              {v.label} ({breakdown.totals[v.key] || 0})
+                            </button>
+                          ))}
+                        </div>
+                        <div className="space-y-1.5">
+                          {currentData.map(([cause, count]) => (
+                            <div key={cause} className="flex items-center gap-3">
+                              <span className="text-sm text-slate-300 w-24 text-right shrink-0">{cause}</span>
+                              <div className="flex-1 bg-slate-800 rounded-full h-5 overflow-hidden">
+                                <div
+                                  className={`${causeColors[cause] || 'bg-slate-500'} h-full rounded-full transition-all`}
+                                  style={{ width: `${(count / maxCount) * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-sm text-slate-300 w-16 shrink-0">
+                                {count} <span className="text-slate-500 text-xs">({currentTotal > 0 ? ((count / currentTotal) * 100).toFixed(0) : 0}%)</span>
+                              </span>
+                            </div>
+                          ))}
+                          {currentData.length === 0 && (
+                            <div className="text-slate-500 text-sm text-center py-2">No casualties in this view</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Regiment Statistics */}
               <div className="bg-slate-700 rounded-lg p-6">
@@ -1959,7 +2338,7 @@ const WarOfRightsLogAnalyzer = () => {
                                 {selectedRegiment?.name === regiment.name ? '▼' : '▶'}
                               </span>
                             </div>
-                            <div className={`grid ${regimentStats.some(r => r.kills > 0) ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-sm`}>
+                            <div className={`grid ${regimentStats.some(r => r.kills > 0) ? 'grid-cols-4' : 'grid-cols-2'} gap-4 text-sm`}>
                               <div>
                                 <span className="text-slate-400">Deaths:</span>
                                 <span className="text-red-400 font-semibold ml-2">
@@ -1971,6 +2350,14 @@ const WarOfRightsLogAnalyzer = () => {
                                   <span className="text-slate-400">Kills:</span>
                                   <span className="text-green-400 font-semibold ml-2">
                                     {regiment.kills}
+                                  </span>
+                                </div>
+                              )}
+                              {regimentStats.some(r => r.kills > 0) && (
+                                <div>
+                                  <span className="text-slate-400">K/D:</span>
+                                  <span className={`font-semibold ml-2 ${regiment.kd >= 1 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {regiment.kd?.toFixed(2) || '0.00'}
                                   </span>
                                 </div>
                               )}
@@ -2002,8 +2389,20 @@ const WarOfRightsLogAnalyzer = () => {
                                         <span className="text-red-400 font-semibold text-sm whitespace-nowrap">
                                           {player.deaths} {player.deaths === 1 ? 'death' : 'deaths'}
                                         </span>
+                                        {player.kills > 0 && player.deaths > 0 && (
+                                          <span className={`font-semibold text-sm whitespace-nowrap ${player.kills / player.deaths >= 1 ? 'text-green-300' : 'text-red-300'}`}>
+                                            {(player.kills / player.deaths).toFixed(2)} K/D
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
+                                    {selectedRound?.playerFormations?.[player.name] && (
+                                      <div className="flex gap-3 text-xs text-slate-400 mb-1">
+                                        <span>Form: <span className="text-slate-300">{selectedRound.playerFormations[player.name].inForm}</span></span>
+                                        <span>Skirm: <span className="text-slate-300">{selectedRound.playerFormations[player.name].skirm}</span></span>
+                                        <span>OOL: <span className="text-slate-300">{selectedRound.playerFormations[player.name].oob}</span></span>
+                                      </div>
+                                    )}
                                     {selectedRound && selectedRound.startTime !== 'Unknown' && (
                                       <div className="flex items-center gap-2">
                                         <div className="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
@@ -2459,6 +2858,47 @@ const WarOfRightsLogAnalyzer = () => {
                   </div>
                 </div>
 
+                {/* Highest Kill Rates */}
+                {regimentStats.some(r => r.kills > 0) && (
+                  <div className="bg-slate-700 rounded-lg p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                        <TrendingUp className="w-6 h-6" />
+                        Highest Kill Rates
+                      </h2>
+                      <button
+                        onClick={() => setShowAllKillRates(!showAllKillRates)}
+                        className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                      >
+                        {showAllKillRates ? 'Top 10' : 'Show All'}
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {getHighestKillRates(showAllKillRates).map((regiment, index) => (
+                        <div key={regiment.name} className="bg-slate-600 rounded-lg p-3">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-white font-semibold">
+                              {index + 1}. {regiment.name}
+                            </span>
+                            <span className="text-green-400 font-bold text-lg">
+                              {regiment.killRate}
+                            </span>
+                          </div>
+                          <div className="text-sm text-slate-400">
+                            {regiment.kills} kills / {regiment.playerCount} players (K/D: {regiment.kd?.toFixed(2)})
+                          </div>
+                          <div className="mt-2 bg-slate-800 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-green-500 to-emerald-500 h-full rounded-full"
+                              style={{ width: `${Math.min(100, (regiment.killRate / 10) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Top Individual Deaths */}
                 <div className="bg-slate-700 rounded-lg p-6">
                   <div className="flex justify-between items-center mb-4">
@@ -2503,6 +2943,45 @@ const WarOfRightsLogAnalyzer = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Top 10 Individual Kills */}
+                {regimentStats.some(r => r.kills > 0) && (
+                  <div className="bg-slate-700 rounded-lg p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                        <Award className="w-6 h-6" />
+                        Top 10 Individual Kills
+                      </h2>
+                    </div>
+                    <div className="space-y-2">
+                      {getTopIndividualKills().map((player, index) => (
+                        <div key={player.name} className="bg-slate-600 rounded-lg p-3">
+                          <div className="flex justify-between items-center">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-amber-400 font-bold text-lg">
+                                  #{index + 1}
+                                </span>
+                                <span className="text-white font-medium truncate">
+                                  {player.name}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-400 mt-1">
+                                {player.regiment}
+                              </div>
+                            </div>
+                            <div className="text-right ml-2">
+                              <div className="text-green-400 font-bold text-xl">
+                                {player.kills}
+                              </div>
+                              <div className="text-xs text-slate-400">kills</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Time in Combat Table — hide for scoreboard rounds */}
