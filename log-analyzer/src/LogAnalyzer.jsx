@@ -48,6 +48,12 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
   const [disabledDeathTypes, setDisabledDeathTypes] = useState(new Set());
   const [casualtyBreakdownView, setCasualtyBreakdownView] = useState('overall');
   const [showAllKillRates, setShowAllKillRates] = useState(false);
+  const [killsTimeRangeStart, setKillsTimeRangeStart] = useState(0);
+  const [killsTimeRangeEnd, setKillsTimeRangeEnd] = useState(100);
+  const [killsHoverInfo, setKillsHoverInfo] = useState(null);
+  const [killsHoveredRegiment, setKillsHoveredRegiment] = useState(null);
+  const [killsPinnedRegiment, setKillsPinnedRegiment] = useState(null);
+  const killsSvgRef = useRef(null);
 
   // Save state to localStorage whenever relevant state changes!
   useEffect(() => {
@@ -1581,6 +1587,85 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     };
   };
 
+  const getRegimentKillsOverTime = () => {
+    if (!selectedRound) return { buckets: [], regiments: [], bucketSeconds: [] };
+
+    const assignments = playerAssignments || {};
+    const roundDurationSeconds = getRoundDurationSeconds();
+
+    if (roundDurationSeconds === 0) return { buckets: [], regiments: [], bucketSeconds: [] };
+
+    const bucketSize = 60;
+    const numBuckets = Math.ceil(roundDurationSeconds / bucketSize);
+
+    const regimentTimeline = {};
+    const regimentPlayerCounts = {};
+    const isScoreboard = selectedRound.isScoreboard || false;
+    const roundStartSeconds = timeToSeconds(selectedRound.startTime);
+
+    const processKillEvent = (death, index) => {
+      if (!death.killer || death.killer === '(environment)') return;
+      if (death.cause && disabledDeathTypes.has(death.cause)) return;
+
+      const regiment = normalizeRegimentTag(
+        assignments[death.killer] || extractRegimentTag(death.killer)
+      );
+      if (regiment === 'UNTAGGED') return;
+
+      if (!regimentPlayerCounts[regiment]) regimentPlayerCounts[regiment] = new Set();
+      regimentPlayerCounts[regiment].add(death.killer);
+
+      let deathTimeSec;
+      if (death.time && death.time !== 'Unknown') {
+        deathTimeSec = timeToSeconds(death.time) - roundStartSeconds;
+      } else {
+        deathTimeSec = (index / selectedRound.kills.length) * roundDurationSeconds;
+      }
+      const bucketIndex = Math.floor(deathTimeSec / bucketSize);
+
+      if (!regimentTimeline[regiment]) regimentTimeline[regiment] = Array(numBuckets).fill(0);
+      if (bucketIndex >= 0 && bucketIndex < numBuckets) regimentTimeline[regiment][bucketIndex]++;
+    };
+
+    if (isScoreboard) {
+      selectedRound.kills.forEach((death, index) => processKillEvent(death, index));
+    } else {
+      const playerRespawnSkipCount = {};
+      const playerSessionCounts = {};
+      Object.entries(selectedRound.playerSessions).forEach(([playerName, sessions]) => {
+        playerSessionCounts[playerName] = sessions.length;
+      });
+
+      selectedRound.kills.forEach((death, index) => {
+        const sessionCount = playerSessionCounts[death.player] || 1;
+        if (!playerRespawnSkipCount[death.player]) playerRespawnSkipCount[death.player] = 0;
+        if (playerRespawnSkipCount[death.player] < sessionCount) {
+          playerRespawnSkipCount[death.player]++;
+          return;
+        }
+        processKillEvent(death, index);
+      });
+    }
+
+    const filteredRegiments = Object.entries(regimentTimeline)
+      .filter(([name]) => regimentPlayerCounts[name] && regimentPlayerCounts[name].size >= 2)
+      .map(([name, kills]) => ({
+        name,
+        deaths: kills,
+        total: kills.reduce((a, b) => a + b, 0)
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const bucketSeconds = Array.from({ length: numBuckets }, (_, i) => i * bucketSize);
+    const buckets = bucketSeconds.map(seconds => formatTimeHHMMSS(seconds));
+
+    return {
+      buckets,
+      regiments: filteredRegiments,
+      bucketSeconds
+    };
+  };
+
   // Get highest loss rates (deaths per player)
   const getHighestLossRates = (showAll = false) => {
     if (!regimentStats.length) return [];
@@ -2053,7 +2138,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3 sm:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Warning Modal */}
         {showWarning && (
@@ -2082,22 +2167,22 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           </div>
         )}
 
-        <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-8">
-          <h1 className="text-4xl font-bold text-amber-400 mb-2 flex items-center gap-3">
-            <Users className="w-10 h-10" />
+        <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-4 sm:p-8">
+          <h1 className="text-2xl sm:text-4xl font-bold text-amber-400 mb-2 flex items-center gap-2 sm:gap-3">
+            <Users className="w-7 h-7 sm:w-10 sm:h-10 shrink-0" />
             War of Rights Log Analyzer
           </h1>
-          <p className="text-slate-400 mb-6">Analyze rounds and regiment casualties from game logs</p>
+          <p className="text-slate-400 mb-6 text-sm sm:text-base">Analyze rounds and regiment casualties from game logs</p>
 
           {/* File Upload */}
-          <div className="mb-8">
-            <label className="flex items-center justify-center w-full h-32 px-4 transition bg-slate-700 border-2 border-slate-600 border-dashed rounded-lg hover:bg-slate-600 hover:border-amber-500 cursor-pointer">
-              <div className="flex flex-col items-center space-y-2">
-                <Upload className="w-8 h-8 text-amber-400" />
-                <span className="text-slate-300 font-medium">
+          <div className="mb-6 sm:mb-8">
+            <label className="flex items-center justify-center w-full h-28 sm:h-32 px-4 transition bg-slate-700 border-2 border-slate-600 border-dashed rounded-lg hover:bg-slate-600 hover:border-amber-500 cursor-pointer">
+              <div className="flex flex-col items-center space-y-2 text-center">
+                <Upload className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
+                <span className="text-slate-300 font-medium text-sm sm:text-base">
                   Click to upload log file, analysis file, or scoreboard CSVs
                 </span>
-                <span className="text-slate-500 text-sm">
+                <span className="text-slate-500 text-xs sm:text-sm">
                   .txt, .log, .json, or .csv (multiple CSVs supported)
                 </span>
               </div>
@@ -2114,13 +2199,13 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           {/* Rounds List */}
           {rounds.length > 0 && !showEditor && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-slate-700 rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                    <Clock className="w-6 h-6" />
-                    Rounds ({rounds.length}){logDate && ` - ${logDate}`}
+              <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-4 gap-2">
+                  <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2 min-w-0">
+                    <Clock className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                    <span className="truncate">Rounds ({rounds.length}){logDate && ` - ${logDate}`}</span>
                   </h2>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={handleShare}
                       className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition"
@@ -2195,9 +2280,9 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
               {/* Round Metadata & Casualty Breakdown */}
               {selectedRound?.metadata && (
-                <div className="bg-slate-700 rounded-lg p-6 lg:col-span-2">
-                  <h2 className="text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" />
+                <div className="bg-slate-700 rounded-lg p-4 sm:p-6 lg:col-span-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 shrink-0" />
                     Round Summary
                   </h2>
 
@@ -2351,32 +2436,32 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
               )}
 
               {/* Regiment Statistics */}
-              <div className="bg-slate-700 rounded-lg p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                    <Skull className="w-6 h-6" />
+              <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                  <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <Skull className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                     Regiment Casualties
                   </h2>
                   {selectedRound && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         onClick={exportRegimentCasualtiesCSV}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition text-sm"
                         title="Export as CSV"
                       >
                         <Download className="w-4 h-4" />
-                        Export CSV
+                        <span className="hidden sm:inline">Export</span> CSV
                       </button>
                       <button
                         onClick={generateSmartMatchPreview}
-                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition text-sm"
                       >
                         <Zap className="w-4 h-4" />
                         Smart Match
                       </button>
                       <button
                         onClick={openEditor}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm"
                       >
                         <Edit2 className="w-4 h-4" />
                         Edit Players
@@ -2401,7 +2486,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                                 {selectedRegiment?.name === regiment.name ? '▼' : '▶'}
                               </span>
                             </div>
-                            <div className={`grid ${regimentStats.some(r => r.kills > 0) ? 'grid-cols-4' : 'grid-cols-2'} gap-4 text-sm`}>
+                            <div className={`grid ${regimentStats.some(r => r.kills > 0) ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'} gap-2 sm:gap-4 text-sm`}>
                               <div>
                                 <span className="text-slate-400">Deaths:</span>
                                 <span className="text-red-400 font-semibold ml-2">
@@ -2505,9 +2590,9 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           {selectedRound && !showEditor && !showSmartMatchPreview && (
             <div className="mt-6 space-y-6">
               {/* Timeline Graph — hide for scoreboard rounds (no timestamps) */}
-              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-6 h-6" />
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                <h2 className="text-lg sm:text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                   Regiment Losses Over Time
                 </h2>
                 {(() => {
@@ -2706,7 +2791,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                       </div>
                       
                       {/* Line Graph */}
-                      <div className="relative bg-slate-800 rounded-lg p-4" style={{ height: `${graphHeight}px` }}>
+                      <div className="relative bg-slate-800 rounded-lg p-2 sm:p-4 overflow-x-auto" style={{ height: `${graphHeight}px` }}>
                         <svg
                           ref={svgRef}
                           width="100%"
@@ -2880,13 +2965,205 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 })()}
               </div>}
 
+              {/* Regiment Kills Over Time — only show when kills data exists */}
+              {selectedRound.startTime !== 'Unknown' && regimentStats.some(r => r.kills > 0) && (() => {
+                const killsTimelineData = getRegimentKillsOverTime();
+                if (killsTimelineData.regiments.length === 0) return null;
+
+                const colors = [
+                  { line: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' },
+                  { line: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+                  { line: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+                  { line: '#f97316', bg: 'rgba(249, 115, 22, 0.1)' },
+                  { line: '#eab308', bg: 'rgba(234, 179, 8, 0.1)' },
+                  { line: '#a855f7', bg: 'rgba(168, 85, 247, 0.1)' },
+                  { line: '#ec4899', bg: 'rgba(236, 72, 153, 0.1)' },
+                  { line: '#06b6d4', bg: 'rgba(6, 182, 212, 0.1)' },
+                  { line: '#84cc16', bg: 'rgba(132, 204, 22, 0.1)' },
+                  { line: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+                ];
+
+                const graphHeight = 300;
+                const startIndex = Math.floor((killsTimeRangeStart / 100) * killsTimelineData.buckets.length);
+                const endIndex = Math.ceil((killsTimeRangeEnd / 100) * killsTimelineData.buckets.length);
+
+                const selectedRange = {
+                  start: startIndex,
+                  end: endIndex,
+                  buckets: killsTimelineData.buckets.slice(startIndex, endIndex),
+                  bucketSeconds: killsTimelineData.bucketSeconds.slice(startIndex, endIndex)
+                };
+
+                const regimentsInRange = killsTimelineData.regiments.map(regiment => {
+                  const killsInRange = regiment.deaths.slice(startIndex, endIndex);
+                  return { ...regiment, deathsInRange: killsInRange, totalInRange: killsInRange.reduce((a, b) => a + b, 0) };
+                });
+
+                const maxKillsInRange = Math.max(1, ...regimentsInRange.flatMap(r => r.deathsInRange));
+
+                return (
+                  <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                    <h2 className="text-lg sm:text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                      <Zap className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                      Regiment Kills Over Time
+                    </h2>
+                    <div className="space-y-4">
+                      {/* Time Range Slider */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="text-white text-sm font-medium">
+                            Time Range: {killsTimelineData.buckets[startIndex] || '0m'} - {killsTimelineData.buckets[Math.min(endIndex - 1, killsTimelineData.buckets.length - 1)] || '0m'}
+                          </label>
+                          <button
+                            onClick={() => { setKillsTimeRangeStart(0); setKillsTimeRangeEnd(100); }}
+                            className="text-xs text-amber-400 hover:text-amber-300 transition"
+                          >
+                            Reset Range
+                          </button>
+                        </div>
+                        <div className="relative h-8 flex items-center">
+                          <div className="absolute w-full h-2 bg-slate-600 rounded-lg" />
+                          <div className="absolute h-2 bg-green-500 rounded-lg" style={{ left: `${killsTimeRangeStart}%`, width: `${killsTimeRangeEnd - killsTimeRangeStart}%` }} />
+                          <input type="range" min="0" max="100" value={killsTimeRangeStart}
+                            onChange={(e) => { const v = Number(e.target.value); if (v < killsTimeRangeEnd - 1) setKillsTimeRangeStart(v); }}
+                            className="absolute w-full appearance-none bg-transparent pointer-events-none"
+                            style={{ zIndex: killsTimeRangeStart > 50 ? 5 : 4 }} />
+                          <input type="range" min="0" max="100" value={killsTimeRangeEnd}
+                            onChange={(e) => { const v = Number(e.target.value); if (v > killsTimeRangeStart + 1) setKillsTimeRangeEnd(v); }}
+                            className="absolute w-full appearance-none bg-transparent pointer-events-none"
+                            style={{ zIndex: killsTimeRangeEnd <= 50 ? 5 : 4 }} />
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-400 px-1">
+                          <span>Start: {killsTimelineData.buckets[startIndex] || '0m'}</span>
+                          <span>End: {killsTimelineData.buckets[Math.min(endIndex - 1, killsTimelineData.buckets.length - 1)] || '0m'}</span>
+                        </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex flex-wrap gap-3">
+                        {regimentsInRange.map((regiment, idx) => {
+                          const isActive = killsPinnedRegiment === regiment.name || killsHoveredRegiment === regiment.name;
+                          const shouldDim = (killsPinnedRegiment !== null && killsPinnedRegiment !== regiment.name) ||
+                                          (killsPinnedRegiment === null && killsHoveredRegiment !== null && killsHoveredRegiment !== regiment.name);
+                          return (
+                            <div key={regiment.name} className="flex items-center gap-2 cursor-pointer transition-all hover:scale-105"
+                              onMouseEnter={() => setKillsHoveredRegiment(regiment.name)}
+                              onMouseLeave={() => setKillsHoveredRegiment(null)}
+                              onClick={() => setKillsPinnedRegiment(killsPinnedRegiment === regiment.name ? null : regiment.name)}
+                              style={{ opacity: shouldDim ? 0.3 : 1 }}>
+                              <div className="w-4 h-4 rounded transition-all" style={{
+                                backgroundColor: colors[idx % colors.length].line,
+                                boxShadow: isActive ? `0 0 8px ${colors[idx % colors.length].line}` : 'none',
+                                border: killsPinnedRegiment === regiment.name ? `2px solid ${colors[idx % colors.length].line}` : 'none'
+                              }} />
+                              <span className={`text-sm font-medium transition-colors ${killsPinnedRegiment === regiment.name ? 'text-amber-400' : 'text-white'}`}>
+                                {regiment.name} ({regiment.totalInRange})
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Line Graph */}
+                      <div className="relative bg-slate-800 rounded-lg p-2 sm:p-4 overflow-x-auto" style={{ height: `${graphHeight}px` }}>
+                        <svg ref={killsSvgRef} width="100%" height="100%" viewBox={`0 0 1000 ${graphHeight}`} preserveAspectRatio="none" className="overflow-visible"
+                          onMouseMove={(e) => {
+                            if (!killsSvgRef.current) return;
+                            const rect = killsSvgRef.current.getBoundingClientRect();
+                            const x = e.clientX - rect.left;
+                            const xPercent = x / rect.width;
+                            const bucketIndex = Math.floor(xPercent * selectedRange.buckets.length);
+                            if (bucketIndex >= 0 && bucketIndex < selectedRange.buckets.length) {
+                              const timestamp = selectedRange.buckets[bucketIndex];
+                              const activeRegiment = killsPinnedRegiment || killsHoveredRegiment;
+                              const regimentData = regimentsInRange.map((reg, idx) => ({
+                                name: reg.name, deaths: reg.deathsInRange[bucketIndex] || 0,
+                                color: colors[idx % colors.length].line, isHighlighted: activeRegiment === reg.name
+                              })).filter(r => r.deaths > 0);
+                              setKillsHoverInfo({ timestamp, regiments: regimentData, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                            }
+                          }}
+                          onMouseLeave={() => setKillsHoverInfo(null)}>
+                          {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => (
+                            <line key={i} x1="0" y1={graphHeight - (fraction * graphHeight)} x2="1000" y2={graphHeight - (fraction * graphHeight)} stroke="#475569" strokeWidth="1" strokeDasharray="4" />
+                          ))}
+                          {regimentsInRange.map((regiment, regIndex) => {
+                            const activeRegiment = killsPinnedRegiment || killsHoveredRegiment;
+                            const isHighlighted = activeRegiment === null || activeRegiment === regiment.name;
+                            const opacity = isHighlighted ? 1 : 0.15;
+                            const strokeWidth = isHighlighted ? (activeRegiment === regiment.name ? 4 : 3) : 2;
+                            const points = regiment.deathsInRange.map((count, bucketIndex) => {
+                              const x = (bucketIndex / Math.max(1, regiment.deathsInRange.length - 1)) * 1000;
+                              const y = graphHeight - ((count / maxKillsInRange) * (graphHeight - 20));
+                              return `${x},${y}`;
+                            }).join(' ');
+                            return (
+                              <g key={regiment.name}
+                                onMouseEnter={() => setKillsHoveredRegiment(regiment.name)}
+                                onMouseLeave={() => setKillsHoveredRegiment(null)}
+                                onClick={() => setKillsPinnedRegiment(killsPinnedRegiment === regiment.name ? null : regiment.name)}
+                                style={{ cursor: 'pointer' }}>
+                                <polyline points={points} fill="none" stroke={colors[regIndex % colors.length].line}
+                                  strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" opacity={opacity} className="transition-all duration-200" />
+                                {regiment.deathsInRange.map((count, bucketIndex) => {
+                                  const x = (bucketIndex / Math.max(1, regiment.deathsInRange.length - 1)) * 1000;
+                                  const y = graphHeight - ((count / maxKillsInRange) * (graphHeight - 20));
+                                  return <circle key={bucketIndex} cx={x} cy={y}
+                                    r={isHighlighted ? (killsHoveredRegiment === regiment.name ? 5 : 4) : 3}
+                                    fill={colors[regIndex % colors.length].line} opacity={opacity} className="transition-all duration-200" />;
+                                })}
+                              </g>
+                            );
+                          })}
+                        </svg>
+                        {killsHoverInfo && (
+                          <div className="absolute bg-slate-900 border border-green-500 rounded-lg p-3 pointer-events-none z-10 shadow-xl"
+                            style={{ left: `${killsHoverInfo.x + 10}px`, top: `${killsHoverInfo.y - 10}px`, transform: killsHoverInfo.x > 500 ? 'translateX(-100%) translateX(-20px)' : 'none' }}>
+                            <div className="text-green-400 font-bold mb-2 text-sm">{killsHoverInfo.timestamp}</div>
+                            {killsHoverInfo.regiments.length > 0 ? (
+                              <div className="space-y-1">
+                                {killsHoverInfo.regiments.map((reg) => {
+                                  const activeRegiment = killsPinnedRegiment || killsHoveredRegiment;
+                                  return (
+                                    <div key={reg.name} className={`flex items-center gap-2 text-xs transition-all ${reg.isHighlighted ? 'scale-110' : activeRegiment !== null ? 'opacity-40' : ''}`}>
+                                      <div className="w-3 h-3 rounded transition-all" style={{ backgroundColor: reg.color, boxShadow: reg.isHighlighted ? `0 0 8px ${reg.color}` : 'none' }} />
+                                      <span className={`font-medium ${reg.isHighlighted ? 'text-green-400' : 'text-white'}`}>{reg.name}:</span>
+                                      <span className={`font-bold ${reg.isHighlighted ? 'text-green-400' : 'text-green-400'}`}>{reg.deaths}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-slate-400 text-xs">No kills at this time</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between text-xs text-slate-400 pr-2">
+                          <span>{maxKillsInRange}</span>
+                          <span>{Math.floor(maxKillsInRange * 0.75)}</span>
+                          <span>{Math.floor(maxKillsInRange * 0.5)}</span>
+                          <span>{Math.floor(maxKillsInRange * 0.25)}</span>
+                          <span>0</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-400 px-4">
+                        {selectedRange.buckets.map((label, i) => {
+                          const showEvery = Math.max(1, Math.ceil(selectedRange.buckets.length / 10));
+                          return i % showEvery === 0 ? <span key={i} className="font-mono">{label}</span> : null;
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Two Column Layout for Tables */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Highest Loss Rates */}
-                <div className="bg-slate-700 rounded-lg p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                      <BarChart3 className="w-6 h-6" />
+                <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                  <div className="flex justify-between items-center mb-4 gap-2">
+                    <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                       Highest Loss Rates
                     </h2>
                     <button
@@ -2923,10 +3200,10 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
                 {/* Highest Kill Rates */}
                 {regimentStats.some(r => r.kills > 0) && (
-                  <div className="bg-slate-700 rounded-lg p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                        <TrendingUp className="w-6 h-6" />
+                  <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-4 gap-2">
+                      <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                         Highest Kill Rates
                       </h2>
                       <button
@@ -2963,15 +3240,15 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 )}
 
                 {/* Top Individual Deaths */}
-                <div className="bg-slate-700 rounded-lg p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                      <Award className="w-6 h-6" />
+                <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                    <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                      <Award className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                       Top 10 Individual Deaths
                     </h2>
                     <button
                       onClick={exportCasualtyList}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+                      className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition text-sm shrink-0"
                       title="Export Casualty List"
                     >
                       <Download className="w-4 h-4" />
@@ -3009,10 +3286,10 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
                 {/* Top 10 Individual Kills */}
                 {regimentStats.some(r => r.kills > 0) && (
-                  <div className="bg-slate-700 rounded-lg p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                        <Award className="w-6 h-6" />
+                  <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-4 gap-2">
+                      <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                        <Award className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                         Top 10 Individual Kills
                       </h2>
                     </div>
@@ -3048,15 +3325,16 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
               </div>
 
               {/* Time in Combat Table — hide for scoreboard rounds */}
-              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                    <Timer className="w-6 h-6" />
-                    Time in Combat (Per Regiment)
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                <div className="flex justify-between items-center mb-4 gap-2">
+                  <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                    <Timer className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                    <span className="hidden sm:inline">Time in Combat (Per Regiment)</span>
+                    <span className="sm:hidden">Time in Combat</span>
                   </h2>
                   <button
                     onClick={() => setShowAllTimeInCombat(!showAllTimeInCombat)}
-                    className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition"
+                    className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white rounded text-sm transition shrink-0"
                   >
                     {showAllTimeInCombat ? 'Top 10' : 'Show All'}
                   </button>
@@ -3064,7 +3342,8 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 <div className="mb-3 text-sm text-slate-400">
                   <p>Combat periods start when ≥5% of the regiment dies within 30 seconds and end when the casualty rate drops below that threshold. Excludes initial spawns.</p>
                 </div>
-                <div className="overflow-x-auto">
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-600">
@@ -3098,12 +3377,31 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                     </tbody>
                   </table>
                 </div>
+                {/* Mobile card layout */}
+                <div className="md:hidden space-y-3">
+                  {getTimeInCombat(showAllTimeInCombat).map((regiment, index) => (
+                    <div key={regiment.name} className="bg-slate-600 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-amber-400 font-bold">{index + 1}.</span>
+                        <span className="text-white font-semibold">{regiment.name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                        <div><span className="text-slate-400">Duration:</span> <span className="text-green-400 font-semibold">{regiment.combatDurationFormatted}</span></div>
+                        <div><span className="text-slate-400">Avg:</span> <span className="text-cyan-400 font-semibold">{regiment.avgCombatDurationFormatted}</span></div>
+                        <div><span className="text-slate-400">Periods:</span> <span className="text-purple-400 font-semibold">{regiment.combatPeriods}</span></div>
+                        <div><span className="text-slate-400">Deaths:</span> <span className="text-red-400 font-semibold">{regiment.totalDeaths}</span></div>
+                        <div><span className="text-slate-400">First:</span> <span className="text-slate-300">{regiment.firstDeathFormatted}</span></div>
+                        <div><span className="text-slate-400">Last:</span> <span className="text-slate-300">{regiment.lastDeathFormatted}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>}
 
               {/* First and Last Deaths — hide for scoreboard rounds */}
-              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-6">
-                <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                  <Skull className="w-6 h-6" />
+              {selectedRound.startTime !== 'Unknown' && <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                <h2 className="text-lg sm:text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                  <Skull className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                   First & Last Deaths
                 </h2>
                 {(() => {
@@ -3176,24 +3474,24 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 const nemeses = getNemesisStats();
                 if (nemeses.length === 0) return null;
                 return (
-                  <div className="bg-slate-700 rounded-lg p-6">
-                    <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-                      <Skull className="w-6 h-6" />
+                  <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+                    <h2 className="text-lg sm:text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                      <Skull className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
                       Nemesis Stats
                     </h2>
                     <p className="text-slate-400 text-sm mb-4">Players who killed the same opponent 2+ times</p>
                     <div className="space-y-2">
                       {nemeses.map((pair, index) => (
-                        <div key={index} className="bg-slate-600 rounded-lg p-3 flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div key={index} className="bg-slate-600 rounded-lg p-3 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
                             <span className="text-amber-400 font-bold w-6 text-right shrink-0">{index + 1}.</span>
-                            <span className="text-green-400 font-semibold truncate">{pair.killer}</span>
-                            <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
-                            <span className="text-red-400 font-semibold truncate">{pair.victim}</span>
+                            <span className="text-green-400 font-semibold truncate text-sm sm:text-base">{pair.killer}</span>
+                            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
+                            <span className="text-red-400 font-semibold truncate text-sm sm:text-base">{pair.victim}</span>
                           </div>
-                          <div className="text-right ml-3 shrink-0">
-                            <span className="text-white font-bold text-lg">{pair.count}</span>
-                            <span className="text-slate-400 text-sm ml-1">{pair.count === 1 ? 'kill' : 'kills'}</span>
+                          <div className="text-right shrink-0">
+                            <span className="text-white font-bold text-base sm:text-lg">{pair.count}</span>
+                            <span className="text-slate-400 text-xs sm:text-sm ml-1">{pair.count === 1 ? 'kill' : 'kills'}</span>
                           </div>
                         </div>
                       ))}
@@ -3206,11 +3504,12 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
           {/* Smart Match Preview Modal */}
           {showSmartMatchPreview && smartMatchPreview && (
-            <div className="bg-slate-700 rounded-lg p-6 mb-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                  <Zap className="w-6 h-6" />
-                  Smart Match Preview - {smartMatchPreview.length} Match{smartMatchPreview.length !== 1 ? 'es' : ''} Found
+            <div className="bg-slate-700 rounded-lg p-4 sm:p-6 mb-6">
+              <div className="flex justify-between items-center mb-6 gap-2">
+                <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                  <Zap className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                  <span className="hidden sm:inline">Smart Match Preview - {smartMatchPreview.length} Match{smartMatchPreview.length !== 1 ? 'es' : ''} Found</span>
+                  <span className="sm:hidden">Smart Match ({smartMatchPreview.length})</span>
                 </h2>
                 <button
                   onClick={cancelSmartMatch}
@@ -3291,15 +3590,16 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
           {/* Player Editor Modal */}
           {showEditor && selectedRound && !showSmartMatchPreview && (
-            <div className="bg-slate-700 rounded-lg p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-                  <Edit2 className="w-6 h-6" />
-                  Edit Player Assignments - Round {selectedRound.id}
+            <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+              <div className="flex justify-between items-center mb-6 gap-2">
+                <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                  <span className="hidden sm:inline">Edit Player Assignments - Round {selectedRound.id}</span>
+                  <span className="sm:hidden">Edit Players - R{selectedRound.id}</span>
                 </h2>
                 <button
                   onClick={closeEditor}
-                  className="p-2 bg-slate-600 hover:bg-slate-500 rounded-lg transition"
+                  className="p-2 bg-slate-600 hover:bg-slate-500 rounded-lg transition shrink-0"
                 >
                   <X className="w-5 h-5 text-white" />
                 </button>
@@ -3319,27 +3619,27 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 {getPlayersByRegiment().map((regiment) => (
                   <div key={regiment.name} className="bg-slate-600 rounded-lg overflow-hidden">
                     {/* Regiment Header */}
-                    <div className="bg-slate-700 p-4">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className="bg-slate-700 p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
                         <button
                           onClick={() => toggleRegiment(regiment.name)}
-                          className="flex items-center gap-2 flex-1 text-left hover:text-amber-400 transition"
+                          className="flex items-center gap-2 flex-1 text-left hover:text-amber-400 transition min-w-0"
                         >
                           {expandedRegiments[regiment.name] ? (
-                            <ChevronDown className="w-5 h-5 text-amber-400" />
+                            <ChevronDown className="w-5 h-5 text-amber-400 shrink-0" />
                           ) : (
-                            <ChevronRight className="w-5 h-5 text-slate-400" />
+                            <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" />
                           )}
-                          <span className="font-bold text-lg text-white">
+                          <span className="font-bold text-base sm:text-lg text-white truncate">
                             {regiment.name}
                           </span>
-                          <span className="text-sm text-slate-400">
-                            ({regiment.playerCount} player{regiment.playerCount !== 1 ? 's' : ''})
+                          <span className="text-sm text-slate-400 shrink-0">
+                            ({regiment.playerCount})
                           </span>
                         </button>
 
                         {/* Regiment Controls */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap pl-7 sm:pl-0">
                           {editingRegiment === regiment.name ? (
                             <>
                               <input
@@ -3435,11 +3735,11 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                             </div>
                             
                             {editingPlayer === player.name ? (
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <select
                                   value={newRegiment}
                                   onChange={(e) => setNewRegiment(e.target.value)}
-                                  className="px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm"
+                                  className="px-3 py-1 bg-slate-800 text-white rounded border border-slate-500 focus:border-amber-500 outline-none text-sm min-w-0 flex-1 sm:flex-none"
                                 >
                                   {getAvailableRegiments().map(reg => (
                                     <option key={reg} value={reg}>{reg}</option>
