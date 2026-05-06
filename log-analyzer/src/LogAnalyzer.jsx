@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle, Share2 } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle, Share2, ListChecks } from 'lucide-react';
 import { generateRoundPDF } from './PDFExport';
 import { generateShareUrl, generateShortShareUrl } from './utils/shareAnalysis';
+import RegimentListModal from './RegimentListModal';
 
 const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
 
@@ -54,6 +55,11 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
   const [killsHoveredRegiment, setKillsHoveredRegiment] = useState(null);
   const [killsPinnedRegiment, setKillsPinnedRegiment] = useState(null);
   const killsSvgRef = useRef(null);
+
+  // Regiment list modal state
+  const [showRegimentListModal, setShowRegimentListModal] = useState(false);
+  const [regimentModalKind, setRegimentModalKind] = useState('import'); // 'import' | 'post'
+  const [pendingImport, setPendingImport] = useState(null); // { kind: 'csv'|'log', rounds, extractedDate? }
 
   // Save state to localStorage whenever relevant state changes!
   useEffect(() => {
@@ -190,6 +196,91 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     }
 
     return 'UNTAGGED';
+  };
+
+  // Parse the textarea content from the regiment list modal.
+  // Returns: [{ label: string, patterns: string[] }, ...] with patterns uppercased.
+  const parseRegimentList = (text) => {
+    if (!text) return [];
+    const entries = [];
+    text.split(/\r?\n/).forEach(rawLine => {
+      const line = rawLine.trim();
+      if (!line) return;
+      let label;
+      let patterns;
+      const eqIdx = line.indexOf('=');
+      if (eqIdx >= 0) {
+        label = line.slice(0, eqIdx).trim();
+        const rhs = line.slice(eqIdx + 1).trim();
+        patterns = rhs.split(',').map(p => p.trim()).filter(Boolean);
+        if (!label || patterns.length === 0) return;
+      } else {
+        label = line;
+        patterns = [line];
+      }
+      const normalizedLabel = normalizeRegimentTag(label) || label;
+      const upperPatterns = patterns.map(p => p.toUpperCase()).filter(Boolean);
+      if (upperPatterns.length === 0) return;
+      entries.push({ label: normalizedLabel, patterns: upperPatterns });
+    });
+    return entries;
+  };
+
+  // Find the best (label, pattern) match for a player name.
+  // Match rule: case-insensitive substring with non-alphanumeric (or string-edge)
+  // boundaries on each side. Longest pattern wins; ties broken by entry order.
+  const matchPlayerToRegimentList = (playerName, parsedList) => {
+    if (!playerName || !parsedList || parsedList.length === 0) return null;
+    const upper = playerName.toUpperCase();
+    const isBoundary = (ch) => ch === undefined || !/[A-Z0-9]/.test(ch);
+    let best = null;
+    for (let i = 0; i < parsedList.length; i++) {
+      const entry = parsedList[i];
+      for (const pattern of entry.patterns) {
+        if (!pattern) continue;
+        let from = 0;
+        while (from <= upper.length - pattern.length) {
+          const idx = upper.indexOf(pattern, from);
+          if (idx < 0) break;
+          const before = idx === 0 ? undefined : upper[idx - 1];
+          const after = idx + pattern.length >= upper.length ? undefined : upper[idx + pattern.length];
+          if (isBoundary(before) && isBoundary(after)) {
+            if (
+              !best ||
+              pattern.length > best.length ||
+              (pattern.length === best.length && i < best.entryIndex)
+            ) {
+              best = { label: entry.label, length: pattern.length, entryIndex: i };
+            }
+            break; // longer matches at later positions of the same pattern won't help
+          }
+          from = idx + 1;
+        }
+      }
+    }
+    return best ? best.label : null;
+  };
+
+  // Build a playerAssignments map from a regiment list against the union of known
+  // players across the supplied rounds. Mode: 'replace' assigns UNTAGGED on no
+  // match; 'augment' leaves unmatched players unset (so the caller's existing
+  // assignments / extractRegimentTag fallback applies downstream).
+  const buildAssignmentsFromRegimentList = (rounds, parsedList, mode, baseAssignments = {}) => {
+    const out = mode === 'augment' ? { ...baseAssignments } : {};
+    if (!rounds || rounds.length === 0) return out;
+    const playerSet = new Set();
+    rounds.forEach(round => {
+      getKnownPlayers(round).forEach(p => playerSet.add(p));
+    });
+    playerSet.forEach(playerName => {
+      const matched = matchPlayerToRegimentList(playerName, parsedList);
+      if (matched) {
+        out[playerName] = matched;
+      } else if (mode === 'replace') {
+        out[playerName] = 'UNTAGGED';
+      }
+    });
+    return out;
   };
 
   const levenshteinDistance = (str1, str2) => {
@@ -709,15 +800,21 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
       round.adjustedCasualties = adjustedCount;
     });
 
-    // Reset all state when loading a new log file
     // Filter out incomplete rounds (map switches without end times)
     const completeRounds = mergeRoundsIfNoCasualties(filterCompleteRounds(parsedRounds));
-    setRounds(completeRounds);
-    setLogDate(extractedDate);
+    return { rounds: completeRounds, extractedDate };
+  };
+
+  // Commit a freshly parsed import (CSV or log) to component state. Optionally
+  // accepts a precomputed playerAssignments map (from the regiment list modal).
+  const commitImport = ({ kind, rounds: importedRounds, extractedDate }, assignments = {}) => {
+    importedRounds.forEach((r, i) => { r.id = i + 1; });
+    setRounds(importedRounds);
+    setLogDate(kind === 'log' ? (extractedDate || null) : null);
     setSelectedRound(null);
     setRegimentStats([]);
     setSelectedRegiment(null);
-    setPlayerAssignments({});
+    setPlayerAssignments(assignments);
     setExpandedRegiments({});
     setPinnedRegiment(null);
     setTimeRangeStart(0);
@@ -725,6 +822,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     setShowAllLossRates(false);
     setShowAllTimeInCombat(false);
     setShowWarning(true);
+    setDisabledDeathTypes(new Set());
   };
 
   const analyzeRound = (round, customAssignments = null) => {
@@ -1049,21 +1147,9 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           return;
         }
 
-        allRounds.forEach((r, i) => { r.id = i + 1; });
-        setRounds(allRounds);
-        setLogDate(null);
-        setSelectedRound(null);
-        setRegimentStats([]);
-        setSelectedRegiment(null);
-        setPlayerAssignments({});
-        setExpandedRegiments({});
-        setPinnedRegiment(null);
-        setTimeRangeStart(0);
-        setTimeRangeEnd(100);
-        setShowAllLossRates(false);
-        setShowAllTimeInCombat(false);
-        setShowWarning(true);
-        setDisabledDeathTypes(new Set());
+        setPendingImport({ kind: 'csv', rounds: allRounds });
+        setRegimentModalKind('import');
+        setShowRegimentListModal(true);
       });
 
       event.target.value = '';
@@ -1119,14 +1205,62 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           alert('Failed to import analysis. Please check the file format.');
         }
       } else {
-        // Handle log file parsing
-        parseLogFile(e.target.result);
+        // Handle log file parsing — defer commit until regiment list modal closes
+        const parsed = parseLogFile(e.target.result);
+        if (!parsed || !parsed.rounds || parsed.rounds.length === 0) {
+          alert('Could not parse any complete rounds from the log file.');
+          return;
+        }
+        setPendingImport({ kind: 'log', rounds: parsed.rounds, extractedDate: parsed.extractedDate });
+        setRegimentModalKind('import');
+        setShowRegimentListModal(true);
       }
     };
     reader.readAsText(file);
 
     // Reset the input so the same file can be uploaded again
     event.target.value = '';
+  };
+
+  // Modal handlers ---------------------------------------------------------
+
+  const handleRegimentModalApply = (text, applyMode) => {
+    const parsedList = parseRegimentList(text);
+
+    if (regimentModalKind === 'import' && pendingImport) {
+      const assignments = parsedList.length > 0
+        ? buildAssignmentsFromRegimentList(pendingImport.rounds, parsedList, applyMode, {})
+        : {};
+      commitImport(pendingImport, assignments);
+      setPendingImport(null);
+      setShowRegimentListModal(false);
+      return;
+    }
+
+    if (regimentModalKind === 'post') {
+      if (parsedList.length === 0 || rounds.length === 0) {
+        setShowRegimentListModal(false);
+        return;
+      }
+      const baseAssignments = applyMode === 'augment' ? (playerAssignments || {}) : {};
+      const newAssignments = buildAssignmentsFromRegimentList(rounds, parsedList, applyMode, baseAssignments);
+      setPlayerAssignments(newAssignments);
+      if (selectedRound) {
+        analyzeRound(selectedRound, newAssignments);
+      }
+      setShowRegimentListModal(false);
+      return;
+    }
+
+    setShowRegimentListModal(false);
+  };
+
+  const handleRegimentModalSkip = () => {
+    if (regimentModalKind === 'import' && pendingImport) {
+      commitImport(pendingImport, {});
+      setPendingImport(null);
+    }
+    setShowRegimentListModal(false);
   };
 
   const handleRoundSelect = (round) => {
@@ -2206,6 +2340,16 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                     <span className="truncate">Rounds ({rounds.length}){logDate && ` - ${logDate}`}</span>
                   </h2>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => {
+                        setRegimentModalKind('post');
+                        setShowRegimentListModal(true);
+                      }}
+                      className="p-2 bg-amber-700 hover:bg-amber-600 text-white rounded transition"
+                      title="Group players by an explicit regiment list"
+                    >
+                      <ListChecks className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={handleShare}
                       className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition"
@@ -3815,6 +3959,13 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           )}
         </div>
       </div>
+
+      <RegimentListModal
+        isOpen={showRegimentListModal}
+        mode={regimentModalKind}
+        onApply={handleRegimentModalApply}
+        onSkip={handleRegimentModalSkip}
+      />
     </div>
   );
 };
