@@ -3839,36 +3839,41 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
 
     // Resolve winners of already-played playoff matchups and propagate them
-    // forward into the next round's matchups.
+    // forward into the next round's matchups. A matchup is only credited when
+    // BOTH teams' units were the per-round leads of opposing sides — being a
+    // supporting unit on the winning roster doesn't count as a playoff win.
     const playoffWeeks = weeks.filter(w => w.isPlayoffs);
 
-    const findWeekForMatch = (unit1, unit2) => {
-      if (!unit1 || !unit2) return null;
-      return playoffWeeks.find(w => {
-        const a = w.teamA || [];
-        const b = w.teamB || [];
-        return (a.includes(unit1) && b.includes(unit2)) ||
-               (a.includes(unit2) && b.includes(unit1));
-      });
-    };
+    const roundLeads = (week, r) => ({
+      leadA: week[`leadA_r${r}`] || week.leadA || null,
+      leadB: week[`leadB_r${r}`] || week.leadB || null,
+    });
 
-    const determineWinner = (week, team1, team2, roundsPerMatch) => {
-      if (!week || !team1 || !team2) return null;
-      const a = week.teamA || [];
-      const t1Side = a.includes(team1.unit) ? 'A' : 'B';
-      const t2Side = t1Side === 'A' ? 'B' : 'A';
+    const resolveMatch = (team1, team2, roundsPerMatch) => {
+      if (!team1 || !team2) return null;
       let t1Wins = 0;
       let t2Wins = 0;
-      const numRounds = Math.max(1, roundsPerMatch || 1);
-      for (let i = 1; i <= Math.min(2, numRounds); i++) {
-        const w = week[`round${i}Winner`];
-        if (w === t1Side) t1Wins++;
-        else if (w === t2Side) t2Wins++;
+      for (const w of playoffWeeks) {
+        for (const r of [1, 2]) {
+          const winner = w[`round${r}Winner`];
+          if (!winner) continue;
+          const { leadA, leadB } = roundLeads(w, r);
+          if (!leadA || !leadB) continue;
+          const winningLead = winner === 'A' ? leadA : leadB;
+          const losingLead = winner === 'A' ? leadB : leadA;
+          // Only count this round if it pits team1's lead against team2's lead.
+          const isMatch =
+            (winningLead === team1.unit && losingLead === team2.unit) ||
+            (winningLead === team2.unit && losingLead === team1.unit);
+          if (!isMatch) continue;
+          if (winningLead === team1.unit) t1Wins++;
+          else if (winningLead === team2.unit) t2Wins++;
+        }
       }
-      if (t1Wins === 0 && t2Wins === 0) return null;
-      // Tie (e.g. 1-1 in best-of-2) is unresolved.
-      if (t1Wins === t2Wins) return null;
-      return t1Wins > t2Wins ? team1 : team2;
+      const needed = Math.floor((roundsPerMatch || 1) / 2) + 1;
+      if (t1Wins >= needed && t1Wins > t2Wins) return team1;
+      if (t2Wins >= needed && t2Wins > t1Wins) return team2;
+      return null;
     };
 
     const seedLabel = (team) => team?.conferenceSeed ?? team?.seed;
@@ -3879,13 +3884,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
       // Resolve winners for any matchup with both teams known.
       round.matchups.forEach(m => {
         if (m.team1 && m.team2 && !m.winner) {
-          const wk = findWeekForMatch(m.team1.unit, m.team2.unit);
-          if (wk) {
-            const winner = determineWinner(wk, m.team1, m.team2, round.roundsPerMatch);
-            if (winner) {
-              m.winner = winner;
-              m.loser = winner === m.team1 ? m.team2 : m.team1;
-            }
+          const winner = resolveMatch(m.team1, m.team2, round.roundsPerMatch);
+          if (winner) {
+            m.winner = winner;
+            m.loser = winner === m.team1 ? m.team2 : m.team1;
           }
         }
       });
