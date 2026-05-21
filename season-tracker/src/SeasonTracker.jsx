@@ -3837,7 +3837,121 @@ const SeasonTracker = ({ initialShareData = null }) => {
         ]
       });
     }
-    
+
+    // Resolve winners of already-played playoff matchups and propagate them
+    // forward into the next round's matchups.
+    const playoffWeeks = weeks.filter(w => w.isPlayoffs);
+
+    const findWeekForMatch = (unit1, unit2) => {
+      if (!unit1 || !unit2) return null;
+      return playoffWeeks.find(w => {
+        const a = w.teamA || [];
+        const b = w.teamB || [];
+        return (a.includes(unit1) && b.includes(unit2)) ||
+               (a.includes(unit2) && b.includes(unit1));
+      });
+    };
+
+    const determineWinner = (week, team1, team2, roundsPerMatch) => {
+      if (!week || !team1 || !team2) return null;
+      const a = week.teamA || [];
+      const t1Side = a.includes(team1.unit) ? 'A' : 'B';
+      const t2Side = t1Side === 'A' ? 'B' : 'A';
+      let t1Wins = 0;
+      let t2Wins = 0;
+      const numRounds = Math.max(1, roundsPerMatch || 1);
+      for (let i = 1; i <= Math.min(2, numRounds); i++) {
+        const w = week[`round${i}Winner`];
+        if (w === t1Side) t1Wins++;
+        else if (w === t2Side) t2Wins++;
+      }
+      if (t1Wins === 0 && t2Wins === 0) return null;
+      // Tie (e.g. 1-1 in best-of-2) is unresolved.
+      if (t1Wins === t2Wins) return null;
+      return t1Wins > t2Wins ? team1 : team2;
+    };
+
+    const seedLabel = (team) => team?.conferenceSeed ?? team?.seed;
+
+    for (let rIdx = 0; rIdx < bracket.rounds.length; rIdx++) {
+      const round = bracket.rounds[rIdx];
+
+      // Resolve winners for any matchup with both teams known.
+      round.matchups.forEach(m => {
+        if (m.team1 && m.team2 && !m.winner) {
+          const wk = findWeekForMatch(m.team1.unit, m.team2.unit);
+          if (wk) {
+            const winner = determineWinner(wk, m.team1, m.team2, round.roundsPerMatch);
+            if (winner) {
+              m.winner = winner;
+              m.loser = winner === m.team1 ? m.team2 : m.team1;
+            }
+          }
+        }
+      });
+
+      // Propagate winners into next round.
+      const next = bracket.rounds[rIdx + 1];
+      if (!next) continue;
+
+      if (round.name === 'Wildcard') {
+        if (conferenceNames.length > 0) {
+          conferenceNames.forEach(confName => {
+            const wc = round.matchups.filter(m => m.conference === confName);
+            const div = next.matchups.filter(m => m.conference === confName);
+            // wc[0] = #3 vs #6 (or #2 vs #5 for 5-team) → fills team2 of div[0] (the #1 seed slot)
+            // wc[1] = #4 vs #5 (or #3 vs #4 for 5-team) → fills team2 of div[1] (the #2 seed slot)
+            if (wc[0]?.winner && div[0] && !div[0].team2) {
+              div[0].team2 = wc[0].winner;
+              div[0].seed2 = seedLabel(wc[0].winner);
+            }
+            if (wc[1]?.winner && div[1] && !div[1].team2) {
+              div[1].team2 = wc[1].winner;
+              div[1].seed2 = seedLabel(wc[1].winner);
+            }
+          });
+        } else {
+          if (round.matchups[0]?.winner && next.matchups[0] && !next.matchups[0].team2) {
+            next.matchups[0].team2 = round.matchups[0].winner;
+            next.matchups[0].seed2 = seedLabel(round.matchups[0].winner);
+          }
+          if (round.matchups[1]?.winner && next.matchups[1] && !next.matchups[1].team2) {
+            next.matchups[1].team2 = round.matchups[1].winner;
+            next.matchups[1].seed2 = seedLabel(round.matchups[1].winner);
+          }
+        }
+      } else if (round.name === 'Divisional' || round.name === 'Semifinals') {
+        if (conferenceNames.length > 0 && next.name === 'Conference Finals') {
+          conferenceNames.forEach(confName => {
+            const div = round.matchups.filter(m => m.conference === confName);
+            const cf = next.matchups.find(m => m.conference === confName);
+            if (cf && div[0]?.winner && div[1]?.winner) {
+              cf.team1 = div[0].winner;
+              cf.team2 = div[1].winner;
+              cf.seed1 = seedLabel(div[0].winner);
+              cf.seed2 = seedLabel(div[1].winner);
+            }
+          });
+        } else if (next.matchups.length === 1 && round.matchups.length >= 2) {
+          if (round.matchups[0]?.winner && round.matchups[1]?.winner) {
+            next.matchups[0].team1 = round.matchups[0].winner;
+            next.matchups[0].team2 = round.matchups[1].winner;
+            next.matchups[0].seed1 = seedLabel(round.matchups[0].winner);
+            next.matchups[0].seed2 = seedLabel(round.matchups[1].winner);
+          }
+        }
+      } else if (round.name === 'Conference Finals') {
+        const cfWinners = round.matchups.filter(m => m.winner).map(m => m.winner);
+        const champ = next.matchups[0];
+        if (champ && cfWinners.length >= 2) {
+          champ.team1 = cfWinners[0];
+          champ.team2 = cfWinners[1];
+          champ.seed1 = seedLabel(cfWinners[0]);
+          champ.seed2 = seedLabel(cfWinners[1]);
+        }
+      }
+    }
+
     return bracket;
   };
 
@@ -7358,6 +7472,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     const confLabel = matchup.conference && matchup.conference !== 'Championship'
                                       ? `[${matchup.conference}] `
                                       : '';
+                                    const team1IsWinner = matchup.winner && matchup.team1 && matchup.winner.unit === matchup.team1.unit;
+                                    const team2IsWinner = matchup.winner && matchup.team2 && matchup.winner.unit === matchup.team2.unit;
+                                    const team1Class = team1IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
+                                    const team2Class = team2IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
 
                                     return (
                                       <div key={matchIdx} className="bg-bg-inset rounded p-2">
@@ -7369,9 +7487,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                             {matchup.team1 ? (
                                               <>
                                                 <span className="text-indigo-400 font-bold text-xs">#{matchup.seed1}</span>
-                                                <span className="text-sm">{matchup.team1.unit}</span>
+                                                <span className={`text-sm ${team1Class}`}>{matchup.team1.unit}</span>
                                                 {matchup.team1.isWildcard && (
                                                   <span className="text-purple-400 text-xs font-bold">WC</span>
+                                                )}
+                                                {team1IsWinner && (
+                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
                                                 )}
                                               </>
                                             ) : matchup.label ? (
@@ -7384,10 +7505,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           <div className="flex items-center gap-2 flex-1 justify-end">
                                             {matchup.team2 ? (
                                               <>
+                                                {team2IsWinner && (
+                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                                                )}
                                                 {matchup.team2.isWildcard && (
                                                   <span className="text-purple-400 text-xs font-bold">WC</span>
                                                 )}
-                                                <span className="text-sm">{matchup.team2.unit}</span>
+                                                <span className={`text-sm ${team2Class}`}>{matchup.team2.unit}</span>
                                                 <span className="text-indigo-400 font-bold text-xs">#{matchup.seed2}</span>
                                               </>
                                             ) : matchup.label && !matchup.team1 ? (
