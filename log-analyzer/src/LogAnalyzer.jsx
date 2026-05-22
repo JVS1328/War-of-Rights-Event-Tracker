@@ -1254,6 +1254,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     if (hasKillLog) {
       deathEntries = killLog.map(k => ({
         player: k.victim,
+        victim: k.victim,
         time: k.time,
         killer: k.killer,
         cause: k.cause,

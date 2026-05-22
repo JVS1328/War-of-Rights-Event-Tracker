@@ -745,9 +745,9 @@ function SplitRow({ label, usa, csa }) {
   return (
     <div className="flex items-center gap-1 text-[11px] tabular-nums">
       <span className="flex-1 truncate" title={label}>{label}</span>
-      <span className="text-blue-400 w-6 text-right">{usa || ''}</span>
-      <span className="text-slate-600">/</span>
-      <span className="text-red-400 w-6 text-right">{csa || ''}</span>
+      <span className="text-blue-400 w-5 text-right">{usa || ''}</span>
+      <span className="text-slate-400">/</span>
+      <span className="text-red-400 w-5 text-left">{csa || ''}</span>
     </div>
   );
 }
