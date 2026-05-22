@@ -1,11 +1,12 @@
 import { createClient } from 'redis';
 import crypto from 'node:crypto';
 
-// Raised from 512 KB to 5 MB to fit inline replay payloads (top-down
-// player traces for the replay viewer). Replay-bearing shares are still
-// pako-compressed on the client before being uploaded; this cap leaves
-// comfortable headroom for a typical multi-round bundle.
-const MAX_PAYLOAD = 5 * 1024 * 1024;
+// Raised again from 5 MB to 10 MB so inline replay payloads (top-down
+// player traces) reliably fit. When they exceed this the client falls
+// back to stuffing the entire blob into the URL fragment, which is what
+// produced the 8 MB share links we saw in the wild. Payloads are still
+// pako-compressed on the client; the cap protects Redis from runaways.
+const MAX_PAYLOAD = 10 * 1024 * 1024;
 
 let redis;
 async function getRedis() {
