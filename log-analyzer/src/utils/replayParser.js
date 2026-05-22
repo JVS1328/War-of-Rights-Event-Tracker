@@ -158,8 +158,13 @@ export function parseReplayCsv(text) {
   x.fill(NaN);
 
   // --- second pass: fill tracks ---
+  // Also captures the first row's hms so we can pin the round's t_s = 0
+  // wallclock without relying on the header (the recorder has shipped both
+  // `round_started_at` and `round_ended_at` variants over time, and we
+  // want a deterministic answer either way).
   let frame = -1;
   let frameTs = -Infinity;
+  let firstHms = '';
   for (let li = i; li < lines.length; li++) {
     const line = lines[li];
     if (!line.trim()) continue;
@@ -167,7 +172,11 @@ export function parseReplayCsv(text) {
     if (parts.length < cols.length) continue;
     const ts = parseFloat(parts[COL.t_s]);
     if (!Number.isFinite(ts)) continue;
-    if (ts > frameTs) { frame++; frameTs = ts; }
+    if (ts > frameTs) {
+      frame++;
+      frameTs = ts;
+      if (frame === 0 && COL.hms >= 0) firstHms = parts[COL.hms] || '';
+    }
 
     const pi = playerIdx.get(parts[COL.name]);
     if (pi === undefined) continue;
@@ -178,6 +187,21 @@ export function parseReplayCsv(text) {
     fx[slot] = parseFloat(parts[COL.fwd_x]);
     fy[slot] = parseFloat(parts[COL.fwd_y]);
     lk[slot] = encodeLeader(parts[COL.leader_kind]);
+  }
+
+  // Compute the round-start wallclock in seconds-since-midnight. Authoritative
+  // source is "first sample's wallclock minus its t_s" — the recorder's
+  // header fields drift in name and may be missing entirely.
+  let roundStartSec = null;
+  if (firstHms) {
+    const m = firstHms.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+    if (m) {
+      const firstSec = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+      roundStartSec = firstSec - frameTimes[0];
+      // Days roll over at 86400 — normalize so kill-time comparisons stay
+      // within [0, 86400).
+      while (roundStartSec < 0) roundStartSec += 86400;
+    }
   }
 
   // Best-effort first/last frame per player for the side list (used to dim
@@ -201,7 +225,12 @@ export function parseReplayCsv(text) {
       mode:          meta.mode || '',
       area:          meta.area || '',
       winner:        meta.winner || '',
-      startedAt:     meta.round_started_at || '',
+      // Both header field names have shipped over the recorder's history.
+      // We expose whichever is present and additionally store the derived
+      // round-start in seconds-since-midnight (roundStartSec), which the
+      // viewer uses to align scoreboard kill times to replay t_s.
+      startedAt:     meta.round_started_at || meta.round_ended_at || '',
+      roundStartSec,
       sampleRateHz:  parseFloat(meta.sample_rate_hz) || 2.0,
       sampleCount:   parseInt(meta.samples, 10) || 0,
     },

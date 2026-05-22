@@ -47,9 +47,13 @@ function hmsToSec(s) {
   return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
 }
 
-// Recover the round's t_s=0 wallclock from replay meta. `startedAt` is the
-// recorder's "round_started_at" field (e.g. "2026-05-21 19:55:18").
+// Recover the round's t_s=0 wallclock from replay meta. The parser computes
+// this directly from "first sample's hms minus its t_s" and stores it in
+// meta.roundStartSec — that field is authoritative. The legacy fallback
+// reads the recorder's `round_started_at` / `round_ended_at` header, which
+// is reliable enough when no per-sample wallclock survived the round trip.
 function roundStartSec(meta) {
+  if (Number.isFinite(meta?.roundStartSec)) return meta.roundStartSec;
   return hmsToSec(meta?.startedAt);
 }
 
@@ -434,8 +438,13 @@ export default function ReplayViewer({ replay, round }) {
   const goToFrame = (f) => {
     setFrame(Math.max(0, Math.min(replay.frameCount - 1, f)));
   };
-  const totalDuration = replay.frameTimes[replay.frameCount - 1] || 0;
-  const currentTime   = replay.frameTimes[frame] || 0;
+  // Normalize the displayed clock against the first frame's t_s so a
+  // mid-round-join replay still reads "0:00 / 6:06" instead of "1:04 /
+  // 7:10". The underlying frameTimes stay in real round-time so kill
+  // ts → frame mapping continues to line up exactly.
+  const baseTime      = replay.frameTimes[0] || 0;
+  const totalDuration = (replay.frameTimes[replay.frameCount - 1] || 0) - baseTime;
+  const currentTime   = (replay.frameTimes[frame] || 0) - baseTime;
 
   const followedPlayer = followIdx >= 0 ? replay.players[followIdx] : null;
   const presentCount = useMemo(() => {
@@ -544,7 +553,7 @@ export default function ReplayViewer({ replay, round }) {
                       <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Recent kills</div>
                       <div className="space-y-0.5">
                         {liveStats.feed.map((ev, i) => (
-                          <KillRow key={`${ev.ts}-${i}`} ev={ev} />
+                          <KillRow key={`${ev.ts}-${i}`} ev={ev} baseTime={baseTime} />
                         ))}
                       </div>
                     </div>
@@ -743,14 +752,14 @@ function SplitRow({ label, usa, csa }) {
   );
 }
 
-function KillRow({ ev }) {
+function KillRow({ ev, baseTime = 0 }) {
   const killerColor = TEAM_COLOR[ev.killerTeam] || '#a3a3a3';
   const victimColor = TEAM_COLOR[ev.victimTeam] || '#a3a3a3';
   const killer = ev.killer || '(environment)';
   return (
     <div className="text-[11px] flex items-center gap-1 leading-tight">
       <span className="text-slate-500 tabular-nums shrink-0" title={ev.time || ''}>
-        {formatRoundTime(ev.ts)}
+        {formatRoundTime(ev.ts - baseTime)}
       </span>
       <span className="truncate" style={{ color: killerColor }} title={killer}>{killer}</span>
       <span className="text-slate-500 shrink-0">►</span>
