@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle, Share2, ListChecks } from 'lucide-react';
+import { Upload, Clock, Users, Skull, Edit2, Zap, X, TrendingUp, Award, Timer, BarChart3, ChevronDown, ChevronRight, Trash2, ArrowRight, Download, AlertTriangle, Share2, ListChecks, Film, Link2 } from 'lucide-react';
 import { generateRoundPDF } from './PDFExport';
 import { generateShareUrl, generateShortShareUrl } from './utils/shareAnalysis';
 import RegimentListModal from './RegimentListModal';
+import ReplayViewer from './ReplayViewer';
+import { parseReplayCsv, looksLikeReplayCsv, timestampFromFilename } from './utils/replayParser';
+import { encodeReplay, decodeReplay } from './utils/replayCodec';
+import { putReplay, getReplay, deleteReplay, computeReplayId } from './utils/replayStore';
 
 const STORAGE_KEY = 'WarOfRightsLogAnalyzer';
 
@@ -60,6 +64,16 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
   const [showRegimentListModal, setShowRegimentListModal] = useState(false);
   const [regimentModalKind, setRegimentModalKind] = useState('import'); // 'import' | 'post'
   const [pendingImport, setPendingImport] = useState(null); // { kind: 'csv'|'log', rounds, extractedDate? }
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('');
+
+  // Replay state. `replays` is an in-memory Map<replayId, parsedReplay>;
+  // the persistent copy lives in IndexedDB (rounds carry only `replayId`,
+  // not the payload, so localStorage stays small). `replayMatchModal`
+  // holds parsed replays + a per-replay user assignment when the import
+  // flow needs disambiguation.
+  const [replays, setReplays] = useState(() => new Map());
+  const [replayMatchModal, setReplayMatchModal] = useState(null);
+  const replayInputRef = useRef(null);
 
   // Save state to localStorage whenever relevant state changes!
   useEffect(() => {
@@ -93,6 +107,36 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     }
   }, []); // Only run once on mount
 
+  // Rehydrate any replays referenced by saved rounds from IndexedDB. Runs
+  // once per round-list change that introduces new replayIds (e.g. on
+  // mount after loading from localStorage, or after a share import).
+  useEffect(() => {
+    const needed = new Set(
+      rounds.map(r => r.replayId).filter(id => id && !replays.has(id))
+    );
+    if (needed.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      const loaded = new Map();
+      for (const id of needed) {
+        try {
+          const buf = await getReplay(id);
+          if (!buf) continue;
+          loaded.set(id, decodeReplay(buf));
+        } catch (err) {
+          console.warn('Failed to load replay from IDB', id, err);
+        }
+      }
+      if (cancelled || loaded.size === 0) return;
+      setReplays(prev => {
+        const next = new Map(prev);
+        for (const [id, replay] of loaded) next.set(id, replay);
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [rounds]);
+
   // Load shared state if present
   useEffect(() => {
     if (initialShareData) {
@@ -114,6 +158,21 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
           setSelectedRound(round);
           setTimeout(() => analyzeRound(round, initialShareData.playerAssignments), 0);
         }
+      }
+
+      // If the share carried replays, write them through to IDB so they
+      // survive a refresh just like locally-attached replays do.
+      if (initialShareData.replays && initialShareData.replays.size > 0) {
+        setReplays(prev => {
+          const next = new Map(prev);
+          for (const [id, replay] of initialShareData.replays) next.set(id, replay);
+          return next;
+        });
+        (async () => {
+          for (const [id, replay] of initialShareData.replays) {
+            try { await putReplay(id, encodeReplay(replay)); } catch {}
+          }
+        })();
       }
 
       window.location.hash = '';
@@ -807,7 +866,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
 
   // Commit a freshly parsed import (CSV or log) to component state. Optionally
   // accepts a precomputed playerAssignments map (from the regiment list modal).
-  const commitImport = ({ kind, rounds: importedRounds, extractedDate }, assignments = {}) => {
+  const commitImport = ({ kind, rounds: importedRounds, extractedDate, pendingReplays }, assignments = {}) => {
     importedRounds.forEach((r, i) => { r.id = i + 1; });
     setRounds(importedRounds);
     setLogDate(kind === 'log' ? (extractedDate || null) : null);
@@ -823,6 +882,127 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     setShowAllTimeInCombat(false);
     setShowWarning(true);
     setDisabledDeathTypes(new Set());
+
+    // If the same upload included replay CSVs, queue the matching modal
+    // now that the rounds have their final ids.
+    if (pendingReplays && pendingReplays.length > 0) {
+      openReplayMatchModal(pendingReplays, importedRounds);
+    }
+  };
+
+  // --- Replay matching + persistence ----------------------------------------
+
+  // Open the replay-match modal, seeding each replay with a best-guess
+  // round assignment based on filename-timestamp adjacency within ±60s.
+  // The user can override before committing.
+  const openReplayMatchModal = (parsedReplays, candidateRounds) => {
+    if (parsedReplays.length === 0) return;
+    const roundMeta = candidateRounds.map(r => ({
+      id: r.id,
+      label: r.metadata?.area || r.metadata?.map || r.sourceFile || `Round ${r.id}`,
+      ts: timestampFromFilename(r.sourceFile || ''),
+      sourceFile: r.sourceFile,
+    }));
+
+    // Already-claimed round ids — don't double-suggest.
+    const claimed = new Set(
+      candidateRounds.filter(r => r.replayId).map(r => r.id)
+    );
+
+    const entries = parsedReplays.map(({ filename, replay }) => {
+      const replayTs = timestampFromFilename(filename);
+      let best = null;
+      let bestDelta = Infinity;
+      if (replayTs) {
+        for (const r of roundMeta) {
+          if (claimed.has(r.id)) continue;
+          if (!r.ts) continue;
+          const delta = Math.abs(r.ts.getTime() - replayTs.getTime());
+          if (delta < bestDelta && delta <= 60 * 60 * 1000) {  // within 60 min
+            bestDelta = delta;
+            best = r.id;
+          }
+        }
+      }
+      if (best != null) claimed.add(best);
+      return {
+        filename,
+        replay,
+        assignedRoundId: best,
+        deltaMs: best != null ? bestDelta : null,
+      };
+    });
+
+    setReplayMatchModal({ entries, roundMeta });
+  };
+
+  // Persist a parsed replay to IDB + in-memory state, return its id.
+  const persistReplay = async (filename, parsedReplay) => {
+    const id = computeReplayId(filename, parsedReplay.meta.sampleCount, parsedReplay.frameCount);
+    try {
+      const buf = encodeReplay(parsedReplay);
+      await putReplay(id, buf);
+    } catch (err) {
+      console.warn('Failed to persist replay to IndexedDB', err);
+    }
+    setReplays(prev => {
+      const next = new Map(prev);
+      next.set(id, parsedReplay);
+      return next;
+    });
+    return id;
+  };
+
+  // Commit the user's choices in the match modal. Each entry either attaches
+  // its replay to the chosen round (persisting to IDB) or is skipped.
+  const commitReplayMatches = async (entries) => {
+    const updates = new Map();  // roundId → replayId
+    for (const entry of entries) {
+      if (entry.assignedRoundId == null) continue;
+      const id = await persistReplay(entry.filename, entry.replay);
+      // Clean up the previous replay on this round, if any.
+      const prevRound = rounds.find(r => r.id === entry.assignedRoundId);
+      if (prevRound?.replayId && prevRound.replayId !== id) {
+        try { await deleteReplay(prevRound.replayId); } catch {}
+        setReplays(prev => {
+          const next = new Map(prev);
+          next.delete(prevRound.replayId);
+          return next;
+        });
+      }
+      updates.set(entry.assignedRoundId, id);
+    }
+    if (updates.size > 0) {
+      setRounds(prev => prev.map(r => {
+        if (!updates.has(r.id)) return r;
+        return { ...r, replayId: updates.get(r.id) };
+      }));
+      // Mirror onto selectedRound so the viewer appears without a re-select.
+      setSelectedRound(prev => prev && updates.has(prev.id)
+        ? { ...prev, replayId: updates.get(prev.id) }
+        : prev);
+    }
+    setReplayMatchModal(null);
+  };
+
+  // Detach a replay from a round (does not delete from IDB unless this was
+  // the only round referencing it — keeps the cache usable if the user
+  // re-attaches without re-uploading).
+  const detachReplay = async (roundId) => {
+    const round = rounds.find(r => r.id === roundId);
+    if (!round?.replayId) return;
+    const id = round.replayId;
+    setRounds(prev => prev.map(r => r.id === roundId ? { ...r, replayId: null } : r));
+    setSelectedRound(prev => prev && prev.id === roundId ? { ...prev, replayId: null } : prev);
+    const stillReferenced = rounds.some(r => r.id !== roundId && r.replayId === id);
+    if (!stillReferenced) {
+      try { await deleteReplay(id); } catch {}
+      setReplays(prev => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const analyzeRound = (round, customAssignments = null) => {
@@ -972,15 +1152,22 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     const playerHeader = rawLines[playerHeaderIdx] ? parseCSVLine(rawLines[playerHeaderIdx]).map(h => h.toLowerCase()) : [];
     if (!playerHeader.includes('kills') || !playerHeader.includes('deaths')) return null;
 
-    // Find kill log section
+    // End the player section at the first blank line. Newer scoreboards drop
+    // additional blank-line-delimited sections (e.g. an "officer,team,
+    // commanded,battery" table) between the player rows and the kill log;
+    // continuing to parse past the blank would re-parse those as player rows
+    // and clobber officers' formation/kill counts with the wrong columns.
     let playerEndIdx = rawLines.length;
-    let killLogHeaderIdx = -1;
     for (let i = playerHeaderIdx + 1; i < rawLines.length; i++) {
-      const lower = rawLines[i].trim().toLowerCase();
-      if (lower.startsWith('time,killer')) { killLogHeaderIdx = i; playerEndIdx = i; break; }
-      if (lower === '' && i + 1 < rawLines.length && rawLines[i + 1].trim().toLowerCase().startsWith('time,killer')) {
-        playerEndIdx = i;
-        killLogHeaderIdx = i + 1;
+      if (rawLines[i].trim() === '') { playerEndIdx = i; break; }
+    }
+
+    // Find the kill log header anywhere after the player section, skipping
+    // intervening sections like "officer,team,commanded,battery".
+    let killLogHeaderIdx = -1;
+    for (let i = playerEndIdx; i < rawLines.length; i++) {
+      if (rawLines[i].trim().toLowerCase().startsWith('time,killer')) {
+        killLogHeaderIdx = i;
         break;
       }
     }
@@ -1131,25 +1318,55 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     if (csvFiles.length > 0) {
       const readPromises = csvFiles.map(file => new Promise((resolve) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
+        reader.onload = (e) => resolve({ name: file.name, text: e.target.result });
         reader.readAsText(file);
       }));
 
       Promise.all(readPromises).then(results => {
+        const scoreboardResults = [];
+        const replayResults = [];
+        for (const r of results) {
+          if (looksLikeReplayCsv(r.text)) replayResults.push(r);
+          else                            scoreboardResults.push(r);
+        }
+
+        // --- scoreboards: existing flow, with the filename stashed on the round ---
         const allRounds = [];
-        results.forEach((csvText, idx) => {
-          const parsed = parseScoreboardCSV(csvText, idx + 1);
-          if (parsed) allRounds.push(...parsed);
+        scoreboardResults.forEach((r, idx) => {
+          const parsed = parseScoreboardCSV(r.text, idx + 1);
+          if (parsed) {
+            parsed.forEach(round => { round.sourceFile = r.name; });
+            allRounds.push(...parsed);
+          }
         });
 
-        if (allRounds.length === 0) {
-          alert('Could not parse CSV(s). Expected columns: name, team, kills, deaths');
+        // --- replays: parse, persist to IDB, queue a matching modal ---
+        const parsedReplays = [];
+        for (const r of replayResults) {
+          try {
+            const parsed = parseReplayCsv(r.text);
+            if (parsed) parsedReplays.push({ filename: r.name, replay: parsed });
+          } catch (err) {
+            console.warn('Replay parse failed for', r.name, err);
+          }
+        }
+
+        if (allRounds.length === 0 && parsedReplays.length === 0) {
+          alert('Could not parse CSV(s). Expected a scoreboard or replay CSV.');
           return;
         }
 
-        setPendingImport({ kind: 'csv', rounds: allRounds });
-        setRegimentModalKind('import');
-        setShowRegimentListModal(true);
+        if (allRounds.length > 0) {
+          // Stash pending replays on the import so commit can attach them
+          // after the regiment-list modal closes (rounds need real ids
+          // first before we can match).
+          setPendingImport({ kind: 'csv', rounds: allRounds, pendingReplays: parsedReplays });
+          setRegimentModalKind('import');
+          setShowRegimentListModal(true);
+        } else {
+          // Only replays were uploaded — match against the existing rounds.
+          openReplayMatchModal(parsedReplays, rounds);
+        }
       });
 
       event.target.value = '';
@@ -1285,6 +1502,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
       playerAssignments,
       selectedRoundId: selectedRound?.id ?? null,
       disabledDeathTypes,
+      replaysById: replays,
     };
 
     let url;
@@ -2314,10 +2532,10 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
               <div className="flex flex-col items-center space-y-2 text-center">
                 <Upload className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400" />
                 <span className="text-slate-300 font-medium text-sm sm:text-base">
-                  Click to upload log file, analysis file, or scoreboard CSVs
+                  Click to upload log file, analysis file, scoreboard CSVs, or replay CSVs
                 </span>
                 <span className="text-slate-500 text-xs sm:text-sm">
-                  .txt, .log, .json, or .csv (multiple CSVs supported)
+                  .txt, .log, .json, or .csv (scoreboards + replays detected automatically)
                 </span>
               </div>
               <input
@@ -2386,10 +2604,17 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                           : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
                       }`}
                     >
-                      <div className="font-semibold">
-                        {round.metadata?.area || round.metadata?.map
-                          ? `${round.metadata.area || round.metadata.map}`
-                          : round.isScoreboard ? `Round ${round.id}` : `Round ${round.id}`}
+                      <div className="font-semibold flex items-center gap-2">
+                        <span className="truncate">
+                          {round.metadata?.area || round.metadata?.map
+                            ? `${round.metadata.area || round.metadata.map}`
+                            : round.isScoreboard ? `Round ${round.id}` : `Round ${round.id}`}
+                        </span>
+                        {round.replayId && (
+                          <span title="Replay attached" className="shrink-0">
+                            <Film className="w-4 h-4" />
+                          </span>
+                        )}
                       </div>
                       {round.metadata?.map && round.metadata?.mode && (
                         <div className="text-sm opacity-90">
@@ -2579,12 +2804,83 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                 </div>
               )}
 
+              {/* Replay Viewer (only when selected round has a replay attached) */}
+              {selectedRound && selectedRound.replayId && (
+                <div className="lg:col-span-2">
+                  {replays.get(selectedRound.replayId) ? (
+                    <div>
+                      <div className="flex items-center justify-end mb-2">
+                        <button
+                          onClick={() => detachReplay(selectedRound.id)}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition"
+                          title="Detach replay from this round"
+                        >
+                          <X className="w-3 h-3" /> Detach replay
+                        </button>
+                      </div>
+                      <ReplayViewer
+                        replay={replays.get(selectedRound.replayId)}
+                        round={selectedRound}
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-slate-700 rounded-lg p-4 text-sm text-slate-400">
+                      Loading replay from cache…
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* "Attach replay" prompt when the selected round has none */}
+              {selectedRound && !selectedRound.replayId && (
+                <div className="lg:col-span-2 bg-slate-700 rounded-lg p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    <Film className="w-4 h-4 text-slate-400" />
+                    <span>No replay attached to this round.</span>
+                  </div>
+                  <label className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm cursor-pointer transition flex items-center gap-1.5">
+                    <Link2 className="w-3.5 h-3.5" /> Attach replay CSV
+                    <input
+                      ref={replayInputRef}
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        const text = await file.text();
+                        if (!looksLikeReplayCsv(text)) {
+                          alert('That CSV does not look like a replay (header should start with map,...).');
+                          return;
+                        }
+                        try {
+                          const parsed = parseReplayCsv(text);
+                          if (!parsed) return;
+                          openReplayMatchModal(
+                            [{ filename: file.name, replay: parsed }],
+                            rounds
+                          );
+                          // Pre-select this round in the modal for convenience.
+                          setReplayMatchModal(prev => prev && {
+                            ...prev,
+                            entries: prev.entries.map(en => ({ ...en, assignedRoundId: selectedRound.id })),
+                          });
+                        } catch (err) {
+                          alert('Failed to parse replay: ' + err.message);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+
               {/* Regiment Statistics */}
-              <div className="bg-slate-700 rounded-lg p-4 sm:p-6">
+              <div className="bg-slate-700 rounded-lg p-4 sm:p-6 lg:col-span-2">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                   <h2 className="text-lg sm:text-2xl font-bold text-amber-400 flex items-center gap-2">
                     <Skull className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
-                    Regiment Casualties
+                    Regiment Stats
                   </h2>
                   {selectedRound && (
                     <div className="flex flex-wrap gap-2">
@@ -2613,10 +2909,79 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                     </div>
                   )}
                 </div>
-                {selectedRound ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {regimentStats.length > 0 ? (
-                      regimentStats.map((regiment, index) => (
+
+                {/* Player / regiment search — filters the list below in place */}
+                {selectedRound && regimentStats.length > 0 && (
+                  <div className="relative mb-4">
+                    <Skull className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={playerSearchQuery}
+                      onChange={(e) => setPlayerSearchQuery(e.target.value)}
+                      placeholder="Filter by player or regiment…"
+                      className="w-full pl-9 pr-8 py-2 bg-slate-800 border border-slate-600 rounded text-slate-200 text-sm focus:outline-none focus:border-amber-500"
+                    />
+                    {playerSearchQuery && (
+                      <button
+                        onClick={() => setPlayerSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-200"
+                        title="Clear"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {(() => {
+                  // Filter the regiment list against the search query.
+                  // Empty query → every regiment, every player.
+                  // Query → keep regiments matched by name OR by any player; when
+                  // a regiment matches only via a player, the expanded individual
+                  // list is restricted to the matching player(s).
+                  const q = playerSearchQuery.trim().toLowerCase();
+                  let entries;
+                  if (!q) {
+                    entries = regimentStats.map(r => ({ reg: r, playerFilter: null }));
+                  } else {
+                    entries = [];
+                    for (const reg of regimentStats) {
+                      const regMatches = reg.name.toLowerCase().includes(q);
+                      if (regMatches) {
+                        entries.push({ reg, playerFilter: null });
+                        continue;
+                      }
+                      const matching = Object.keys(reg.players).filter(n => n.toLowerCase().includes(q));
+                      if (matching.length > 0) {
+                        entries.push({ reg, playerFilter: new Set(matching) });
+                      }
+                    }
+                  }
+
+                  if (!selectedRound) {
+                    return <p className="text-slate-400 text-center py-8">Select a round to view statistics</p>;
+                  }
+                  if (regimentStats.length === 0) {
+                    return <p className="text-slate-400 text-center py-8">No casualties recorded in this round</p>;
+                  }
+                  if (entries.length === 0) {
+                    return (
+                      <div className="text-slate-400 text-sm px-2 py-3">
+                        No regiments or players match "{playerSearchQuery}".
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2 max-h-[32rem] overflow-y-auto">
+                      {entries.map((entry, index) => {
+                        const regiment = entry.reg;
+                        const playerFilter = entry.playerFilter;
+                        const individuals = getPlayerPresenceData(regiment.name);
+                        const visibleIndividuals = playerFilter
+                          ? individuals.filter(p => playerFilter.has(p.name))
+                          : individuals;
+                        return (
                         <div key={regiment.name} className="bg-slate-600 rounded-lg overflow-hidden">
                           <button
                             onClick={() => handleRegimentClick(regiment)}
@@ -2656,17 +3021,19 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                               <div>
                                 <span className="text-slate-400">Players:</span>
                                 <span className="text-blue-400 font-semibold ml-2">
-                                  {Object.keys(regiment.players).length}
+                                  {playerFilter ? `${visibleIndividuals.length} / ${Object.keys(regiment.players).length}` : Object.keys(regiment.players).length}
                                 </span>
                               </div>
                             </div>
                           </button>
-                          
+
                           {selectedRegiment?.name === regiment.name && (
                             <div className="bg-slate-700 p-4 border-t border-slate-500">
-                              <h3 className="text-sm font-semibold text-amber-300 mb-3">Individual Players</h3>
+                              <h3 className="text-sm font-semibold text-amber-300 mb-3">
+                                Individual Players{playerFilter ? ` (filtered)` : ''}
+                              </h3>
                               <div className="space-y-2">
-                                {getPlayerPresenceData(regiment.name).map((player) => (
+                                {visibleIndividuals.map((player) => (
                                   <div key={player.name} className="bg-slate-600 rounded p-3">
                                     <div className="flex justify-between items-start mb-2">
                                       <span className="text-white text-sm font-medium flex-1 mr-2">
@@ -2714,18 +3081,11 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                             </div>
                           )}
                         </div>
-                      ))
-                    ) : (
-                      <p className="text-slate-400 text-center py-8">
-                        No casualties recorded in this round
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-slate-400 text-center py-8">
-                    Select a round to view statistics
-                  </p>
-                )}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -3966,6 +4326,75 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
         onApply={handleRegimentModalApply}
         onSkip={handleRegimentModalSkip}
       />
+
+      {/* Replay → round match modal */}
+      {replayMatchModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Film className="w-6 h-6 text-amber-400" />
+              <h2 className="text-xl font-bold text-amber-400">Attach Replays to Rounds</h2>
+            </div>
+            <p className="text-sm text-slate-400 mb-4">
+              Matched by closest filename timestamp. Pick a different round if needed,
+              or choose "Skip" to leave a replay unattached.
+            </p>
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {replayMatchModal.entries.map((entry, idx) => (
+                <div key={idx} className="bg-slate-700 rounded-lg p-3">
+                  <div className="text-sm text-slate-200 font-mono truncate mb-1">
+                    {entry.filename}
+                  </div>
+                  <div className="text-xs text-slate-400 mb-2">
+                    {entry.replay.meta.map || 'unknown map'}
+                    {entry.replay.meta.area && ` · ${entry.replay.meta.area}`}
+                    {' · '}{entry.replay.frameCount} frames @ {entry.replay.meta.sampleRateHz} Hz
+                    {' · '}{entry.replay.playerCount} players
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-slate-400">Round:</label>
+                    <select
+                      value={entry.assignedRoundId ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        setReplayMatchModal(prev => ({
+                          ...prev,
+                          entries: prev.entries.map((en, i) => i === idx ? { ...en, assignedRoundId: val } : en),
+                        }));
+                      }}
+                      className="flex-1 px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="">— Skip —</option>
+                      {replayMatchModal.roundMeta.map(rm => (
+                        <option key={rm.id} value={rm.id}>{rm.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {entry.deltaMs != null && entry.assignedRoundId != null && (
+                    <div className="text-xs text-slate-500 mt-1">
+                      Time delta: {Math.round(entry.deltaMs / 1000)}s
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              <button
+                onClick={() => setReplayMatchModal(null)}
+                className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded transition text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => commitReplayMatches(replayMatchModal.entries)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded transition text-sm font-semibold"
+              >
+                Attach
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

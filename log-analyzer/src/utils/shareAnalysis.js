@@ -1,12 +1,18 @@
 import pako from 'pako';
+import { encodeReplay, decodeReplay, bufferToBase64Url, base64UrlToBuffer } from './replayCodec.js';
 
 // --- Encode / Decode (deflate + base64url) ---
 
 const encodePayload = (payload) => {
   const json = JSON.stringify(payload);
   const compressed = pako.deflateRaw(json, { level: 9 });
+  // Stream the binary string in chunks so large payloads don't blow the
+  // call stack via String.fromCharCode.apply(null, hugeArray).
   let binary = '';
-  for (const byte of compressed) binary += String.fromCharCode(byte);
+  const CHUNK = 0x8000;
+  for (let i = 0; i < compressed.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, compressed.subarray(i, i + CHUNK));
+  }
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
@@ -26,12 +32,19 @@ const decodePayload = (encoded) => {
 };
 
 // --- Build share state from current app state ---
+//
+// `replaysById` is an optional Map<replayId, parsedReplay> — when present we
+// inline-encode each attached replay so the share recipient sees the viewer
+// without having to re-upload the CSV. Replays are encoded into a compact
+// binary blob and base64url-stuffed into the JSON payload; pako handles the
+// rest of the compression on the way out.
 
 export const buildShareState = ({
   rounds,
   playerAssignments,
   selectedRoundId,
   disabledDeathTypes,
+  replaysById,
 }) => {
   const cleanRounds = rounds.map(r => {
     const base = {
@@ -49,6 +62,7 @@ export const buildShareState = ({
     if (r.playerFormations) base.playerFormations = r.playerFormations;
     if (r.metadata) base.metadata = r.metadata;
     if (r.players) base.players = r.players;
+    if (r.replayId) base.replayId = r.replayId;
     return base;
   });
 
@@ -64,6 +78,20 @@ export const buildShareState = ({
     payload.ddt = [...disabledDeathTypes];
   }
 
+  // Inline encode any replays referenced by the rounds. Skip ones that
+  // aren't in the map (e.g. round has a stale replayId pointing at a
+  // replay the user already deleted).
+  if (replaysById && replaysById.size > 0) {
+    const referenced = new Set(cleanRounds.map(r => r.replayId).filter(Boolean));
+    const out = {};
+    for (const id of referenced) {
+      const replay = replaysById.get(id);
+      if (!replay) continue;
+      out[id] = bufferToBase64Url(encodeReplay(replay));
+    }
+    if (Object.keys(out).length > 0) payload.rp = out;
+  }
+
   return payload;
 };
 
@@ -71,11 +99,22 @@ export const buildShareState = ({
 
 export const restoreShareState = (data) => {
   if (!data || data.v !== 1 || !data.rounds) return null;
+  const replays = new Map();
+  if (data.rp && typeof data.rp === 'object') {
+    for (const [id, b64] of Object.entries(data.rp)) {
+      try {
+        replays.set(id, decodeReplay(base64UrlToBuffer(b64)));
+      } catch (e) {
+        console.warn('Failed to decode shared replay', id, e);
+      }
+    }
+  }
   return {
     rounds: data.rounds,
     playerAssignments: data.pa || {},
     selectedRoundId: data.sr ?? null,
     disabledDeathTypes: new Set(data.ddt || []),
+    replays,
   };
 };
 

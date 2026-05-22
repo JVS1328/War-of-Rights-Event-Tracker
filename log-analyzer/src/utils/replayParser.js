@@ -1,0 +1,228 @@
+// Parse a replay CSV (as written by wor_overlay/replay.cpp) into a compact
+// in-memory structure suited to the viewer's scrub-by-frame access.
+//
+// Header is a list of `key,value` lines until a blank line, then a row of
+// column names, then sample rows. Each row is one (player, sample-tick).
+// All samples sharing a t_s belong to one frame.
+//
+// The parser collapses player metadata (team / branch / regiment / company)
+// to a per-player record and stores per-frame pose as parallel typed arrays
+// keyed by (frameIndex, playerIndex). Missing samples are encoded as NaN in
+// the x track so the renderer can skip them without an extra bitmap.
+
+import { resolveMapSlug } from './mapCalibration.js';
+
+// Lightweight CSV-line splitter. Replay rows don't contain quoted fields in
+// practice (names with commas are quoted by replay.cpp's csv_escape), so we
+// handle quotes correctly but keep the path tight.
+function splitCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      // CSV "" → literal "
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; }
+      inQ = !inQ;
+      continue;
+    }
+    if (c === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+// Detect "looks like a replay CSV" without committing to the full parse.
+// Used by the upload handler to route between scoreboard and replay paths.
+export function looksLikeReplayCsv(text) {
+  // Cheap check on the first ~500 bytes — the header lives there.
+  const head = text.slice(0, 1000).toLowerCase();
+  return head.startsWith('map,') && head.includes('sample_rate_hz');
+}
+
+const LEADER_NONE    = 0;
+const LEADER_OFFICER = 1;
+const LEADER_FLAG    = 2;
+export const LEADER_KIND = { NONE: LEADER_NONE, OFFICER: LEADER_OFFICER, FLAG: LEADER_FLAG };
+
+function encodeLeader(s) {
+  if (s === 'officer') return LEADER_OFFICER;
+  if (s === 'flag')    return LEADER_FLAG;
+  return LEADER_NONE;
+}
+
+function encodeBranch(s) {
+  if (s === 'inf')  return 1;
+  if (s === 'arty') return 2;
+  return 0;
+}
+
+// Main entry point. Returns the structured replay or null when the file
+// doesn't look like a replay. Throws on a corrupt-but-replay-shaped file.
+export function parseReplayCsv(text) {
+  if (!looksLikeReplayCsv(text)) return null;
+
+  // Strip BOM, normalize newlines.
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+
+  // --- header ---
+  const meta = {};
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; break; }
+    const idx = line.indexOf(',');
+    if (idx < 0) { i++; continue; }
+    meta[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+    i++;
+  }
+
+  // --- column header row ---
+  while (i < lines.length && !lines[i].trim()) i++;
+  if (i >= lines.length) throw new Error('Replay CSV missing column header');
+  const cols = splitCsvLine(lines[i]).map(s => s.trim().toLowerCase());
+  i++;
+
+  const COL = {
+    t_s:          cols.indexOf('t_s'),
+    hms:          cols.indexOf('hms'),
+    name:         cols.indexOf('name'),
+    team:         cols.indexOf('team'),
+    x:            cols.indexOf('x'),
+    y:            cols.indexOf('y'),
+    z:            cols.indexOf('z'),
+    fwd_x:        cols.indexOf('fwd_x'),
+    fwd_y:        cols.indexOf('fwd_y'),
+    branch:       cols.indexOf('branch'),
+    role_idx:     cols.indexOf('role_idx'),
+    leader_kind:  cols.indexOf('leader_kind'),
+    regiment_crc: cols.indexOf('regiment_crc'),
+    company:      cols.indexOf('company'),
+  };
+  if (COL.t_s < 0 || COL.name < 0 || COL.team < 0 || COL.x < 0 || COL.y < 0) {
+    throw new Error('Replay CSV missing required columns');
+  }
+
+  // --- first pass: collect unique frame timestamps + unique player names ---
+  // Builds a name → playerIdx map and a t_s → frameIdx map. We stream the
+  // body twice (cheap; the file is text already in memory) so we can size
+  // typed arrays exactly.
+  const playerIdx = new Map();   // name → idx
+  const playerMeta = [];         // idx → { name, team, branch, regimentCrc, company, lastRoleIdx }
+  const frameTimes = [];         // idx → t_s
+
+  // We also remember the most-recent t_s seen so we can detect frame breaks
+  // without a sort. Replay rows are written in t_s-monotonic order by the
+  // recorder, so a strict-greater comparison is the frame boundary.
+  let lastTs = -Infinity;
+
+  for (let li = i; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line.trim()) continue;
+    const parts = splitCsvLine(line);
+    if (parts.length < cols.length) continue;
+    const ts = parseFloat(parts[COL.t_s]);
+    if (!Number.isFinite(ts)) continue;
+    if (ts > lastTs) { frameTimes.push(ts); lastTs = ts; }
+
+    const name = parts[COL.name];
+    if (!playerIdx.has(name)) {
+      playerIdx.set(name, playerMeta.length);
+      playerMeta.push({
+        name,
+        team:         parseInt(parts[COL.team], 10) || 0,
+        branch:       encodeBranch(parts[COL.branch]),
+        roleIdx:      parseInt(parts[COL.role_idx], 10) || 0,
+        regimentCrc:  parts[COL.regiment_crc] || '',
+        company:      parseInt(parts[COL.company], 10) || 0,
+      });
+    }
+  }
+
+  const F = frameTimes.length;
+  const P = playerMeta.length;
+  if (F === 0 || P === 0) throw new Error('Replay CSV had no usable rows');
+
+  // --- typed arrays sized (F * P) ---
+  // x[NaN] sentinels the "this player wasn't sampled this frame" case so
+  // the renderer can do a single isNaN check instead of consulting a
+  // separate bitmap.
+  const x  = new Float32Array(F * P);
+  const y  = new Float32Array(F * P);
+  const z  = new Float32Array(F * P);
+  const fx = new Float32Array(F * P);
+  const fy = new Float32Array(F * P);
+  const lk = new Uint8Array(F * P);
+  x.fill(NaN);
+
+  // --- second pass: fill tracks ---
+  let frame = -1;
+  let frameTs = -Infinity;
+  for (let li = i; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line.trim()) continue;
+    const parts = splitCsvLine(line);
+    if (parts.length < cols.length) continue;
+    const ts = parseFloat(parts[COL.t_s]);
+    if (!Number.isFinite(ts)) continue;
+    if (ts > frameTs) { frame++; frameTs = ts; }
+
+    const pi = playerIdx.get(parts[COL.name]);
+    if (pi === undefined) continue;
+    const slot = frame * P + pi;
+    x[slot]  = parseFloat(parts[COL.x]);
+    y[slot]  = parseFloat(parts[COL.y]);
+    z[slot]  = parseFloat(parts[COL.z]);
+    fx[slot] = parseFloat(parts[COL.fwd_x]);
+    fy[slot] = parseFloat(parts[COL.fwd_y]);
+    lk[slot] = encodeLeader(parts[COL.leader_kind]);
+  }
+
+  // Best-effort first/last frame per player for the side list (used to dim
+  // players who haven't joined yet / have left).
+  for (let p = 0; p < P; p++) {
+    let first = -1, last = -1;
+    for (let f = 0; f < F; f++) {
+      if (!Number.isNaN(x[f * P + p])) {
+        if (first < 0) first = f;
+        last = f;
+      }
+    }
+    playerMeta[p].firstFrame = first;
+    playerMeta[p].lastFrame  = last;
+  }
+
+  return {
+    meta: {
+      map:           meta.map || '',
+      mapSlug:       resolveMapSlug(meta.map),
+      mode:          meta.mode || '',
+      area:          meta.area || '',
+      winner:        meta.winner || '',
+      startedAt:     meta.round_started_at || '',
+      sampleRateHz:  parseFloat(meta.sample_rate_hz) || 2.0,
+      sampleCount:   parseInt(meta.samples, 10) || 0,
+    },
+    players: playerMeta,
+    frameTimes: Float32Array.from(frameTimes),
+    tracks: { x, y, z, fx, fy, lk },
+    frameCount:  F,
+    playerCount: P,
+  };
+}
+
+// Extract a Date from a filename like replay_YYYYMMDD_HHMMSS.csv or
+// scoreboard_YYYYMMDD_HHMMSS.csv. Returns null on no match. Used by the
+// matcher to pair replays with scoreboards by adjacency.
+export function timestampFromFilename(name) {
+  if (!name) return null;
+  const m = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  const [_, Y, Mo, D, H, Mi, S] = m;
+  return new Date(
+    parseInt(Y, 10), parseInt(Mo, 10) - 1, parseInt(D, 10),
+    parseInt(H, 10), parseInt(Mi, 10),     parseInt(S, 10),
+  );
+}

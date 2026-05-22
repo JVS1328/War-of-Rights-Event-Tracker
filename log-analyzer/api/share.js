@@ -1,7 +1,11 @@
 import { createClient } from 'redis';
 import crypto from 'node:crypto';
 
-const MAX_PAYLOAD = 512_000;
+// Raised from 512 KB to 5 MB to fit inline replay payloads (top-down
+// player traces for the replay viewer). Replay-bearing shares are still
+// pako-compressed on the client before being uploaded; this cap leaves
+// comfortable headroom for a typical multi-round bundle.
+const MAX_PAYLOAD = 5 * 1024 * 1024;
 
 let redis;
 async function getRedis() {
