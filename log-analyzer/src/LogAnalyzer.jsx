@@ -2637,6 +2637,7 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
                       </div>
                       <div className="text-sm opacity-75">
                         {getKnownPlayers(round).length} players
+                        {round.metadata?.pop_round_peak && ` (peak: ${round.metadata.pop_round_peak})`}
                       </div>
                       {round.metadata?.winner && (
                         <div className="text-sm font-semibold mt-1" style={{ color: round.metadata.winner === 'USA' ? '#60a5fa' : '#f87171' }}>
