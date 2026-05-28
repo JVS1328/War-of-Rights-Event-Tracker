@@ -1251,6 +1251,13 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     let endTime = 'Unknown';
     let duration = null;
 
+    // Newer scoreboards carry explicit round_start_time / round_end_time in
+    // metadata. Prefer those over first-kill → last-death because they cover
+    // the full round window even when the first/last casualties land mid-round.
+    const tsPattern = /^\d{2}:\d{2}:\d{2}$/;
+    const metaStart = metadata.round_start_time && tsPattern.test(metadata.round_start_time) ? metadata.round_start_time : null;
+    const metaEnd = metadata.round_end_time && tsPattern.test(metadata.round_end_time) ? metadata.round_end_time : null;
+
     if (hasKillLog) {
       deathEntries = killLog.map(k => ({
         player: k.victim,
@@ -1264,9 +1271,24 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
       }));
 
       const times = killLog.map(k => k.time);
-      startTime = times[0];
-      endTime = times[times.length - 1];
+      startTime = metaStart || times[0];
+      endTime = metaEnd || times[times.length - 1];
 
+      const s = startTime.split(':').map(Number);
+      const e = endTime.split(':').map(Number);
+      const durSec = (e[0] * 3600 + e[1] * 60 + e[2]) - (s[0] * 3600 + s[1] * 60 + s[2]);
+      const mins = Math.floor(durSec / 60);
+      const secs = durSec % 60;
+      duration = `${mins}m ${secs}s`;
+    } else if (metaStart && metaEnd) {
+      deathEntries = [];
+      players.forEach(p => {
+        for (let d = 0; d < p.deaths; d++) {
+          deathEntries.push({ player: p.name, time: null, cause: null });
+        }
+      });
+      startTime = metaStart;
+      endTime = metaEnd;
       const s = startTime.split(':').map(Number);
       const e = endTime.split(':').map(Number);
       const durSec = (e[0] * 3600 + e[1] * 60 + e[2]) - (s[0] * 3600 + s[1] * 60 + s[2]);
