@@ -595,9 +595,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
     });
 
-    // Apply balance points
+    // Apply balance points (skip playoff weeks — no points are awarded during playoffs)
     if (pointSystem.balancePoints) {
       weeksToProcess.forEach(week => {
+        if (week.isPlayoffs) return;
         const r1Swaps = week.roundSwaps?.r1 || [];
         const r2Swaps = week.roundSwaps?.r2 || [];
 
