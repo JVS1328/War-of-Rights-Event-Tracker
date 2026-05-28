@@ -2150,8 +2150,8 @@ const WarOfRightsLogAnalyzer = ({ initialShareData }) => {
     };
 
     const overall = buildBreakdown(activeKills);
-    const usaDeaths = activeKills.filter(k => k.victimTeam === 2);
-    const csaDeaths = activeKills.filter(k => k.victimTeam === 1);
+    const usaDeaths = activeKills.filter(k => k.victimTeam === 1);
+    const csaDeaths = activeKills.filter(k => k.victimTeam === 2);
     const byFormation = {
       in_form: buildBreakdown(activeKills.filter(k => k.victimFormation === 'in_form')),
       skirm: buildBreakdown(activeKills.filter(k => k.victimFormation === 'skirm')),
