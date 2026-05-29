@@ -10,7 +10,11 @@ import { averageMorale, MORALE_STATES } from './stats/morale';
 import {
   generateShareUrl, generateShortShareUrl,
   generateEventShareUrl, generateShortEventShareUrl,
+  generateStatsShareUrl, generateShortStatsShareUrl,
+  generateFullShareUrl, generateShortFullShareUrl,
 } from './utils/shareSeason';
+import { statsRepo } from './stats/repo';
+import { isStatsBundle } from './stats/statsBundle';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -234,11 +238,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const dismiss = () => window.history.replaceState(null, '', window.location.pathname);
 
     (async () => {
-      if (initialShareData.kind === 'event') {
+      // Player-stats-only share — no tracker/season data. Drop the scoreboards
+      // into an event and open the Stats view so the recipient sees the numbers.
+      if (initialShareData.kind === 'stats') {
+        const bundle = initialShareData.bundle;
+        if (!isStatsBundle(bundle)) { dismiss(); return; }
+        const count = bundle.scoreboards.length;
+        const choice = await askChoice({
+          title: 'Shared player stats',
+          message: `${count} scoreboard${count === 1 ? '' : 's'} of player stats. Add them to your active event, or keep them separate in a new event?`,
+          choices: [
+            { value: 'new',     label: 'New event for these stats', description: 'Creates a fresh event to hold the shared stats — your current data is untouched.', variant: 'primary' },
+            { value: 'current', label: 'Add to active event',       description: 'Imports the scoreboards under your currently active event.',                       variant: 'secondary' },
+            { value: null,      label: 'Cancel', variant: 'cancel' },
+          ],
+        });
+        if (!choice) { dismiss(); return; }
+        let targetEventId = appState.activeEventId;
+        if (choice === 'new') {
+          const next = addEvent(appState, 'Shared Stats');
+          targetEventId = next.activeEventId;
+          setAppState(next);
+        }
+        try { await statsRepo.importEventStats(targetEventId, bundle); } catch { /* ignore */ }
+        setViewMode('stats');
+        dismiss();
+        return;
+      }
+
+      if (initialShareData.kind === 'event' || initialShareData.kind === 'full') {
         const evt = initialShareData.event;
+        const bundle = initialShareData.kind === 'full' ? initialShareData.bundle : null;
+        const sbCount = isStatsBundle(bundle) ? bundle.scoreboards.length : 0;
+        const statsNote = sbCount ? ` Includes ${sbCount} scoreboard${sbCount === 1 ? '' : 's'} of player stats.` : '';
         const choice = await askChoice({
           title: 'Import shared event',
-          message: `"${evt.name}" — ${evt.seasons.length} season${evt.seasons.length === 1 ? '' : 's'}, ${Object.keys(evt.unitRegistry || {}).length} units in registry.`,
+          message: `"${evt.name}" — ${evt.seasons.length} season${evt.seasons.length === 1 ? '' : 's'}, ${Object.keys(evt.unitRegistry || {}).length} units in registry.${statsNote}`,
           choices: [
             { value: 'add',     label: 'Add as new event',         description: 'Append a new event without touching your current one.', variant: 'primary' },
             { value: 'replace', label: 'Replace active event',     description: 'Overwrites the current active event in place.',         variant: 'danger'  },
@@ -259,6 +294,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
             activeEventId: evt.id,
             activeSeasonId: evt.seasons[0]?.id ?? null,
           }));
+        }
+        if (choice && sbCount) {
+          try { await statsRepo.importEventStats(evt.id, bundle); } catch { /* ignore */ }
         }
         dismiss();
         return;
@@ -1723,35 +1761,56 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Share — offers active season or whole event. Single-season events skip
   // the dialog and share the season directly (matches legacy behavior).
   const shareSeason = async () => {
-    let kind;
-    if (activeEvent.seasons.length > 1) {
-      const choice = await askChoice({
-        title: 'Share',
-        message: `What would you like to share?`,
-        choices: [
-          {
-            value: 'event',
-            label: `Whole event — ${activeEvent.name}`,
-            description: `Registry + all ${activeEvent.seasons.length} seasons. Recipients get the full picture.`,
-            variant: 'primary',
-          },
-          {
-            value: 'season',
-            label: `Active season only — ${activeSeason.name}`,
-            description: 'Just this season. Smaller payload; matches legacy share behavior.',
-            variant: 'secondary',
-          },
-          { value: null, label: 'Cancel', variant: 'cancel' },
-        ],
-      });
-      if (!choice) return;
-      kind = choice;
-    } else {
-      kind = 'season';
+    const multi = activeEvent.seasons.length > 1;
+    // Pull the event's player stats so we can offer a combined link.
+    let bundle = null;
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId); } catch { bundle = null; }
+    const sbCount = bundle?.scoreboards.length ?? 0;
+    const hasStats = sbCount > 0;
+
+    // Nothing extra to offer (single season, no stats) → legacy direct share.
+    if (!multi && !hasStats) {
+      const flat = flattenActiveToLegacy(appState);
+      let url;
+      try { url = await generateShortShareUrl(flat); } catch { url = generateShareUrl(flat); }
+      try { await navigator.clipboard.writeText(url); alert('Share link copied! (Active season)'); }
+      catch { prompt('Copy this link to share:', url); }
+      return;
     }
 
+    const seasonWord = `${activeEvent.seasons.length} season${activeEvent.seasons.length === 1 ? '' : 's'}`;
+    const sbWord = `${sbCount} scoreboard${sbCount === 1 ? '' : 's'}`;
+    const choices = [];
+    if (hasStats) {
+      choices.push({
+        value: 'full',
+        label: `Everything — tracker + player stats`,
+        description: `${activeEvent.name}: ${seasonWord} plus ${sbWord} of player stats. One link, the whole picture.`,
+        variant: 'primary',
+      });
+    }
+    choices.push({
+      value: 'event',
+      label: `Whole event — ${activeEvent.name}`,
+      description: `Registry + ${seasonWord}${hasStats ? ' (no player stats)' : ''}.`,
+      variant: hasStats ? 'secondary' : 'primary',
+    });
+    choices.push({
+      value: 'season',
+      label: `Active season only — ${activeSeason.name}`,
+      description: 'Just this season. Smaller payload; matches legacy share behavior.',
+      variant: 'secondary',
+    });
+    choices.push({ value: null, label: 'Cancel', variant: 'cancel' });
+
+    const kind = await askChoice({ title: 'Share', message: `What would you like to share?`, choices });
+    if (!kind) return;
+
     let url;
-    if (kind === 'event') {
+    if (kind === 'full') {
+      try { url = await generateShortFullShareUrl(activeEvent, bundle); }
+      catch { url = generateFullShareUrl(activeEvent, bundle); }
+    } else if (kind === 'event') {
       try { url = await generateShortEventShareUrl(activeEvent); }
       catch { url = generateEventShareUrl(activeEvent); }
     } else {
@@ -1760,21 +1819,50 @@ const SeasonTracker = ({ initialShareData = null }) => {
       catch { url = generateShareUrl(flat); }
     }
 
+    const label = kind === 'full' ? 'Everything' : kind === 'event' ? 'Whole event' : 'Active season';
     try {
       await navigator.clipboard.writeText(url);
-      alert(`Share link copied! (${kind === 'event' ? 'Whole event' : 'Active season'})`);
+      alert(`Share link copied! (${label})`);
     } catch {
       prompt('Copy this link to share:', url);
     }
   };
 
+  // Share a player-stats-only link (scoreboards + regiment assignments for the
+  // active event). Recipients open it to the Stats view — no tracker data.
+  const shareStats = async () => {
+    let bundle;
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId); }
+    catch { alert('Could not read player stats for this event.'); return; }
+    if (!bundle.scoreboards.length) {
+      alert('No scoreboards imported for this event yet — nothing to share.');
+      return;
+    }
+    let url;
+    try { url = await generateShortStatsShareUrl(bundle); }
+    catch { url = generateStatsShareUrl(bundle); }
+    try {
+      await navigator.clipboard.writeText(url);
+      alert(`Player-stats link copied! (${bundle.scoreboards.length} scoreboard${bundle.scoreboards.length === 1 ? '' : 's'})`);
+    } catch {
+      prompt('Copy this link to share player stats:', url);
+    }
+  };
+
   // Export/Import — JSON file download. For multi-season events the file
   // contains the full event tree; otherwise the active-season legacy shape.
-  const exportData = () => {
+  const exportData = async () => {
     const isEvent = activeEvent.seasons.length > 1;
+    // Bundle the event's player stats (scoreboards + regiment assignments) so a
+    // single file is a complete backup. Best-effort — never block the export.
+    let stats;
+    try { stats = await statsRepo.exportEventStats(appState.activeEventId); }
+    catch { stats = undefined; }
+    const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
+
     const data = isEvent
-      ? { schemaVersion: 2, kind: 'event', event: activeEvent, exportDate: new Date().toISOString() }
-      : { ...flattenActiveToLegacy(appState), exportDate: new Date().toISOString() };
+      ? { schemaVersion: 2, kind: 'event', event: activeEvent, ...(hasStats ? { stats } : {}), exportDate: new Date().toISOString() }
+      : { ...flattenActiveToLegacy(appState), ...(hasStats ? { stats } : {}), exportDate: new Date().toISOString() };
 
     const filename = isEvent
       ? `event-${activeEvent.name.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().split('T')[0]}.json`
@@ -1818,6 +1906,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
       try {
         const data = JSON.parse(e.target.result);
 
+        // Restore an attached player-stats bundle (scoreboards + assignments)
+        // under the imported event. Best-effort; never blocks the data import.
+        const restoreStats = async (eventId) => {
+          if (eventId && isStatsBundle(data.stats)) {
+            try { await statsRepo.importEventStats(eventId, data.stats); } catch { /* ignore */ }
+          }
+        };
+
         // v2 event export — full event tree. Offer ADD vs REPLACE.
         if (data?.kind === 'event' && data.event) {
           const evt = data.event;
@@ -1846,6 +1942,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               activeSeasonId: evt.seasons[0]?.id ?? null,
             }));
           }
+          await restoreStats(evt.id);
           alert('Event imported.');
           return;
         }
@@ -1981,12 +2078,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
         });
         if (!choice) return;
         if (choice === 'replace') {
-          setAppState(migrateLegacyFlatToV2(legacyImported));
+          const migrated = migrateLegacyFlatToV2(legacyImported);
+          setAppState(migrated);
+          await restoreStats(migrated.activeEventId);
         } else if (choice === 'add') {
           const migrated = migrateLegacyFlatToV2(legacyImported);
           const importedSeason = migrated.events[0].seasons[0];
           const importedRegistryNames = Object.values(migrated.events[0].unitRegistry).map(u => u.name);
           setAppState(prev => appendSeasonToActiveEvent(prev, importedSeason, importedRegistryNames));
+          await restoreStats(appState.activeEventId);
         }
 
         alert('Data imported successfully!');
@@ -4305,6 +4405,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
                     >
                       <Download className="w-4 h-4" /> Export CSV
+                    </button>
+                    <button
+                      onClick={() => { shareStats(); setShowOverflowMenu(false); }}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
+                      title="Copy a link to just the player stats for this event"
+                    >
+                      <Share2 className="w-4 h-4" /> Share Player Stats
                     </button>
                     <label className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition cursor-pointer">
                       <Upload className="w-4 h-4" /> Import

@@ -1,4 +1,5 @@
 import type { Scoreboard, Team } from './types';
+import type { StatsBundle } from './statsBundle';
 
 /** Optional link from a scoreboard to a specific Week/Round in the tracker. */
 export interface ScoreboardBinding {
@@ -47,4 +48,9 @@ export interface StatsRepository {
   getRegimentAssignments(eventId: string): Promise<RegimentAssignmentMap>;
   setRegimentAssignment(eventId: string, steamId: string, regiment: string): Promise<void>;
   setRegimentAssignments(eventId: string, assignments: RegimentAssignmentMap): Promise<void>;
+
+  /** Pack all of an event's scoreboards + assignments into a portable bundle. */
+  exportEventStats(eventId: string): Promise<StatsBundle>;
+  /** Restore a bundle under the target event; returns the scoreboard count. */
+  importEventStats(eventId: string, bundle: StatsBundle): Promise<number>;
 }

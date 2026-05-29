@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LocalStatsRepository } from '../../stats/LocalStatsRepository';
+import { statsRepo as repo } from '../../stats/repo';
 import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from '../../stats/StatsRepository';
 import { parseScoreboard } from '../../stats/parseScoreboard';
 import type { Scoreboard } from '../../stats/types';
 import { resolveRegiment } from '../../stats/regimentMatcher';
-
-// Module-level singleton — one IndexedDB connection for the whole app.
-const repo = new LocalStatsRepository();
 
 export interface UseStats {
   loading: boolean;

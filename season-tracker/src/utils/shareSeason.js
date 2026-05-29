@@ -291,6 +291,16 @@ export const createV2SeasonPayload = (flatLegacy) =>
 export const createV2EventPayload = (event) =>
   ({ v: 2, t: 'event', event });
 
+// Player-stats-only payload — a portable scoreboard/assignments bundle with no
+// tracker/season data. Lets organizers share just the post-event player stats.
+export const createV2StatsPayload = (bundle) =>
+  ({ v: 2, t: 'stats', bundle });
+
+// Combined payload — the full event tree plus its player-stats bundle, so a
+// single link carries everything (registry, all seasons, scoreboards, stats).
+export const createV2FullPayload = (event, bundle) =>
+  ({ v: 2, t: 'full', event, bundle });
+
 // --- Encode / Decode (deflate + base64url) ---
 
 export const encodeSharePayload = (payload) => {
@@ -315,6 +325,8 @@ export const decodeSharePayload = (encoded) => {
     if (p.v === 1) return { kind: 'season', payload: expandPayload(p) };
     if (p.v === 2 && p.t === 'season') return { kind: 'season', payload: p.payload };
     if (p.v === 2 && p.t === 'event')  return { kind: 'event', event: p.event };
+    if (p.v === 2 && p.t === 'stats')  return { kind: 'stats', bundle: p.bundle };
+    if (p.v === 2 && p.t === 'full')   return { kind: 'full', event: p.event, bundle: p.bundle };
     return null;
   } catch {
     return null;
@@ -347,6 +359,40 @@ export const generateEventShareUrl = (event) => {
 
 export const generateShortEventShareUrl = async (event) => {
   const payload = encodeSharePayload(createV2EventPayload(event));
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload }),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  const { id } = await res.json();
+  return `${window.location.origin + window.location.pathname}#s=${id}`;
+};
+
+export const generateStatsShareUrl = (bundle) => {
+  const encoded = encodeSharePayload(createV2StatsPayload(bundle));
+  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
+};
+
+export const generateShortStatsShareUrl = async (bundle) => {
+  const payload = encodeSharePayload(createV2StatsPayload(bundle));
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload }),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  const { id } = await res.json();
+  return `${window.location.origin + window.location.pathname}#s=${id}`;
+};
+
+export const generateFullShareUrl = (event, bundle) => {
+  const encoded = encodeSharePayload(createV2FullPayload(event, bundle));
+  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
+};
+
+export const generateShortFullShareUrl = async (event, bundle) => {
+  const payload = encodeSharePayload(createV2FullPayload(event, bundle));
   const res = await fetch('/api/share', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

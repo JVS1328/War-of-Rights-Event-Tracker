@@ -7,6 +7,8 @@ import type {
   StatsRepository,
   StoredScoreboard,
 } from './StatsRepository';
+import { buildStatsBundle } from './statsBundle';
+import type { StatsBundle } from './statsBundle';
 
 const SCOREBOARDS = 'scoreboards';
 const ASSIGNMENTS = 'assignments';
@@ -151,5 +153,23 @@ export class LocalStatsRepository implements StatsRepository {
         s.put({ key: `${eventId}::${steamId}`, eventId, steamId, regiment });
       }
     });
+  }
+
+  async exportEventStats(eventId: string): Promise<StatsBundle> {
+    const records = await this.tx(SCOREBOARDS, 'readonly', (s) =>
+      reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
+    );
+    const assignments = await this.getRegimentAssignments(eventId);
+    return buildStatsBundle(records, assignments);
+  }
+
+  async importEventStats(eventId: string, bundle: StatsBundle): Promise<number> {
+    for (const entry of bundle.scoreboards ?? []) {
+      await this.saveScoreboard(eventId, entry.scoreboard, entry.binding);
+    }
+    if (bundle.assignments && Object.keys(bundle.assignments).length) {
+      await this.setRegimentAssignments(eventId, bundle.assignments);
+    }
+    return bundle.scoreboards?.length ?? 0;
   }
 }

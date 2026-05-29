@@ -101,3 +101,54 @@ describe('LocalStatsRepository — regiment assignments', () => {
     expect(await repo.getRegimentAssignments('e')).toEqual({ a: 'X', b: 'Y' });
   });
 });
+
+describe('LocalStatsRepository — portable stats bundle', () => {
+  it('exports every scoreboard + assignments for an event, event-agnostic', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('src', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'), { weekId: 'w1', round: 1 });
+    await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260102_120000.csv'));
+    await repo.setRegimentAssignment('src', '76561198000000001', '51stNY');
+    await repo.saveScoreboard('other', parseScoreboard(CSV('USA'), 'scoreboard_20260103_120000.csv'));
+
+    const bundle = await repo.exportEventStats('src');
+    expect(bundle.scoreboards).toHaveLength(2);
+    expect(bundle.scoreboards.map((s) => s.sourceFilename).sort()).toEqual([
+      'scoreboard_20260101_120000.csv',
+      'scoreboard_20260102_120000.csv',
+    ]);
+    expect(bundle.scoreboards.some((s) => s.binding?.weekId === 'w1')).toBe(true);
+    expect(bundle.assignments).toEqual({ '76561198000000001': '51stNY' });
+  });
+
+  it('imports a bundle under a target event, re-keyed and isolated from the source', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260101_120000.csv'), { weekId: 'w1', round: 2 });
+    await repo.setRegimentAssignment('src', '76561198000000001', '51stNY');
+    const bundle = await repo.exportEventStats('src');
+
+    const count = await repo.importEventStats('dst', bundle);
+    expect(count).toBe(1);
+
+    const list = await repo.listScoreboards({ eventId: 'dst' });
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe('dst::scoreboard_20260101_120000.csv');
+    const stored = await repo.getScoreboard(list[0].id);
+    expect(stored!.eventId).toBe('dst');
+    expect(stored!.binding).toEqual({ weekId: 'w1', round: 2 });
+    expect(stored!.scoreboard.meta.winner).toBe('CSA');
+    expect(await repo.getRegimentAssignments('dst')).toEqual({ '76561198000000001': '51stNY' });
+
+    // Source event remains intact.
+    expect(await repo.listScoreboards({ eventId: 'src' })).toHaveLength(1);
+  });
+
+  it('round-trips through the pure bundle helpers (export = build of stored)', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('e', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'));
+    const bundle = await repo.exportEventStats('e');
+    await repo.importEventStats('clone', bundle);
+    const clone = await repo.exportEventStats('clone');
+    expect(clone.scoreboards).toEqual(bundle.scoreboards);
+    expect(clone.assignments).toEqual(bundle.assignments);
+  });
+});
