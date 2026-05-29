@@ -30,6 +30,18 @@ describe('stats share payload', () => {
     expect(decoded).toEqual({ kind: 'stats', bundle });
   });
 
+  it('carries an optional event name through encode → decode', () => {
+    const p = createV2StatsPayload(bundle, 'Summer Cup');
+    expect(p).toEqual({ v: 2, t: 'stats', bundle, name: 'Summer Cup' });
+    const decoded = decodeSharePayload(encodeSharePayload(p));
+    expect(decoded).toEqual({ kind: 'stats', bundle, name: 'Summer Cup' });
+  });
+
+  it('omits the name when none is given (back-compat with older links)', () => {
+    const p = createV2StatsPayload(bundle);
+    expect(p).not.toHaveProperty('name');
+  });
+
   it('still decodes a v2 season payload as a season (no regression)', () => {
     const encoded = encodeSharePayload({ v: 2, t: 'season', payload: { units: ['A'], weeks: [] } });
     const decoded = decodeSharePayload(encoded);

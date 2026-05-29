@@ -46,3 +46,20 @@ export function isStatsBundle(x: unknown): x is StatsBundle {
   const b = x as Record<string, unknown>;
   return Array.isArray(b.scoreboards) && typeof b.assignments === 'object' && b.assignments !== null;
 }
+
+/** Synthetic event id for read-only, in-memory bundles (shared links). */
+export const SHARED_EVENT_ID = 'shared';
+
+/**
+ * Inverse of {@link buildStatsBundle}: rebuild StoredScoreboard records from a
+ * bundle for read-only viewing, without touching the repository. Ids mirror the
+ * repo's `${eventId}::${sourceFilename}` scheme so list keys stay stable.
+ */
+export function storedFromBundle(bundle: StatsBundle, eventId: string = SHARED_EVENT_ID): StoredScoreboard[] {
+  return (bundle.scoreboards ?? []).map((e) => ({
+    id: `${eventId}::${e.sourceFilename}`,
+    eventId,
+    scoreboard: e.scoreboard,
+    ...(e.binding ? { binding: e.binding } : {}),
+  }));
+}

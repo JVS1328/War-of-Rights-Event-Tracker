@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, Trash2, Pencil, X, GitMerge } from 'lucide-react';
 import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
-import { useStats } from './useStats';
+import { useStats, type UseStats } from './useStats';
 import {
   computePlayerLeaderboard,
   computeRegimentBreakdown,
@@ -42,15 +42,7 @@ const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
 
-export default function StatsArea({
-  eventId,
-  eventName,
-  registryUnits = [],
-  weeks = [],
-  teamNames = { A: 'USA', B: 'CSA' },
-  validMaps = [],
-  onApplyRound,
-}: {
+interface StatsAreaProps {
   eventId: string;
   eventName: string;
   registryUnits?: string[];
@@ -61,8 +53,30 @@ export default function StatsArea({
   validMaps?: string[];
   /** Writes auto-filled round fields back into the tracker's week. */
   onApplyRound?: (weekId: string, updates: Record<string, unknown>) => void;
-}) {
-  const stats = useStats(eventId);
+}
+
+/** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
+export default function StatsArea(props: StatsAreaProps) {
+  const stats = useStats(props.eventId);
+  return <StatsPanel {...props} stats={stats} />;
+}
+
+/**
+ * Presentational stats panel. Renders from an injected {@link UseStats} object,
+ * so it serves both the live tracker (via {@link StatsArea}) and the read-only
+ * shared-link view (which feeds it a bundle-backed, no-op stats object).
+ * When `readOnly`, the Import tab and all assignment-editing affordances hide.
+ */
+export function StatsPanel({
+  eventName,
+  registryUnits = [],
+  weeks = [],
+  teamNames = { A: 'USA', B: 'CSA' },
+  validMaps = [],
+  onApplyRound,
+  stats,
+  readOnly = false,
+}: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
   const [tab, setTab] = useState<SubTab>('overview');
   const [listText, setListText] = useState(() => registryUnits.join('\n'));
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -126,11 +140,13 @@ export default function StatsArea({
   };
 
   const hasData = sbs.length > 0;
+  // Shared/read-only views drop the Import tab — there's nothing to import into.
+  const visibleTabs = readOnly ? TABS.filter((t) => t !== 'import') : TABS;
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-[11px] uppercase tracking-wider">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -192,13 +208,14 @@ export default function StatsArea({
           openRound={openRound}
           focusRegiment={focusRegiment}
           focusNonce={focusNonce}
+          readOnly={readOnly}
         />
       )}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
       {tab === 'combat' && <CombatTab combat={combat} hasData={hasData} />}
 
-      {tab === 'import' && (
+      {tab === 'import' && !readOnly && (
         <ImportTab
           stats={stats}
           listText={listText}
@@ -226,7 +243,7 @@ export default function StatsArea({
         weeks={weeks}
         teamNames={teamNames}
         validMaps={validMaps}
-        canBind={!!onApplyRound}
+        canBind={!readOnly && !!onApplyRound}
         buildAutofill={(sb, flipped) => buildRoundAutofill(sb, teamNames, validMaps, flipped)}
         onApply={applyRound}
       />
@@ -336,6 +353,7 @@ function RegimentsTab({
   openRound,
   focusRegiment,
   focusNonce,
+  readOnly = false,
 }: {
   regiments: RegimentStatRow[];
   stats: ReturnType<typeof useStats>;
@@ -343,6 +361,7 @@ function RegimentsTab({
   openRound: (filename: string) => void;
   focusRegiment: string | null;
   focusNonce: number;
+  readOnly?: boolean;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -421,22 +440,24 @@ function RegimentsTab({
 
   return (
     <div className="space-y-3 pb-16">
-      {/* Edit toolbar */}
-      <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
-        <button
-          onClick={() => (editMode ? exitEdit() : setEditMode(true))}
-          className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
-            editMode ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
-          }`}
-        >
-          <Pencil size={12} /> {editMode ? 'Done editing' : 'Edit assignments'}
-        </button>
-        {editMode && (
-          <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-            Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately.
-          </span>
-        )}
-      </div>
+      {/* Edit toolbar — hidden in read-only/shared views (no mutations). */}
+      {!readOnly && (
+        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+          <button
+            onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+            className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
+              editMode ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
+            }`}
+          >
+            <Pencil size={12} /> {editMode ? 'Done editing' : 'Edit assignments'}
+          </button>
+          {editMode && (
+            <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
+              Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Active renames/merges */}
       {editMode && aliasList.length > 0 && (

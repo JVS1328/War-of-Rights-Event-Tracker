@@ -248,34 +248,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const dismiss = () => window.history.replaceState(null, '', window.location.pathname);
 
     (async () => {
-      // Player-stats-only share — no tracker/season data. Drop the scoreboards
-      // into an event and open the Stats view so the recipient sees the numbers.
-      if (initialShareData.kind === 'stats') {
-        const bundle = initialShareData.bundle;
-        if (!isStatsBundle(bundle)) { dismiss(); return; }
-        const count = bundle.scoreboards.length;
-        const choice = await askChoice({
-          title: 'Shared player stats',
-          message: `${count} scoreboard${count === 1 ? '' : 's'} of player stats. Add them to your active event, or keep them separate in a new event?`,
-          choices: [
-            { value: 'new',     label: 'New event for these stats', description: 'Creates a fresh event to hold the shared stats — your current data is untouched.', variant: 'primary' },
-            { value: 'current', label: 'Add to active event',       description: 'Imports the scoreboards under your currently active event.',                       variant: 'secondary' },
-            { value: null,      label: 'Cancel', variant: 'cancel' },
-          ],
-        });
-        if (!choice) { dismiss(); return; }
-        let targetEventId = appState.activeEventId;
-        if (choice === 'new') {
-          const next = addEvent(appState, 'Shared Stats');
-          targetEventId = next.activeEventId;
-          setAppState(next);
-        }
-        try { await statsRepo.importEventStats(targetEventId, bundle); } catch { /* ignore */ }
-        setViewMode('stats');
-        dismiss();
-        return;
-      }
-
+      // Note: player-stats-only shares (kind === 'stats') never reach here —
+      // App routes them to the read-only SharedStatsView page instead.
       if (initialShareData.kind === 'event' || initialShareData.kind === 'full') {
         const evt = initialShareData.event;
         const bundle = initialShareData.kind === 'full' ? initialShareData.bundle : null;
@@ -1839,7 +1813,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Share a player-stats-only link (scoreboards + regiment assignments for the
-  // active event). Recipients open it to the Stats view — no tracker data.
+  // active event). Recipients open it to a read-only, stats-only page — no
+  // tracker data, no editing (see SharedStatsView).
   const shareStats = async () => {
     let bundle;
     try { bundle = await statsRepo.exportEventStats(appState.activeEventId); }
@@ -1849,11 +1824,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
       return;
     }
     let url;
-    try { url = await generateShortStatsShareUrl(bundle); }
-    catch { url = generateStatsShareUrl(bundle); }
+    try { url = await generateShortStatsShareUrl(bundle, activeEvent.name); }
+    catch { url = generateStatsShareUrl(bundle, activeEvent.name); }
     try {
       await navigator.clipboard.writeText(url);
-      alert(`Player-stats link copied! (${bundle.scoreboards.length} scoreboard${bundle.scoreboards.length === 1 ? '' : 's'})`);
+      alert(`Player-stats link copied! (${bundle.scoreboards.length} scoreboard${bundle.scoreboards.length === 1 ? '' : 's'}, view-only)`);
     } catch {
       prompt('Copy this link to share player stats:', url);
     }
@@ -4362,7 +4337,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <button
                       onClick={() => { shareStats(); setShowOverflowMenu(false); }}
                       className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                      title="Copy a link to just the player stats for this event"
+                      title="Copy a link to a read-only, stats-only view of this event's player stats"
                     >
                       <Share2 className="w-4 h-4" /> Share Player Stats
                     </button>
