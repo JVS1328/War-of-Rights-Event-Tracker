@@ -1,30 +1,161 @@
 @import "tailwindcss";
 
+/* Geist variable fonts (Vite-friendly, no next/font dependency) */
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Semantic theme colors — light mode defaults */
-  --color-bg-page: oklch(0.985 0 0);
-  --color-bg-card: oklch(1 0 0);
-  --color-bg-inset: oklch(0.97 0 0);
-  --color-bg-input: oklch(1 0 0);
-  --color-border-default: oklch(0.85 0 0);
-  --color-border-subtle: oklch(0.9 0 0);
-  --color-text-primary: oklch(0.15 0 0);
-  --color-text-secondary: oklch(0.45 0 0);
-  --color-text-muted: oklch(0.6 0 0);
+  /* ── Palantir-style scale — LIGHT defaults ─────────────────────────────
+     Dark overrides live in the .dark block below. The legacy semantic
+     tokens further down reference this scale, so the whole existing app
+     adopts the new look without touching its 9000-line component. */
+  --color-bg-0: #eceef1;   /* page background          */
+  --color-bg-1: #ffffff;   /* cards / panels           */
+  --color-bg-2: #f4f6f8;   /* panel headers / inset    */
+  --color-bg-3: #e6e9ed;   /* hover                    */
+  --color-border: #d6dae0;
+  --color-border-strong: #bcc3cc;
+  --color-text-0: #1b1e23; /* primary text             */
+  --color-text-1: #5a626d; /* secondary text           */
+  --color-text-2: #8b939e; /* tertiary / labels        */
+  --color-accent: #b07d3f;         /* CSA tan (darkened for light contrast) */
+  --color-accent-soft: rgb(176 125 63 / 0.15);
+  --color-ok: #4d7a62;             /* USA green                */
+  --color-warn: #9a7a44;
+  --color-danger: #9e4d4d;
+
+  /* ── Legacy semantic tokens — remapped onto the Palantir scale ─────────
+     These are what SeasonTracker.jsx already uses (638 references), so the
+     remap restyles the existing UI automatically. */
+  --color-bg-page: var(--color-bg-0);
+  --color-bg-card: var(--color-bg-1);
+  --color-bg-inset: var(--color-bg-2);
+  --color-bg-input: var(--color-bg-1);
+  --color-border-default: var(--color-border);
+  --color-border-subtle: var(--color-border);
+  --color-text-primary: var(--color-text-0);
+  --color-text-secondary: var(--color-text-1);
+  --color-text-muted: var(--color-text-2);
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-sans: 'Geist Variable', Inter, -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'JetBrains Mono', ui-monospace, 'IBM Plex Mono', monospace;
+
+  /* ── Density ──────────────────────────────────────────────────────────── */
+  --radius-1: 1px;
+  --radius-2: 2px;
+  --radius-3: 3px;
+
+  /* ── Global look override: squared corners everywhere ──────────────────
+     The existing monolith uses rounded-md/lg/xl utilities throughout. These
+     resolve to the variables below, so squaring them here restyles the whole
+     app toward the Palantir terminal aesthetic without editing components.
+     rounded-full (circles/avatars) is intentionally left alone. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 3px;
+  --radius-2xl: 3px;
+  --radius-3xl: 4px;
+
+  /* ── Global look override: remap the app's indigo/teal/cyan accents to the
+     Palantir tan accent. Filled-button shades (600/700) are dark enough for
+     white text; lighter shades are used for icons/text/rings. ──────────── */
+  --color-indigo-300: #d8b483;
+  --color-indigo-400: #cda16a;
+  --color-indigo-500: #c08f54;
+  --color-indigo-600: #9a6f3a;
+  --color-indigo-700: #855f30;
+  --color-indigo-800: #6d4d27;
+  --color-indigo-900: #553c1e;
+  --color-teal-300: #d8b483;
+  --color-teal-400: #cda16a;
+  --color-teal-500: #c08f54;
+  --color-teal-600: #9a6f3a;
+  --color-cyan-300: #d8b483;
+  --color-cyan-400: #cda16a;
+  --color-cyan-500: #c08f54;
+  --color-cyan-600: #9a6f3a;
+
+  /* ── Global look override: compact type scale for terminal density ───── */
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 19px;
+  --text-3xl: 22px;
 }
 
 @layer base {
+  /* ── Palantir-style scale — DARK overrides ──────────────────────────────
+     Legacy tokens reference the scale via var(), so they update live when
+     .dark flips these values. */
   .dark {
-    --color-bg-page: oklch(0.21 0.01 260);
-    --color-bg-card: oklch(0.24 0.01 260);
-    --color-bg-inset: oklch(0.27 0.01 260);
-    --color-bg-input: oklch(0.24 0.01 260);
-    --color-border-default: oklch(0.28 0.01 260);
-    --color-border-subtle: oklch(0.22 0.01 260);
-    --color-text-primary: oklch(0.93 0 0);
-    --color-text-secondary: oklch(0.65 0 0);
-    --color-text-muted: oklch(0.5 0 0);
+    --color-bg-0: #050608;
+    --color-bg-1: #0c0e12;
+    --color-bg-2: #14171c;
+    --color-bg-3: #1a1e25;
+    --color-border: #1f242c;
+    --color-border-strong: #2a3038;
+    --color-text-0: #e6e8eb;
+    --color-text-1: #9aa1ab;
+    --color-text-2: #5b6470;
+    --color-accent: #d4a574;
+    --color-accent-soft: rgb(212 165 116 / 0.18);
+    --color-ok: #5b8a72;
+    --color-warn: #b8915a;
+    --color-danger: #a85a5a;
+  }
+
+  html, body {
+    background: var(--color-bg-0);
+    color: var(--color-text-0);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.35;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Palantir character, applied globally ────────────────────────────────
+     These set only properties the monolith's utility classes don't already
+     specify (font-family, text-transform, letter-spacing), so existing
+     size/weight/color utilities still win. Result: mono UPPERCASE section
+     titles, mono form controls and buttons — the terminal aesthetic — with
+     no per-component edits. */
+  h1, h2, h3, h4 {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  input, select, textarea {
+    font-family: var(--font-mono);
+  }
+  button {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Custom scrollbars to match the aesthetic. */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--color-bg-0); }
+  ::-webkit-scrollbar-thumb { background: var(--color-bg-3); border-radius: 0; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-text-0);
   }
 }
+
+/* ── Pulse animation (used by primitives on data updates) ───────────────── */
+@keyframes wor-pulse {
+  0%   { background-color: var(--color-accent-soft); }
+  100% { background-color: transparent; }
+}
+.pulse { animation: wor-pulse 800ms ease-out; }

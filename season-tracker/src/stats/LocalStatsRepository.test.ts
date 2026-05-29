@@ -1,0 +1,103 @@
+import 'fake-indexeddb/auto';
+import { describe, it, expect } from 'vitest';
+import { LocalStatsRepository } from './LocalStatsRepository';
+import { parseScoreboard } from './parseScoreboard';
+
+const CSV = (winner: string) => `round_start_time,16:00:00
+round_end_time,16:30:00
+map,DrillCamp
+mode,Skirmish
+area,Meadow
+winner,${winner}
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,1,3,1,3.00,1,0,0,76561198000000001
+`;
+
+let dbCounter = 0;
+function freshRepo() {
+  dbCounter += 1;
+  return new LocalStatsRepository(`wor-stats-test-${dbCounter}`);
+}
+
+describe('LocalStatsRepository — scoreboards', () => {
+  it('saves and retrieves a scoreboard scoped to an event', async () => {
+    const repo = freshRepo();
+    const sb = parseScoreboard(CSV('CSA'), 'scoreboard_20260527_160000.csv');
+    const id = await repo.saveScoreboard('event-1', sb);
+
+    const stored = await repo.getScoreboard(id);
+    expect(stored).not.toBeNull();
+    expect(stored!.eventId).toBe('event-1');
+    expect(stored!.scoreboard.meta.winner).toBe('CSA');
+    expect(stored!.scoreboard.players).toHaveLength(1);
+  });
+
+  it('lists scoreboard summaries for an event, newest first', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('e', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'));
+    await repo.saveScoreboard('e', parseScoreboard(CSV('CSA'), 'scoreboard_20260102_120000.csv'));
+    await repo.saveScoreboard('other', parseScoreboard(CSV('USA'), 'scoreboard_20260103_120000.csv'));
+
+    const list = await repo.listScoreboards({ eventId: 'e' });
+    expect(list).toHaveLength(2);
+    expect(list[0].sourceFilename).toBe('scoreboard_20260102_120000.csv'); // newest first
+    expect(list[0]).toMatchObject({ map: 'DrillCamp', mode: 'Skirmish', winner: 'CSA' });
+  });
+
+  it('dedupes by filename within an event (re-import overwrites)', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('e', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'));
+    await repo.saveScoreboard('e', parseScoreboard(CSV('CSA'), 'scoreboard_20260101_120000.csv'));
+
+    const list = await repo.listScoreboards({ eventId: 'e' });
+    expect(list).toHaveLength(1);
+    const stored = await repo.getScoreboard(list[0].id);
+    expect(stored!.scoreboard.meta.winner).toBe('CSA'); // latest wins
+  });
+
+  it('deletes a scoreboard', async () => {
+    const repo = freshRepo();
+    const id = await repo.saveScoreboard('e', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'));
+    await repo.deleteScoreboard(id);
+    expect(await repo.getScoreboard(id)).toBeNull();
+    expect(await repo.listScoreboards({ eventId: 'e' })).toHaveLength(0);
+  });
+
+  it('records an optional week/round binding', async () => {
+    const repo = freshRepo();
+    const id = await repo.saveScoreboard(
+      'e',
+      parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'),
+      { weekId: 'week-3', round: 2 },
+    );
+    const stored = await repo.getScoreboard(id);
+    expect(stored!.binding).toEqual({ weekId: 'week-3', round: 2 });
+  });
+});
+
+describe('LocalStatsRepository — regiment assignments', () => {
+  it('persists per-event assignments keyed by steam id', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAssignment('e', '76561198000000001', '51stNY');
+    await repo.setRegimentAssignment('e', '76561198000000002', '20thGA');
+
+    const map = await repo.getRegimentAssignments('e');
+    expect(map).toEqual({ '76561198000000001': '51stNY', '76561198000000002': '20thGA' });
+  });
+
+  it('scopes assignments to their event', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAssignment('e1', '76561198000000001', '51stNY');
+    await repo.setRegimentAssignment('e2', '76561198000000001', '7thMI');
+
+    expect(await repo.getRegimentAssignments('e1')).toEqual({ '76561198000000001': '51stNY' });
+    expect(await repo.getRegimentAssignments('e2')).toEqual({ '76561198000000001': '7thMI' });
+  });
+
+  it('bulk-sets assignments', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAssignments('e', { a: 'X', b: 'Y' });
+    expect(await repo.getRegimentAssignments('e')).toEqual({ a: 'X', b: 'Y' });
+  });
+});

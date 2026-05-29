@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, Star, Target, Map, Flame, Shield, Swords, Maximize2, Zap, Share2,
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
+import StatsArea from './components/stats/StatsArea';
 import {
   generateShareUrl, generateShortShareUrl,
   generateEventShareUrl, generateShortEventShareUrl,
@@ -132,6 +133,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
   // Session-only UI state
   const [showSettings, setShowSettings] = useState(false);
+  const [viewMode, setViewMode] = useState('tracker'); // 'tracker' | 'stats'
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
@@ -4317,6 +4319,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </button>
           </div>
 
+          {/* Tracker | Player Stats view toggle */}
+          <div className="flex items-center gap-1 mb-4 border border-border-default rounded-lg p-1 bg-bg-card w-fit">
+            {['tracker', 'stats'].map(mode => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`px-3 py-1.5 text-sm rounded-md transition ${viewMode === mode ? 'bg-indigo-600 text-white' : 'text-text-secondary hover:bg-bg-inset'}`}
+              >
+                {mode === 'stats' ? 'Player Stats' : 'Tracker'}
+              </button>
+            ))}
+          </div>
+
+          {viewMode === 'stats' && (
+            <StatsArea
+              eventId={appState.activeEventId}
+              eventName={activeEvent.name}
+              registryUnits={Object.values(activeEvent.unitRegistry || {})
+                .map(u => (typeof u === 'string' ? u : u?.name))
+                .filter(Boolean)}
+              weeks={weeks.map(w => ({
+                id: String(w.id),
+                name: w.name,
+                round1Flipped: !!w.round1Flipped,
+                round2Flipped: !!w.round2Flipped,
+              }))}
+              teamNames={teamNames}
+              validMaps={ALL_MAPS}
+              onApplyRound={(weekId, updates) => {
+                const w = weeks.find(x => String(x.id) === weekId);
+                if (w) updateWeek(w.id, updates);
+              }}
+            />
+          )}
+
+          {viewMode === 'tracker' && (<>
           {/* Settings Panel */}
           {showSettings && (
             <div className="bg-bg-card border border-border-default rounded-lg p-4 mb-4">
@@ -5886,6 +5924,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
             </div>
           )}
+          </>)}
 
           {/* Balancer Modal */}
           {showBalancerModal && selectedWeek && (
