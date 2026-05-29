@@ -49,6 +49,10 @@ export interface StatsRepository {
   setRegimentAssignment(eventId: string, steamId: string, regiment: string): Promise<void>;
   setRegimentAssignments(eventId: string, assignments: RegimentAssignmentMap): Promise<void>;
 
+  /** Regiment rename/merge map (sourceLabel → targetLabel) for the event. */
+  getRegimentAliases(eventId: string): Promise<Record<string, string>>;
+  setRegimentAliases(eventId: string, map: Record<string, string>): Promise<void>;
+
   /** Pack all of an event's scoreboards + assignments into a portable bundle. */
   exportEventStats(eventId: string): Promise<StatsBundle>;
   /** Restore a bundle under the target event; returns the scoreboard count. */

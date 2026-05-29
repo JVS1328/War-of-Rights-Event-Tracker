@@ -12,13 +12,19 @@ import type { StatsBundle } from './statsBundle';
 
 const SCOREBOARDS = 'scoreboards';
 const ASSIGNMENTS = 'assignments';
-const DB_VERSION = 1;
+const ALIASES = 'aliases';
+const DB_VERSION = 2;
 
 interface AssignmentRecord {
   key: string; // `${eventId}::${steamId}`
   eventId: string;
   steamId: string;
   regiment: string;
+}
+
+interface AliasRecord {
+  eventId: string;
+  map: Record<string, string>; // sourceLabel → targetLabel (rename/merge)
 }
 
 /** Promise wrapper around an IDBRequest. */
@@ -51,6 +57,9 @@ export class LocalStatsRepository implements StatsRepository {
         if (!db.objectStoreNames.contains(ASSIGNMENTS)) {
           const store = db.createObjectStore(ASSIGNMENTS, { keyPath: 'key' });
           store.createIndex('eventId', 'eventId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(ALIASES)) {
+          db.createObjectStore(ALIASES, { keyPath: 'eventId' });
         }
       };
       open.onsuccess = () => resolve(open.result);
@@ -155,12 +164,25 @@ export class LocalStatsRepository implements StatsRepository {
     });
   }
 
+  async getRegimentAliases(eventId: string): Promise<Record<string, string>> {
+    const rec = await this.tx(ALIASES, 'readonly', (s) =>
+      reqAsPromise<AliasRecord | undefined>(s.get(eventId)),
+    );
+    return rec?.map ?? {};
+  }
+
+  async setRegimentAliases(eventId: string, map: Record<string, string>): Promise<void> {
+    const record: AliasRecord = { eventId, map };
+    await this.tx(ALIASES, 'readwrite', (s) => reqAsPromise(s.put(record)));
+  }
+
   async exportEventStats(eventId: string): Promise<StatsBundle> {
     const records = await this.tx(SCOREBOARDS, 'readonly', (s) =>
       reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
     );
     const assignments = await this.getRegimentAssignments(eventId);
-    return buildStatsBundle(records, assignments);
+    const aliases = await this.getRegimentAliases(eventId);
+    return buildStatsBundle(records, assignments, aliases);
   }
 
   async importEventStats(eventId: string, bundle: StatsBundle): Promise<number> {
@@ -169,6 +191,10 @@ export class LocalStatsRepository implements StatsRepository {
     }
     if (bundle.assignments && Object.keys(bundle.assignments).length) {
       await this.setRegimentAssignments(eventId, bundle.assignments);
+    }
+    if (bundle.aliases && Object.keys(bundle.aliases).length) {
+      const existing = await this.getRegimentAliases(eventId);
+      await this.setRegimentAliases(eventId, { ...existing, ...bundle.aliases });
     }
     return bundle.scoreboards?.length ?? 0;
   }

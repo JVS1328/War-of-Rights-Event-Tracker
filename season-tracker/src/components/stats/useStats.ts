@@ -11,17 +11,26 @@ export interface UseStats {
   /** Scoreboards sorted oldest→newest (so the freshest name wins in aggregates). */
   scoreboards: Scoreboard[];
   assignments: RegimentAssignmentMap;
+  /** Regiment rename/merge map (sourceLabel → targetLabel). */
+  aliases: Record<string, string>;
   importFiles: (files: FileList | File[]) => Promise<{ imported: number; failed: string[] }>;
   remove: (id: string) => Promise<void>;
   bind: (id: string, binding: ScoreboardBinding) => Promise<void>;
   applyRegimentList: (text: string) => Promise<void>;
   setAssignment: (steamId: string, regiment: string) => Promise<void>;
+  /** Persist many per-player assignments at once (the staged-edit Save). */
+  bulkAssign: (entries: RegimentAssignmentMap) => Promise<void>;
+  /** Rename or merge: map a regiment label onto another (transitive). */
+  setAlias: (from: string, to: string) => Promise<void>;
+  /** Undo a rename/merge for one source label. */
+  removeAlias: (from: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
 export function useStats(eventId: string): UseStats {
   const [stored, setStored] = useState<StoredScoreboard[]>([]);
   const [assignments, setAssignments] = useState<RegimentAssignmentMap>({});
+  const [aliases, setAliasesState] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -30,6 +39,7 @@ export function useStats(eventId: string): UseStats {
     const full = await Promise.all(summaries.map((s) => repo.getScoreboard(s.id)));
     setStored(full.filter((s): s is StoredScoreboard => s != null));
     setAssignments(await repo.getRegimentAssignments(eventId));
+    setAliasesState(await repo.getRegimentAliases(eventId));
     setLoading(false);
   }, [eventId]);
 
@@ -100,6 +110,35 @@ export function useStats(eventId: string): UseStats {
     [eventId, reload],
   );
 
+  const bulkAssign = useCallback(
+    async (entries: RegimentAssignmentMap) => {
+      if (Object.keys(entries).length) await repo.setRegimentAssignments(eventId, entries);
+      await reload();
+    },
+    [eventId, reload],
+  );
+
+  const setAlias = useCallback(
+    async (from: string, to: string) => {
+      const next = { ...aliases };
+      if (!to || from === to) delete next[from];
+      else next[from] = to;
+      await repo.setRegimentAliases(eventId, next);
+      await reload();
+    },
+    [eventId, aliases, reload],
+  );
+
+  const removeAlias = useCallback(
+    async (from: string) => {
+      const next = { ...aliases };
+      delete next[from];
+      await repo.setRegimentAliases(eventId, next);
+      await reload();
+    },
+    [eventId, aliases, reload],
+  );
+
   const scoreboards = [...stored]
     .map((s) => s.scoreboard)
     .sort((a, b) => (a.recordedAt ?? '').localeCompare(b.recordedAt ?? ''));
@@ -109,11 +148,15 @@ export function useStats(eventId: string): UseStats {
     stored,
     scoreboards,
     assignments,
+    aliases,
     importFiles,
     remove,
     bind,
     applyRegimentList,
     setAssignment,
+    bulkAssign,
+    setAlias,
+    removeAlias,
     reload,
   };
 }

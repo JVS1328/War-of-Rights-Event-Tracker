@@ -102,12 +102,37 @@ describe('LocalStatsRepository — regiment assignments', () => {
   });
 });
 
+describe('LocalStatsRepository — regiment aliases (rename/merge)', () => {
+  it('defaults to an empty map and persists per-event aliases', async () => {
+    const repo = freshRepo();
+    expect(await repo.getRegimentAliases('e')).toEqual({});
+    await repo.setRegimentAliases('e', { '20THGA': '51STNY', OLD: 'New Name' });
+    expect(await repo.getRegimentAliases('e')).toEqual({ '20THGA': '51STNY', OLD: 'New Name' });
+  });
+
+  it('scopes aliases to their event', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAliases('e1', { A: 'B' });
+    await repo.setRegimentAliases('e2', { C: 'D' });
+    expect(await repo.getRegimentAliases('e1')).toEqual({ A: 'B' });
+    expect(await repo.getRegimentAliases('e2')).toEqual({ C: 'D' });
+  });
+
+  it('overwrites the whole map on set (so removals stick)', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAliases('e', { A: 'B', C: 'D' });
+    await repo.setRegimentAliases('e', { A: 'B' }); // C→D removed
+    expect(await repo.getRegimentAliases('e')).toEqual({ A: 'B' });
+  });
+});
+
 describe('LocalStatsRepository — portable stats bundle', () => {
   it('exports every scoreboard + assignments for an event, event-agnostic', async () => {
     const repo = freshRepo();
     await repo.saveScoreboard('src', parseScoreboard(CSV('USA'), 'scoreboard_20260101_120000.csv'), { weekId: 'w1', round: 1 });
     await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260102_120000.csv'));
     await repo.setRegimentAssignment('src', '76561198000000001', '51stNY');
+    await repo.setRegimentAliases('src', { '20THGA': '51STNY' });
     await repo.saveScoreboard('other', parseScoreboard(CSV('USA'), 'scoreboard_20260103_120000.csv'));
 
     const bundle = await repo.exportEventStats('src');
@@ -118,16 +143,19 @@ describe('LocalStatsRepository — portable stats bundle', () => {
     ]);
     expect(bundle.scoreboards.some((s) => s.binding?.weekId === 'w1')).toBe(true);
     expect(bundle.assignments).toEqual({ '76561198000000001': '51stNY' });
+    expect(bundle.aliases).toEqual({ '20THGA': '51STNY' });
   });
 
   it('imports a bundle under a target event, re-keyed and isolated from the source', async () => {
     const repo = freshRepo();
     await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260101_120000.csv'), { weekId: 'w1', round: 2 });
     await repo.setRegimentAssignment('src', '76561198000000001', '51stNY');
+    await repo.setRegimentAliases('src', { '20THGA': '51STNY' });
     const bundle = await repo.exportEventStats('src');
 
     const count = await repo.importEventStats('dst', bundle);
     expect(count).toBe(1);
+    expect(await repo.getRegimentAliases('dst')).toEqual({ '20THGA': '51STNY' });
 
     const list = await repo.listScoreboards({ eventId: 'dst' });
     expect(list).toHaveLength(1);

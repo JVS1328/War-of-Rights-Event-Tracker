@@ -10,6 +10,7 @@ export function Panel({
   collapsible = false,
   defaultOpen = true,
   storageKey,
+  openSignal,
 }: {
   title: ReactNode;
   right?: ReactNode;
@@ -19,6 +20,8 @@ export function Panel({
   defaultOpen?: boolean;
   /** If provided, persists collapse state to localStorage. */
   storageKey?: string;
+  /** When this changes to a non-null value, force the panel open (e.g. focus nav). */
+  openSignal?: unknown;
 }) {
   const [open, setOpen] = useState<boolean>(defaultOpen);
 
@@ -28,6 +31,10 @@ export function Panel({
     if (v === '0') setOpen(false);
     else if (v === '1') setOpen(true);
   }, [collapsible, storageKey]);
+
+  useEffect(() => {
+    if (openSignal !== undefined && openSignal !== null) setOpen(true);
+  }, [openSignal]);
 
   const toggle = () => {
     if (!collapsible) return;

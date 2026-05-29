@@ -18,12 +18,15 @@ export interface StatsBundle {
   v: number;
   scoreboards: StatsBundleEntry[];
   assignments: RegimentAssignmentMap;
+  /** Regiment rename/merge map (sourceLabel → targetLabel). */
+  aliases: Record<string, string>;
 }
 
-/** Pack stored scoreboards + assignments into an event-agnostic bundle. */
+/** Pack stored scoreboards + assignments + aliases into an event-agnostic bundle. */
 export function buildStatsBundle(
   records: StoredScoreboard[],
   assignments: RegimentAssignmentMap,
+  aliases: Record<string, string> = {},
 ): StatsBundle {
   return {
     v: STATS_BUNDLE_VERSION,
@@ -33,6 +36,7 @@ export function buildStatsBundle(
       ...(r.binding ? { binding: r.binding } : {}),
     })),
     assignments: { ...assignments },
+    aliases: { ...aliases },
   };
 }
 

@@ -43,6 +43,27 @@ export interface EngineOptions {
    * inf + arty reconcile to all.
    */
   type?: PlayerType;
+  /**
+   * Event-level regiment label remap (rename/merge). Applied as the final step
+   * of regiment resolution: a resolved label is replaced by aliasMap[label],
+   * followed transitively, so merged regiments roll into their target.
+   */
+  aliasMap?: Record<string, string>;
+}
+
+/**
+ * Resolve a regiment label through the rename/merge alias map. Follows chains
+ * (A→B→C) and stops deterministically on a cycle.
+ */
+export function applyAlias(label: string, aliasMap?: Record<string, string>): string {
+  if (!aliasMap) return label;
+  let cur = label;
+  const seen = new Set<string>();
+  while (aliasMap[cur] != null && !seen.has(cur)) {
+    seen.add(cur);
+    cur = aliasMap[cur];
+  }
+  return cur;
 }
 
 function kdOf(kills: number, deaths: number): number {
@@ -53,19 +74,24 @@ function emptyCasualties(): TeamCasualties {
   return { total: 0, inForm: 0, skirm: 0, oob: 0 };
 }
 
-/** Resolve a regiment for one player: explicit assignment → list → name tag. */
+/**
+ * Resolve a regiment for one player: explicit assignment → list → name tag,
+ * then through the rename/merge alias map.
+ */
 function resolveFor(
   steamId: string | null,
   name: string,
   assignments: RegimentAssignmentMap,
   list?: RegimentListEntry[],
+  aliasMap?: Record<string, string>,
 ): string {
-  if (steamId && assignments[steamId]) return assignments[steamId];
-  if (list && list.length) {
-    const m = matchPlayerToRegimentList(name, list);
-    if (m) return m;
+  let base: string;
+  if (steamId && assignments[steamId]) base = assignments[steamId];
+  else {
+    const m = list && list.length ? matchPlayerToRegimentList(name, list) : null;
+    base = m ?? extractRegimentTag(name);
   }
-  return extractRegimentTag(name);
+  return applyAlias(base, aliasMap);
 }
 
 /** Find a player's roster entry within a scoreboard (steam id, else name+team). */
@@ -166,7 +192,7 @@ export function computePlayerLeaderboard(
 
   const rows = [...acc.values()];
   for (const r of rows) {
-    r.regiment = resolveFor(r.steamId, r.name, assignments, options.regimentList);
+    r.regiment = resolveFor(r.steamId, r.name, assignments, options.regimentList, options.aliasMap);
     r.kd = kdOf(r.kills, r.deaths);
     r.avgTd = avgTicketCost(r.deathsInForm, r.deathsSkirm, r.deathsOob);
     r.avgTk = avgTicketCost(r.killsInForm, r.killsSkirm, r.killsOob);
@@ -581,7 +607,7 @@ export function computePlayerDetail(
 
   if (!found) return null;
   detail.kd = kdOf(detail.kills, detail.deaths);
-  detail.regiment = resolveFor(detail.steamId, detail.name, assignments, options.regimentList);
+  detail.regiment = resolveFor(detail.steamId, detail.name, assignments, options.regimentList, options.aliasMap);
   detail.avgTd = avgTicketCost(detail.deathsInForm, detail.deathsSkirm, detail.deathsOob);
   detail.avgTk = avgTicketCost(detail.killsInForm, detail.killsSkirm, detail.killsOob);
   return detail;
@@ -673,7 +699,7 @@ export function computeRegimentBreakdown(
   // Per-round, per-regiment rollup + rounds + casualties by cause (killfeed).
   for (const sb of scoreboards) {
     for (const p of sb.players) {
-      const regiment = resolveFor(p.steamId, p.name, assignments, options.regimentList);
+      const regiment = resolveFor(p.steamId, p.name, assignments, options.regimentList, options.aliasMap);
       const r = ensure(regiment);
       r._roundSet.add(sb.sourceFilename);
       let rr = r._perRound.get(sb.sourceFilename);
@@ -707,7 +733,7 @@ export function computeRegimentBreakdown(
       tally.oob += kf.oob;
     }
     for (const kill of sb.kills) {
-      const regiment = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList);
+      const regiment = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
       const r = ensure(regiment);
       const cause = kill.cause || 'Unknown';
       r.casualtiesByCause[cause] = (r.casualtiesByCause[cause] ?? 0) + 1;

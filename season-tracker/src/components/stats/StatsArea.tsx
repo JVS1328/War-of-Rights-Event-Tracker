@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Upload, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Upload, Trash2, Pencil, X, GitMerge } from 'lucide-react';
 import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats } from './useStats';
@@ -14,7 +14,7 @@ import {
 import type { PlayerStatRow, RegimentStatRow, RoundSummary } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
-import { parseRegimentList } from '../../stats/regimentMatcher';
+import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
@@ -70,7 +70,17 @@ export default function StatsArea({
   const [playerKey, setPlayerKey] = useState<string | null>(null);
   const [playerType, setPlayerType] = useState<'all' | 'inf' | 'arty'>('all');
   const [scoreboardId, setScoreboardId] = useState<string | null>(null);
+  // Regiments-tab focus navigation (from the Players-tab regiment link).
+  const [focusRegiment, setFocusRegiment] = useState<string | null>(null);
+  const [focusNonce, setFocusNonce] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Jump from a player's regiment to that regiment's panel in the Regiments tab.
+  const goToRegiment = (label: string) => {
+    setFocusRegiment(label);
+    setFocusNonce((n) => n + 1);
+    setTab('regiments');
+  };
 
   // Open a player card, resetting its role filter to "all".
   const openPlayer = (key: string) => {
@@ -81,7 +91,10 @@ export default function StatsArea({
   const sbs = stats.scoreboards;
   // Registered event units act as the default match list (overrides win; the
   // name-tag heuristic is the fallback for anything unmatched).
-  const opts = useMemo(() => ({ regimentList: parseRegimentList(registryUnits.join('\n')) }), [registryUnits]);
+  const opts = useMemo(
+    () => ({ regimentList: parseRegimentList(registryUnits.join('\n')), aliasMap: stats.aliases }),
+    [registryUnits, stats.aliases],
+  );
 
   const players = useMemo(
     () => computePlayerLeaderboard(sbs, stats.assignments, { ...opts, type: typeFilter }),
@@ -105,12 +118,6 @@ export default function StatsArea({
     onApplyRound?.(weekId, roundFieldUpdates(round, af));
     if (selectedStored) void stats.bind(selectedStored.id, { weekId, round });
   };
-  const editRegiment = (p: PlayerStatRow) => {
-    if (!p.steamId) return;
-    const next = window.prompt(`Regiment for ${p.name}`, p.regiment);
-    if (next != null) void stats.setAssignment(p.steamId, next.trim() || p.regiment);
-  };
-
   const onPickFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const res = await stats.importFiles(files);
@@ -170,7 +177,7 @@ export default function StatsArea({
                 initialSortKey="kills"
                 searchValue={(p) => `${p.name} ${p.regiment}`}
                 searchPlaceholder="Search players or regiments…"
-                columns={playerColumns(editRegiment, openPlayer)}
+                columns={playerColumns(goToRegiment, openPlayer)}
               />
             )}
           </Panel>
@@ -178,15 +185,14 @@ export default function StatsArea({
       )}
 
       {tab === 'regiments' && (
-        <div className="space-y-3">
-          {regiments.length === 0 ? (
-            <Panel title="Regiments">
-              <EmptyHint>Import a scoreboard to see regiment breakdowns</EmptyHint>
-            </Panel>
-          ) : (
-            regiments.map((r) => <RegimentPanel key={r.regiment} reg={r} openPlayer={openPlayer} openRound={openRound} />)
-          )}
-        </div>
+        <RegimentsTab
+          regiments={regiments}
+          stats={stats}
+          openPlayer={openPlayer}
+          openRound={openRound}
+          focusRegiment={focusRegiment}
+          focusNonce={focusNonce}
+        />
       )}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
@@ -255,7 +261,7 @@ function OverviewTab({ o, hasData }: { o: ReturnType<typeof computeOverview>; ha
 
 // ── Players (no Team column — event context) ────────────────────────────────
 
-function playerColumns(editRegiment: (p: PlayerStatRow) => void, openPlayer: (key: string) => void): Column<PlayerStatRow>[] {
+function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: string) => void): Column<PlayerStatRow>[] {
   return [
     {
       key: 'name',
@@ -275,10 +281,9 @@ function playerColumns(editRegiment: (p: PlayerStatRow) => void, openPlayer: (ke
       sortValue: (p) => p.regiment,
       render: (p) => (
         <button
-          onClick={() => editRegiment(p)}
-          className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)] disabled:no-underline"
-          disabled={!p.steamId}
-          title={p.steamId ? 'Click to edit assignment' : 'No steam id — cannot override'}
+          onClick={() => goToRegiment(p.regiment)}
+          className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)]"
+          title="Open this regiment in the Regiments tab"
         >
           {p.regiment}
         </button>
@@ -313,30 +318,257 @@ function Bars({ data }: { data: [string, number][] }) {
   );
 }
 
+interface RegEdit {
+  editMode: boolean;
+  allRegiments: string[];
+  pending: Record<string, string>;
+  selected: Set<string>;
+  stageMove: (steamId: string, target: string) => void;
+  toggleSelect: (steamId: string) => void;
+  rename: (from: string) => void;
+  merge: (from: string, into: string) => void;
+}
+
+function RegimentsTab({
+  regiments,
+  stats,
+  openPlayer,
+  openRound,
+  focusRegiment,
+  focusNonce,
+}: {
+  regiments: RegimentStatRow[];
+  stats: ReturnType<typeof useStats>;
+  openPlayer: (key: string) => void;
+  openRound: (filename: string) => void;
+  focusRegiment: string | null;
+  focusNonce: number;
+}) {
+  const [editMode, setEditMode] = useState(false);
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState('');
+
+  const allRegiments = useMemo(
+    () => regiments.map((r) => r.regiment).sort((a, b) => a.localeCompare(b)),
+    [regiments],
+  );
+  const pendingCount = Object.keys(pending).length;
+  const aliasList = Object.entries(stats.aliases);
+
+  const reset = () => {
+    setPending({});
+    setSelected(new Set());
+    setMoveTarget('');
+  };
+  const exitEdit = () => {
+    if (pendingCount > 0 && !window.confirm(`Discard ${pendingCount} unsaved assignment change(s)?`)) return;
+    reset();
+    setEditMode(false);
+  };
+  const stageMove = (steamId: string, target: string) => {
+    setPending((p) => {
+      const next = { ...p };
+      next[steamId] = target;
+      return next;
+    });
+  };
+  const toggleSelect = (steamId: string) => {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(steamId)) next.delete(steamId);
+      else next.add(steamId);
+      return next;
+    });
+  };
+  const moveSelectedTo = (target: string) => {
+    if (!target || selected.size === 0) return;
+    setPending((p) => {
+      const next = { ...p };
+      for (const id of selected) next[id] = target;
+      return next;
+    });
+    setSelected(new Set());
+    setMoveTarget('');
+  };
+  const save = async () => {
+    await stats.bulkAssign(pending);
+    reset();
+  };
+  const rename = (from: string) => {
+    if (from === UNTAGGED) return;
+    const raw = window.prompt(`Rename regiment "${from}" to:`, from);
+    const to = raw?.trim();
+    if (!to || to === from) return;
+    if (allRegiments.includes(to) && !window.confirm(`"${to}" already exists — this will MERGE "${from}" into it. Continue?`)) return;
+    void stats.setAlias(from, to);
+  };
+  const merge = (from: string, into: string) => {
+    if (!into || into === from || from === UNTAGGED || into === UNTAGGED) return;
+    if (!window.confirm(`Merge "${from}" into "${into}"? All of its players and stats will move. You can undo this later.`)) return;
+    void stats.setAlias(from, into);
+  };
+
+  const edit: RegEdit = { editMode, allRegiments, pending, selected, stageMove, toggleSelect, rename, merge };
+
+  if (regiments.length === 0) {
+    return (
+      <Panel title="Regiments">
+        <EmptyHint>Import a scoreboard to see regiment breakdowns</EmptyHint>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="space-y-3 pb-16">
+      {/* Edit toolbar */}
+      <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+        <button
+          onClick={() => (editMode ? exitEdit() : setEditMode(true))}
+          className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
+            editMode ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
+          }`}
+        >
+          <Pencil size={12} /> {editMode ? 'Done editing' : 'Edit assignments'}
+        </button>
+        {editMode && (
+          <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
+            Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately.
+          </span>
+        )}
+      </div>
+
+      {/* Active renames/merges */}
+      {editMode && aliasList.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges:</span>
+          {aliasList.map(([from, to]) => (
+            <span key={from} className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5">
+              <span className="text-[color:var(--color-text-1)]">{from} → {to}</span>
+              <button onClick={() => void stats.removeAlias(from)} title="Undo" className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {regiments.map((r) => (
+        <RegimentPanel
+          key={r.regiment}
+          reg={r}
+          openPlayer={openPlayer}
+          openRound={openRound}
+          edit={edit}
+          focusActive={focusRegiment === r.regiment}
+          focusNonce={focusNonce}
+        />
+      ))}
+
+      {/* Sticky action bar */}
+      {editMode && (pendingCount > 0 || selected.size > 0) && (
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-bg-2)] px-3 py-2 font-mono text-[11px]">
+          {selected.size > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[color:var(--color-text-1)]">{selected.size} selected →</span>
+              <select
+                value={moveTarget}
+                onChange={(e) => setMoveTarget(e.target.value)}
+                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
+              >
+                <option value="">move to…</option>
+                {allRegiments.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => moveSelectedTo(moveTarget)}
+                disabled={!moveTarget}
+                className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] enabled:hover:bg-[color:var(--color-bg-3)] disabled:opacity-40"
+              >
+                Stage move
+              </button>
+            </div>
+          )}
+          <div className="flex-1" />
+          <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">{pendingCount} pending change{pendingCount === 1 ? '' : 's'}</span>
+          <button onClick={reset} className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+            Discard
+          </button>
+          <button
+            onClick={() => void save()}
+            disabled={pendingCount === 0}
+            className="border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] px-3 py-0.5 uppercase tracking-wider text-[color:var(--color-bg-0)] disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RegimentPanel({
   reg,
   openPlayer,
   openRound,
+  edit,
+  focusActive,
+  focusNonce,
 }: {
   reg: RegimentStatRow;
   openPlayer: (key: string) => void;
   openRound: (filename: string) => void;
+  edit: RegEdit;
+  focusActive: boolean;
+  focusNonce: number;
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusActive && focusNonce > 0) wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focusActive, focusNonce]);
+
   const causes = Object.entries(reg.casualtiesByCause).sort((a, b) => b[1] - a[1]);
   const formations: [string, number][] = [
     [FORMATION_LABEL.in_form, reg.casualtiesByFormation.in_form],
     [FORMATION_LABEL.skirm, reg.casualtiesByFormation.skirm],
     [FORMATION_LABEL.oob, reg.casualtiesByFormation.oob],
   ];
+  const isUntagged = reg.regiment === UNTAGGED;
+  const mergeTargets = edit.allRegiments.filter((l) => l !== reg.regiment && l !== UNTAGGED);
+
   return (
-    <Panel
-      title={reg.regiment}
-      collapsible
-      defaultOpen={false}
-      storageKey={`reg-panel-${reg.regiment}`}
-      right={`${reg.players}p · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · ×Td ${formatAvgT(reg.avgTd)} · ×Tk ${formatAvgT(reg.avgTk)}`}
-    >
+    <div ref={wrapRef}>
+      <Panel
+        title={reg.regiment}
+        collapsible
+        defaultOpen={false}
+        storageKey={`reg-panel-${reg.regiment}`}
+        openSignal={focusActive ? focusNonce : undefined}
+        right={`${reg.players}p · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · ×Td ${formatAvgT(reg.avgTd)} · ×Tk ${formatAvgT(reg.avgTk)}`}
+      >
       <div className="p-3 space-y-3">
+        {edit.editMode && !isUntagged && (
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] border-b border-[color:var(--color-border)] pb-2">
+            <button onClick={() => edit.rename(reg.regiment)} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+              <Pencil size={11} /> Rename
+            </button>
+            <span className="flex items-center gap-1 text-[color:var(--color-text-2)]">
+              <GitMerge size={12} />
+              <select
+                defaultValue=""
+                onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; edit.merge(reg.regiment, v); }}
+                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
+              >
+                <option value="">Merge into…</option>
+                {mergeTargets.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
+            </span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Casualties by formation</div>
@@ -389,30 +621,105 @@ function RegimentPanel({
 
         <div>
           <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Players</div>
-          <DataTable<PlayerStatRow>
-            rows={reg.topPlayers}
-            getRowKey={(p) => p.key}
-            initialSortKey="kills"
-            columns={[
-              {
-                key: 'name',
-                header: 'Player',
-                render: (p) => (
-                  <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
-                    {p.name}
-                  </button>
-                ),
-              },
-              { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
-              { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
-              { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
-              { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (p) => p.avgTd ?? -1, render: (p) => formatAvgT(p.avgTd) },
-              { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (p) => p.avgTk ?? -1, render: (p) => formatAvgT(p.avgTk) },
-            ]}
-          />
+          {edit.editMode ? (
+            <EditablePlayers reg={reg} openPlayer={openPlayer} edit={edit} />
+          ) : (
+            <DataTable<PlayerStatRow>
+              rows={reg.topPlayers}
+              getRowKey={(p) => p.key}
+              initialSortKey="kills"
+              columns={[
+                {
+                  key: 'name',
+                  header: 'Player',
+                  render: (p) => (
+                    <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+                      {p.name}
+                    </button>
+                  ),
+                },
+                { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
+                { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
+                { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
+                { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (p) => p.avgTd ?? -1, render: (p) => formatAvgT(p.avgTd) },
+                { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (p) => p.avgTk ?? -1, render: (p) => formatAvgT(p.avgTk) },
+              ]}
+            />
+          )}
         </div>
       </div>
-    </Panel>
+      </Panel>
+    </div>
+  );
+}
+
+// Editable players list (shown only in edit mode): checkbox to multi-select +
+// a per-player regiment dropdown that stages a move until Save.
+function EditablePlayers({
+  reg,
+  openPlayer,
+  edit,
+}: {
+  reg: RegimentStatRow;
+  openPlayer: (key: string) => void;
+  edit: RegEdit;
+}) {
+  return (
+    <table className="w-full font-mono text-[11px]">
+      <thead>
+        <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+          <th className="px-2 py-1 w-6" />
+          <th className="px-2 py-1 text-left">Player</th>
+          <th className="px-2 py-1 text-left">Move to</th>
+          <th className="px-2 py-1 text-right">K</th>
+          <th className="px-2 py-1 text-right">D</th>
+        </tr>
+      </thead>
+      <tbody>
+        {reg.topPlayers.map((p) => {
+          const pinnable = !!p.steamId;
+          const staged = pinnable ? edit.pending[p.steamId!] : undefined;
+          const value = staged ?? reg.regiment;
+          const moved = staged != null && staged !== reg.regiment;
+          return (
+            <tr key={p.key} className={`border-b border-[color:var(--color-border)] ${moved ? 'bg-[color:var(--color-accent-soft)]' : ''}`}>
+              <td className="px-2 py-1">
+                <input
+                  type="checkbox"
+                  disabled={!pinnable}
+                  checked={pinnable && edit.selected.has(p.steamId!)}
+                  onChange={() => pinnable && edit.toggleSelect(p.steamId!)}
+                />
+              </td>
+              <td className="px-2 py-1">
+                <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+                  {p.name}
+                </button>
+                {moved && <span className="text-[color:var(--color-text-2)]"> → {staged}</span>}
+              </td>
+              <td className="px-2 py-1">
+                {pinnable ? (
+                  <select
+                    value={value}
+                    onChange={(e) => edit.stageMove(p.steamId!, e.target.value)}
+                    className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
+                  >
+                    {!edit.allRegiments.includes(value) && <option value={value}>{value}</option>}
+                    {edit.allRegiments.map((label) => (
+                      <option key={label} value={label}>{label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-[color:var(--color-text-2)]" title="No steam id — cannot reassign individually">—</span>
+                )}
+              </td>
+              <td className="px-2 py-1 text-right tabular-nums">{p.kills}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{p.deaths}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

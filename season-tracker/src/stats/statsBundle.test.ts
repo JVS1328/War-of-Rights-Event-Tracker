@@ -22,8 +22,8 @@ const record = (overrides: Partial<StoredScoreboard> = {}): StoredScoreboard => 
 });
 
 describe('buildStatsBundle', () => {
-  it('packs scoreboards (without id/eventId) and assignments', () => {
-    const bundle = buildStatsBundle([record()], { '76561198000000001': '51stNY' });
+  it('packs scoreboards (without id/eventId), assignments, and aliases', () => {
+    const bundle = buildStatsBundle([record()], { '76561198000000001': '51stNY' }, { '20THGA': '51STNY' });
     expect(bundle.v).toBe(STATS_BUNDLE_VERSION);
     expect(bundle.scoreboards).toHaveLength(1);
     const entry = bundle.scoreboards[0];
@@ -32,6 +32,12 @@ describe('buildStatsBundle', () => {
     expect(entry).not.toHaveProperty('id');
     expect(entry).not.toHaveProperty('eventId');
     expect(bundle.assignments).toEqual({ '76561198000000001': '51stNY' });
+    expect(bundle.aliases).toEqual({ '20THGA': '51STNY' });
+  });
+
+  it('defaults aliases to an empty object when omitted', () => {
+    const bundle = buildStatsBundle([record()], {});
+    expect(bundle.aliases).toEqual({});
   });
 
   it('carries a binding when present and omits it when absent', () => {
