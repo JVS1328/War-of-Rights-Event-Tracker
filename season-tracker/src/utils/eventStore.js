@@ -143,6 +143,9 @@ export const makeDefaultEvent = (overrides = {}) => ({
   unitRegistry: {},
   eloSystem: { ...DEFAULT_ELO_SYSTEM },
   eloConfig: { ...DEFAULT_ELO_CONFIG },
+  // Maps a tracker token → scoreboard regiment label(s) for per-unit stats.
+  // Each regiment is claimed by at most one token across the event.
+  tokenRegiments: {},
   seasons: [],
   ...overrides,
 });

@@ -1,0 +1,103 @@
+import type { FormationCounts } from './statsEngine';
+import { avgTicketCost } from './labels';
+
+/**
+ * Per-token stat snapshot — the summable components needed to show K/D, the
+ * formation makeup of deaths/kills, and ×Td/×Tk at any aggregation scope.
+ * Kept summable (counts, not averages) so rounds roll into weeks/seasons/events.
+ */
+export interface UnitSnap {
+  kills: number;
+  deaths: number;
+  /** Deaths bucketed by the stance the player died in (drives ×Td). */
+  deathsForm: FormationCounts;
+  /** Kills bucketed by the victim's stance (drives ×Tk). */
+  killsForm: FormationCounts;
+}
+
+/** Minimal regiment shape consumed from the stats engine's breakdown. */
+export interface RegimentLike {
+  regiment: string;
+  kills: number;
+  deaths: number;
+  casualtiesByFormation: FormationCounts;
+  killsByFormation: FormationCounts;
+}
+
+export function emptyUnitSnap(): UnitSnap {
+  return {
+    kills: 0,
+    deaths: 0,
+    deathsForm: { in_form: 0, skirm: 0, oob: 0 },
+    killsForm: { in_form: 0, skirm: 0, oob: 0 },
+  };
+}
+
+const addForm = (a: FormationCounts, b: FormationCounts): FormationCounts => ({
+  in_form: a.in_form + b.in_form,
+  skirm: a.skirm + b.skirm,
+  oob: a.oob + b.oob,
+});
+
+export function addUnitSnap(a: UnitSnap, b: UnitSnap): UnitSnap {
+  return {
+    kills: a.kills + b.kills,
+    deaths: a.deaths + b.deaths,
+    deathsForm: addForm(a.deathsForm, b.deathsForm),
+    killsForm: addForm(a.killsForm, b.killsForm),
+  };
+}
+
+/**
+ * For each token, sum the stats of the scoreboard regiments it has claimed in
+ * one regiment breakdown. Regiments absent from the breakdown contribute zero.
+ */
+export function deriveTokenSnaps(
+  breakdown: RegimentLike[],
+  tokenRegiments: Record<string, string[]>,
+): Record<string, UnitSnap> {
+  const byReg = new Map(breakdown.map((r) => [r.regiment, r]));
+  const out: Record<string, UnitSnap> = {};
+  for (const [token, regs] of Object.entries(tokenRegiments)) {
+    let snap = emptyUnitSnap();
+    for (const reg of regs) {
+      const r = byReg.get(reg);
+      if (r) {
+        snap = addUnitSnap(snap, {
+          kills: r.kills,
+          deaths: r.deaths,
+          deathsForm: r.casualtiesByFormation,
+          killsForm: r.killsByFormation,
+        });
+      }
+    }
+    out[token] = snap;
+  }
+  return out;
+}
+
+/**
+ * Accumulate per-token snapshots across several regiment breakdowns (e.g. one
+ * per scoreboard/round). The caller decides which breakdowns to include
+ * (all = event totals; bound to weeks ≤ N = "as of week N").
+ */
+export function accumulateTokenSnaps(
+  breakdowns: RegimentLike[][],
+  tokenRegiments: Record<string, string[]>,
+): Record<string, UnitSnap> {
+  const out: Record<string, UnitSnap> = {};
+  for (const token of Object.keys(tokenRegiments)) out[token] = emptyUnitSnap();
+  for (const breakdown of breakdowns) {
+    const snaps = deriveTokenSnaps(breakdown, tokenRegiments);
+    for (const [token, snap] of Object.entries(snaps)) out[token] = addUnitSnap(out[token], snap);
+  }
+  return out;
+}
+
+export function unitSnapAvgTd(snap: UnitSnap): number | null {
+  return avgTicketCost(snap.deathsForm.in_form, snap.deathsForm.skirm, snap.deathsForm.oob);
+}
+
+export function unitSnapAvgTk(snap: UnitSnap): number | null {
+  return avgTicketCost(snap.killsForm.in_form, snap.killsForm.skirm, snap.killsForm.oob);
+}

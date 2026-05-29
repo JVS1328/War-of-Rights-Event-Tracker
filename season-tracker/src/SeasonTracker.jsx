@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Users, Trophy, Calendar, Plus, Trash2, Edit2, Save, X,
   BarChart3, TrendingUp, Award, Download, Upload, Settings,
@@ -15,6 +15,10 @@ import {
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
 import { isStatsBundle } from './stats/statsBundle';
+import { computeRegimentBreakdown } from './stats/statsEngine';
+import { parseRegimentList } from './stats/regimentMatcher';
+import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk } from './stats/unitStats';
+import { FORMATION_SHORT, formatAvgT, AVG_TD_LABEL, AVG_TK_LABEL } from './stats/labels';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -159,9 +163,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [expandedSections, setExpandedSections] = useState({});
   const [enlargedSection, setEnlargedSection] = useState(null);
   
-  // Casualty input state
-  const [casualtyInputData, setCasualtyInputData] = useState({});
-  
+  // Player-stat assignment: scoreboard data loaded from the stats repo (for the
+  // Assign-stats modal and the live per-unit stats in the Stats view), plus the
+  // token currently being assigned in the sub-modal.
+  const [sbStored, setSbStored] = useState([]);
+  const [sbAssignments, setSbAssignments] = useState({});
+  const [sbAliases, setSbAliases] = useState({});
+  const [assignToken, setAssignToken] = useState(null);
+  const [assignSel, setAssignSel] = useState([]);
+
   // Balancer state
   const [balancerMaxDiff, setBalancerMaxDiff] = useState(1);
   const [balancerUnitCounts, setBalancerUnitCounts] = useState({});
@@ -2299,233 +2309,176 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return { inflicted, lost };
   };
 
-  // Open Casualty Input Modal
-  const openCasualtyModal = () => {
-    if (!selectedWeek) {
-      alert('Please select a week first');
-      return;
+  // ── Player-stat assignment (tracker token ← scoreboard regiment(s)) ─────────
+  // The token→regiments map lives on the event; per-unit stats are derived from
+  // scoreboards. Casualty input no longer feeds round totals (those stay owned
+  // by the per-side casualty/formation inputs, so untagged kills/deaths survive).
+  const tokenRegiments = activeEvent?.tokenRegiments || {};
+
+  const loadScoreboardData = useCallback(async () => {
+    const eventId = appState.activeEventId;
+    try {
+      const summaries = await statsRepo.listScoreboards({ eventId });
+      const full = await Promise.all(summaries.map((s) => statsRepo.getScoreboard(s.id)));
+      setSbStored(full.filter(Boolean));
+      setSbAssignments(await statsRepo.getRegimentAssignments(eventId));
+      setSbAliases(await statsRepo.getRegimentAliases(eventId));
+    } catch {
+      setSbStored([]); setSbAssignments({}); setSbAliases({});
     }
+  }, [appState.activeEventId]);
 
-    // Initialize casualty input data from existing week data
-    const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-    const week = weeks[weekIdx];
-    const teamAName = teamNames.A;
-    const teamBName = teamNames.B;
+  // Refresh scoreboard data whenever the Stats or Assign modal opens (so the
+  // per-unit stats auto-recompute and reflect any re-imported scoreboards).
+  useEffect(() => {
+    if (showStatsModal || showCasualtyModal) void loadScoreboardData();
+  }, [showStatsModal, showCasualtyModal, loadScoreboardData]);
 
-    const initialData = {
-      [teamAName]: { casualties: { r1: {}, r2: {} }, kills: { r1: {}, r2: {} } },
-      [teamBName]: { casualties: { r1: {}, r2: {} }, kills: { r1: {}, r2: {} } }
-    };
+  const registryRegimentList = useMemo(
+    () => parseRegimentList(
+      Object.values(activeEvent?.unitRegistry || {})
+        .map(u => (typeof u === 'string' ? u : u?.name)).filter(Boolean).join('\n'),
+    ),
+    [activeEvent],
+  );
+  const engineOpts = useMemo(
+    () => ({ regimentList: registryRegimentList, aliasMap: sbAliases }),
+    [registryRegimentList, sbAliases],
+  );
+  // Regiment breakdown across every scoreboard (the Assign-modal pool + preview).
+  const eventRegBreakdown = useMemo(
+    () => computeRegimentBreakdown(sbStored.map(s => s.scoreboard), sbAssignments, engineOpts),
+    [sbStored, sbAssignments, engineOpts],
+  );
+  // Per-scoreboard breakdown tagged with its round binding (week-scoped sums).
+  const perScoreboardBreakdown = useMemo(
+    () => sbStored.map(s => ({
+      weekId: s.binding?.weekId ?? null,
+      round: s.binding?.round ?? null,
+      breakdown: computeRegimentBreakdown([s.scoreboard], sbAssignments, engineOpts),
+    })),
+    [sbStored, sbAssignments, engineOpts],
+  );
+  const availableRegiments = useMemo(
+    () => eventRegBreakdown.map(r => r.regiment).filter(r => r !== 'UNTAGGED').sort((a, b) => a.localeCompare(b)),
+    [eventRegBreakdown],
+  );
+  const regimentClaimedBy = useMemo(() => {
+    const m = {};
+    for (const [token, regs] of Object.entries(tokenRegiments)) for (const r of regs) m[r] = token;
+    return m;
+  }, [tokenRegiments]);
 
-    // Populate with existing data
-    const existingCasualties = week.weeklyCasualties || {};
-    const existingKills = week.weeklyKills || {};
+  // Per-token stats derived live from scoreboards. Event scope = all bound
+  // scoreboards; season scope = those bound to active-season weeks ≤ maxWeekIdx.
+  const tokenSnapsEventTotals = () =>
+    accumulateTokenSnaps(perScoreboardBreakdown.map(x => x.breakdown), tokenRegiments);
+  const tokenSnapsAsOfWeek = (maxWeekIdx) => {
+    const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
+    const brks = perScoreboardBreakdown.filter(x => x.weekId && ids.has(String(x.weekId))).map(x => x.breakdown);
+    return accumulateTokenSnaps(brks, tokenRegiments);
+  };
 
-    // Team A units
-    week.teamA.forEach(unit => {
-      initialData[teamAName].casualties.r1[unit] = existingCasualties[teamAName]?.r1?.[unit] || 0;
-      initialData[teamAName].casualties.r2[unit] = existingCasualties[teamAName]?.r2?.[unit] || 0;
-      initialData[teamAName].kills.r1[unit] = existingKills[teamAName]?.r1?.[unit] || 0;
-      initialData[teamAName].kills.r2[unit] = existingKills[teamAName]?.r2?.[unit] || 0;
-    });
+  // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk).
+  const renderUnitStatsTable = (snaps) => {
+    const rows = Object.entries(snaps)
+      .filter(([, s]) => s.kills || s.deaths)
+      .map(([unit, s]) => ({
+        unit,
+        kills: s.kills,
+        deaths: s.deaths,
+        kd: s.deaths > 0 ? s.kills / s.deaths : s.kills,
+        form: s.deathsForm,
+        td: unitSnapAvgTd(s),
+        tk: unitSnapAvgTk(s),
+      }))
+      .sort((a, b) => b.kills - a.kills);
+    if (rows.length === 0) {
+      return (
+        <p className="text-text-secondary text-center py-4 text-sm">
+          No assigned player stats yet. Use “Assign Player Stats” on a week to map units to scoreboard regiments.
+        </p>
+      );
+    }
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-text-secondary border-b border-border-default">
+              <th className="text-left py-2 px-2">Unit</th>
+              <th className="text-center py-2 px-2">K</th>
+              <th className="text-center py-2 px-2">D</th>
+              <th className="text-center py-2 px-2">K/D</th>
+              <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
+              <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
+              <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => (
+              <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                <td className="py-2 px-2 font-medium">{r.unit}</td>
+                <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
+                <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
+                <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
+                <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
+                <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
+                <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
-    // Team B units
-    week.teamB.forEach(unit => {
-      initialData[teamBName].casualties.r1[unit] = existingCasualties[teamBName]?.r1?.[unit] || 0;
-      initialData[teamBName].casualties.r2[unit] = existingCasualties[teamBName]?.r2?.[unit] || 0;
-      initialData[teamBName].kills.r1[unit] = existingKills[teamBName]?.r1?.[unit] || 0;
-      initialData[teamBName].kills.r2[unit] = existingKills[teamBName]?.r2?.[unit] || 0;
-    });
-
-    setCasualtyInputData(initialData);
+  // Open the Assign-stats modal for the selected week.
+  const openCasualtyModal = () => {
+    if (!selectedWeek) { alert('Please select a week first'); return; }
+    void loadScoreboardData();
     setShowCasualtyModal(true);
   };
 
-  // Save Casualty Data
-  const saveCasualtyData = () => {
-    if (!selectedWeek) return;
-
-    const teamAName = teamNames.A;
-    const teamBName = teamNames.B;
-
-    // Build weekly casualties structure
-    const weeklyCasualties = {
-      [teamAName]: {
-        r1: casualtyInputData[teamAName]?.casualties?.r1 || {},
-        r2: casualtyInputData[teamAName]?.casualties?.r2 || {}
-      },
-      [teamBName]: {
-        r1: casualtyInputData[teamBName]?.casualties?.r1 || {},
-        r2: casualtyInputData[teamBName]?.casualties?.r2 || {}
-      }
-    };
-
-    // Build weekly kills structure
-    const weeklyKills = {
-      [teamAName]: {
-        r1: casualtyInputData[teamAName]?.kills?.r1 || {},
-        r2: casualtyInputData[teamAName]?.kills?.r2 || {}
-      },
-      [teamBName]: {
-        r1: casualtyInputData[teamBName]?.kills?.r1 || {},
-        r2: casualtyInputData[teamBName]?.kills?.r2 || {}
-      }
-    };
-
-    // Calculate totals
-    const r1CasualtiesA = Object.values(weeklyCasualties[teamAName].r1).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-    const r1CasualtiesB = Object.values(weeklyCasualties[teamBName].r1).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-    const r2CasualtiesA = Object.values(weeklyCasualties[teamAName].r2).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-    const r2CasualtiesB = Object.values(weeklyCasualties[teamBName].r2).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-
-    updateWeek(selectedWeek.id, {
-      weeklyCasualties,
-      weeklyKills,
-      r1CasualtiesA,
-      r1CasualtiesB,
-      r2CasualtiesA,
-      r2CasualtiesB
-    });
-
-    setShowCasualtyModal(false);
+  // Recompute per-(week,round,token) snapshots from every bound scoreboard for a
+  // mapping and persist them onto the weeks (portable fallback for the Stats
+  // view when scoreboards aren't loaded). Tokens with no data are omitted.
+  const backfillUnitSnapshots = (mapping) => {
+    const groups = {};
+    for (const { weekId, round, breakdown } of perScoreboardBreakdown) {
+      if (!weekId || (round !== 1 && round !== 2)) continue;
+      const k = `${weekId}::${round}`;
+      (groups[k] = groups[k] || []).push(breakdown);
+    }
+    const byWeek = {};
+    for (const [k, brks] of Object.entries(groups)) {
+      const sep = k.lastIndexOf('::');
+      const weekId = k.slice(0, sep);
+      const round = k.slice(sep + 2);
+      const snaps = accumulateTokenSnaps(brks, mapping);
+      const kept = {};
+      for (const [t, s] of Object.entries(snaps)) if (s.kills || s.deaths) kept[t] = s;
+      byWeek[weekId] = byWeek[weekId] || { r1: {}, r2: {} };
+      byWeek[weekId][`r${round}`] = kept;
+    }
+    setAppState(prev => updateActiveEvent(prev, ev => ({
+      ...ev,
+      seasons: ev.seasons.map(se => ({
+        ...se,
+        weeks: (se.weeks || []).map(w => byWeek[w.id] ? { ...w, unitStats: byWeek[w.id] } : w),
+      })),
+    })));
   };
 
-  // Load Casualties from CSV — searches across both teams
-  const loadCasualtiesFromCSV = (roundKey, event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result;
-        const lines = text.split('\n');
-
-        // Detect column layout from header
-        const headerParts = lines[0].split(',').map(p => p.trim().toLowerCase());
-        let casualtiesCol = 1;
-        let playerCountCol = -1;
-        let killsCol = -1;
-
-        headerParts.forEach((h, i) => {
-          if (i === 0) return;
-          if (h.includes('casualt') || h === 'deaths') casualtiesCol = i;
-          else if (h.includes('kill')) killsCol = i;
-          else if (h.includes('player') || h.includes('count')) playerCountCol = i;
-        });
-
-        const dataLines = lines.slice(1);
-
-        const normalizeName = (name) => name.replace(/\s/g, '').replace(/-/g, '').toLowerCase();
-
-        // Build lookup across both teams
-        const unitToTeam = {};
-        const normalizedMap = {};
-        [teamNames.A, teamNames.B].forEach(tn => {
-          Object.keys(casualtyInputData[tn]?.casualties?.[roundKey] || {}).forEach(unit => {
-            unitToTeam[unit] = tn;
-            normalizedMap[normalizeName(unit)] = unit;
-          });
-        });
-        const allUnits = Object.keys(unitToTeam);
-
-        let casualtiesLoaded = 0;
-        let killsLoaded = 0;
-        let playerCountsLoaded = 0;
-        const unmatched = [];
-
-        dataLines.forEach(line => {
-          const parts = line.split(',').map(p => p.trim());
-          if (parts.length < 2) return;
-
-          const csvRegimentName = parts[0];
-          if (!csvRegimentName) return;
-
-          const casualties = parseInt(parts[casualtiesCol]);
-          if (isNaN(casualties)) return;
-
-          const playerCount = playerCountCol >= 0 && parts.length > playerCountCol ? parseInt(parts[playerCountCol]) : null;
-          const killCount = killsCol >= 0 && parts.length > killsCol ? parseInt(parts[killsCol]) : null;
-
-          let matchedUnit = null;
-          if (allUnits.includes(csvRegimentName)) {
-            matchedUnit = csvRegimentName;
-          } else {
-            const normalizedCsv = normalizeName(csvRegimentName);
-            if (normalizedMap[normalizedCsv]) {
-              matchedUnit = normalizedMap[normalizedCsv];
-            } else {
-              unmatched.push(csvRegimentName);
-              return;
-            }
-          }
-
-          if (matchedUnit) {
-            const teamName = unitToTeam[matchedUnit];
-            setCasualtyInputData(prev => {
-              const updated = { ...prev };
-              updated[teamName] = { ...updated[teamName] };
-              updated[teamName].casualties = { ...updated[teamName].casualties };
-              updated[teamName].casualties[roundKey] = {
-                ...updated[teamName].casualties[roundKey],
-                [matchedUnit]: casualties
-              };
-              if (killCount !== null && !isNaN(killCount)) {
-                updated[teamName].kills = { ...updated[teamName].kills };
-                updated[teamName].kills[roundKey] = {
-                  ...updated[teamName].kills?.[roundKey],
-                  [matchedUnit]: killCount
-                };
-              }
-              return updated;
-            });
-            casualtiesLoaded++;
-            if (killCount !== null && !isNaN(killCount)) killsLoaded++;
-
-            if (playerCount !== null && !isNaN(playerCount) && selectedWeek) {
-              const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-              if (weekIdx !== -1) {
-                const updatedWeek = { ...weeks[weekIdx] };
-                if (!updatedWeek.unitPlayerCounts) updatedWeek.unitPlayerCounts = {};
-                if (!updatedWeek.unitPlayerCounts[matchedUnit]) {
-                  updatedWeek.unitPlayerCounts[matchedUnit] = { min: 0, max: 100 };
-                }
-
-                if (roundKey === 'r1') {
-                  updatedWeek.unitPlayerCounts[matchedUnit].max = playerCount;
-                } else {
-                  updatedWeek.unitPlayerCounts[matchedUnit].min = playerCount;
-                }
-
-                const minVal = parseInt(updatedWeek.unitPlayerCounts[matchedUnit].min);
-                const maxVal = parseInt(updatedWeek.unitPlayerCounts[matchedUnit].max);
-                if (minVal > maxVal) {
-                  updatedWeek.unitPlayerCounts[matchedUnit].min = maxVal;
-                  updatedWeek.unitPlayerCounts[matchedUnit].max = minVal;
-                }
-
-                setWeeks(weeks.map((w, idx) => idx === weekIdx ? updatedWeek : w));
-                playerCountsLoaded++;
-              }
-            }
-          }
-        });
-
-        let msg = `Loaded casualties for ${casualtiesLoaded} regiment(s).`;
-        if (killsLoaded > 0) msg += `\nLoaded kills for ${killsLoaded} regiment(s).`;
-        if (playerCountsLoaded > 0) msg += `\nLoaded player counts for ${playerCountsLoaded} regiment(s).`;
-        if (unmatched.length > 0) {
-          msg += `\n\nUnmatched regiments (${unmatched.length}):\n${unmatched.slice(0, 10).join('\n')}`;
-          if (unmatched.length > 10) msg += `\n... and ${unmatched.length - 10} more`;
-        }
-
-        alert(msg);
-      } catch (error) {
-        alert('Error loading CSV: ' + error.message);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
+  const openAssign = (token) => { setAssignToken(token); setAssignSel(tokenRegiments[token] || []); };
+  const toggleAssignReg = (reg) =>
+    setAssignSel(sel => sel.includes(reg) ? sel.filter(r => r !== reg) : [...sel, reg]);
+  const saveAssign = () => {
+    if (!assignToken) return;
+    const next = { ...tokenRegiments };
+    if (assignSel.length) next[assignToken] = [...assignSel]; else delete next[assignToken];
+    setAppState(prev => updateActiveEvent(prev, ev => ({ ...ev, tokenRegiments: next })));
+    backfillUnitSnapshots(next);
+    setAssignToken(null);
   };
 
   // Division Management Functions
@@ -6810,7 +6763,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Flame className="w-6 h-6" />
-                      Input Casualties - {selectedWeek.name}
+                      Assign Player Stats - {selectedWeek.name}
                     </h2>
                     <button
                       onClick={() => setShowCasualtyModal(false)}
@@ -6820,19 +6773,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
-                  {/* Load CSV buttons — one per round, matches across both teams */}
-                  <div className="flex gap-3 mb-4">
-                    {[{ key: 'r1', label: 'Round 1' }, { key: 'r2', label: 'Round 2' }].map(({ key: roundKey, label }) => (
-                      <label key={roundKey} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs cursor-pointer transition">
-                        Load {label} CSV
-                        <input
-                          type="file"
-                          accept=".csv"
-                          onChange={(e) => loadCasualtiesFromCSV(roundKey, e)}
-                          className="hidden"
-                        />
-                      </label>
-                    ))}
+                  <div className="text-xs text-text-secondary mb-4 bg-bg-inset rounded p-3 leading-relaxed">
+                    Assign each token the scoreboard regiment(s) that played as it — for units that used a different in-game tag this event, or that fielded several regiments under one token. Stats are pulled from imported scoreboards and apply across every round we have data for.
+                    {' '}These do <span className="font-semibold text-text-primary">not</span> change the round casualty totals (those stay on the per-side casualty inputs, which include untagged losses).
+                    {sbStored.length === 0 && (
+                      <span className="block mt-1 text-amber-400">No scoreboards imported for this event yet — import them in the Player Stats view first.</span>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -6843,76 +6789,31 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <div key={teamName} className="bg-bg-inset rounded-lg p-4">
                           <h3 className="text-lg font-semibold mb-4">{teamName} Units</h3>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {[{ key: 'r1', label: 'Round 1' }, { key: 'r2', label: 'Round 2' }].map(({ key: roundKey, label }) => (
-                              <div key={roundKey} className="bg-bg-inset rounded-lg p-3">
-                                <h4 className="font-semibold mb-3">{label}</h4>
-                                <div className="space-y-2 max-h-64 overflow-y-auto">
-                                  {rosterUnits.length > 0 && (
-                                    <div className="flex items-center text-xs text-text-secondary mb-1">
-                                      <span className="flex-1" />
-                                      <span className="w-14 text-center text-red-400">Deaths</span>
-                                      <span className="w-14 text-center text-green-400 ml-1">Kills</span>
+                          <div className="space-y-2">
+                            {rosterUnits.length === 0 && (
+                              <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
+                            )}
+                            {rosterUnits.map(unit => {
+                              const regs = tokenRegiments[unit] || [];
+                              const snap = deriveTokenSnaps(eventRegBreakdown, { [unit]: regs })[unit];
+                              return (
+                                <div key={unit} className="flex items-center gap-2 bg-bg-card rounded p-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate" title={unit}>{unit}</div>
+                                    <div className="text-xs text-text-secondary truncate">
+                                      {regs.length ? regs.join(', ') : 'Unassigned'}
+                                      {regs.length > 0 && ` · ${snap.kills}K / ${snap.deaths}D`}
                                     </div>
-                                  )}
-                                  {rosterUnits.map(unit => (
-                                    <div key={unit} className="flex items-center">
-                                      <label className="text-sm truncate flex-1" title={unit}>
-                                        {unit}:
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={casualtyInputData[teamName]?.casualties?.[roundKey]?.[unit] || 0}
-                                        onChange={(e) => {
-                                          const value = parseInt(e.target.value) || 0;
-                                          setCasualtyInputData(prev => ({
-                                            ...prev,
-                                            [teamName]: {
-                                              ...prev[teamName],
-                                              casualties: {
-                                                ...prev[teamName]?.casualties,
-                                                [roundKey]: {
-                                                  ...prev[teamName]?.casualties?.[roundKey],
-                                                  [unit]: value
-                                                }
-                                              }
-                                            }
-                                          }));
-                                        }}
-                                        className="w-14 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-2"
-                                      />
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={casualtyInputData[teamName]?.kills?.[roundKey]?.[unit] || 0}
-                                        onChange={(e) => {
-                                          const value = parseInt(e.target.value) || 0;
-                                          setCasualtyInputData(prev => ({
-                                            ...prev,
-                                            [teamName]: {
-                                              ...prev[teamName],
-                                              kills: {
-                                                ...prev[teamName]?.kills,
-                                                [roundKey]: {
-                                                  ...prev[teamName]?.kills?.[roundKey],
-                                                  [unit]: value
-                                                }
-                                              }
-                                            }
-                                          }));
-                                        }}
-                                        className="w-14 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm ml-1"
-                                      />
-                                    </div>
-                                  ))}
-                                  {rosterUnits.length === 0 && (
-                                    <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
-                                  )}
+                                  </div>
+                                  <button
+                                    onClick={() => openAssign(unit)}
+                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition whitespace-nowrap"
+                                  >
+                                    Assign stats
+                                  </button>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -6925,14 +6826,65 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       onClick={() => setShowCasualtyModal(false)}
                       className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
                     >
-                      Cancel
+                      Close
                     </button>
-                    <button
-                      onClick={saveCasualtyData}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                    >
-                      <Save className="w-4 h-4" />
-                      Save
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Assign-stats sub-modal: toggle scoreboard regiments for one token */}
+          {assignToken && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={() => setAssignToken(null)}>
+              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-semibold truncate">Assign stats → {assignToken}</h3>
+                    <button onClick={() => setAssignToken(null)} className="p-1 rounded hover:bg-bg-inset"><X className="w-4 h-4 text-text-muted" /></button>
+                  </div>
+                  <p className="text-xs text-text-secondary mb-3">
+                    Toggle the scoreboard regiment(s) that played as <span className="font-semibold">{assignToken}</span>. Regiments already claimed by another token are locked.
+                  </p>
+
+                  {(() => {
+                    const snap = deriveTokenSnaps(eventRegBreakdown, { [assignToken]: assignSel })[assignToken];
+                    const kd = snap.deaths > 0 ? (snap.kills / snap.deaths).toFixed(2) : String(snap.kills);
+                    return (
+                      <div className="text-xs bg-bg-inset rounded p-2 mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                        <span className="text-green-400">{snap.kills}K</span>
+                        <span className="text-red-400">{snap.deaths}D</span>
+                        <span>K/D {kd}</span>
+                        <span title={AVG_TD_LABEL}>×Td {formatAvgT(unitSnapAvgTd(snap))}</span>
+                        <span title={AVG_TK_LABEL}>×Tk {formatAvgT(unitSnapAvgTk(snap))}</span>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-1 max-h-[45vh] overflow-y-auto">
+                    {availableRegiments.length === 0 && (
+                      <p className="text-text-secondary text-xs text-center py-3">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
+                    )}
+                    {availableRegiments.map(reg => {
+                      const owner = regimentClaimedBy[reg];
+                      const lockedByOther = owner && owner !== assignToken;
+                      return (
+                        <label
+                          key={reg}
+                          className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${lockedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-inset cursor-pointer'}`}
+                        >
+                          <input type="checkbox" disabled={lockedByOther} checked={assignSel.includes(reg)} onChange={() => toggleAssignReg(reg)} />
+                          <span className="flex-1 truncate">{reg}</span>
+                          {lockedByOther && <span className="text-[10px] text-text-secondary whitespace-nowrap">taken by {owner}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border-default">
+                    <button onClick={() => setAssignToken(null)} className="px-3 py-1.5 border border-border-default hover:bg-bg-inset text-sm rounded">Cancel</button>
+                    <button onClick={saveAssign} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded flex items-center gap-1.5">
+                      <Save className="w-4 h-4" /> Save
                     </button>
                   </div>
                 </div>
@@ -7233,33 +7185,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="text-xl font-bold text-indigo-400">{usaCasTotal + csaCasTotal}</div>
                             </div>
                           </div>
-                          {totalCasUnits > 0 && (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-text-secondary border-b border-border-default">
-                                    <th className="text-left py-2 px-2">Unit</th>
-                                    <th className="text-center py-2 px-2">Lost</th>
-                                    <th className="text-center py-2 px-2" title="Average lost per round played">Lost / Round</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {ladder
-                                    .filter(r => r.casualtiesTaken > 0)
-                                    .sort((a, b) => b.casualtiesTaken - a.casualtiesTaken)
-                                    .map((r, idx) => (
-                                      <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                                        <td className="py-2 px-2 font-medium">{r.unit}</td>
-                                        <td className="text-red-400 text-center py-2 px-2">{r.casualtiesTaken}</td>
-                                        <td className="text-text-secondary text-center py-2 px-2">
-                                          {r.rounds > 0 ? (r.casualtiesTaken / r.rounds).toFixed(1) : '–'}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                          <div className="mt-2">
+                            <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
+                            {renderUnitStatsTable(tokenSnapsEventTotals())}
+                          </div>
                         </div>
 
                         {/* Aggregate map stats — same UI as the Season tab,
@@ -7365,83 +7294,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     })()}
 
-                    {/* Per-Unit Casualty Table */}
-                    {(() => {
-                      const { inflicted, lost } = calculateCasualties();
-                      const allInvolvedUnits = new Set([...Object.keys(inflicted), ...Object.keys(lost)]);
-                      
-                      if (allInvolvedUnits.size === 0) {
-                        return null;
-                      }
-
-                      // Count games attended for each unit
-                      const gamesAttended = {};
-                      weeks.forEach(week => {
-                        const weeklyCas = week.weeklyCasualties || {};
-                        const teamAName = teamNames.A;
-                        const teamBName = teamNames.B;
-                        
-                        ['r1', 'r2'].forEach(roundKey => {
-                          const roundUnits = new Set([
-                            ...Object.keys(weeklyCas[teamAName]?.[roundKey] || {}),
-                            ...Object.keys(weeklyCas[teamBName]?.[roundKey] || {})
-                          ]);
-                          roundUnits.forEach(unit => {
-                            gamesAttended[unit] = (gamesAttended[unit] || 0) + 1;
-                          });
-                        });
-                      });
-
-                      const tableData = Array.from(allInvolvedUnits).map(unit => {
-                        const inflictedCount = inflicted[unit] || 0;
-                        const lostCount = lost[unit] || 0;
-                        const games = gamesAttended[unit] || 0;
-                        const kdRatio = lostCount > 0 ? inflictedCount / lostCount : Infinity;
-                        
-                        return {
-                          unit,
-                          inflicted: Math.round(inflictedCount),
-                          lost: lostCount,
-                          kd: kdRatio,
-                          inflictedPerGame: games > 0 ? inflictedCount / games : 0,
-                          lostPerGame: games > 0 ? lostCount / games : 0
-                        };
-                      }).sort((a, b) => b.kd - a.kd);
-
-                      return (
-                        <div className="bg-bg-inset rounded p-3 mt-4">
-                          <h4 className="font-semibold mb-3">Per-Unit Casualty Report</h4>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-text-secondary border-b border-border-default">
-                                  <th className="text-left py-2 px-2">Unit</th>
-                                  <th className="text-center py-2 px-2">Inflicted</th>
-                                  <th className="text-center py-2 px-2">Lost</th>
-                                  <th className="text-center py-2 px-2">K/D</th>
-                                  <th className="text-center py-2 px-2">Inf/Game</th>
-                                  <th className="text-center py-2 px-2">Lost/Game</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {tableData.map((row, idx) => (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}`}>
-                                    <td className="py-2 px-2">{row.unit}</td>
-                                    <td className="text-green-400 text-center py-2 px-2">{row.inflicted}</td>
-                                    <td className="text-red-400 text-center py-2 px-2">{row.lost}</td>
-                                    <td className="text-indigo-400 text-center py-2 px-2">
-                                      {row.kd === Infinity ? '∞' : row.kd.toFixed(2)}
-                                    </td>
-                                    <td className="text-text-secondary text-center py-2 px-2">{row.inflictedPerGame.toFixed(2)}</td>
-                                    <td className="text-text-secondary text-center py-2 px-2">{row.lostPerGame.toFixed(2)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    {/* Per-Unit Player Stats — derived from assigned scoreboards,
+                        cumulative through the selected week. */}
+                    <div className="bg-bg-inset rounded p-3 mt-4">
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        Per-Unit Player Stats
+                        {selectedWeek && (
+                          <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
+                        )}
+                      </h4>
+                      {renderUnitStatsTable(
+                        tokenSnapsAsOfWeek(selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1),
+                      )}
+                    </div>
                   </div>
 
                   {/* Teammate Impact Index (TII) */}
