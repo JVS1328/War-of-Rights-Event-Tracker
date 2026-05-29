@@ -293,8 +293,9 @@ export const createV2EventPayload = (event) =>
 
 // Player-stats-only payload — a portable scoreboard/assignments bundle with no
 // tracker/season data. Lets organizers share just the post-event player stats.
-export const createV2StatsPayload = (bundle) =>
-  ({ v: 2, t: 'stats', bundle });
+// `name` (the event name) is optional and only used to title the shared view.
+export const createV2StatsPayload = (bundle, name) =>
+  ({ v: 2, t: 'stats', bundle, ...(name ? { name } : {}) });
 
 // Combined payload — the full event tree plus its player-stats bundle, so a
 // single link carries everything (registry, all seasons, scoreboards, stats).
@@ -325,7 +326,7 @@ export const decodeSharePayload = (encoded) => {
     if (p.v === 1) return { kind: 'season', payload: expandPayload(p) };
     if (p.v === 2 && p.t === 'season') return { kind: 'season', payload: p.payload };
     if (p.v === 2 && p.t === 'event')  return { kind: 'event', event: p.event };
-    if (p.v === 2 && p.t === 'stats')  return { kind: 'stats', bundle: p.bundle };
+    if (p.v === 2 && p.t === 'stats')  return { kind: 'stats', bundle: p.bundle, name: p.name };
     if (p.v === 2 && p.t === 'full')   return { kind: 'full', event: p.event, bundle: p.bundle };
     return null;
   } catch {
@@ -369,13 +370,13 @@ export const generateShortEventShareUrl = async (event) => {
   return `${window.location.origin + window.location.pathname}#s=${id}`;
 };
 
-export const generateStatsShareUrl = (bundle) => {
-  const encoded = encodeSharePayload(createV2StatsPayload(bundle));
+export const generateStatsShareUrl = (bundle, name) => {
+  const encoded = encodeSharePayload(createV2StatsPayload(bundle, name));
   return `${window.location.origin + window.location.pathname}#share=${encoded}`;
 };
 
-export const generateShortStatsShareUrl = async (bundle) => {
-  const payload = encodeSharePayload(createV2StatsPayload(bundle));
+export const generateShortStatsShareUrl = async (bundle, name) => {
+  const payload = encodeSharePayload(createV2StatsPayload(bundle, name));
   const res = await fetch('/api/share', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

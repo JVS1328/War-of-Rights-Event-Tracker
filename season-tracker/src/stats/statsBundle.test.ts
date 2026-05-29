@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStatsBundle, isStatsBundle, STATS_BUNDLE_VERSION } from './statsBundle';
+import { buildStatsBundle, isStatsBundle, storedFromBundle, SHARED_EVENT_ID, STATS_BUNDLE_VERSION } from './statsBundle';
 import { parseScoreboard } from './parseScoreboard';
 import type { StoredScoreboard } from './StatsRepository';
 
@@ -52,6 +52,30 @@ describe('buildStatsBundle', () => {
     const bundle = buildStatsBundle([], src);
     src['1'] = 'B';
     expect(bundle.assignments['1']).toBe('A');
+  });
+});
+
+describe('storedFromBundle', () => {
+  it('round-trips through buildStatsBundle back into StoredScoreboard records', () => {
+    const bundle = buildStatsBundle([record({ binding: { weekId: 'w1', round: 2 } })], {});
+    const stored = storedFromBundle(bundle);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].eventId).toBe(SHARED_EVENT_ID);
+    expect(stored[0].id).toBe(`${SHARED_EVENT_ID}::scoreboard_20260101_120000.csv`);
+    expect(stored[0].scoreboard.meta.winner).toBe('CSA');
+    expect(stored[0].binding).toEqual({ weekId: 'w1', round: 2 });
+  });
+
+  it('omits binding when absent and honors a custom event id', () => {
+    const bundle = buildStatsBundle([record()], {});
+    const stored = storedFromBundle(bundle, 'evt-9');
+    expect(stored[0].eventId).toBe('evt-9');
+    expect(stored[0].id).toBe('evt-9::scoreboard_20260101_120000.csv');
+    expect(stored[0]).not.toHaveProperty('binding');
+  });
+
+  it('handles an empty bundle', () => {
+    expect(storedFromBundle({ v: 1, scoreboards: [], assignments: {}, aliases: {} })).toEqual([]);
   });
 });
 

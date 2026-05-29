@@ -4,6 +4,8 @@ import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from 
 import { parseScoreboard } from '../../stats/parseScoreboard';
 import type { Scoreboard } from '../../stats/types';
 import { resolveRegiment } from '../../stats/regimentMatcher';
+import { storedFromBundle } from '../../stats/statsBundle';
+import type { StatsBundle } from '../../stats/statsBundle';
 
 export interface UseStats {
   loading: boolean;
@@ -158,5 +160,34 @@ export function useStats(eventId: string): UseStats {
     setAlias,
     removeAlias,
     reload,
+  };
+}
+
+/**
+ * Build a read-only {@link UseStats} from a portable bundle — no IndexedDB, no
+ * mutations. Powers the shared-link stats view, which renders the same panel as
+ * the live tracker but from data carried in the URL. Mutators are inert no-ops.
+ */
+export function readOnlyStatsFromBundle(bundle: StatsBundle): UseStats {
+  const stored = storedFromBundle(bundle);
+  const scoreboards = [...stored]
+    .map((s) => s.scoreboard)
+    .sort((a, b) => (a.recordedAt ?? '').localeCompare(b.recordedAt ?? ''));
+  const noop = async () => {};
+  return {
+    loading: false,
+    stored,
+    scoreboards,
+    assignments: bundle.assignments ?? {},
+    aliases: bundle.aliases ?? {},
+    importFiles: async () => ({ imported: 0, failed: [] }),
+    remove: noop,
+    bind: noop,
+    applyRegimentList: noop,
+    setAssignment: noop,
+    bulkAssign: noop,
+    setAlias: noop,
+    removeAlias: noop,
+    reload: noop,
   };
 }
