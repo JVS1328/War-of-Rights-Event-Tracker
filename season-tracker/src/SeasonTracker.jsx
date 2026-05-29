@@ -6,6 +6,7 @@ import {
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
 import StatsArea from './components/stats/StatsArea';
+import { averageMorale, MORALE_STATES } from './stats/morale';
 import {
   generateShareUrl, generateShortShareUrl,
   generateEventShareUrl, generateShortEventShareUrl,
@@ -852,6 +853,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // identity is direction-agnostic.
   const projectMapHistory = (mapHistory) => {
     const byMap = {};
+    const zeroForm = () => ({ in_form: 0, skirm: 0, oob: 0 });
     const overall = {
       totalRounds: 0, usaWins: 0, csaWins: 0,
       attackerWins: 0, defenderWins: 0,
@@ -859,24 +861,66 @@ const SeasonTracker = ({ initialShareData = null }) => {
       usaDefenseWins: 0, usaDefenseRounds: 0,
       csaAttackWins: 0, csaAttackRounds: 0,
       csaDefenseWins: 0, csaDefenseRounds: 0,
+      // Casualties + formation makeup, per team and combined.
+      usaCasualties: 0, csaCasualties: 0, totalCasualties: 0,
+      usaFormation: zeroForm(), csaFormation: zeroForm(), formationTotal: zeroForm(),
     };
+    const addInto = (target, src) => {
+      target.in_form += src.in_form || 0;
+      target.skirm += src.skirm || 0;
+      target.oob += src.oob || 0;
+    };
+    const divForm = (f, n) =>
+      n > 0
+        ? { in_form: Math.round(f.in_form / n), skirm: Math.round(f.skirm / n), oob: Math.round(f.oob / n) }
+        : zeroForm();
 
     for (const [mapName, entry] of Object.entries(mapHistory)) {
       const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
       const usaWins = entry.USA.wins;
       const csaWins = entry.CSA.wins;
-      const totalCasualties = entry.USA.casualtiesTaken + entry.CSA.casualtiesTaken;
+      const usaCas = entry.USA.casualtiesTaken;
+      const csaCas = entry.CSA.casualtiesTaken;
+      const totalCasualties = usaCas + csaCas;
+
+      // Optional per-formation losses. Present only when imported scoreboards
+      // (or manual entry) supplied the breakdown; legacy rounds add zeros.
+      const usaForm = entry.USA.casualtiesForm || zeroForm();
+      const csaForm = entry.CSA.casualtiesForm || zeroForm();
+      const formationLosses = {
+        in_form: usaForm.in_form + csaForm.in_form,
+        skirm: usaForm.skirm + csaForm.skirm,
+        oob: usaForm.oob + csaForm.oob,
+      };
+      const hasFormation = formationLosses.in_form + formationLosses.skirm + formationLosses.oob > 0;
+      const avgMoraleUsa = averageMorale(entry.USA.moraleStates || []);
+      const avgMoraleCsa = averageMorale(entry.CSA.moraleStates || []);
 
       byMap[mapName] = {
         plays: entry.plays, usaWins, csaWins,
         attackerWins: isUsaAttack ? usaWins : csaWins,
         defenderWins: isUsaAttack ? csaWins : usaWins,
         totalCasualties,
+        usaCasualties: usaCas, csaCasualties: csaCas,
+        avgLossesUsa: entry.plays > 0 ? Math.round(usaCas / entry.plays) : 0,
+        avgLossesCsa: entry.plays > 0 ? Math.round(csaCas / entry.plays) : 0,
+        avgFormationUsa: divForm(usaForm, entry.plays),
+        avgFormationCsa: divForm(csaForm, entry.plays),
+        avgMoraleUsa, avgMoraleCsa,
+        hasMorale: !!(avgMoraleUsa || avgMoraleCsa),
+        formationLosses,
+        hasFormation,
       };
 
       overall.totalRounds += entry.plays;
       overall.usaWins += usaWins;
       overall.csaWins += csaWins;
+      overall.usaCasualties += usaCas;
+      overall.csaCasualties += csaCas;
+      overall.totalCasualties += totalCasualties;
+      addInto(overall.usaFormation, usaForm);
+      addInto(overall.csaFormation, csaForm);
+      addInto(overall.formationTotal, formationLosses);
 
       if (isUsaAttack) {
         overall.usaAttackRounds += entry.plays;
@@ -894,6 +938,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
         overall.defenderWins += usaWins;
       }
     }
+    overall.hasFormation =
+      overall.formationTotal.in_form + overall.formationTotal.skirm + overall.formationTotal.oob > 0;
     return { overall, byMap };
   };
 
@@ -3960,6 +4006,50 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return bracket;
   };
 
+  // Optional per-formation casualty inputs (In Formation / Skirmish / Out of
+  // Line) for one round + side. Writes r{N}CasualtiesForm{A|B} as an object;
+  // auto-fill from scoreboard import populates the same fields.
+  const renderCasualtyFormation = (roundNum, side) => {
+    const field = `r${roundNum}CasualtiesForm${side}`;
+    const form = selectedWeek?.[field] || { in_form: 0, skirm: 0, oob: 0 };
+    const setF = (key, val) =>
+      updateWeek(selectedWeek.id, { [field]: { ...form, [key]: parseInt(val) || 0 } });
+    const fields = [['in_form', 'In Form'], ['skirm', 'Skirm'], ['oob', 'Out of Line']];
+    const moraleField = `r${roundNum}Morale${side}`;
+    const morale = selectedWeek?.[moraleField] || '';
+    return (
+      <>
+        <div className="grid grid-cols-3 gap-1 mt-1">
+          {fields.map(([k, label]) => (
+            <div key={k}>
+              <label className="block text-[10px] text-text-muted mb-0.5">{label}</label>
+              <input
+                type="number"
+                min="0"
+                value={form[k] || 0}
+                onChange={(e) => setF(k, e.target.value)}
+                className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-1">
+          <label className="block text-[10px] text-text-muted mb-0.5">Formation state (morale)</label>
+          <select
+            value={morale}
+            onChange={(e) => updateWeek(selectedWeek.id, { [moraleField]: e.target.value || null })}
+            className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="">—</option>
+            {MORALE_STATES.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+      </>
+    );
+  };
+
   // Shared Map Stats block — overall card + per-skirmish-area collapsible
   // groups. Used by both the Season tab (active-season scope) and the Event
   // tab (event-wide scope). `keyPrefix` namespaces the toggleSection keys so
@@ -4026,6 +4116,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
             </div>
+            {overall.totalCasualties > 0 && (
+              <div className="bg-bg-inset rounded p-3">
+                <div className="text-xs text-text-secondary mb-2">Casualties &amp; formation makeup</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  {[
+                    { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'text-blue-400' },
+                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'text-red-400' },
+                    { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: 'text-text-primary' },
+                  ].map(({ label, total, form, color }) => (
+                    <div key={label} className="bg-bg-card rounded p-2">
+                      <div className={`font-semibold ${color}`}>{label}: {total}</div>
+                      {overall.hasFormation && (
+                        <div className="text-text-secondary mt-0.5">
+                          {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -4067,7 +4178,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 <span className="text-text-secondary mx-2">|</span>
                                 <span className="text-red-300">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
                               </div>
-                              <div className="text-text-secondary">Casualties: {s.totalCasualties} (avg {avgCas})</div>
+                              <div className="text-text-secondary">
+                                Avg losses: <span className="text-blue-300">USA {s.avgLossesUsa}</span>
+                                <span className="mx-1">·</span>
+                                <span className="text-red-300">CSA {s.avgLossesCsa}</span>
+                                <span className="text-text-muted"> (total {s.totalCasualties}, {avgCas}/rd)</span>
+                              </div>
+                              {s.hasFormation && (
+                                <>
+                                  <div className="text-text-secondary">
+                                    Avg formation USA: {s.avgFormationUsa.in_form} IF · {s.avgFormationUsa.skirm} Sk · {s.avgFormationUsa.oob} OoL
+                                  </div>
+                                  <div className="text-text-secondary">
+                                    Avg formation CSA: {s.avgFormationCsa.in_form} IF · {s.avgFormationCsa.skirm} Sk · {s.avgFormationCsa.oob} OoL
+                                  </div>
+                                </>
+                              )}
+                              {s.hasMorale && (
+                                <div className="text-text-secondary">
+                                  Avg morale: <span className="text-blue-300">USA {s.avgMoraleUsa || '—'}</span>
+                                  <span className="mx-1">·</span>
+                                  <span className="text-red-300">CSA {s.avgMoraleCsa || '—'}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -5726,6 +5859,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
+                      {renderCasualtyFormation(1, 'A')}
                     </div>
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
@@ -5736,6 +5870,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
+                      {renderCasualtyFormation(1, 'B')}
                     </div>
                     {/* Round 1 Balance Swaps */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
@@ -5836,6 +5971,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
+                      {renderCasualtyFormation(2, 'A')}
                     </div>
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
@@ -5846,6 +5982,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
                         min="0"
                       />
+                      {renderCasualtyFormation(2, 'B')}
                     </div>
                     {/* Round 2 Balance Swaps */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
@@ -6910,14 +7047,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
                                           <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
                                           <span className="text-text-secondary">Champion:</span>
-                                          <span className={`font-semibold ${champion.side === 'USA' ? 'text-blue-400' : 'text-red-400'}`}>
-                                            {champion.side}
+                                          <span className="font-semibold text-text-primary">
+                                            {champion.lead || '—'}
                                           </span>
-                                          {champion.lead && (
-                                            <span className="text-text-secondary">
-                                              · led by <span className="text-text-primary">{champion.lead}</span>
-                                            </span>
-                                          )}
                                           <span className="text-text-muted">
                                             ({champion.weekName} R{champion.finalRound})
                                           </span>

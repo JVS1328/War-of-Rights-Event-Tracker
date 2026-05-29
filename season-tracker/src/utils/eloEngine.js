@@ -109,8 +109,24 @@ const snapshotRound = (week, roundNum, season) => {
   };
 };
 
-// Empty side bucket for mapHistory.
-const emptySideBucket = () => ({ wins: 0, losses: 0, casualtiesTaken: 0, casualtiesInflicted: 0 });
+// Empty side bucket for mapHistory. `casualtiesForm` is the optional
+// per-formation breakdown (in_form/skirm/oob); legacy rounds contribute zeros.
+const emptySideBucket = () => ({
+  wins: 0,
+  losses: 0,
+  casualtiesTaken: 0,
+  casualtiesInflicted: 0,
+  casualtiesForm: { in_form: 0, skirm: 0, oob: 0 },
+  moraleStates: [], // canonical end-of-round morale per round (when reported)
+});
+
+// Add an optional { in_form, skirm, oob } breakdown into a side bucket's tally.
+const addForm = (target, form) => {
+  if (!form) return;
+  target.in_form += form.in_form || 0;
+  target.skirm += form.skirm || 0;
+  target.oob += form.oob || 0;
+};
 const emptyMapEntry = () => ({ USA: emptySideBucket(), CSA: emptySideBucket(), plays: 0 });
 const emptyUnitMapEntry = () => ({ USA: { wins: 0, losses: 0 }, CSA: { wins: 0, losses: 0 } });
 
@@ -210,6 +226,18 @@ const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
   const usaCas = usaTeamKey === 'A' ? casA : casB;
   const csaCas = usaTeamKey === 'A' ? casB : casA;
 
+  // Optional per-formation breakdown (auto-filled from scoreboard imports).
+  const formA = week[`r${roundNum}CasualtiesFormA`] || null;
+  const formB = week[`r${roundNum}CasualtiesFormB`] || null;
+  const usaForm = usaTeamKey === 'A' ? formA : formB;
+  const csaForm = usaTeamKey === 'A' ? formB : formA;
+
+  // Optional end-of-round morale (auto-filled or manually entered).
+  const moraleA = week[`r${roundNum}MoraleA`] || null;
+  const moraleB = week[`r${roundNum}MoraleB`] || null;
+  const usaMorale = usaTeamKey === 'A' ? moraleA : moraleB;
+  const csaMorale = usaTeamKey === 'A' ? moraleB : moraleA;
+
   const entry = (mapHistory[mapName] ||= emptyMapEntry());
   entry.plays += 1;
   entry[winnerSide].wins += 1;
@@ -218,6 +246,10 @@ const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
   entry.CSA.casualtiesTaken += csaCas;
   entry.USA.casualtiesInflicted += csaCas;
   entry.CSA.casualtiesInflicted += usaCas;
+  addForm(entry.USA.casualtiesForm, usaForm);
+  addForm(entry.CSA.casualtiesForm, csaForm);
+  if (usaMorale) entry.USA.moraleStates.push(usaMorale);
+  if (csaMorale) entry.CSA.moraleStates.push(csaMorale);
 };
 
 // Accumulate map outcomes from a list of seasons. Pure function; the same

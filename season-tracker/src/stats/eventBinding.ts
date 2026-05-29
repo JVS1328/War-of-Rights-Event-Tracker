@@ -1,4 +1,7 @@
 import type { Scoreboard, Team } from './types';
+import type { FormationCounts } from './statsEngine';
+import { normalizeMorale } from './morale';
+import type { Morale } from './morale';
 
 /** A→B side names for a season (e.g. { A: 'USA', B: 'CSA' }). */
 export interface TeamNames {
@@ -25,6 +28,12 @@ export interface RoundAutofill {
   /** Total casualties for side A / side B (after the flip mapping). */
   casualtiesA: number;
   casualtiesB: number;
+  /** Casualties by formation (in_form/skirm/oob) for side A / side B. */
+  casualtiesFormA: FormationCounts;
+  casualtiesFormB: FormationCounts;
+  /** End-of-round morale state for side A / side B (canonical), or null. */
+  moraleA: Morale | null;
+  moraleB: Morale | null;
 }
 
 const other = (s: 'A' | 'B'): 'A' | 'B' => (s === 'A' ? 'B' : 'A');
@@ -58,6 +67,12 @@ export function buildRoundAutofill(
   const sideBFaction: Team = sideAFaction === 'USA' ? 'CSA' : 'USA';
 
   const winnerSide = winner === 'USA' ? usaSide : winner === 'CSA' ? csaSide : null;
+  const formOf = (faction: Team): FormationCounts => {
+    const c = sb.meta.casualties[faction];
+    return { in_form: c.inForm, skirm: c.skirm, oob: c.oob };
+  };
+  const moraleOf = (faction: Team): Morale | null =>
+    normalizeMorale(faction === 'USA' ? sb.meta.moraleUsa : sb.meta.moraleCsa);
 
   return {
     mapset: sb.meta.map,
@@ -71,6 +86,10 @@ export function buildRoundAutofill(
     sideBFaction,
     casualtiesA: sb.meta.casualties[sideAFaction].total,
     casualtiesB: sb.meta.casualties[sideBFaction].total,
+    casualtiesFormA: formOf(sideAFaction),
+    casualtiesFormB: formOf(sideBFaction),
+    moraleA: moraleOf(sideAFaction),
+    moraleB: moraleOf(sideBFaction),
   };
 }
 
@@ -82,6 +101,10 @@ export function roundFieldUpdates(round: 1 | 2, af: RoundAutofill): Record<strin
       round1Winner: af.winnerSide,
       r1CasualtiesA: af.casualtiesA,
       r1CasualtiesB: af.casualtiesB,
+      r1CasualtiesFormA: af.casualtiesFormA,
+      r1CasualtiesFormB: af.casualtiesFormB,
+      r1MoraleA: af.moraleA,
+      r1MoraleB: af.moraleB,
     };
   }
   return {
@@ -89,5 +112,9 @@ export function roundFieldUpdates(round: 1 | 2, af: RoundAutofill): Record<strin
     round2Winner: af.winnerSide,
     r2CasualtiesA: af.casualtiesA,
     r2CasualtiesB: af.casualtiesB,
+    r2CasualtiesFormA: af.casualtiesFormA,
+    r2CasualtiesFormB: af.casualtiesFormB,
+    r2MoraleA: af.moraleA,
+    r2MoraleB: af.moraleB,
   };
 }
