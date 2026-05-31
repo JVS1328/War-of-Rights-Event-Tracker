@@ -78,7 +78,10 @@ export function StatsPanel({
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
   const [tab, setTab] = useState<SubTab>('overview');
-  const [listText, setListText] = useState(() => registryUnits.join('\n'));
+  // Regiment-list textarea starts empty — it's a manual override, no longer
+  // pre-filled from the event unit registry. (Registry-based matching still
+  // happens automatically via `opts` below.)
+  const [listText, setListText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all' | 'inf' | 'arty'>('all');
   const [playerKey, setPlayerKey] = useState<string | null>(null);
@@ -566,7 +569,14 @@ function RegimentPanel({
         defaultOpen={false}
         storageKey={`reg-panel-${reg.regiment}`}
         openSignal={focusActive ? focusNonce : undefined}
-        right={`${reg.players}p · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · ×Td ${formatAvgT(reg.avgTd)} · ×Tk ${formatAvgT(reg.avgTk)}`}
+        right={
+          <>
+            {`${reg.players}p · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · `}
+            <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
+            {' · '}
+            <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
+          </>
+        }
       >
       <div className="p-3 space-y-3">
         {edit.editMode && !isUntagged && (
@@ -872,7 +882,7 @@ function ImportTab({
           </button>
           {importMsg && <div className="text-[11px] font-mono text-[color:var(--color-text-1)]">{importMsg}</div>}
           <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono pt-2">
-            Regiment list (pre-filled from event registry)
+            Regiment list (optional override)
           </div>
           <textarea
             value={listText}

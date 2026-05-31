@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, ExternalLink } from 'lucide-react';
 import { Drawer, Pill, EmptyHint } from '../ui';
 import type { PlayerDetail } from '../../stats/statsEngine';
 import { roundDurationSeconds } from '../../stats/statsEngine';
@@ -39,9 +39,9 @@ function fmtDuration(sec: number | null): string {
   return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
 }
 
-function Cell({ label, value }: { label: string; value: React.ReactNode }) {
+function Cell({ label, value, title }: { label: string; value: React.ReactNode; title?: string }) {
   return (
-    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5">
+    <div className={`border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5 ${title ? 'cursor-help' : ''}`} title={title}>
       <div className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">{label}</div>
       <div className="text-[13px] tabular-nums text-[color:var(--color-text-0)]">{value}</div>
     </div>
@@ -279,13 +279,25 @@ export function PlayerDrawer({
         <EmptyHint>{type === 'all' ? 'No data' : `No ${type === 'inf' ? 'infantry' : 'artillery'} rounds for this player`}</EmptyHint>
       ) : (
         <div className="space-y-3 p-3 font-mono">
+          {detail.steamId && (
+            <a
+              href={`https://steamcommunity.com/profiles/${detail.steamId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-[color:var(--color-text-2)] hover:text-[color:var(--color-accent)]"
+              title="Open Steam profile in a new tab"
+            >
+              <ExternalLink size={11} /> Steam profile
+            </a>
+          )}
+
           <div className="grid grid-cols-3 gap-px">
             <Cell label="Rounds" value={detail.rounds} />
             <Cell label="Kills" value={detail.kills} />
             <Cell label="Deaths" value={detail.deaths} />
             <Cell label="K/D" value={detail.kd.toFixed(2)} />
-            <Cell label="×Td" value={formatAvgT(detail.avgTd)} />
-            <Cell label="×Tk" value={formatAvgT(detail.avgTk)} />
+            <Cell label="×Td" value={formatAvgT(detail.avgTd)} title={AVG_TD_LABEL} />
+            <Cell label="×Tk" value={formatAvgT(detail.avgTk)} title={AVG_TK_LABEL} />
           </div>
 
           <div>
