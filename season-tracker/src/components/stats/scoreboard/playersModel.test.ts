@@ -7,6 +7,7 @@ import {
   sumKD,
   comparePlayers,
   playerKey,
+  playerMatches,
 } from './playersModel';
 import type { RegimentResolver } from './playersModel';
 
@@ -99,5 +100,30 @@ describe('playersModel — aggregation & sorting', () => {
   it('keys a player by steam id, falling back to name', () => {
     expect(playerKey(alpha)).toBe('s1');
     expect(playerKey(charlie)).toBe('Charlie');
+  });
+});
+
+describe('playersModel — search matching', () => {
+  const resolve: RegimentResolver = (_s, name) => (name === 'Charlie' ? null : '71st NY');
+
+  it('matches every player when the query is blank or whitespace', () => {
+    expect(playerMatches(alpha, '', resolve)).toBe(true);
+    expect(playerMatches(charlie, '   ', resolve)).toBe(true);
+  });
+
+  it('matches on player name, case-insensitively', () => {
+    expect(playerMatches(alpha, 'alph', resolve)).toBe(true);
+    expect(playerMatches(alpha, 'ALPHA', resolve)).toBe(true);
+    expect(playerMatches(bravo, 'alph', resolve)).toBe(false);
+  });
+
+  it('matches on the resolved regiment name', () => {
+    expect(playerMatches(alpha, '71st', resolve)).toBe(true);
+    expect(playerMatches(bravo, 'ny', resolve)).toBe(true);
+  });
+
+  it('does not match untagged players on a regiment query', () => {
+    expect(playerMatches(charlie, '71st', resolve)).toBe(false);
+    expect(playerMatches(charlie, 'charlie', resolve)).toBe(true);
   });
 });

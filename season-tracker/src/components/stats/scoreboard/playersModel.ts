@@ -120,6 +120,22 @@ export function groupByRegiment(
     .map(([key, ps]) => ({ regiment: label.get(key) ?? null, players: ps }));
 }
 
+/** Does a player satisfy the drawer's search box? Matches on the player's name
+ *  or their resolved regiment label, case-insensitively. A blank query matches
+ *  everyone — so searching a regiment surfaces its whole group with stats, while
+ *  a name query narrows to that player. */
+export function playerMatches(
+  p: ScoreboardPlayer,
+  search: string,
+  resolve: RegimentResolver,
+): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  if (p.name.toLowerCase().includes(q)) return true;
+  const reg = resolve(p.steamId, p.name);
+  return reg != null && reg.toLowerCase().includes(q);
+}
+
 export interface UnitAgg {
   kills: number;
   deaths: number;
