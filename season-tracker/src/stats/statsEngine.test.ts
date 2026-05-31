@@ -83,4 +83,21 @@ describe('computeRegimentBreakdown', () => {
     // Han (20thGA) died to Minie and Melee in R1.
     expect(ga!.casualtiesByCause).toMatchObject({ Minie: 1, Melee: 1 });
   });
+
+  it('drops killfeed-only labels that would otherwise be 0-player regiments', () => {
+    // [99thPA]Ghost appears only as a killer in the feed — never on a roster.
+    const ghostKill = `map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,2,1,1,1.00,1,0,0,76561198000000001
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+16:10:00,[99thPA]Ghost,76561198000000777,1,[51stNY]Joe,76561198000000001,2,in_form,Minie,0,4
+`;
+    const regs = computeRegimentBreakdown([parseScoreboard(ghostKill, 'scoreboard_20260101_120000.csv')], {});
+    expect(regs.find((r) => r.regiment === '99THPA')).toBeUndefined();
+    expect(regs.every((r) => r.players > 0)).toBe(true);
+  });
 });

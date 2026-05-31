@@ -432,6 +432,7 @@ interface RegEdit {
   toggleSelect: (steamId: string) => void;
   rename: (from: string) => void;
   merge: (from: string, into: string) => void;
+  removeRegiment: (label: string) => void;
 }
 
 function RegimentsTab({
@@ -540,8 +541,13 @@ function RegimentsTab({
     if (!window.confirm(`Merge "${from}" into "${into}"? All of its players and stats will move. You can undo this later.`)) return;
     void stats.setAlias(from, into);
   };
+  const removeRegiment = (label: string) => {
+    if (label === UNTAGGED) return;
+    if (!window.confirm(`Remove "${label}"? All of its players move to ${UNTAGGED}. You can undo this later.`)) return;
+    void stats.setAlias(label, UNTAGGED);
+  };
 
-  const edit: RegEdit = { editMode, allRegiments, pending, selected, stageMove, toggleSelect, rename, merge };
+  const edit: RegEdit = { editMode, allRegiments, pending, selected, stageMove, toggleSelect, rename, merge, removeRegiment };
 
   if (regiments.length === 0) {
     return (
@@ -575,7 +581,7 @@ function RegimentsTab({
       {/* Active renames/merges */}
       {editMode && aliasList.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
-          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges:</span>
+          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges / removals:</span>
           {aliasList.map(([from, to]) => (
             <span key={from} className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5">
               <span className="text-[color:var(--color-text-1)]">{from} → {to}</span>
@@ -734,6 +740,9 @@ function RegimentPanel({
                 ))}
               </select>
             </span>
+            <button onClick={() => edit.removeRegiment(reg.regiment)} title={`Move all players to ${UNTAGGED}`} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)] hover:text-[color:var(--color-danger)]">
+              <Trash2 size={11} /> Remove
+            </button>
           </div>
         )}
 

@@ -494,6 +494,8 @@ export interface PlayerDetail {
   key: string;
   steamId: string | null;
   name: string;
+  /** Other in-game names this player used across rounds, most-recent first. */
+  aliases: string[];
   regiment: string;
   isArtillery: boolean;
   rounds: number;
@@ -528,6 +530,7 @@ export function computePlayerDetail(
     key,
     steamId: null,
     name: '',
+    aliases: [],
     regiment: '',
     isArtillery: false,
     rounds: 0,
@@ -548,6 +551,8 @@ export function computePlayerDetail(
   };
   const type = options.type ?? 'all';
   let found = false;
+  // Names used across rounds, in chronological (oldest→newest) order of appearance.
+  const nameOrder: string[] = [];
 
   for (const sb of scoreboards) {
     const p = sb.players.find((x) => (x.steamId ?? x.name) === key);
@@ -559,6 +564,7 @@ export function computePlayerDetail(
     found = true;
     detail.steamId = p.steamId;
     detail.name = p.name;
+    nameOrder.push(p.name);
     if (batteryRound) detail.isArtillery = true;
     detail.rounds += 1;
     detail.kills += p.kills;
@@ -606,6 +612,14 @@ export function computePlayerDetail(
   }
 
   if (!found) return null;
+  // Aliases: distinct prior names (excluding the current/newest one), most-recent first.
+  const seenNames = new Set<string>([detail.name]);
+  for (let i = nameOrder.length - 1; i >= 0; i--) {
+    const n = nameOrder[i];
+    if (seenNames.has(n)) continue;
+    seenNames.add(n);
+    detail.aliases.push(n);
+  }
   detail.kd = kdOf(detail.kills, detail.deaths);
   detail.regiment = resolveFor(detail.steamId, detail.name, assignments, options.regimentList, options.aliasMap);
   detail.avgTd = avgTicketCost(detail.deathsInForm, detail.deathsSkirm, detail.deathsOob);
@@ -783,8 +797,11 @@ export function computeRegimentBreakdown(
       .sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''));
     return r as RegimentStatRow;
   });
-  rows.sort((a, b) => b.kills - a.kills);
-  return rows;
+  // Drop killfeed-only labels: a name seen only as a killer/victim (never on a
+  // roster) produces a row with no players. There are no 0-player regiments.
+  const fielded = rows.filter((r) => r.players > 0);
+  fielded.sort((a, b) => b.kills - a.kills);
+  return fielded;
 }
 
 // ── Combat totals (meta-level weapons & casualties) ─────────────────────────

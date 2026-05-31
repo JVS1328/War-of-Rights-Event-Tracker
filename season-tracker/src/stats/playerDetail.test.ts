@@ -52,3 +52,45 @@ describe('computePlayerDetail', () => {
     expect(computePlayerDetail(boards, 'nobody', {})).toBeNull();
   });
 });
+
+// Same steam id, three different in-game names across three rounds.
+const A1 = `map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]OldName,2,1,0,1.00,0,0,0,76561198000000010
+`;
+const A2 = `map,Antietam
+mode,Skirmish
+winner,USA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]MidName,2,1,0,1.00,0,0,0,76561198000000010
+`;
+const A3 = `map,Hagerstown
+mode,Skirmish
+winner,USA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]NewName,2,1,0,1.00,0,0,0,76561198000000010
+`;
+const aliasBoards = [
+  parseScoreboard(A1, 'scoreboard_20260101_120000.csv'),
+  parseScoreboard(A2, 'scoreboard_20260101_130000.csv'),
+  parseScoreboard(A3, 'scoreboard_20260101_140000.csv'),
+];
+
+describe('computePlayerDetail — aliases', () => {
+  it('uses the newest name as primary and lists prior names most-recent first', () => {
+    const d = computePlayerDetail(aliasBoards, '76561198000000010', {})!;
+    expect(d.name).toBe('[51stNY]NewName');
+    expect(d.aliases).toEqual(['[51stNY]MidName', '[51stNY]OldName']);
+  });
+
+  it('excludes the current name and dedupes repeats', () => {
+    const d = computePlayerDetail(boards, '76561198000000001', {})!;
+    // [51stNY]Joe in both rounds — no other names → no aliases.
+    expect(d.aliases).toEqual([]);
+  });
+});

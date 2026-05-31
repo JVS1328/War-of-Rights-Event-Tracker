@@ -22,19 +22,20 @@ export function KillfeedTab({
 }) {
   const [team, setTeam] = useState<'all' | Team>('all');
   const [weapon, setWeapon] = useState('');
+  const [query, setQuery] = useState('');
 
   const weapons = useMemo(() => [...new Set(sb.kills.map((k) => k.cause))].sort(), [sb.kills]);
 
   // Newest first: kills arrive chronologically, so reverse for a feed.
-  const filtered = useMemo(
-    () =>
-      [...sb.kills].reverse().filter((k) => {
-        if (team !== 'all' && k.killerTeam !== team && k.victimTeam !== team) return false;
-        if (weapon && k.cause !== weapon) return false;
-        return true;
-      }),
-    [sb.kills, team, weapon],
-  );
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...sb.kills].reverse().filter((k) => {
+      if (team !== 'all' && k.killerTeam !== team && k.victimTeam !== team) return false;
+      if (weapon && k.cause !== weapon) return false;
+      if (q && !(k.killer ?? '').toLowerCase().includes(q) && !k.victim.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [sb.kills, team, weapon, query]);
 
   return (
     <section className="p-2">
@@ -66,6 +67,22 @@ export function KillfeedTab({
             </option>
           ))}
         </select>
+        <span className="text-[color:var(--color-text-2)] ml-3">player</span>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="search killer or victim…"
+          className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-[11px] font-mono normal-case tracking-normal text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] focus:outline-none focus:border-[color:var(--color-accent)]"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]"
+          >
+            clear
+          </button>
+        )}
         <span className="text-[color:var(--color-text-2)] ml-auto">{filtered.length} events</span>
       </div>
       <div className="px-3 pb-2 text-[10px] font-mono text-[color:var(--color-text-2)] italic">

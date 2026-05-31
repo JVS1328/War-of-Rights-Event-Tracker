@@ -64,6 +64,13 @@ export function PlayerDrawer({
             </a>
           )}
 
+          {detail.aliases.length > 0 && (
+            <div className="text-[10px] text-[color:var(--color-text-2)]">
+              also known as: {detail.aliases.slice(0, 4).join(', ')}
+              {detail.aliases.length > 4 && ' …'}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-px">
             <Cell label="Rounds" value={detail.rounds} />
             <Cell label="Kills" value={detail.kills} />

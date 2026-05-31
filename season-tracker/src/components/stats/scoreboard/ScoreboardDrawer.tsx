@@ -58,8 +58,14 @@ export function ScoreboardDrawer({
     <Drawer
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={sb ? `${sb.meta.map} · ${sb.meta.mode}` : 'Scoreboard'}
-      subtitle={sb ? `${sb.recordedAt ?? sb.sourceFilename}` : undefined}
+      title={sb ? `${sb.meta.map} · ${sb.meta.mode}${sb.meta.area ? ` · ${sb.meta.area}` : ''}` : 'Scoreboard'}
+      subtitle={
+        sb
+          ? sb.recordedAt
+            ? `${sb.recordedAt.slice(0, 10)} @ ${sb.recordedAt.slice(11, 16)}`
+            : sb.sourceFilename
+          : undefined
+      }
       width={660}
     >
       {!sb ? (
