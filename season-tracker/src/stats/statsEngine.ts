@@ -78,7 +78,7 @@ function emptyCasualties(): TeamCasualties {
  * Resolve a regiment for one player: explicit assignment → list → name tag,
  * then through the rename/merge alias map.
  */
-function resolveFor(
+export function resolveFor(
   steamId: string | null,
   name: string,
   assignments: RegimentAssignmentMap,
@@ -630,7 +630,10 @@ export interface RegimentRoundRow {
 
 export interface RegimentStatRow {
   regiment: string;
+  /** Distinct players seen across all rounds. */
   players: number;
+  /** Average distinct players fielded per round (sum of per-round head counts ÷ rounds). */
+  avgPlayers: number;
   rounds: number;
   kills: number;
   deaths: number;
@@ -639,7 +642,10 @@ export interface RegimentStatRow {
   killsByFormation: FormationCounts;
   avgTd: number | null;
   avgTk: number | null;
+  /** Deaths the regiment suffered, bucketed by weapon/cause (victim resolves here). */
   casualtiesByCause: Record<string, number>;
+  /** Kills the regiment inflicted, bucketed by weapon/cause (killer resolves here). */
+  killsByCause: Record<string, number>;
   topPlayers: PlayerStatRow[];
   roundFilenames: string[];
   perRound: RegimentRoundRow[];
@@ -662,6 +668,7 @@ export function computeRegimentBreakdown(
       r = {
         regiment,
         players: 0,
+        avgPlayers: 0,
         rounds: 0,
         kills: 0,
         deaths: 0,
@@ -671,6 +678,7 @@ export function computeRegimentBreakdown(
         avgTd: null,
         avgTk: null,
         casualtiesByCause: {},
+        killsByCause: {},
         topPlayers: [],
         roundFilenames: [],
         perRound: [],
@@ -733,10 +741,17 @@ export function computeRegimentBreakdown(
       tally.oob += kf.oob;
     }
     for (const kill of sb.kills) {
-      const regiment = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
-      const r = ensure(regiment);
       const cause = kill.cause || 'Unknown';
-      r.casualtiesByCause[cause] = (r.casualtiesByCause[cause] ?? 0) + 1;
+      // Suffered: the victim's regiment took this casualty.
+      const victimReg = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
+      const vr = ensure(victimReg);
+      vr.casualtiesByCause[cause] = (vr.casualtiesByCause[cause] ?? 0) + 1;
+      // Inflicted: the killer's regiment dealt this kill (skip environment deaths).
+      if (kill.killer) {
+        const killerReg = resolveFor(kill.killerSteamId, kill.killer, assignments, options.regimentList, options.aliasMap);
+        const kr = ensure(killerReg);
+        kr.killsByCause[cause] = (kr.killsByCause[cause] ?? 0) + 1;
+      }
     }
   }
 
@@ -745,6 +760,9 @@ export function computeRegimentBreakdown(
     r.topPlayers.sort((a, b) => b.kills - a.kills);
     r.roundFilenames = [...r._roundSet];
     r.rounds = r._roundSet.size;
+    // Average head count per round, weighted only over rounds the regiment fielded.
+    const fielded = [...r._perRound.values()].reduce((n, rr) => n + rr.players, 0);
+    r.avgPlayers = r.rounds > 0 ? fielded / r.rounds : 0;
     r.avgTd = avgTicketCost(
       r.casualtiesByFormation.in_form,
       r.casualtiesByFormation.skirm,

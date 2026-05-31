@@ -10,8 +10,9 @@ import {
   computeRounds,
   computeOverview,
   computePlayerDetail,
+  resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
@@ -26,8 +27,8 @@ export interface WeekRef {
   round2Flipped?: boolean;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'rounds' | 'combat' | 'import';
-const TABS: SubTab[] = ['overview', 'players', 'regiments', 'rounds', 'combat', 'import'];
+type SubTab = 'overview' | 'players' | 'regiments' | 'rounds' | 'import';
+const TABS: SubTab[] = ['overview', 'players', 'regiments', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
 
@@ -119,6 +120,15 @@ export function StatsPanel({
   );
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
+  // Season regiment resolver shared with the round drawer's Players tab, so its
+  // "unit" grouping matches the Regiments tab (assignments → list → name tag).
+  const resolveRegiment = useMemo(
+    () => (steamId: string | null, name: string) => {
+      const r = resolveFor(steamId, name, stats.assignments, opts.regimentList, opts.aliasMap);
+      return r === UNTAGGED ? null : r;
+    },
+    [stats.assignments, opts],
+  );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const playerDetail = useMemo(
@@ -163,7 +173,12 @@ export function StatsPanel({
         <span className="px-3 text-[color:var(--color-text-2)]">{eventName}</span>
       </div>
 
-      {tab === 'overview' && <OverviewTab o={overview} hasData={hasData} />}
+      {tab === 'overview' && (
+        <div className="space-y-3">
+          <OverviewTab o={overview} hasData={hasData} />
+          <CombatTab combat={combat} hasData={hasData} />
+        </div>
+      )}
 
       {tab === 'players' && (
         <>
@@ -216,7 +231,6 @@ export function StatsPanel({
       )}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
-      {tab === 'combat' && <CombatTab combat={combat} hasData={hasData} />}
 
       {tab === 'import' && !readOnly && (
         <ImportTab
@@ -249,6 +263,7 @@ export function StatsPanel({
         canBind={!readOnly && !!onApplyRound}
         buildAutofill={(sb, flipped) => buildRoundAutofill(sb, teamNames, validMaps, flipped)}
         onApply={applyRound}
+        resolveRegiment={resolveRegiment}
       />
     </div>
   );
@@ -320,8 +335,9 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
 
 // ── Regiments ────────────────────────────────────────────────────────────────
 
-function Bars({ data }: { data: [string, number][] }) {
+function Bars({ data, showPct = false }: { data: [string, number][]; showPct?: boolean }) {
   const max = data.reduce((m, [, v]) => Math.max(m, v), 0);
+  const total = data.reduce((s, [, v]) => s + v, 0);
   if (data.length === 0 || max === 0) return <EmptyHint>No data</EmptyHint>;
   return (
     <div className="space-y-1 font-mono text-[11px]">
@@ -332,10 +348,79 @@ function Bars({ data }: { data: [string, number][] }) {
             <div className="h-3 bg-[color:var(--color-accent)]/40" style={{ width: `${(count / max) * 100}%` }} />
           </div>
           <span className="w-10 text-right tabular-nums text-[color:var(--color-text-0)]">{count}</span>
+          {showPct && (
+            <span className="w-10 text-right tabular-nums text-[color:var(--color-text-2)]">
+              {total ? `${Math.round((count / total) * 100)}%` : ''}
+            </span>
+          )}
         </div>
       ))}
     </div>
   );
+}
+
+/** Two side-by-side breakdowns (by formation, by cause) under one heading,
+ *  each shown with raw counts and percentages. Used for both the casualties a
+ *  regiment suffered and the casualties it inflicted. */
+function BreakdownGroup({
+  heading,
+  form,
+  cause,
+}: {
+  heading: string;
+  form: [string, number][];
+  cause: [string, number][];
+}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-accent)] font-mono mb-1.5">{heading}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By formation</div>
+          <Bars data={form} showPct />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By cause</div>
+          {cause.length === 0 ? <EmptyHint>No killfeed data</EmptyHint> : <Bars data={cause} showPct />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type RegSort = 'name' | 'players' | 'avgPlayers' | 'kills' | 'deaths' | 'kd' | 'avgTk' | 'avgTd';
+
+const REG_SORTS: { key: RegSort; label: string }[] = [
+  { key: 'name', label: 'name' },
+  { key: 'players', label: 'players' },
+  { key: 'avgPlayers', label: 'avg/rd' },
+  { key: 'kills', label: 'kills' },
+  { key: 'deaths', label: 'deaths' },
+  { key: 'kd', label: 'k/d' },
+  { key: 'avgTk', label: '×Tk' },
+  { key: 'avgTd', label: '×Td' },
+];
+
+/** Sort key → comparable value. Null ticket averages sort last (as -1). */
+function regSortValue(r: RegimentStatRow, k: RegSort): number | string {
+  switch (k) {
+    case 'name':
+      return r.regiment;
+    case 'players':
+      return r.players;
+    case 'avgPlayers':
+      return r.avgPlayers;
+    case 'kills':
+      return r.kills;
+    case 'deaths':
+      return r.deaths;
+    case 'kd':
+      return r.kd;
+    case 'avgTk':
+      return r.avgTk ?? -1;
+    case 'avgTd':
+      return r.avgTd ?? -1;
+  }
 }
 
 interface RegEdit {
@@ -375,6 +460,31 @@ function RegimentsTab({
     () => regiments.map((r) => r.regiment).sort((a, b) => a.localeCompare(b)),
     [regiments],
   );
+
+  const [sortKey, setSortKey] = useState<RegSort>('kills');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const onSort = (k: RegSort) => {
+    if (k === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(k);
+      // Names read best A→Z; every numeric column reads best high→low first.
+      setSortDir(k === 'name' ? 'asc' : 'desc');
+    }
+  };
+  const sortedRegiments = useMemo(() => {
+    const arr = [...regiments];
+    arr.sort((a, b) => {
+      const av = regSortValue(a, sortKey);
+      const bv = regSortValue(b, sortKey);
+      const cmp =
+        typeof av === 'string' || typeof bv === 'string'
+          ? String(av).localeCompare(String(bv))
+          : av - bv;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [regiments, sortKey, sortDir]);
+
   const pendingCount = Object.keys(pending).length;
   const aliasList = Object.entries(stats.aliases);
 
@@ -477,7 +587,26 @@ function RegimentsTab({
         </div>
       )}
 
-      {regiments.map((r) => (
+      {/* Sort the regiment panels by any column. */}
+      <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-wider">
+        <span className="text-[color:var(--color-text-2)]">Sort</span>
+        {REG_SORTS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => onSort(s.key)}
+            className={
+              sortKey === s.key
+                ? 'text-[color:var(--color-accent)]'
+                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]'
+            }
+          >
+            {s.label}
+            {sortKey === s.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+          </button>
+        ))}
+      </div>
+
+      {sortedRegiments.map((r) => (
         <RegimentPanel
           key={r.regiment}
           reg={r}
@@ -552,12 +681,17 @@ function RegimentPanel({
     if (focusActive && focusNonce > 0) wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [focusActive, focusNonce]);
 
-  const causes = Object.entries(reg.casualtiesByCause).sort((a, b) => b[1] - a[1]);
-  const formations: [string, number][] = [
-    [FORMATION_LABEL.in_form, reg.casualtiesByFormation.in_form],
-    [FORMATION_LABEL.skirm, reg.casualtiesByFormation.skirm],
-    [FORMATION_LABEL.oob, reg.casualtiesByFormation.oob],
+  const formOf = (f: FormationCounts): [string, number][] => [
+    [FORMATION_LABEL.in_form, f.in_form],
+    [FORMATION_LABEL.skirm, f.skirm],
+    [FORMATION_LABEL.oob, f.oob],
   ];
+  const byCause = (m: Record<string, number>): [string, number][] =>
+    Object.entries(m).sort((a, b) => b[1] - a[1]);
+  const sufferedForm = formOf(reg.casualtiesByFormation);
+  const sufferedCause = byCause(reg.casualtiesByCause);
+  const inflictedForm = formOf(reg.killsByFormation);
+  const inflictedCause = byCause(reg.killsByCause);
   const isUntagged = reg.regiment === UNTAGGED;
   const mergeTargets = edit.allRegiments.filter((l) => l !== reg.regiment && l !== UNTAGGED);
 
@@ -571,7 +705,10 @@ function RegimentPanel({
         openSignal={focusActive ? focusNonce : undefined}
         right={
           <>
-            {`${reg.players}p · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · `}
+            <span title="Total unique players · average players fielded per round">
+              {`${reg.players}p · ${reg.avgPlayers.toFixed(1)}/rd`}
+            </span>
+            {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · `}
             <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
             {' · '}
             <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
@@ -600,15 +737,9 @@ function RegimentPanel({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Casualties by formation</div>
-            <Bars data={formations} />
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Casualties by cause</div>
-            {causes.length === 0 ? <EmptyHint>No killfeed data</EmptyHint> : <Bars data={causes} />}
-          </div>
+        <div className="space-y-3">
+          <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
+          <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
         </div>
 
         <div>

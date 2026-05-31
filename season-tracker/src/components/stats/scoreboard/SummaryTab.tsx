@@ -1,0 +1,237 @@
+// Summary tab of the round drawer. Season-tracker's event-binding panel sits at
+// the top (when binding is allowed), followed by a PUBS-style summary: meta
+// cells, a casualties table with per-side shares, and a deaths-by-weapon table.
+import { useEffect, useState } from 'react';
+import { Cell, fmtDuration, whenOf } from '../drawerPrimitives';
+import { roundDurationSeconds } from '../../../stats/statsEngine';
+import type { Scoreboard } from '../../../stats/types';
+import type { StoredScoreboard } from '../../../stats/StatsRepository';
+import type { RoundAutofill } from '../../../stats/eventBinding';
+
+interface WeekRef {
+  id: string;
+  name: string;
+  round1Flipped?: boolean;
+  round2Flipped?: boolean;
+}
+
+/** Share of a per-side total as a one-decimal percent, or `—` when the side has
+ *  no entries (so we never render 0/0). */
+function sharePct(n: number, total: number | null): string {
+  if (total == null) return '';
+  if (total <= 0) return '—';
+  return `${((n / total) * 100).toFixed(1)}%`;
+}
+
+export function SummaryTab({
+  sb,
+  stored,
+  canBind = false,
+  weeks = [],
+  buildAutofill,
+  onApply,
+}: {
+  sb: Scoreboard;
+  stored: StoredScoreboard | null;
+  canBind?: boolean;
+  weeks?: WeekRef[];
+  buildAutofill?: (sb: Scoreboard, flipped: boolean) => RoundAutofill;
+  onApply?: (weekId: string, round: 1 | 2, af: RoundAutofill) => void;
+}) {
+  const [weekId, setWeekId] = useState('');
+  const [round, setRound] = useState<1 | 2>(1);
+  useEffect(() => {
+    setWeekId(stored?.binding?.weekId ?? '');
+    setRound(stored?.binding?.round ?? 1);
+  }, [stored?.id, stored?.binding?.weekId, stored?.binding?.round]);
+
+  const meta = sb.meta;
+
+  // Per-side casualty rows: total, then each stance as a share of that side's total.
+  const statRow = (label: string, usa: number, csa: number, usaTotal: number | null, csaTotal: number | null) => (
+    <tr key={label} className="border-t border-[color:var(--color-border)]">
+      <td className="px-3 py-1 text-[color:var(--color-text-1)]">{label}</td>
+      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-ok)]">{usa}</td>
+      <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(usa, usaTotal)}</td>
+      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-accent)]">{csa}</td>
+      <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(csa, csaTotal)}</td>
+    </tr>
+  );
+
+  const casUsa = meta.casualties.USA;
+  const casCsa = meta.casualties.CSA;
+
+  // Deaths-by-weapon: union of weapon keys across both sides, each as a share of
+  // that side's total weapon deaths.
+  const weaponKeys = [...new Set([...Object.keys(meta.deathsByWeapon.USA), ...Object.keys(meta.deathsByWeapon.CSA)])].sort();
+  const usaWeaponTotal = Object.values(meta.deathsByWeapon.USA).reduce((n, v) => n + v, 0);
+  const csaWeaponTotal = Object.values(meta.deathsByWeapon.CSA).reduce((n, v) => n + v, 0);
+
+  return (
+    <div className="text-[12px] font-mono">
+      {canBind && buildAutofill && weeks.length > 0 && (
+        <div className="p-3 border-b border-[color:var(--color-border)]">
+          <BindPanel
+            sb={sb}
+            stored={stored}
+            weeks={weeks}
+            weekId={weekId}
+            round={round}
+            setWeekId={setWeekId}
+            setRound={setRound}
+            buildAutofill={buildAutofill}
+            onApply={onApply}
+          />
+        </div>
+      )}
+
+      <section className="p-4 border-b border-[color:var(--color-border)] grid grid-cols-3 gap-px bg-[color:var(--color-border)]">
+        <Cell label="map" value={meta.map} />
+        <Cell label="mode" value={meta.mode} />
+        <Cell label="area" value={meta.area ?? '—'} />
+        <Cell label="winner" value={meta.winner ?? '—'} />
+        <Cell label="duration" value={fmtDuration(roundDurationSeconds(sb))} />
+        <Cell label="round ended" value={whenOf(sb.recordedAt)} />
+        <Cell label="pop @ start" value={String(meta.popRoundStart ?? '—')} />
+        <Cell label="pop @ peak" value={String(meta.popRoundPeak ?? '—')} />
+        <Cell label="pop @ end" value={String(meta.popRoundEnd ?? '—')} />
+        <Cell label="unique players" value={String(meta.popRoundMax ?? '—')} />
+        <Cell label="morale USA" value={meta.moraleUsa ?? '—'} />
+        <Cell label="morale CSA" value={meta.moraleCsa ?? '—'} />
+      </section>
+
+      <section className="p-4 border-b border-[color:var(--color-border)]">
+        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">casualties</div>
+        <table className="w-full">
+          <thead className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+            <tr>
+              <th className="text-left px-3 py-1"></th>
+              <th className="text-right px-3 py-1">USA</th>
+              <th className="text-right px-2 py-1">%</th>
+              <th className="text-right px-3 py-1">CSA</th>
+              <th className="text-right px-2 py-1">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statRow('total', casUsa.total, casCsa.total, null, null)}
+            {statRow('in formation', casUsa.inForm, casCsa.inForm, casUsa.total, casCsa.total)}
+            {statRow('skirmish', casUsa.skirm, casCsa.skirm, casUsa.total, casCsa.total)}
+            {statRow('out of line', casUsa.oob, casCsa.oob, casUsa.total, casCsa.total)}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="p-4">
+        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">deaths by weapon</div>
+        {weaponKeys.length === 0 ? (
+          <div className="text-[10px] text-[color:var(--color-text-2)] py-2">No weapon data</div>
+        ) : (
+          <table className="w-full">
+            <thead className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+              <tr>
+                <th className="text-left px-3 py-1">weapon</th>
+                <th className="text-right px-3 py-1">USA died</th>
+                <th className="text-right px-2 py-1">%</th>
+                <th className="text-right px-3 py-1">CSA died</th>
+                <th className="text-right px-2 py-1">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weaponKeys.map((w) =>
+                statRow(
+                  w,
+                  meta.deathsByWeapon.USA[w] ?? 0,
+                  meta.deathsByWeapon.CSA[w] ?? 0,
+                  usaWeaponTotal,
+                  csaWeaponTotal,
+                ),
+              )}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function BindPanel({
+  sb,
+  stored,
+  weeks,
+  weekId,
+  round,
+  setWeekId,
+  setRound,
+  buildAutofill,
+  onApply,
+}: {
+  sb: Scoreboard;
+  stored: StoredScoreboard | null;
+  weeks: WeekRef[];
+  weekId: string;
+  round: 1 | 2;
+  setWeekId: (id: string) => void;
+  setRound: (r: 1 | 2) => void;
+  buildAutofill: (sb: Scoreboard, flipped: boolean) => RoundAutofill;
+  onApply?: (weekId: string, round: 1 | 2, af: RoundAutofill) => void;
+}) {
+  const selWeek = weeks.find((w) => w.id === weekId);
+  const flipped = !!(round === 1 ? selWeek?.round1Flipped : selWeek?.round2Flipped);
+  const af = buildAutofill(sb, flipped);
+  const selectCls =
+    'bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]';
+  return (
+    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 space-y-2">
+      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+        Bind to event round → auto-fill standings
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <select value={weekId} onChange={(e) => setWeekId(e.target.value)} className={selectCls}>
+          <option value="">Select week…</option>
+          {weeks.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+        <select value={round} onChange={(e) => setRound(Number(e.target.value) === 2 ? 2 : 1)} className={selectCls}>
+          <option value={1}>Round 1</option>
+          <option value={2}>Round 2</option>
+        </select>
+        <button
+          disabled={!weekId}
+          onClick={() => weekId && onApply?.(weekId, round, af)}
+          className="border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-2 py-0.5 hover:bg-[color:var(--color-accent-soft)] disabled:opacity-40"
+        >
+          Apply auto-fill
+        </button>
+      </div>
+      <div className="text-[10px] text-[color:var(--color-text-1)] space-y-0.5">
+        <div>
+          Map:{' '}
+          {af.validMap ? (
+            af.area
+          ) : (
+            <span className="text-[color:var(--color-warn)]">{af.areaRaw ?? '—'} — unknown area, set manually</span>
+          )}
+        </div>
+        <div>
+          Sides: A = {af.sideAFaction} · B = {af.sideBFaction}
+          {af.flipped && <span className="text-[color:var(--color-warn)]"> (round flipped)</span>}
+        </div>
+        <div>
+          Winner: {af.winner ?? 'Draw'} {af.winnerSide ? `→ side ${af.winnerSide}` : ''}
+        </div>
+        <div>
+          Casualties: side A {af.casualtiesA} · side B {af.casualtiesB}
+        </div>
+      </div>
+      {stored?.binding && (
+        <div className="text-[10px] text-[color:var(--color-ok)]">
+          Currently bound to {weeks.find((w) => w.id === stored.binding!.weekId)?.name ?? 'a week'} · Round{' '}
+          {stored.binding.round}
+        </div>
+      )}
+    </div>
+  );
+}

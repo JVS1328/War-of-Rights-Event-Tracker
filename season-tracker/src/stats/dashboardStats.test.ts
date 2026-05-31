@@ -159,4 +159,24 @@ describe('regiment breakdown — formation casualties & rounds', () => {
     expect(ny.casualtiesByFormation).toMatchObject({ in_form: 1, skirm: 1, oob: 0 });
     expect(ny.rounds).toBe(2);
   });
+
+  it('computes avg players per round alongside total unique players', () => {
+    const ny = computeRegimentBreakdown(boards, {}).find((r) => r.regiment === '51STNY')!;
+    // Only Joe carries the 51STNY tag; he fielded in both rounds → 1 unique, 1.0/rd avg.
+    expect(ny.players).toBe(1);
+    expect(ny.avgPlayers).toBeCloseTo(1.0, 5);
+  });
+
+  it('buckets casualties inflicted by cause (killer resolves to the regiment)', () => {
+    const ny = computeRegimentBreakdown(boards, {}).find((r) => r.regiment === '51STNY')!;
+    // Joe's kills: R1 Minie + Melee + Minie, R2 Minie → Minie 3, Melee 1.
+    expect(ny.killsByCause).toEqual({ Minie: 3, Melee: 1 });
+  });
+
+  it('buckets casualties suffered by cause (victim resolves to the regiment)', () => {
+    const ga = computeRegimentBreakdown(boards, {}).find((r) => r.regiment === '20THGA')!;
+    // Han died: R1 Minie + Melee, R2 Minie → Minie 2, Melee 1. Han never inflicts a killfeed kill.
+    expect(ga.casualtiesByCause).toEqual({ Minie: 2, Melee: 1 });
+    expect(ga.killsByCause).toEqual({});
+  });
 });
