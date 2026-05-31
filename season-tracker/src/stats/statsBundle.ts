@@ -20,6 +20,13 @@ export interface StatsBundle {
   assignments: RegimentAssignmentMap;
   /** Regiment rename/merge map (sourceLabel → targetLabel). */
   aliases: Record<string, string>;
+  /**
+   * The event's registry unit names, so a read-only shared view resolves (and
+   * merges) regiments identically to the live editor. Without this, registry-
+   * matched players fall back to the raw name tag and alias merges miss.
+   * Optional: bundles shared before this field existed simply lack it.
+   */
+  registryUnits?: string[];
 }
 
 /** Pack stored scoreboards + assignments + aliases into an event-agnostic bundle. */
@@ -27,6 +34,7 @@ export function buildStatsBundle(
   records: StoredScoreboard[],
   assignments: RegimentAssignmentMap,
   aliases: Record<string, string> = {},
+  registryUnits: string[] = [],
 ): StatsBundle {
   return {
     v: STATS_BUNDLE_VERSION,
@@ -37,6 +45,7 @@ export function buildStatsBundle(
     })),
     assignments: { ...assignments },
     aliases: { ...aliases },
+    registryUnits: [...registryUnits],
   };
 }
 

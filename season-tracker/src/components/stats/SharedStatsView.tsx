@@ -51,7 +51,13 @@ export default function SharedStatsView({
           </div>
         </div>
 
-        <StatsPanel stats={stats} readOnly eventId="shared" eventName={title} />
+        <StatsPanel
+          stats={stats}
+          readOnly
+          eventId="shared"
+          eventName={title}
+          registryUnits={bundle.registryUnits ?? []}
+        />
       </div>
     </div>
   );

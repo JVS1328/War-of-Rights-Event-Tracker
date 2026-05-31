@@ -176,13 +176,13 @@ export class LocalStatsRepository implements StatsRepository {
     await this.tx(ALIASES, 'readwrite', (s) => reqAsPromise(s.put(record)));
   }
 
-  async exportEventStats(eventId: string): Promise<StatsBundle> {
+  async exportEventStats(eventId: string, registryUnits: string[] = []): Promise<StatsBundle> {
     const records = await this.tx(SCOREBOARDS, 'readonly', (s) =>
       reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
     );
     const assignments = await this.getRegimentAssignments(eventId);
     const aliases = await this.getRegimentAliases(eventId);
-    return buildStatsBundle(records, assignments, aliases);
+    return buildStatsBundle(records, assignments, aliases, registryUnits);
   }
 
   async importEventStats(eventId: string, bundle: StatsBundle): Promise<number> {

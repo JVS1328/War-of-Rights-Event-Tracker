@@ -53,8 +53,12 @@ export interface StatsRepository {
   getRegimentAliases(eventId: string): Promise<Record<string, string>>;
   setRegimentAliases(eventId: string, map: Record<string, string>): Promise<void>;
 
-  /** Pack all of an event's scoreboards + assignments into a portable bundle. */
-  exportEventStats(eventId: string): Promise<StatsBundle>;
+  /**
+   * Pack all of an event's scoreboards + assignments into a portable bundle.
+   * `registryUnits` (the event's unit-registry names) is carried so a read-only
+   * shared view resolves regiments the same way the live editor does.
+   */
+  exportEventStats(eventId: string, registryUnits?: string[]): Promise<StatsBundle>;
   /** Restore a bundle under the target event; returns the scoreboard count. */
   importEventStats(eventId: string, bundle: StatsBundle): Promise<number>;
 }

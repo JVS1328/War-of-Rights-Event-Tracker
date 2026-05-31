@@ -1748,7 +1748,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const multi = activeEvent.seasons.length > 1;
     // Pull the event's player stats so we can offer a combined link.
     let bundle = null;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId); } catch { bundle = null; }
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); } catch { bundle = null; }
     const sbCount = bundle?.scoreboards.length ?? 0;
     const hasStats = sbCount > 0;
 
@@ -1817,7 +1817,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // tracker data, no editing (see SharedStatsView).
   const shareStats = async () => {
     let bundle;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId); }
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); }
     catch { alert('Could not read player stats for this event.'); return; }
     if (!bundle.scoreboards.length) {
       alert('No scoreboards imported for this event yet — nothing to share.');
@@ -1841,7 +1841,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     // Bundle the event's player stats (scoreboards + regiment assignments) so a
     // single file is a complete backup. Best-effort — never block the export.
     let stats;
-    try { stats = await statsRepo.exportEventStats(appState.activeEventId); }
+    try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); }
     catch { stats = undefined; }
     const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
 
@@ -2309,12 +2309,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (showStatsModal || showCasualtyModal) void loadScoreboardData();
   }, [showStatsModal, showCasualtyModal, loadScoreboardData]);
 
-  const registryRegimentList = useMemo(
-    () => parseRegimentList(
-      Object.values(activeEvent?.unitRegistry || {})
-        .map(u => (typeof u === 'string' ? u : u?.name)).filter(Boolean).join('\n'),
-    ),
+  // The event's registry unit names — feeds both regiment resolution and the
+  // shared stats bundle (so a view-only share resolves regiments identically).
+  const registryUnitNames = useMemo(
+    () => Object.values(activeEvent?.unitRegistry || {})
+      .map(u => (typeof u === 'string' ? u : u?.name)).filter(Boolean),
     [activeEvent],
+  );
+  const registryRegimentList = useMemo(
+    () => parseRegimentList(registryUnitNames.join('\n')),
+    [registryUnitNames],
   );
   const engineOpts = useMemo(
     () => ({ regimentList: registryRegimentList, aliasMap: sbAliases }),
@@ -4504,9 +4508,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
             <StatsArea
               eventId={appState.activeEventId}
               eventName={activeEvent.name}
-              registryUnits={Object.values(activeEvent.unitRegistry || {})
-                .map(u => (typeof u === 'string' ? u : u?.name))
-                .filter(Boolean)}
+              registryUnits={registryUnitNames}
               weeks={weeks.map(w => ({
                 id: String(w.id),
                 name: w.name,

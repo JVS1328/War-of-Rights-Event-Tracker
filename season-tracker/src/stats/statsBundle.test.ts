@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildStatsBundle, isStatsBundle, storedFromBundle, SHARED_EVENT_ID, STATS_BUNDLE_VERSION } from './statsBundle';
 import { parseScoreboard } from './parseScoreboard';
+import { computeRegimentBreakdown } from './statsEngine';
+import { parseRegimentList } from './regimentMatcher';
 import type { StoredScoreboard } from './StatsRepository';
 
 const CSV = `map,DrillCamp
@@ -52,6 +54,51 @@ describe('buildStatsBundle', () => {
     const bundle = buildStatsBundle([], src);
     src['1'] = 'B';
     expect(bundle.assignments['1']).toBe('A');
+  });
+
+  it('carries the registry unit list, defaulting to an empty array', () => {
+    expect(buildStatsBundle([], {}).registryUnits).toEqual([]);
+    expect(buildStatsBundle([], {}, {}, ['Texas Brigade']).registryUnits).toEqual(['Texas Brigade']);
+  });
+});
+
+// Regression: a player-stats-only share must resolve (and merge) regiments the
+// same way the live editor does. Without the registry list in the bundle, a
+// registry-matched player falls back to the raw name tag, so merge/rename
+// aliases (keyed on the registry label) miss and the regiment appears un-merged.
+describe('buildStatsBundle — shared-view regiment resolution parity', () => {
+  const MERGE_CSV = `map,DrillCamp
+mode,Skirmish
+area,Meadow
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+Texas Brigade Joe,1,2,1,2.00,1,0,0,76561198000000009
+`;
+  const mergeSb = parseScoreboard(MERGE_CSV, 'scoreboard_20260101_130000.csv');
+  const mergeRecord = (): StoredScoreboard => ({
+    id: 'e::scoreboard_20260101_130000.csv',
+    eventId: 'e',
+    scoreboard: mergeSb,
+  });
+
+  it('folds a registry-matched regiment into its merge target via the shared bundle', () => {
+    // "Texas Brigade" is a registry unit; the user merged it into "Lone Star".
+    const bundle = buildStatsBundle([mergeRecord()], {}, { TexasBrigade: 'Lone Star' }, ['Texas Brigade']);
+
+    // Mirror StatsPanel's resolution using ONLY what the bundle carries.
+    const opts = {
+      regimentList: parseRegimentList((bundle.registryUnits ?? []).join('\n')),
+      aliasMap: bundle.aliases,
+    };
+    const labels = computeRegimentBreakdown(
+      bundle.scoreboards.map((e) => e.scoreboard),
+      bundle.assignments,
+      opts,
+    ).map((r) => r.regiment);
+
+    expect(labels).toContain('Lone Star'); // registry match → merge alias applies
+    expect(labels).not.toContain('TEXAS'); // not split back into the raw name tag
   });
 });
 
