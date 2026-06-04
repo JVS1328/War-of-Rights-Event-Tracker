@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart3, ExternalLink } from 'lucide-react';
 import { StatsPanel } from './StatsArea';
 import { readOnlyStatsFromBundle } from './useStats';
 import { ThemeControls } from '../ThemeControls';
+import { OVERALL_SCOPE } from '../../stats/statsBundle';
 import type { StatsBundle } from '../../stats/statsBundle';
 
 /**
@@ -23,6 +24,11 @@ export default function SharedStatsView({
   const stats = useMemo(() => readOnlyStatsFromBundle(bundle), [bundle]);
   const count = stats.scoreboards.length;
   const title = eventName?.trim() || 'Player Stats';
+
+  // Season/Overall filter state. Bundles shared before seasons were carried
+  // simply lack them, so the panel keeps the row hidden and stays on Overall.
+  const seasons = bundle.seasons ?? [];
+  const [seasonScope, setSeasonScope] = useState(OVERALL_SCOPE);
 
   return (
     <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
@@ -59,6 +65,9 @@ export default function SharedStatsView({
           eventId="shared"
           eventName={title}
           registryUnits={bundle.registryUnits ?? []}
+          seasons={seasons}
+          seasonScope={seasonScope}
+          onSeasonScope={setSeasonScope}
         />
       </div>
     </div>

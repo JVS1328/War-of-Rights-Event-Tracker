@@ -15,7 +15,7 @@ import {
   generateShortFullShareUrl,
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
-import { isStatsBundle } from './stats/statsBundle';
+import { isStatsBundle, OVERALL_SCOPE } from './stats/statsBundle';
 import { computeRegimentBreakdown } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
 import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk } from './stats/unitStats';
@@ -144,6 +144,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Session-only UI state
   const [showSettings, setShowSettings] = useState(false);
   const [viewMode, setViewMode] = useState('tracker'); // 'tracker' | 'stats'
+  // Player-stats season scope: when true, the stats view aggregates every
+  // season ("Overall"); when false it follows the active season. Stats-only —
+  // it never changes which season the tracker view is editing.
+  const [statsAllSeasons, setStatsAllSeasons] = useState(true);
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showBalancerModal, setShowBalancerModal] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
@@ -1749,7 +1753,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const multi = activeEvent.seasons.length > 1;
     // Pull the event's player stats so we can offer a combined link.
     let bundle = null;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); } catch { bundle = null; }
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); } catch { bundle = null; }
     const sbCount = bundle?.scoreboards.length ?? 0;
     const hasStats = sbCount > 0;
 
@@ -1820,7 +1824,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // tracker data, no editing (see SharedStatsView).
   const shareStats = async () => {
     let bundle;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); }
+    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
     catch { alert('Could not read player stats for this event.'); return; }
     if (!bundle.scoreboards.length) {
       alert('No scoreboards imported for this event yet — nothing to share.');
@@ -1844,7 +1848,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     // Bundle the event's player stats (scoreboards + regiment assignments) so a
     // single file is a complete backup. Best-effort — never block the export.
     let stats;
-    try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames); }
+    try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
     catch { stats = undefined; }
     const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
 
@@ -2317,6 +2321,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const registryUnitNames = useMemo(
     () => Object.values(activeEvent?.unitRegistry || {})
       .map(u => (typeof u === 'string' ? u : u?.name)).filter(Boolean),
+    [activeEvent],
+  );
+  // Lightweight season descriptors (id, name, week ids) for the player-stats
+  // season filter and for the shared-stats bundle. Week ids are stringified to
+  // match how scoreboard bindings store them.
+  const statsSeasonRefs = useMemo(
+    () => (activeEvent?.seasons || []).map(s => ({
+      id: s.id,
+      name: s.name,
+      weekIds: (s.weeks || []).map(w => String(w.id)),
+    })),
     [activeEvent],
   );
   const registryRegimentList = useMemo(
@@ -4436,19 +4451,46 @@ const SeasonTracker = ({ initialShareData = null }) => {
             {/* Season tabs */}
             <div className="flex items-center gap-1 flex-wrap">
               <span className="text-xs uppercase tracking-wide text-text-secondary mr-1">Seasons</span>
-              {activeEvent.seasons.map(s => (
+              {activeEvent.seasons.map(s => {
+                // In the stats view, Overall steals the highlight from the
+                // active season; otherwise the active season is highlighted.
+                const highlighted = (viewMode === 'stats' && statsAllSeasons)
+                  ? false
+                  : s.id === appState.activeSeasonId;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      // In the stats view, picking a season exits Overall and
+                      // narrows player-stats to it. In the tracker view it's just
+                      // the normal active-season switch — leave Overall untouched.
+                      if (viewMode === 'stats') setStatsAllSeasons(false);
+                      setAppState(prev => setActiveSeason(prev, s.id));
+                    }}
+                    className={`px-2.5 py-1 text-sm rounded-md border transition ${
+                      highlighted
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'border-border-default hover:bg-bg-inset text-text-secondary'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
+              {/* Overall — player-stats only: aggregate every season at once. */}
+              {viewMode === 'stats' && (
                 <button
-                  key={s.id}
-                  onClick={() => setAppState(prev => setActiveSeason(prev, s.id))}
+                  onClick={() => setStatsAllSeasons(true)}
+                  title="Player stats across all seasons combined"
                   className={`px-2.5 py-1 text-sm rounded-md border transition ${
-                    s.id === appState.activeSeasonId
+                    statsAllSeasons
                       ? 'bg-indigo-600 border-indigo-600 text-white'
                       : 'border-border-default hover:bg-bg-inset text-text-secondary'
                   }`}
                 >
-                  {s.name}
+                  Overall
                 </button>
-              ))}
+              )}
               <button
                 onClick={() => {
                   const name = window.prompt(`New season name:`, `Season ${activeEvent.seasons.length + 1}`);
@@ -4520,6 +4562,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 round1Flipped: !!w.round1Flipped,
                 round2Flipped: !!w.round2Flipped,
               }))}
+              seasons={statsSeasonRefs}
+              seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
               teamNames={teamNames}
               validMaps={ALL_MAPS}
               onApplyRound={(weekId, updates) => {
