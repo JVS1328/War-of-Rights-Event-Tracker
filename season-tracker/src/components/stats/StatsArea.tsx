@@ -1052,9 +1052,14 @@ function ImportTab({
               .map((s) => (
                 <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
                   <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
-                    <span className="text-[color:var(--color-text-2)] w-32 shrink-0">{s.scoreboard.recordedAt ?? s.scoreboard.sourceFilename}</span>
+                    <span className="text-[color:var(--color-text-2)] w-48 shrink-0">
+                      {s.scoreboard.recordedAt
+                        ? `${dateOf(s.scoreboard.recordedAt)} @ ${timeOf(s.scoreboard.recordedAt)}`
+                        : s.scoreboard.sourceFilename}
+                    </span>
                     <span className="text-[color:var(--color-text-0)]">{s.scoreboard.meta.map}</span>
                     <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.mode}</span>
+                    {s.scoreboard.meta.area && <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.area}</span>}
                     {s.scoreboard.meta.winner && <Pill tone={s.scoreboard.meta.winner === 'USA' ? 'ok' : 'accent'}>{s.scoreboard.meta.winner}</Pill>}
                   </button>
                   <button onClick={() => void stats.remove(s.id)} className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]" title="Delete">
