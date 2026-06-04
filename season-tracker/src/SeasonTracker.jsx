@@ -52,41 +52,14 @@ import {
   replayActiveSeasonUpToWeekFromAppState,
   computeExpectedA,
   accumulateMapHistoryFromSeasons,
-  USA_ATTACK_MAPS,
 } from './utils/eloEngine';
+import { MAP_AREAS, ALL_MAPS, mapAttacker } from './stats/mapCatalog';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
-// Map data from maps.py
-const MAPS = {
-  antietam: [
-    "East Woods Skirmish", "Hooker's Push", "Hagerstown Turnpike",
-    "Miller's Cornfield", "East Woods", "Nicodemus Hill",
-    "Bloody Lane", "Pry Ford", "Pry Grist Mill", "Pry House",
-    "West Woods", "Dunker Church", "Burnside's Bridge",
-    "Cooke's Countercharge", "Otto and Sherrick Farms",
-    "Roulette Lane", "Piper Farm", "Hill's Counterattack"
-  ],
-  harpers_ferry: [
-    "Maryland Heights", "River Crossing", "Downtown",
-    "School House Ridge", "Bolivar Heights Camp", "High Street",
-    "Shenandoah Street", "Harpers Ferry Graveyard", "Washington Street",
-    "Bolivar Heights Redoubt"
-  ],
-  south_mountain: [
-    "Garland's Stand", "Cox's Push", "Hatch's Attack",
-    "Anderson's Counterattack", "Reno's Fall", "Colquitt's Defense"
-  ],
-  drill_camp: [
-    "Alexander Farm", "Crossroads", "Smith Field",
-    "Crecy's Cornfield", "Crossley Creek", "Larsen Homestead",
-    "South Woodlot", "Flemming's Meadow", "Wagon Road",
-    "Union Camp", "Pat's Turnpike", "Stefan's Lot",
-    "Confederate Encampment"
-  ]
-};
-
-const ALL_MAPS = Object.values(MAPS).flat().sort();
+// Map names, area grouping, and attacker info come from the single-source-of-
+// truth catalog (canonical scoreboard spellings, incl. Conquest/Contention).
+const MAPS = MAP_AREAS;
 
 const SeasonTracker = ({ initialShareData = null }) => {
   // v2 app state: events → seasons. All persisted state lives here. Existing
@@ -876,14 +849,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Project an engine mapHistory into the { overall, byMap } shape used by
-  // the UI. Attacker/defender breakdowns come from USA_ATTACK_MAPS since map
-  // identity is direction-agnostic.
+  // the UI. Attacker/defender breakdowns come from the map catalog's in-game
+  // attacker (null for Conquest/Contention, which have no attacker and are
+  // excluded from the attacker/defender split — but still count toward
+  // USA/CSA win % and casualties).
   const projectMapHistory = (mapHistory) => {
     const byMap = {};
     const zeroForm = () => ({ in_form: 0, skirm: 0, oob: 0 });
     const overall = {
       totalRounds: 0, usaWins: 0, csaWins: 0,
-      attackerWins: 0, defenderWins: 0,
+      attackerWins: 0, defenderWins: 0, attackerRounds: 0,
       usaAttackWins: 0, usaAttackRounds: 0,
       usaDefenseWins: 0, usaDefenseRounds: 0,
       csaAttackWins: 0, csaAttackRounds: 0,
@@ -903,7 +878,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
         : zeroForm();
 
     for (const [mapName, entry] of Object.entries(mapHistory)) {
-      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
+      const attacker = mapAttacker(mapName); // 'USA' | 'CSA' | null (Conquest/Contention)
+      const isUsaAttack = attacker === 'USA';
       const usaWins = entry.USA.wins;
       const csaWins = entry.CSA.wins;
       const usaCas = entry.USA.casualtiesTaken;
@@ -925,8 +901,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
       byMap[mapName] = {
         plays: entry.plays, usaWins, csaWins,
-        attackerWins: isUsaAttack ? usaWins : csaWins,
-        defenderWins: isUsaAttack ? csaWins : usaWins,
+        attackerWins: attacker === null ? 0 : (isUsaAttack ? usaWins : csaWins),
+        defenderWins: attacker === null ? 0 : (isUsaAttack ? csaWins : usaWins),
+        hasAttacker: attacker !== null,
         totalCasualties,
         usaCasualties: usaCas, csaCasualties: csaCas,
         avgLossesUsa: entry.plays > 0 ? Math.round(usaCas / entry.plays) : 0,
@@ -949,20 +926,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
       addInto(overall.csaFormation, csaForm);
       addInto(overall.formationTotal, formationLosses);
 
-      if (isUsaAttack) {
-        overall.usaAttackRounds += entry.plays;
-        overall.csaDefenseRounds += entry.plays;
-        overall.usaAttackWins += usaWins;
-        overall.csaDefenseWins += csaWins;
-        overall.attackerWins += usaWins;
-        overall.defenderWins += csaWins;
-      } else {
-        overall.csaAttackRounds += entry.plays;
-        overall.usaDefenseRounds += entry.plays;
-        overall.csaAttackWins += csaWins;
-        overall.usaDefenseWins += usaWins;
-        overall.attackerWins += csaWins;
-        overall.defenderWins += usaWins;
+      // Conquest/Contention (attacker === null) have no attacker — skip the
+      // attacker/defender split, but they still counted toward win % above.
+      if (attacker !== null) {
+        overall.attackerRounds += entry.plays;
+        if (isUsaAttack) {
+          overall.usaAttackRounds += entry.plays;
+          overall.csaDefenseRounds += entry.plays;
+          overall.usaAttackWins += usaWins;
+          overall.csaDefenseWins += csaWins;
+          overall.attackerWins += usaWins;
+          overall.defenderWins += csaWins;
+        } else {
+          overall.csaAttackRounds += entry.plays;
+          overall.usaDefenseRounds += entry.plays;
+          overall.csaAttackWins += csaWins;
+          overall.usaDefenseWins += usaWins;
+          overall.attackerWins += csaWins;
+          overall.defenderWins += usaWins;
+        }
       }
     }
     overall.hasFormation =

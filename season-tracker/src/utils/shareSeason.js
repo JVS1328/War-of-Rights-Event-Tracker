@@ -23,20 +23,27 @@ const DEFAULT_MAP_BIASES = {
   "East Woods Skirmish": 2, "Hooker's Push": 2.5, "Hagerstown Turnpike": 1,
   "Miller's Cornfield": 1.5, "East Woods": 2.5, "Nicodemus Hill": 2.5,
   "Bloody Lane": 1.5, "Pry Ford": 2, "Pry Grist Mill": 1, "Pry House": 1.5,
-  "West Woods": 1.5, "Dunker Church": 1.5, "Burnside's Bridge": 2.5,
-  "Cooke's Countercharge": 1.5, "Otto and Sherrick Farms": 1,
+  "West Woods": 1.5, "Dunker Church": 1.5, "Burnside Bridge": 2.5,
+  "Cooke's Countercharge": 1.5, "Otto & Sherrick Farm": 1,
   "Roulette Lane": 1.5, "Piper Farm": 2, "Hill's Counterattack": 1,
+  // Antietam Conquest/Contention areas (shared names; treated identically).
+  "Smokestacks": 1.5, "Forest Stream": 1.5, "Framing Fencelines": 1.5,
+  "Farmland": 1.5, "Limestone Bridge": 1.5, "Waterways": 1.5,
   "Maryland Heights": 1.5, "River Crossing": 2.5, "Downtown": 1,
   "School House Ridge": 1, "Bolivar Heights Camp": 1.5, "High Street": 1,
-  "Shenandoah Street": 1.5, "Harpers Ferry Graveyard": 1, "Washington Street": 1,
+  "Shenandoah Street": 1.5, "Harpers Graveyard": 1, "Washington Street": 1,
   "Bolivar Heights Redoubt": 2,
+  // Harpers Ferry Conquest/Contention areas (shared names; treated identically).
+  "River Town": 1.5, "Outskirts": 1.5, "Overlook": 1.5, "Valley": 1.5,
   "Garland's Stand": 2.5, "Cox's Push": 2.5, "Hatch's Attack": 2,
-  "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defense": 2,
+  "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defence": 2,
   "Alexander Farm": 2, "Crossroads": 0, "Smith Field": 1,
   "Crecy's Cornfield": 1.5, "Crossley Creek": 1, "Larsen Homestead": 1.5,
   "South Woodlot": 1.5, "Flemming's Meadow": 2, "Wagon Road": 2,
   "Union Camp": 1.5, "Pat's Turnpike": 1.5, "Stefan's Lot": 1,
   "Confederate Encampment": 2,
+  // Drill Camp Conquest/Contention areas (shared names; treated identically).
+  "Corn Crib": 1.5, "Orchards": 1.5, "Railroad Cut": 1.5, "Towering Trunks": 1.5,
 };
 const DEFAULT_PLAYOFF_CONFIG = {
   enabled: false, useDivisions: false, teamsPerDivision: 2, wildcardTeams: 0,

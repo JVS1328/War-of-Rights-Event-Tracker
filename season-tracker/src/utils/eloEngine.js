@@ -10,17 +10,11 @@
 // Bayesian-shrunk Elo-equivalent adjustments controlled by event.eloConfig.
 
 import { DEFAULT_ELO_CONFIG, DEFAULT_ELO_SYSTEM } from './eventStore';
+import { canonicalMapName } from '../stats/mapCatalog';
 
-// Maps where USA is the in-game attacker. Used to derive attacker/defender
-// from in-game side, which is reported only as informational metadata.
-export const USA_ATTACK_MAPS = new Set([
-  "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
-  "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
-  "Wagon Road", "Hagerstown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
-  "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-  "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
-  "Flemming's Meadow", "Crossley Creek", "Confederate Encampment",
-]);
+// Re-exported from the map catalog (single source of truth) for callers that
+// still import it from here.
+export { USA_ATTACK_MAPS } from '../stats/mapCatalog';
 
 // Convert a win rate into an Elo-equivalent advantage. 50% → 0; 60% ≈ +70;
 // 75% ≈ +191. The clamp keeps log finite for degenerate samples.
@@ -54,7 +48,7 @@ const resolvePlayerCount = (unit, week, season) => {
 // edit later. Pure derivation; no side effects.
 const snapshotRound = (week, roundNum, season) => {
   const winner = week[`round${roundNum}Winner`];
-  const mapName = week[`round${roundNum}Map`] || null;
+  const mapName = canonicalMapName(week[`round${roundNum}Map`]) || null;
   const flipped = week[`round${roundNum}Flipped`] || false;
 
   // Effective rosters after per-round swaps.
@@ -215,7 +209,7 @@ const cloneMapHistory = (src) => {
 // casualties taken/inflicted per side.
 const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
   const winner = week[`round${roundNum}Winner`];
-  const mapName = week[`round${roundNum}Map`];
+  const mapName = canonicalMapName(week[`round${roundNum}Map`]);
   if (!winner || !mapName) return;
   const flipped = !!week[`round${roundNum}Flipped`];
   const usaTeamKey = flipped ? 'B' : 'A';
