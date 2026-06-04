@@ -1052,9 +1052,9 @@ function ImportTab({
               .map((s) => (
                 <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
                   <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
-                    <span className="text-[color:var(--color-text-2)] w-40 shrink-0">
+                    <span className="text-[color:var(--color-text-2)] w-48 shrink-0">
                       {s.scoreboard.recordedAt
-                        ? `${s.scoreboard.recordedAt.slice(0, 10)} @ ${s.scoreboard.recordedAt.slice(11, 16)}`
+                        ? `${dateOf(s.scoreboard.recordedAt)} @ ${timeOf(s.scoreboard.recordedAt)}`
                         : s.scoreboard.sourceFilename}
                     </span>
                     <span className="text-[color:var(--color-text-0)]">{s.scoreboard.meta.map}</span>
