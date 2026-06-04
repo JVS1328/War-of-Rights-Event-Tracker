@@ -3,20 +3,19 @@ export const MAP_AREAS: Record<string, string[]> = {
     "East Woods Skirmish", "Hooker's Push", "Hagerstown Turnpike",
     "Miller's Cornfield", "East Woods", "Nicodemus Hill",
     "Bloody Lane", "Pry Ford", "Pry Grist Mill", "Pry House",
-    "West Woods", "Dunker Church", "Burnside's Bridge", "Burnside Bridge",
-    "Cooke's Countercharge", "Otto and Sherrick Farms", "Otto & Sherrick Farm",
+    "West Woods", "Dunker Church", "Burnside Bridge",
+    "Cooke's Countercharge", "Otto & Sherrick Farm",
     "Roulette Lane", "Piper Farm", "Hill's Counterattack",
   ],
   harpers_ferry: [
     "Maryland Heights", "River Crossing", "Downtown",
     "School House Ridge", "Bolivar Heights Camp", "High Street",
-    "Shenandoah Street", "Harpers Ferry Graveyard", "Harper's Graveyard",
-    "Washington Street", "Bolivar Heights Redoubt",
+    "Shenandoah Street", "Harper's Graveyard", "Washington Street",
+    "Bolivar Heights Redoubt",
   ],
   south_mountain: [
     "Garland's Stand", "Cox's Push", "Hatch's Attack",
-    "Anderson's Counterattack", "Reno's Fall",
-    "Colquitt's Defense", "Colquitt's Defence",
+    "Anderson's Counterattack", "Reno's Fall", "Colquitt's Defence",
   ],
   drill_camp: [
     "Alexander Farm", "Crossroads", "Smith Field",
@@ -32,7 +31,7 @@ export const USA_ATTACK_MAPS = new Set([
   "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
   "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
   "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-  "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
+  "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
   "Flemming's Meadow", "Crossley Creek", "Confederate Encampment",
 ]);
 
