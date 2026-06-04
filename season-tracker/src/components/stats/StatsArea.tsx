@@ -10,9 +10,10 @@ import {
   computeRounds,
   computeOverview,
   computePlayerDetail,
+  computeMapBreakdown,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, MapStatRow } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
@@ -29,8 +30,8 @@ export interface WeekRef {
   round2Flipped?: boolean;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'rounds' | 'import';
-const TABS: SubTab[] = ['overview', 'players', 'regiments', 'rounds', 'import'];
+type SubTab = 'overview' | 'players' | 'regiments' | 'maps' | 'rounds' | 'import';
+const TABS: SubTab[] = ['overview', 'players', 'regiments', 'maps', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
 
@@ -161,6 +162,7 @@ export function StatsPanel({
     [stats.assignments, opts],
   );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
+  const mapBreakdown = useMemo(() => computeMapBreakdown(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const playerDetail = useMemo(
     () => (playerKey ? computePlayerDetail(sbs, playerKey, stats.assignments, { ...opts, type: playerType }) : null),
@@ -238,7 +240,7 @@ export function StatsPanel({
 
       {tab === 'overview' && (
         <div className="space-y-3">
-          <OverviewTab o={overview} hasData={hasData} />
+          <OverviewTab o={overview} hasData={hasData} rounds={rounds} onOpenRound={openRound} />
           <CombatTab combat={combat} hasData={hasData} />
         </div>
       )}
@@ -293,6 +295,8 @@ export function StatsPanel({
         />
       )}
 
+      {tab === 'maps' && <MapsTab maps={mapBreakdown} hasData={hasData} />}
+
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
       {tab === 'import' && !readOnly && (
@@ -334,7 +338,17 @@ export function StatsPanel({
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 
-function OverviewTab({ o, hasData }: { o: ReturnType<typeof computeOverview>; hasData: boolean }) {
+function OverviewTab({
+  o,
+  hasData,
+  rounds,
+  onOpenRound,
+}: {
+  o: ReturnType<typeof computeOverview>;
+  hasData: boolean;
+  rounds: RoundSummary[];
+  onOpenRound: (filename: string) => void;
+}) {
   if (!hasData) {
     return (
       <Panel title="Overview">
@@ -342,18 +356,54 @@ function OverviewTab({ o, hasData }: { o: ReturnType<typeof computeOverview>; ha
       </Panel>
     );
   }
+  const recent = rounds.slice(0, 2);
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px">
-      <Tile label="Rounds" value={o.totalRounds} />
-      <Tile label="USA Wins" value={o.usaWins} />
-      <Tile label="CSA Wins" value={o.csaWins} />
-      <Tile label="Total Kills" value={o.totalKills.toLocaleString()} />
-      <Tile label="USA Casualties" value={o.usaCasualties.toLocaleString()} />
-      <Tile label="CSA Casualties" value={o.csaCasualties.toLocaleString()} />
-      <Tile label="Players" value={o.distinctPlayers} hint="unique by steam id" />
-      <Tile label="Regiments" value={o.distinctRegiments} />
-      <Tile label="Avg Peak Pop" value={o.avgPeakPop ?? '—'} hint="avg across rounds" />
-    </div>
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px">
+        <Tile label="Rounds" value={o.totalRounds} />
+        <Tile label="USA Wins" value={o.usaWins} />
+        <Tile label="CSA Wins" value={o.csaWins} />
+        <Tile label="Total Kills" value={o.totalKills.toLocaleString()} />
+        <Tile label="USA Casualties" value={o.usaCasualties.toLocaleString()} />
+        <Tile label="CSA Casualties" value={o.csaCasualties.toLocaleString()} />
+        <Tile label="Players" value={o.distinctPlayers} hint="unique by steam id" />
+        <Tile label="Regiments" value={o.distinctRegiments} />
+        <Tile label="Avg Peak Pop" value={o.avgPeakPop ?? '—'} hint="avg across rounds" />
+      </div>
+      {recent.length > 0 && (
+        <Panel title="Most Recent Rounds">
+          <table className="w-full border-collapse font-mono text-sm">
+            <thead>
+              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+                <th className="px-2 py-1 text-left">When</th>
+                <th className="px-2 py-1 text-left">Map</th>
+                <th className="px-2 py-1 text-left">Winner</th>
+                <th className="px-2 py-1 text-right">Dur</th>
+                <th className="px-2 py-1 text-right">Players</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((r) => (
+                <tr
+                  key={r.sourceFilename}
+                  onClick={() => onOpenRound(r.sourceFilename)}
+                  className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
+                >
+                  <td className="px-2 py-1 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(r.recordedAt)}</td>
+                  <td className="px-2 py-1 text-[color:var(--color-text-0)]">
+                    {r.map}
+                    {r.area ? ` · ${r.area}` : ''}
+                  </td>
+                  <td className="px-2 py-1">{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{fmtDuration(r.durationSeconds)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{r.players}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+    </>
   );
 }
 
@@ -1051,6 +1101,60 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
         </Panel>
       ))}
     </div>
+  );
+}
+
+// ── Maps ────────────────────────────────────────────────────────────────────
+
+function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
+  if (!hasData || maps.length === 0) {
+    return (
+      <Panel title="Maps">
+        <EmptyHint>Import scoreboards to see map breakdowns</EmptyHint>
+      </Panel>
+    );
+  }
+  return (
+    <Panel title={`Maps (${maps.length})`}>
+      <DataTable<MapStatRow>
+        rows={maps}
+        getRowKey={(m) => m.map}
+        initialSortKey="rounds"
+        searchValue={(m) => m.map}
+        searchPlaceholder="Search maps…"
+        columns={[
+          {
+            key: 'map',
+            header: 'Map',
+            sortable: true,
+            sortValue: (m) => m.map,
+            render: (m) => (
+              <span>
+                <span className="text-[color:var(--color-text-0)]">{m.map}</span>
+                {m.modes.length > 0 && (
+                  <span className="ml-2 text-[color:var(--color-text-2)] text-xs">
+                    {m.modes.map((mo) => (mo.area ? `${mo.mode} · ${mo.area}` : mo.mode)).join(', ')}
+                  </span>
+                )}
+              </span>
+            ),
+          },
+          { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (m) => m.rounds, render: (m) => m.rounds },
+          { key: 'usaWins', header: 'USA W', align: 'right', sortable: true, sortValue: (m) => m.usaWins, render: (m) => m.usaWins },
+          { key: 'csaWins', header: 'CSA W', align: 'right', sortable: true, sortValue: (m) => m.csaWins, render: (m) => m.csaWins },
+          { key: 'usaKills', header: 'USA K', align: 'right', sortable: true, sortValue: (m) => m.usaKills, render: (m) => m.usaKills.toLocaleString() },
+          { key: 'csaKills', header: 'CSA K', align: 'right', sortable: true, sortValue: (m) => m.csaKills, render: (m) => m.csaKills.toLocaleString() },
+          {
+            key: 'avgDur',
+            header: 'Avg Dur',
+            align: 'right',
+            sortable: true,
+            sortValue: (m) => m.avgDurationSeconds ?? -1,
+            render: (m) => fmtDuration(m.avgDurationSeconds),
+          },
+        ]}
+      />
+    </Panel>
   );
 }
 
