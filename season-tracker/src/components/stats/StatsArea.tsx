@@ -1134,6 +1134,9 @@ function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
 
   const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
   const allMapNames = Object.keys(byMap);
+  // Attacker/defender denominator excludes Conquest/Contention (no attacker).
+  // Falls back for bundles shared before attackerRounds existed.
+  const atkRounds = overall.attackerRounds ?? (overall.attackerWins + overall.defenderWins);
 
   return (
     <div className="space-y-3">
@@ -1142,8 +1145,8 @@ function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
         <Tile label="CSA Overall" value={`${pct(overall.csaWins, overall.totalRounds)}%`} hint={`${overall.csaWins}/${overall.totalRounds}`} />
       </div>
       <div className="grid grid-cols-2 gap-px">
-        <Tile label="Attackers Won" value={`${pct(overall.attackerWins, overall.totalRounds)}%`} hint={`${overall.attackerWins}/${overall.totalRounds}`} />
-        <Tile label="Defenders Won" value={`${pct(overall.defenderWins, overall.totalRounds)}%`} hint={`${overall.defenderWins}/${overall.totalRounds}`} />
+        <Tile label="Attackers Won" value={`${pct(overall.attackerWins, atkRounds)}%`} hint={`${overall.attackerWins}/${atkRounds}`} />
+        <Tile label="Defenders Won" value={`${pct(overall.defenderWins, atkRounds)}%`} hint={`${overall.defenderWins}/${atkRounds}`} />
       </div>
 
       {overall.totalCasualties > 0 && (
@@ -1221,6 +1224,12 @@ function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: 
           <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
           <span className="mx-2">|</span>
           <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+          {s.draws > 0 && (
+            <>
+              <span className="mx-2">|</span>
+              <span>Draw: {s.draws} ({pct(s.draws, s.plays)}%)</span>
+            </>
+          )}
         </div>
         <div>
           Avg losses: <span className="text-[color:var(--color-ok)]">USA {s.avgLossesUsa}</span>

@@ -2,6 +2,7 @@ import type { Scoreboard, Team } from './types';
 import type { FormationCounts } from './statsEngine';
 import { normalizeMorale } from './morale';
 import type { Morale } from './morale';
+import { mapMode } from './mapCatalog';
 
 /** A→B side names for a season (e.g. { A: 'USA', B: 'CSA' }). */
 export interface TeamNames {
@@ -20,6 +21,11 @@ export interface RoundAutofill {
   winner: Team | null;
   /** Winner mapped to the round's A/B side, or null. */
   winnerSide: 'A' | 'B' | null;
+  /**
+   * True when the round is a draw: a Conquest/Contention map with no winner on
+   * the scoreboard. (Skirmish maps always have a winner, so they never draw.)
+   */
+  isDraw: boolean;
   /** Whether this round's faction↔side mapping was flipped. */
   flipped: boolean;
   /** Which faction side A / side B played this round (after flip). */
@@ -67,6 +73,8 @@ export function buildRoundAutofill(
   const sideBFaction: Team = sideAFaction === 'USA' ? 'CSA' : 'USA';
 
   const winnerSide = winner === 'USA' ? usaSide : winner === 'CSA' ? csaSide : null;
+  // A Conquest/Contention round with no winner is a draw (both sides held).
+  const isDraw = winner == null && mapMode(areaRaw ?? '') === 'conquest';
   const formOf = (faction: Team): FormationCounts => {
     const c = sb.meta.casualties[faction];
     return { in_form: c.inForm, skirm: c.skirm, oob: c.oob };
@@ -81,6 +89,7 @@ export function buildRoundAutofill(
     validMap,
     winner,
     winnerSide,
+    isDraw,
     flipped,
     sideAFaction,
     sideBFaction,
@@ -99,6 +108,7 @@ export function roundFieldUpdates(round: 1 | 2, af: RoundAutofill): Record<strin
     return {
       round1Map: af.area,
       round1Winner: af.winnerSide,
+      round1Draw: af.isDraw,
       r1CasualtiesA: af.casualtiesA,
       r1CasualtiesB: af.casualtiesB,
       r1CasualtiesFormA: af.casualtiesFormA,
@@ -110,6 +120,7 @@ export function roundFieldUpdates(round: 1 | 2, af: RoundAutofill): Record<strin
   return {
     round2Map: af.area,
     round2Winner: af.winnerSide,
+    round2Draw: af.isDraw,
     r2CasualtiesA: af.casualtiesA,
     r2CasualtiesB: af.casualtiesB,
     r2CasualtiesFormA: af.casualtiesFormA,

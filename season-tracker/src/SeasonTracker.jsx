@@ -52,41 +52,14 @@ import {
   replayActiveSeasonUpToWeekFromAppState,
   computeExpectedA,
   accumulateMapHistoryFromSeasons,
-  USA_ATTACK_MAPS,
 } from './utils/eloEngine';
+import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
-// Map data from maps.py
-const MAPS = {
-  antietam: [
-    "East Woods Skirmish", "Hooker's Push", "Hagerstown Turnpike",
-    "Miller's Cornfield", "East Woods", "Nicodemus Hill",
-    "Bloody Lane", "Pry Ford", "Pry Grist Mill", "Pry House",
-    "West Woods", "Dunker Church", "Burnside's Bridge",
-    "Cooke's Countercharge", "Otto and Sherrick Farms",
-    "Roulette Lane", "Piper Farm", "Hill's Counterattack"
-  ],
-  harpers_ferry: [
-    "Maryland Heights", "River Crossing", "Downtown",
-    "School House Ridge", "Bolivar Heights Camp", "High Street",
-    "Shenandoah Street", "Harpers Ferry Graveyard", "Washington Street",
-    "Bolivar Heights Redoubt"
-  ],
-  south_mountain: [
-    "Garland's Stand", "Cox's Push", "Hatch's Attack",
-    "Anderson's Counterattack", "Reno's Fall", "Colquitt's Defense"
-  ],
-  drill_camp: [
-    "Alexander Farm", "Crossroads", "Smith Field",
-    "Crecy's Cornfield", "Crossley Creek", "Larsen Homestead",
-    "South Woodlot", "Flemming's Meadow", "Wagon Road",
-    "Union Camp", "Pat's Turnpike", "Stefan's Lot",
-    "Confederate Encampment"
-  ]
-};
-
-const ALL_MAPS = Object.values(MAPS).flat().sort();
+// Map names, area grouping, and attacker info come from the single-source-of-
+// truth catalog (canonical scoreboard spellings, incl. Conquest/Contention).
+const MAPS = MAP_AREAS;
 
 const SeasonTracker = ({ initialShareData = null }) => {
   // v2 app state: events → seasons. All persisted state lives here. Existing
@@ -388,6 +361,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
       teamB: [],
       round1Winner: null,
       round2Winner: null,
+      round1Draw: false,
+      round2Draw: false,
       round1Map: null,
       round2Map: null,
       round1Flipped: false,
@@ -876,14 +851,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Project an engine mapHistory into the { overall, byMap } shape used by
-  // the UI. Attacker/defender breakdowns come from USA_ATTACK_MAPS since map
-  // identity is direction-agnostic.
+  // the UI. Attacker/defender breakdowns come from the map catalog's in-game
+  // attacker (null for Conquest/Contention, which have no attacker and are
+  // excluded from the attacker/defender split — but still count toward
+  // USA/CSA win % and casualties).
   const projectMapHistory = (mapHistory) => {
     const byMap = {};
     const zeroForm = () => ({ in_form: 0, skirm: 0, oob: 0 });
     const overall = {
-      totalRounds: 0, usaWins: 0, csaWins: 0,
-      attackerWins: 0, defenderWins: 0,
+      totalRounds: 0, usaWins: 0, csaWins: 0, draws: 0,
+      attackerWins: 0, defenderWins: 0, attackerRounds: 0,
       usaAttackWins: 0, usaAttackRounds: 0,
       usaDefenseWins: 0, usaDefenseRounds: 0,
       csaAttackWins: 0, csaAttackRounds: 0,
@@ -903,9 +880,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
         : zeroForm();
 
     for (const [mapName, entry] of Object.entries(mapHistory)) {
-      const isUsaAttack = USA_ATTACK_MAPS.has(mapName);
+      const attacker = mapAttacker(mapName); // 'USA' | 'CSA' | null (Conquest/Contention)
+      const isUsaAttack = attacker === 'USA';
       const usaWins = entry.USA.wins;
       const csaWins = entry.CSA.wins;
+      const draws = entry.draws || 0;
       const usaCas = entry.USA.casualtiesTaken;
       const csaCas = entry.CSA.casualtiesTaken;
       const totalCasualties = usaCas + csaCas;
@@ -924,9 +903,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const avgMoraleCsa = averageMorale(entry.CSA.moraleStates || []);
 
       byMap[mapName] = {
-        plays: entry.plays, usaWins, csaWins,
-        attackerWins: isUsaAttack ? usaWins : csaWins,
-        defenderWins: isUsaAttack ? csaWins : usaWins,
+        plays: entry.plays, usaWins, csaWins, draws,
+        attackerWins: attacker === null ? 0 : (isUsaAttack ? usaWins : csaWins),
+        defenderWins: attacker === null ? 0 : (isUsaAttack ? csaWins : usaWins),
+        hasAttacker: attacker !== null,
         totalCasualties,
         usaCasualties: usaCas, csaCasualties: csaCas,
         avgLossesUsa: entry.plays > 0 ? Math.round(usaCas / entry.plays) : 0,
@@ -942,6 +922,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       overall.totalRounds += entry.plays;
       overall.usaWins += usaWins;
       overall.csaWins += csaWins;
+      overall.draws += draws;
       overall.usaCasualties += usaCas;
       overall.csaCasualties += csaCas;
       overall.totalCasualties += totalCasualties;
@@ -949,20 +930,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
       addInto(overall.csaFormation, csaForm);
       addInto(overall.formationTotal, formationLosses);
 
-      if (isUsaAttack) {
-        overall.usaAttackRounds += entry.plays;
-        overall.csaDefenseRounds += entry.plays;
-        overall.usaAttackWins += usaWins;
-        overall.csaDefenseWins += csaWins;
-        overall.attackerWins += usaWins;
-        overall.defenderWins += csaWins;
-      } else {
-        overall.csaAttackRounds += entry.plays;
-        overall.usaDefenseRounds += entry.plays;
-        overall.csaAttackWins += csaWins;
-        overall.usaDefenseWins += usaWins;
-        overall.attackerWins += csaWins;
-        overall.defenderWins += usaWins;
+      // Conquest/Contention (attacker === null) have no attacker — skip the
+      // attacker/defender split, but they still counted toward win % above.
+      if (attacker !== null) {
+        overall.attackerRounds += entry.plays;
+        if (isUsaAttack) {
+          overall.usaAttackRounds += entry.plays;
+          overall.csaDefenseRounds += entry.plays;
+          overall.usaAttackWins += usaWins;
+          overall.csaDefenseWins += csaWins;
+          overall.attackerWins += usaWins;
+          overall.defenderWins += csaWins;
+        } else {
+          overall.csaAttackRounds += entry.plays;
+          overall.usaDefenseRounds += entry.plays;
+          overall.csaAttackWins += csaWins;
+          overall.usaDefenseWins += usaWins;
+          overall.attackerWins += csaWins;
+          overall.defenderWins += usaWins;
+        }
       }
     }
     overall.hasFormation =
@@ -5950,13 +5936,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
-                        value={selectedWeek.round1Winner || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round1Winner: e.target.value || null })}
+                        value={selectedWeek.round1Draw ? 'draw' : (selectedWeek.round1Winner || '')}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateWeek(selectedWeek.id, v === 'draw'
+                            ? { round1Winner: null, round1Draw: true }
+                            : { round1Winner: v || null, round1Draw: false });
+                        }}
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
                         <option value="B">{teamNames.B}</option>
+                        {(mapMode(selectedWeek.round1Map) === 'conquest' || selectedWeek.round1Draw) && (
+                          <option value="draw">Draw</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -6062,13 +6056,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
-                        value={selectedWeek.round2Winner || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round2Winner: e.target.value || null })}
+                        value={selectedWeek.round2Draw ? 'draw' : (selectedWeek.round2Winner || '')}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateWeek(selectedWeek.id, v === 'draw'
+                            ? { round2Winner: null, round2Draw: true }
+                            : { round2Winner: v || null, round2Draw: false });
+                        }}
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
                         <option value="B">{teamNames.B}</option>
+                        {(mapMode(selectedWeek.round2Map) === 'conquest' || selectedWeek.round2Draw) && (
+                          <option value="draw">Draw</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -7122,8 +7124,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               let roundCount = 0;
                               let playoffsScheduled = false;
                               for (const w of seasonWeeks) {
-                                if (w.round1Winner) roundCount += 1;
-                                if (w.round2Winner) roundCount += 1;
+                                if (w.round1Winner || w.round1Draw) roundCount += 1;
+                                if (w.round2Winner || w.round2Draw) roundCount += 1;
                                 if (w.isPlayoffs) playoffsScheduled = true;
                               }
                               const rosterSize = (season.units || []).length;

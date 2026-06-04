@@ -414,6 +414,8 @@ export interface TrackerMapEntry {
   plays: number;
   usaWins: number;
   csaWins: number;
+  // Rounds with no winner (Conquest/Contention ties).
+  draws: number;
   totalCasualties: number;
   usaCasualties: number;
   csaCasualties: number;
@@ -422,6 +424,10 @@ export interface TrackerMapEntry {
   avgFormationUsa: FormationCounts;
   avgFormationCsa: FormationCounts;
   hasFormation: boolean;
+  attackerWins: number;
+  defenderWins: number;
+  // False for Conquest/Contention, which have no attacker/defender.
+  hasAttacker?: boolean;
   avgMoraleUsa?: string | null;
   avgMoraleCsa?: string | null;
   hasMorale?: boolean;
@@ -432,8 +438,12 @@ export interface TrackerMapStats {
     totalRounds: number;
     usaWins: number;
     csaWins: number;
+    // Rounds with no winner (Conquest/Contention ties).
+    draws: number;
     attackerWins: number;
     defenderWins: number;
+    // Rounds that have an attacker/defender (excludes Conquest/Contention).
+    attackerRounds: number;
     usaCasualties: number;
     csaCasualties: number;
     totalCasualties: number;
