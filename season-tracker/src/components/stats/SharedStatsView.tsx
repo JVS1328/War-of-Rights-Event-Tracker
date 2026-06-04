@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { BarChart3, ExternalLink } from 'lucide-react';
 import { StatsPanel } from './StatsArea';
 import { readOnlyStatsFromBundle } from './useStats';
+import { ThemeControls } from '../ThemeControls';
 import type { StatsBundle } from '../../stats/statsBundle';
 
 /**
@@ -38,6 +39,7 @@ export default function SharedStatsView({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <ThemeControls />
             <span className="px-2.5 py-1 text-xs rounded-md border border-border-default text-text-secondary">
               Read-Only View
             </span>

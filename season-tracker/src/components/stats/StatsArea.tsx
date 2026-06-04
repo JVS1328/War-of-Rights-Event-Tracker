@@ -158,7 +158,7 @@ export function StatsPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-[11px] uppercase tracking-wider">
+      <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
         {visibleTabs.map((t) => (
           <button
             key={t}
@@ -182,7 +182,7 @@ export function StatsPanel({
 
       {tab === 'players' && (
         <>
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+          <div className="flex items-center gap-2 font-mono text-sm uppercase tracking-wider">
             <span className="text-[color:var(--color-text-2)]">Class</span>
             {(['all', 'inf', 'arty'] as const).map((f) => (
               <button
@@ -340,7 +340,7 @@ function Bars({ data, showPct = false }: { data: [string, number][]; showPct?: b
   const total = data.reduce((s, [, v]) => s + v, 0);
   if (data.length === 0 || max === 0) return <EmptyHint>No data</EmptyHint>;
   return (
-    <div className="space-y-1 font-mono text-[11px]">
+    <div className="space-y-1 font-mono text-sm">
       {data.map(([label, count]) => (
         <div key={label} className="flex items-center gap-2">
           <span className="w-28 shrink-0 capitalize text-[color:var(--color-text-1)]">{label}</span>
@@ -373,14 +373,14 @@ function BreakdownGroup({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-accent)] font-mono mb-1.5">{heading}</div>
+      <div className="text-xs uppercase tracking-wider text-[color:var(--color-accent)] font-mono mb-1.5">{heading}</div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By formation</div>
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By formation</div>
           <Bars data={form} showPct />
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By cause</div>
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By cause</div>
           {cause.length === 0 ? <EmptyHint>No killfeed data</EmptyHint> : <Bars data={cause} showPct />}
         </div>
       </div>
@@ -561,7 +561,7 @@ function RegimentsTab({
     <div className="space-y-3 pb-16">
       {/* Edit toolbar — hidden in read-only/shared views (no mutations). */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
           <button
             onClick={() => (editMode ? exitEdit() : setEditMode(true))}
             className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
@@ -580,7 +580,7 @@ function RegimentsTab({
 
       {/* Active renames/merges */}
       {editMode && aliasList.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
           <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges / removals:</span>
           {aliasList.map(([from, to]) => (
             <span key={from} className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5">
@@ -594,7 +594,7 @@ function RegimentsTab({
       )}
 
       {/* Sort the regiment panels by any column. */}
-      <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-wider">
+      <div className="flex flex-wrap items-center gap-3 font-mono text-xs uppercase tracking-wider">
         <span className="text-[color:var(--color-text-2)]">Sort</span>
         {REG_SORTS.map((s) => (
           <button
@@ -626,7 +626,7 @@ function RegimentsTab({
 
       {/* Sticky action bar */}
       {editMode && (pendingCount > 0 || selected.size > 0) && (
-        <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-bg-2)] px-3 py-2 font-mono text-[11px]">
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-bg-2)] px-3 py-2 font-mono text-sm">
           {selected.size > 0 && (
             <div className="flex items-center gap-1.5">
               <span className="text-[color:var(--color-text-1)]">{selected.size} selected →</span>
@@ -723,7 +723,7 @@ function RegimentPanel({
       >
       <div className="p-3 space-y-3">
         {edit.editMode && !isUntagged && (
-          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] border-b border-[color:var(--color-border)] pb-2">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-sm border-b border-[color:var(--color-border)] pb-2">
             <button onClick={() => edit.rename(reg.regiment)} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
               <Pencil size={11} /> Rename
             </button>
@@ -752,10 +752,10 @@ function RegimentPanel({
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Round-by-round</div>
-          <table className="w-full font-mono text-[11px]">
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Round-by-round</div>
+          <table className="w-full font-mono text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
                 <th className="px-2 py-1 text-left">When</th>
                 <th className="px-2 py-1 text-left">Map · Area</th>
                 <th className="px-2 py-1 text-right">Plr</th>
@@ -791,7 +791,7 @@ function RegimentPanel({
         </div>
 
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Players</div>
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Players</div>
           {edit.editMode ? (
             <EditablePlayers reg={reg} openPlayer={openPlayer} edit={edit} />
           ) : (
@@ -809,6 +809,7 @@ function RegimentPanel({
                     </button>
                   ),
                 },
+                { key: 'rounds', header: 'R', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
                 { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
                 { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
                 { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
@@ -836,9 +837,9 @@ function EditablePlayers({
   edit: RegEdit;
 }) {
   return (
-    <table className="w-full font-mono text-[11px]">
+    <table className="w-full font-mono text-sm">
       <thead>
-        <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+        <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
           <th className="px-2 py-1 w-6" />
           <th className="px-2 py-1 text-left">Player</th>
           <th className="px-2 py-1 text-left">Move to</th>
@@ -914,9 +915,9 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
     <div className="space-y-3">
       {[...byDate.entries()].map(([date, list]) => (
         <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`}>
-          <table className="w-full border-collapse font-mono text-[11px]">
+          <table className="w-full border-collapse font-mono text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
                 <th className="px-2 py-1 text-left">Time</th>
                 <th className="px-2 py-1 text-left">Map</th>
                 <th className="px-2 py-1 text-left">Mode</th>
@@ -1016,12 +1017,12 @@ function ImportTab({
           <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
           <button
             onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1.5 border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider hover:bg-[color:var(--color-accent-soft)]"
+            className="flex items-center gap-1.5 border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider hover:bg-[color:var(--color-accent-soft)]"
           >
             <Upload size={13} /> Choose scoreboard CSV(s)
           </button>
-          {importMsg && <div className="text-[11px] font-mono text-[color:var(--color-text-1)]">{importMsg}</div>}
-          <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono pt-2">
+          {importMsg && <div className="text-sm font-mono text-[color:var(--color-text-1)]">{importMsg}</div>}
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono pt-2">
             Regiment list (optional override)
           </div>
           <textarea
@@ -1029,11 +1030,11 @@ function ImportTab({
             onChange={(e) => setListText(e.target.value)}
             placeholder={'One per line. e.g.\n51stNY\nII Corps = II-, II'}
             rows={6}
-            className="w-full bg-[color:var(--color-bg-2)] border border-[color:var(--color-border)] p-2 font-mono text-[11px] text-[color:var(--color-text-0)] outline-none focus:border-[color:var(--color-accent)]"
+            className="w-full bg-[color:var(--color-bg-2)] border border-[color:var(--color-border)] p-2 font-mono text-sm text-[color:var(--color-text-0)] outline-none focus:border-[color:var(--color-accent)]"
           />
           <button
             onClick={() => void stats.applyRegimentList(listText)}
-            className="border border-[color:var(--color-border)] px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]"
+            className="border border-[color:var(--color-border)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]"
           >
             Apply &amp; persist to all players
           </button>
@@ -1049,7 +1050,7 @@ function ImportTab({
               .slice()
               .sort((a, b) => (b.scoreboard.recordedAt ?? '').localeCompare(a.scoreboard.recordedAt ?? ''))
               .map((s) => (
-                <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] hover:bg-[color:var(--color-bg-3)]">
+                <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
                   <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
                     <span className="text-[color:var(--color-text-2)] w-32 shrink-0">{s.scoreboard.recordedAt ?? s.scoreboard.sourceFilename}</span>
                     <span className="text-[color:var(--color-text-0)]">{s.scoreboard.meta.map}</span>

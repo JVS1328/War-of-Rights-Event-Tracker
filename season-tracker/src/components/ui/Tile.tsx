@@ -18,14 +18,14 @@ export function Tile({
         pulse ? 'pulse' : ''
       }`}
     >
-      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] font-mono">
+      <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono">
         {label}
       </div>
-      <div className="mt-1 text-[18px] font-mono text-[color:var(--color-text-0)] tabular-nums">
+      <div className="mt-1 text-2xl font-mono text-[color:var(--color-text-0)] tabular-nums">
         {value}
       </div>
       {hint && (
-        <div className="mt-0.5 text-[10px] text-[color:var(--color-text-2)] font-mono">{hint}</div>
+        <div className="mt-0.5 text-xs text-[color:var(--color-text-2)] font-mono">{hint}</div>
       )}
     </div>
   );

@@ -106,11 +106,11 @@ export function DataTable<T>({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full bg-transparent text-[11px] font-mono text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] outline-none"
+            className="w-full bg-transparent text-sm font-mono text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] outline-none"
           />
         </div>
       )}
-      <table className="w-full border-collapse font-mono text-[11px]">
+      <table className="w-full border-collapse font-mono text-sm">
         <thead>
           <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)]">
             {columns.map((col) => {
@@ -120,7 +120,7 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   onClick={() => onHeaderClick(col)}
-                  className={`px-2 py-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] ${
+                  className={`px-2 py-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)] ${
                     ALIGN[col.align ?? 'left']
                   } ${canSort ? 'cursor-pointer select-none hover:text-[color:var(--color-text-0)]' : ''}`}
                 >

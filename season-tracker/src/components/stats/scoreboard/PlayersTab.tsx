@@ -102,7 +102,7 @@ export function PlayersTab({
 
   return (
     <section className="p-2">
-      <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-wider font-mono mb-2 px-2">
+      <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wider font-mono mb-2 px-2">
         <span className="text-[color:var(--color-text-2)]">sort</span>
         {(['unit', 'name', 'kills', 'deaths', 'kd'] as const).map((s) => (
           <button
@@ -122,12 +122,12 @@ export function PlayersTab({
           placeholder="search player…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="ml-3 bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-[11px] font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)] normal-case tracking-normal w-32"
+          className="ml-3 bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-sm font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)] normal-case tracking-normal w-32"
         />
         <span className="text-[color:var(--color-text-2)] ml-auto">★ = officer</span>
       </div>
       {allEmpty && searchTrimmed ? (
-        <div className="px-3 py-6 text-center text-[10px] text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
+        <div className="px-3 py-6 text-center text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
           no players match "{searchTrimmed}"
         </div>
       ) : (
@@ -204,11 +204,11 @@ function TeamBlock({
       <div className="flex items-center justify-between px-2 py-1 bg-[color:var(--color-bg-2)] border-y border-[color:var(--color-border)]">
         <span className="flex items-center gap-2">
           <Pill tone={teamTone(team)}>{team}</Pill>
-          <span className="text-[10px] text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
+          <span className="text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
             {visible.length} player{visible.length === 1 ? '' : 's'}
           </span>
         </span>
-        <span className="text-[10px] font-mono tabular-nums text-[color:var(--color-text-2)] uppercase tracking-wider">
+        <span className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] uppercase tracking-wider">
           team total · {totals.kills} kills · {totals.deaths} deaths
         </span>
       </div>
@@ -312,7 +312,7 @@ function RegimentGroup({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full px-3 py-1 bg-[color:var(--color-bg-1)] text-[10px] uppercase tracking-wider font-mono flex justify-between items-center gap-3 flex-wrap text-left hover:bg-[color:var(--color-bg-2)]"
+        className="w-full px-3 py-1 bg-[color:var(--color-bg-1)] text-xs uppercase tracking-wider font-mono flex justify-between items-center gap-3 flex-wrap text-left hover:bg-[color:var(--color-bg-2)]"
       >
         <span className="flex items-center gap-1 text-[color:var(--color-text-0)]">
           <Chevron size={11} className="shrink-0 text-[color:var(--color-text-2)]" />
@@ -383,7 +383,7 @@ function PlayerCardList({
             <div className="flex items-baseline justify-between gap-2">
               <span className="flex items-center gap-1 min-w-0">
                 {isOfficer(p.name) && (
-                  <span className="text-[color:var(--color-warn)] text-[10px] shrink-0" title="officer">
+                  <span className="text-[color:var(--color-warn)] text-xs shrink-0" title="officer">
                     ★
                   </span>
                 )}
@@ -394,7 +394,7 @@ function PlayerCardList({
                   {p.name}
                 </button>
               </span>
-              <span className="font-mono tabular-nums text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] shrink-0 flex gap-2">
+              <span className="font-mono tabular-nums text-xs uppercase tracking-wider text-[color:var(--color-text-2)] shrink-0 flex gap-2">
                 <span>
                   <span>K/D </span>
                   <span className="text-[color:var(--color-text-0)]">{p.kd.toFixed(2)}</span>
@@ -413,11 +413,11 @@ function PlayerCardList({
                 </span>
               </span>
             </div>
-            {role && <div className="text-[10px] font-mono text-[color:var(--color-text-2)] mt-0.5">{role}</div>}
-            <div className="text-[11px] font-mono tabular-nums text-[color:var(--color-text-1)] mt-0.5">
+            {role && <div className="text-xs font-mono text-[color:var(--color-text-2)] mt-0.5">{role}</div>}
+            <div className="text-sm font-mono tabular-nums text-[color:var(--color-text-1)] mt-0.5">
               {p.kills} kills · {p.deaths} deaths
             </div>
-            <div className="text-[10px] font-mono tabular-nums text-[color:var(--color-text-2)] mt-0.5">
+            <div className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] mt-0.5">
               <span>d: </span>
               <span className="text-[color:var(--color-text-1)]">{p.deathsInForm}</span>
               <span> form · </span>

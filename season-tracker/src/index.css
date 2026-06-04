@@ -81,6 +81,7 @@
   --color-cyan-600: #9a6f3a;
 
   /* ── Global look override: compact type scale for terminal density ───── */
+  --text-2xs: 9px;
   --text-xs: 10px;
   --text-sm: 11px;
   --text-base: 12px;
@@ -159,3 +160,11 @@
   100% { background-color: transparent; }
 }
 .pulse { animation: wor-pulse 800ms ease-out; }
+
+/* The "Classic" theme family lives in ./theme-classic.css (imported after this
+   file in main.jsx). It MUST stay out of this Tailwind entry: Tailwind v4 scans
+   the entry stylesheet for redeclarations of registered theme tokens
+   (--radius-*, --text-*, --font-*) and strips/hoists them, so a copy here would
+   silently lose everything but colors. A separate plain CSS file is left intact
+   by Tailwind and only minified, and its unlayered rules sit ahead of the
+   modern .dark (base) layer in the cascade. */

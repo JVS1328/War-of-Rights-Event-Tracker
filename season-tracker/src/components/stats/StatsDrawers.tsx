@@ -24,7 +24,7 @@ export function PlayerDrawer({
   onType: (t: 'all' | 'inf' | 'arty') => void;
 }) {
   const toggle = (
-    <div className="flex items-center gap-1 px-3 pt-3 font-mono text-[10px] uppercase tracking-wider">
+    <div className="flex items-center gap-1 px-3 pt-3 font-mono text-xs uppercase tracking-wider">
       <span className="text-[color:var(--color-text-2)]">Class</span>
       {(['all', 'inf', 'arty'] as const).map((t) => (
         <button
@@ -57,7 +57,7 @@ export function PlayerDrawer({
               href={`https://steamcommunity.com/profiles/${detail.steamId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-[color:var(--color-text-2)] hover:text-[color:var(--color-accent)]"
+              className="inline-flex items-center gap-1 text-sm text-[color:var(--color-text-2)] hover:text-[color:var(--color-accent)]"
               title="Open Steam profile in a new tab"
             >
               <ExternalLink size={11} /> Steam profile
@@ -65,7 +65,7 @@ export function PlayerDrawer({
           )}
 
           {detail.aliases.length > 0 && (
-            <div className="text-[10px] text-[color:var(--color-text-2)]">
+            <div className="text-xs text-[color:var(--color-text-2)]">
               also known as: {detail.aliases.slice(0, 4).join(', ')}
               {detail.aliases.length > 4 && ' …'}
             </div>
@@ -81,7 +81,7 @@ export function PlayerDrawer({
           </div>
 
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">Deaths by stance</div>
+            <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Deaths by stance</div>
             <div className="grid grid-cols-3 gap-px">
               <Cell label={FORMATION_LABEL.in_form} value={detail.deathsInForm} />
               <Cell label={FORMATION_LABEL.skirm} value={detail.deathsSkirm} />
@@ -95,10 +95,10 @@ export function PlayerDrawer({
           </div>
 
           <div>
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
-            <table className="w-full text-[11px]">
+            <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
+            <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[color:var(--color-border)] text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+                <tr className="border-b border-[color:var(--color-border)] text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
                   <th className="px-2 py-0.5 text-left">When</th>
                   <th className="px-2 py-0.5 text-left">Map · Area</th>
                   <th className="px-2 py-0.5 text-right">K</th>
@@ -112,7 +112,7 @@ export function PlayerDrawer({
                 </tr>
               </thead>
               <tbody>
-                {detail.perRound.map((r, i) => (
+                {[...detail.perRound].sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? '')).map((r, i) => (
                   <tr
                     key={i}
                     onClick={() => onOpenRound(r.sourceFilename)}
