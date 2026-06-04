@@ -1,4 +1,4 @@
-import type { FormationCounts } from './statsEngine';
+import type { FormationCounts, ContextStatSlice, RegimentContextStats } from './statsEngine';
 import { avgTicketCost } from './labels';
 
 /**
@@ -125,6 +125,51 @@ export function deriveTokenPlayerCounts(
       }
     }
     out[token] = { uniquePlayers, avgPlayers };
+  }
+  return out;
+}
+
+// ── Context-aware token snaps (faction & role breakdowns) ───────────────────
+
+export interface UnitContextSnaps {
+  asUSA: UnitSnap;
+  asCSA: UnitSnap;
+  asAttacker: UnitSnap;
+  asDefender: UnitSnap;
+}
+
+function sliceToSnap(s: ContextStatSlice): UnitSnap {
+  return {
+    kills: s.kills,
+    deaths: s.deaths,
+    deathsForm: { ...s.casualtiesByFormation },
+    killsForm: { ...s.killsByFormation },
+  };
+}
+
+/**
+ * Derive per-token context snaps (USA/CSA/Attacker/Defender) from the
+ * per-regiment context stats produced by `computeRegimentContextStats`.
+ */
+export function deriveTokenContextSnaps(
+  contextStats: Record<string, RegimentContextStats>,
+  tokenRegiments: Record<string, string[]>,
+): Record<string, UnitContextSnaps> {
+  const out: Record<string, UnitContextSnaps> = {};
+  for (const [token, regs] of Object.entries(tokenRegiments)) {
+    let usa = emptyUnitSnap();
+    let csa = emptyUnitSnap();
+    let atk = emptyUnitSnap();
+    let def = emptyUnitSnap();
+    for (const reg of regs) {
+      const ctx = contextStats[reg];
+      if (!ctx) continue;
+      usa = addUnitSnap(usa, sliceToSnap(ctx.asUSA));
+      csa = addUnitSnap(csa, sliceToSnap(ctx.asCSA));
+      atk = addUnitSnap(atk, sliceToSnap(ctx.asAttacker));
+      def = addUnitSnap(def, sliceToSnap(ctx.asDefender));
+    }
+    out[token] = { asUSA: usa, asCSA: csa, asAttacker: atk, asDefender: def };
   }
   return out;
 }

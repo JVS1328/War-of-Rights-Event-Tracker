@@ -6,13 +6,14 @@ import { useStats, type UseStats } from './useStats';
 import {
   computePlayerLeaderboard,
   computeRegimentBreakdown,
+  computeRegimentContextStats,
   computeCombatTotals,
   computeRounds,
   computeOverview,
   computePlayerDetail,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
@@ -158,6 +159,7 @@ export function StatsPanel({
     [sbs, stats.assignments, opts, typeFilter],
   );
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
+  const regimentContext = useMemo(() => computeRegimentContextStats(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
   // Season regiment resolver shared with the round drawer's Players tab, so its
   // "unit" grouping matches the Regiments tab (assignments → list → name tag).
@@ -292,6 +294,7 @@ export function StatsPanel({
       {tab === 'regiments' && (
         <RegimentsTab
           regiments={regiments}
+          regimentContext={regimentContext}
           stats={stats}
           openPlayer={openPlayer}
           openRound={openRound}
@@ -556,6 +559,7 @@ interface RegEdit {
 
 function RegimentsTab({
   regiments,
+  regimentContext,
   stats,
   openPlayer,
   openRound,
@@ -564,6 +568,7 @@ function RegimentsTab({
   readOnly = false,
 }: {
   regiments: RegimentStatRow[];
+  regimentContext: Record<string, RegimentContextStats>;
   stats: ReturnType<typeof useStats>;
   openPlayer: (key: string) => void;
   openRound: (filename: string) => void;
@@ -735,6 +740,7 @@ function RegimentsTab({
         <RegimentPanel
           key={r.regiment}
           reg={r}
+          contextStats={regimentContext[r.regiment]}
           openPlayer={openPlayer}
           openRound={openRound}
           edit={edit}
@@ -786,8 +792,40 @@ function RegimentsTab({
   );
 }
 
+/** Compact stat summary for one context slice. */
+function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStatSlice }) {
+  if (slice.rounds === 0) return null;
+  const formOf = (f: FormationCounts): [string, number][] => [
+    [FORMATION_LABEL.in_form, f.in_form],
+    [FORMATION_LABEL.skirm, f.skirm],
+    [FORMATION_LABEL.oob, f.oob],
+  ];
+  const byCause = (m: Record<string, number>): [string, number][] =>
+    Object.entries(m).sort((a, b) => b[1] - a[1]);
+  return (
+    <Panel
+      title={label}
+      collapsible
+      defaultOpen={false}
+      right={
+        <span className="font-mono text-xs text-[color:var(--color-text-2)]">
+          {slice.rounds}rd · {slice.players}p · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)}
+          {' · '}<span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
+          {' · '}<span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
+        </span>
+      }
+    >
+      <div className="p-2 space-y-2">
+        <BreakdownGroup heading="Casualties suffered" form={formOf(slice.casualtiesByFormation)} cause={byCause(slice.casualtiesByCause)} />
+        <BreakdownGroup heading="Casualties inflicted" form={formOf(slice.killsByFormation)} cause={byCause(slice.killsByCause)} />
+      </div>
+    </Panel>
+  );
+}
+
 function RegimentPanel({
   reg,
+  contextStats,
   openPlayer,
   openRound,
   edit,
@@ -795,6 +833,7 @@ function RegimentPanel({
   focusNonce,
 }: {
   reg: RegimentStatRow;
+  contextStats?: RegimentContextStats;
   openPlayer: (key: string) => void;
   openRound: (filename: string) => void;
   edit: RegEdit;
@@ -869,6 +908,17 @@ function RegimentPanel({
           <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
           <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
         </div>
+
+        {/* Faction & role context breakdowns */}
+        {contextStats && (
+          <div className="space-y-1">
+            <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mt-2 mb-1">Breakdown by faction & role</div>
+            <ContextSlicePanel label="As USA" slice={contextStats.asUSA} />
+            <ContextSlicePanel label="As CSA" slice={contextStats.asCSA} />
+            <ContextSlicePanel label="As Attacker" slice={contextStats.asAttacker} />
+            <ContextSlicePanel label="As Defender" slice={contextStats.asDefender} />
+          </div>
+        )}
 
         <div>
           <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Round-by-round</div>
