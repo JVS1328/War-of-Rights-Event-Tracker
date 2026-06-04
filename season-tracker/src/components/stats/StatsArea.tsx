@@ -809,6 +809,7 @@ function RegimentPanel({
                     </button>
                   ),
                 },
+                { key: 'rounds', header: 'R', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
                 { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
                 { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
                 { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },

@@ -112,7 +112,7 @@ export function PlayerDrawer({
                 </tr>
               </thead>
               <tbody>
-                {detail.perRound.map((r, i) => (
+                {[...detail.perRound].sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? '')).map((r, i) => (
                   <tr
                     key={i}
                     onClick={() => onOpenRound(r.sourceFilename)}

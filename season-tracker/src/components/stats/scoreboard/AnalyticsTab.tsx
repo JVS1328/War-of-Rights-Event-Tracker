@@ -45,12 +45,12 @@ function IndividualList({
               onClick={() => onOpenPlayer(r.key)}
               className="cursor-pointer border-b border-[color:var(--color-border)] hover:bg-[color:var(--color-bg-3)]"
             >
-              <td className="w-5 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{i + 1}</td>
-              <td className="py-0.5">
+              <td className="w-6 px-1 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{i + 1}</td>
+              <td className="px-1 py-0.5">
                 <div className="truncate text-[color:var(--color-text-0)]">{r.name}</div>
-                {r.regiment && <div className="text-[9px] text-[color:var(--color-text-2)]">{r.regiment}</div>}
+                {r.regiment && <div className="truncate text-[9px] text-[color:var(--color-text-2)]">{r.regiment}</div>}
               </td>
-              <td className="py-0.5 text-right font-semibold tabular-nums" style={{ color }}>
+              <td className="px-1 py-0.5 text-right font-semibold tabular-nums whitespace-nowrap" style={{ color }}>
                 {r.value}
               </td>
             </tr>
