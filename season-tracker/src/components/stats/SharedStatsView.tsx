@@ -30,6 +30,14 @@ export default function SharedStatsView({
   const seasons = bundle.seasons ?? [];
   const [seasonScope, setSeasonScope] = useState(OVERALL_SCOPE);
 
+  // Extract the tracker map stats slice that matches the active season filter.
+  const trackerMapStats = useMemo(() => {
+    if (!bundle.mapStats) return undefined;
+    return seasonScope === OVERALL_SCOPE
+      ? bundle.mapStats.overall
+      : bundle.mapStats.bySeason?.[seasonScope] ?? bundle.mapStats.overall;
+  }, [bundle.mapStats, seasonScope]);
+
   return (
     <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
       <div className="max-w-7xl mx-auto">
@@ -68,6 +76,7 @@ export default function SharedStatsView({
           seasons={seasons}
           seasonScope={seasonScope}
           onSeasonScope={setSeasonScope}
+          trackerMapStats={trackerMapStats}
         />
       </div>
     </div>

@@ -410,6 +410,41 @@ export function computeOverview(
   };
 }
 
+export interface TrackerMapEntry {
+  plays: number;
+  usaWins: number;
+  csaWins: number;
+  totalCasualties: number;
+  usaCasualties: number;
+  csaCasualties: number;
+  avgLossesUsa: number;
+  avgLossesCsa: number;
+  avgFormationUsa: FormationCounts;
+  avgFormationCsa: FormationCounts;
+  hasFormation: boolean;
+  avgMoraleUsa?: string | null;
+  avgMoraleCsa?: string | null;
+  hasMorale?: boolean;
+}
+
+export interface TrackerMapStats {
+  overall: {
+    totalRounds: number;
+    usaWins: number;
+    csaWins: number;
+    attackerWins: number;
+    defenderWins: number;
+    usaCasualties: number;
+    csaCasualties: number;
+    totalCasualties: number;
+    usaFormation: FormationCounts;
+    csaFormation: FormationCounts;
+    formationTotal: FormationCounts;
+    hasFormation: boolean;
+  };
+  byMap: Record<string, TrackerMapEntry>;
+}
+
 export interface MapStatRow {
   map: string;
   rounds: number;

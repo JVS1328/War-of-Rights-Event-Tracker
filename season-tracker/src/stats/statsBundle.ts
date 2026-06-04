@@ -1,5 +1,6 @@
 import type { Scoreboard } from './types';
 import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
+import type { TrackerMapStats } from './statsEngine';
 
 /**
  * Portable player-stats payload: every scoreboard for an event plus its
@@ -47,6 +48,15 @@ export interface StatsBundle {
    * before this field existed simply lack it, and the view degrades to Overall.
    */
   seasons?: StatsBundleSeason[];
+  /**
+   * Pre-computed map stats from the tracker's Elo engine, keyed by season id
+   * plus an "overall" entry for event-wide stats. The shared view picks the
+   * right slice based on the user's season filter.
+   */
+  mapStats?: {
+    overall: TrackerMapStats;
+    bySeason: Record<string, TrackerMapStats>;
+  };
 }
 
 /** Pack stored scoreboards + assignments + aliases into an event-agnostic bundle. */

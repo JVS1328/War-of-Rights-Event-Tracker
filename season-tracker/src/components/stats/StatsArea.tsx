@@ -10,13 +10,12 @@ import {
   computeRounds,
   computeOverview,
   computePlayerDetail,
-  computeMapBreakdown,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, MapStatRow } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
-import { MAP_AREAS, USA_ATTACK_MAPS, areaOf, prettyArea } from '../../stats/mapAreas';
+import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
@@ -46,41 +45,6 @@ const whenOf = (r: string | null) => (r ? `${r.slice(0, 10)} ${r.slice(11, 16)}`
 const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
-
-export interface TrackerMapEntry {
-  plays: number;
-  usaWins: number;
-  csaWins: number;
-  totalCasualties: number;
-  usaCasualties: number;
-  csaCasualties: number;
-  avgLossesUsa: number;
-  avgLossesCsa: number;
-  avgFormationUsa: FormationCounts;
-  avgFormationCsa: FormationCounts;
-  hasFormation: boolean;
-  avgMoraleUsa?: string | null;
-  avgMoraleCsa?: string | null;
-  hasMorale?: boolean;
-}
-
-export interface TrackerMapStats {
-  overall: {
-    totalRounds: number;
-    usaWins: number;
-    csaWins: number;
-    attackerWins: number;
-    defenderWins: number;
-    usaCasualties: number;
-    csaCasualties: number;
-    totalCasualties: number;
-    usaFormation: FormationCounts;
-    csaFormation: FormationCounts;
-    formationTotal: FormationCounts;
-    hasFormation: boolean;
-  };
-  byMap: Record<string, TrackerMapEntry>;
-}
 
 interface StatsAreaProps {
   eventId: string;
@@ -205,7 +169,6 @@ export function StatsPanel({
     [stats.assignments, opts],
   );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
-  const mapBreakdown = useMemo(() => computeMapBreakdown(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const playerDetail = useMemo(
     () => (playerKey ? computePlayerDetail(sbs, playerKey, stats.assignments, { ...opts, type: playerType }) : null),
@@ -338,7 +301,7 @@ export function StatsPanel({
         />
       )}
 
-      {tab === 'maps' && <MapsTab maps={mapBreakdown} hasData={hasData} trackerMapStats={trackerMapStats} />}
+      {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} />}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
@@ -1149,72 +1112,7 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
 
 // ── Maps ────────────────────────────────────────────────────────────────────
 
-function mapViewFromScoreboards(maps: MapStatRow[]): TrackerMapStats {
-  const zero = (): FormationCounts => ({ in_form: 0, skirm: 0, oob: 0 });
-  const uF = zero();
-  const cF = zero();
-  let totalRounds = 0;
-  let usaWins = 0;
-  let csaWins = 0;
-  let usaCas = 0;
-  let csaCas = 0;
-  let attackerWins = 0;
-  let defenderWins = 0;
-  for (const m of maps) {
-    totalRounds += m.rounds;
-    usaWins += m.usaWins;
-    csaWins += m.csaWins;
-    usaCas += m.usaCasualties;
-    csaCas += m.csaCasualties;
-    uF.in_form += m.usaFormation.in_form;
-    uF.skirm += m.usaFormation.skirm;
-    uF.oob += m.usaFormation.oob;
-    cF.in_form += m.csaFormation.in_form;
-    cF.skirm += m.csaFormation.skirm;
-    cF.oob += m.csaFormation.oob;
-    const isUsaAttack = USA_ATTACK_MAPS.has(m.map);
-    attackerWins += isUsaAttack ? m.usaWins : m.csaWins;
-    defenderWins += isUsaAttack ? m.csaWins : m.usaWins;
-  }
-  const totalCas = usaCas + csaCas;
-  const fTotal = { in_form: uF.in_form + cF.in_form, skirm: uF.skirm + cF.skirm, oob: uF.oob + cF.oob };
-  const byMap: Record<string, TrackerMapEntry> = {};
-  for (const m of maps) {
-    const n = m.rounds || 1;
-    byMap[m.map] = {
-      plays: m.rounds,
-      usaWins: m.usaWins,
-      csaWins: m.csaWins,
-      totalCasualties: m.usaCasualties + m.csaCasualties,
-      usaCasualties: m.usaCasualties,
-      csaCasualties: m.csaCasualties,
-      avgLossesUsa: Math.round(m.usaCasualties / n),
-      avgLossesCsa: Math.round(m.csaCasualties / n),
-      avgFormationUsa: { in_form: Math.round(m.usaFormation.in_form / n), skirm: Math.round(m.usaFormation.skirm / n), oob: Math.round(m.usaFormation.oob / n) },
-      avgFormationCsa: { in_form: Math.round(m.csaFormation.in_form / n), skirm: Math.round(m.csaFormation.skirm / n), oob: Math.round(m.csaFormation.oob / n) },
-      hasFormation: m.usaFormation.in_form + m.usaFormation.skirm + m.usaFormation.oob + m.csaFormation.in_form + m.csaFormation.skirm + m.csaFormation.oob > 0,
-    };
-  }
-  return {
-    overall: {
-      totalRounds, usaWins, csaWins, attackerWins, defenderWins,
-      usaCasualties: usaCas, csaCasualties: csaCas, totalCasualties: totalCas,
-      usaFormation: uF, csaFormation: cF, formationTotal: fTotal,
-      hasFormation: fTotal.in_form + fTotal.skirm + fTotal.oob > 0,
-    },
-    byMap,
-  };
-}
-
-function MapsTab({
-  maps,
-  hasData,
-  trackerMapStats,
-}: {
-  maps: MapStatRow[];
-  hasData: boolean;
-  trackerMapStats?: TrackerMapStats;
-}) {
+function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (key: string) =>
     setOpenAreas((prev) => {
@@ -1224,19 +1122,15 @@ function MapsTab({
       return next;
     });
 
-  const view = useMemo(
-    () => trackerMapStats ?? mapViewFromScoreboards(maps),
-    [trackerMapStats, maps],
-  );
-  const { overall, byMap } = view;
-
-  if ((!hasData && !trackerMapStats) || overall.totalRounds === 0) {
+  if (!trackerMapStats || trackerMapStats.overall.totalRounds === 0) {
     return (
       <Panel title="Maps">
         <EmptyHint>No map data available</EmptyHint>
       </Panel>
     );
   }
+
+  const { overall, byMap } = trackerMapStats;
 
   const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
   const allMapNames = Object.keys(byMap);
