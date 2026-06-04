@@ -40,7 +40,9 @@ export function buildStatsBundle(
     v: STATS_BUNDLE_VERSION,
     scoreboards: records.map((r) => ({
       sourceFilename: r.scoreboard.sourceFilename,
-      scoreboard: r.scoreboard,
+      // Drop joinLeaves — it's parsed but never read by any stat or view, and is
+      // dead weight that bloats share links / export files.
+      scoreboard: { ...r.scoreboard, joinLeaves: [] },
       ...(r.binding ? { binding: r.binding } : {}),
     })),
     assignments: { ...assignments },

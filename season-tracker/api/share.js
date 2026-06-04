@@ -1,18 +1,35 @@
-import { createClient } from 'redis';
+import { Redis } from '@upstash/redis';
 import crypto from 'node:crypto';
 
-const MAX_PAYLOAD = 512_000; // 500 KB
+// Upstash free tier caps a single value at ~1 MB. Compressed share payloads are
+// well under this for seasons; large stats bundles (with killfeeds) are the only
+// thing that can approach it — those get a clear 413 instead of a giant URL.
+const MAX_PAYLOAD = 1_000_000; // 1 MB
 
+// The Upstash Vercel integration injects REST URL/token under either the Upstash
+// names or Vercel's KV-prefixed names depending on how it was added; accept both.
 let redis;
-async function getRedis() {
+function getRedis() {
   if (!redis) {
-    redis = await createClient({ url: process.env.REDIS_URL }).connect();
+    const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+    if (!url || !token) {
+      throw new Error('Upstash Redis is not configured (missing REST URL/token)');
+    }
+    // Payloads are opaque base64 strings — disable JSON (de)serialization so they
+    // round-trip byte-for-byte.
+    redis = new Redis({ url, token, automaticDeserialization: false });
   }
   return redis;
 }
 
 export default async function handler(req, res) {
-  const client = await getRedis();
+  let client;
+  try {
+    client = getRedis();
+  } catch (err) {
+    return res.status(503).json({ error: err.message });
+  }
 
   if (req.method === 'POST') {
     const { payload } = req.body;
