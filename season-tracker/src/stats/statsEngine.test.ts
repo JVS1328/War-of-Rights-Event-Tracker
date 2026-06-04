@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseScoreboard } from './parseScoreboard';
-import { computePlayerLeaderboard, computeRegimentBreakdown } from './statsEngine';
+import { computePlayerLeaderboard, computeRegimentBreakdown, computeRegimentContextStats } from './statsEngine';
 
 // Round 1: 51stNY Joe (CSA) 3k/1d; 20thGA Han (USA) 1k/2d.
 const R1 = `round_start_time,16:00:00
@@ -99,5 +99,79 @@ time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victi
     const regs = computeRegimentBreakdown([parseScoreboard(ghostKill, 'scoreboard_20260101_120000.csv')], {});
     expect(regs.find((r) => r.regiment === '99THPA')).toBeUndefined();
     expect(regs.every((r) => r.players > 0)).toBe(true);
+  });
+});
+
+describe('computeRegimentContextStats', () => {
+  const USA_ATTACKS = `map,DrillCamp
+mode,Skirmish
+area,Alexander Farm
+winner,USA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,1,3,1,3.00,1,0,0,76561198000000001
+[20thGA]Han,2,1,2,0.50,1,1,0,76561198000000002
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+16:10:00,[51stNY]Joe,76561198000000001,1,[20thGA]Han,76561198000000002,2,in_form,Minie,0,4
+`;
+
+  const CSA_ATTACKS = `map,DrillCamp
+mode,Skirmish
+area,Crecy's Cornfield
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,1,0,2,0.00,1,1,0,76561198000000001
+[20thGA]Han,2,2,0,0.00,0,0,0,76561198000000002
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+16:10:00,[20thGA]Han,76561198000000002,2,[51stNY]Joe,76561198000000001,1,skirm,Minie,0,4
+`;
+
+  it('splits stats by faction and attacker/defender role using the area field', () => {
+    const sbs = [
+      parseScoreboard(USA_ATTACKS, 'scoreboard_20260201_120000.csv'),
+      parseScoreboard(CSA_ATTACKS, 'scoreboard_20260201_130000.csv'),
+    ];
+    const ctx = computeRegimentContextStats(sbs, {});
+    const ny = ctx['51STNY'];
+    expect(ny).toBeDefined();
+
+    expect(ny.asUSA.kills).toBe(3);
+    expect(ny.asUSA.rounds).toBe(2);
+    expect(ny.asCSA.kills).toBe(0);
+
+    // Alexander Farm: USA attacks → 51stNY (USA) is attacker
+    // Crecy's Cornfield: CSA attacks → 51stNY (USA) is defender
+    expect(ny.asAttacker.kills).toBe(3);
+    expect(ny.asAttacker.rounds).toBe(1);
+    expect(ny.asDefender.kills).toBe(0);
+    expect(ny.asDefender.deaths).toBe(2);
+    expect(ny.asDefender.rounds).toBe(1);
+
+    const ga = ctx['20THGA'];
+    expect(ga.asCSA.kills).toBe(3);
+    expect(ga.asDefender.kills).toBe(1);
+    expect(ga.asDefender.rounds).toBe(1);
+    expect(ga.asAttacker.kills).toBe(2);
+    expect(ga.asAttacker.rounds).toBe(1);
+  });
+
+  it('skips attacker/defender for conquest maps (no area or unknown area)', () => {
+    const conquest = `map,Antietam
+mode,Conquest
+area,Smokestacks
+winner,
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,1,1,1,1.00,1,0,0,76561198000000001
+`;
+    const sbs = [parseScoreboard(conquest, 'scoreboard_20260201_140000.csv')];
+    const ctx = computeRegimentContextStats(sbs, {});
+    const ny = ctx['51STNY'];
+    expect(ny.asUSA.kills).toBe(1);
+    expect(ny.asAttacker.rounds).toBe(0);
+    expect(ny.asDefender.rounds).toBe(0);
   });
 });

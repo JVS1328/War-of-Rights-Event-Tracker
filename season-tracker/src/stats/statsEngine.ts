@@ -1001,7 +1001,7 @@ export function computeRegimentContextStats(
   };
 
   for (const sb of scoreboards) {
-    const atk = mapAttacker(sb.meta.map);
+    const atk = mapAttacker(sb.meta.area ?? sb.meta.map);
 
     for (const p of sb.players) {
       const reg = resolveFor(p.steamId, p.name, assignments, options.regimentList, options.aliasMap);
