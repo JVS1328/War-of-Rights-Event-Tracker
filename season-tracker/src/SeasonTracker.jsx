@@ -3970,9 +3970,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
       const effectiveRounds = sameLeadBothRounds ? Math.max(roundsPerMatch || 1, 3) : (roundsPerMatch || 1);
       const needed = Math.floor(effectiveRounds / 2) + 1;
-      if (t1Wins >= needed && t1Wins > t2Wins) return team1;
-      if (t2Wins >= needed && t2Wins > t1Wins) return team2;
-      return null;
+      let winner = null;
+      if (t1Wins >= needed && t1Wins > t2Wins) winner = team1;
+      else if (t2Wins >= needed && t2Wins > t1Wins) winner = team2;
+      return { winner, t1Wins, t2Wins, effectiveRounds };
     };
 
     const seedLabel = (team) => team?.conferenceSeed ?? team?.seed;
@@ -3982,11 +3983,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
       // Resolve winners for any matchup with both teams known.
       round.matchups.forEach(m => {
-        if (m.team1 && m.team2 && !m.winner) {
-          const winner = resolveMatch(m.team1, m.team2, round.roundsPerMatch);
-          if (winner) {
-            m.winner = winner;
-            m.loser = winner === m.team1 ? m.team2 : m.team1;
+        if (m.team1 && m.team2) {
+          const result = resolveMatch(m.team1, m.team2, round.roundsPerMatch);
+          m.t1Wins = result.t1Wins;
+          m.t2Wins = result.t2Wins;
+          m.effectiveRounds = result.effectiveRounds;
+          if (!m.winner && result.winner) {
+            m.winner = result.winner;
+            m.loser = result.winner === m.team1 ? m.team2 : m.team1;
           }
         }
       });
@@ -7604,7 +7608,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   <Swords className="w-4 h-4" />
                                   {round.name}
                                   <span className="text-xs text-text-secondary font-normal">
-                                    ({round.roundsPerMatch} round{round.roundsPerMatch > 1 ? 's' : ''} per match)
+                                    ({(() => {
+                                      const hasAutoBO3 = round.matchups.some(m => m.effectiveRounds && m.effectiveRounds > round.roundsPerMatch);
+                                      const display = hasAutoBO3 ? `Bo3` : `${round.roundsPerMatch} round${round.roundsPerMatch > 1 ? 's' : ''} per match`;
+                                      return display;
+                                    })()})
                                   </span>
                                 </h5>
                                 <div className="space-y-2">
@@ -7642,7 +7650,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                               <span className="text-text-secondary text-sm italic">Seed #{matchup.seed1}</span>
                                             )}
                                           </div>
-                                          <span className="text-text-secondary text-xs font-bold mx-2">VS</span>
+                                          <div className="flex flex-col items-center mx-2">
+                                            {(matchup.t1Wins > 0 || matchup.t2Wins > 0) ? (
+                                              <span className="text-amber-400 text-xs font-bold">{matchup.t1Wins}-{matchup.t2Wins}</span>
+                                            ) : (
+                                              <span className="text-text-secondary text-xs font-bold">VS</span>
+                                            )}
+                                          </div>
                                           <div className="flex items-center gap-2 flex-1 justify-end">
                                             {matchup.team2 ? (
                                               <>
