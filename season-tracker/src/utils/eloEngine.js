@@ -16,9 +16,9 @@ import { DEFAULT_ELO_CONFIG, DEFAULT_ELO_SYSTEM } from './eventStore';
 export const USA_ATTACK_MAPS = new Set([
   "East Woods Skirmish", "Nicodemus Hill", "Hooker's Push", "Bloody Lane",
   "Pry Ford", "Smith Field", "Alexander Farm", "Crossroads",
-  "Wagon Road", "Hagertown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
+  "Wagon Road", "Hagerstown Turnpike", "Pry Grist Mill", "Otto & Sherrick Farm",
   "Piper Farm", "West Woods", "Dunker Church", "Burnside Bridge",
-  "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defense",
+  "Garland's Stand", "Cox's Push", "Hatch's Attack", "Colquitt's Defence",
   "Flemming's Meadow", "Crossley Creek", "Confederate Encampment",
 ]);
 
