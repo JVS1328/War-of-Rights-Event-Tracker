@@ -76,6 +76,35 @@ describe('buildRoundAutofill', () => {
     expect(u2.r2MoraleA).toBe('Final Push');
   });
 
+  it('marks a Conquest/Contention round with no winner as a draw', () => {
+    const conquestSB = `map,Antietam
+mode,Conquest
+area,Smokestacks
+casualties_usa,500
+casualties_csa,480
+`;
+    const cb = parseScoreboard(conquestSB, 'scoreboard_20260101_120000.csv');
+    const af = buildRoundAutofill(cb, { A: 'USA', B: 'CSA' }, ['Smokestacks']);
+    expect(af.winner).toBeNull();
+    expect(af.winnerSide).toBeNull();
+    expect(af.isDraw).toBe(true);
+    const u1 = roundFieldUpdates(1, af);
+    expect(u1.round1Draw).toBe(true);
+    expect(u1.round1Winner).toBeNull();
+  });
+
+  it('does not mark a Skirmish round as a draw, even without a winner', () => {
+    const noWinnerSkirmish = `map,Antietam
+mode,Skirmish
+area,Burnside Bridge
+casualties_usa,100
+casualties_csa,90
+`;
+    const nb = parseScoreboard(noWinnerSkirmish, 'scoreboard_20260101_120000.csv');
+    const af = buildRoundAutofill(nb, { A: 'USA', B: 'CSA' }, ['Burnside Bridge']);
+    expect(af.isDraw).toBe(false);
+  });
+
   it('flags an unknown area so the UI can prompt for manual selection', () => {
     const af = buildRoundAutofill(sb, { A: 'USA', B: 'CSA' }, ['Some Other Area']);
     expect(af.validMap).toBe(false);

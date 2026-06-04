@@ -53,7 +53,7 @@ import {
   computeExpectedA,
   accumulateMapHistoryFromSeasons,
 } from './utils/eloEngine';
-import { MAP_AREAS, ALL_MAPS, mapAttacker } from './stats/mapCatalog';
+import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -361,6 +361,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
       teamB: [],
       round1Winner: null,
       round2Winner: null,
+      round1Draw: false,
+      round2Draw: false,
       round1Map: null,
       round2Map: null,
       round1Flipped: false,
@@ -857,7 +859,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const byMap = {};
     const zeroForm = () => ({ in_form: 0, skirm: 0, oob: 0 });
     const overall = {
-      totalRounds: 0, usaWins: 0, csaWins: 0,
+      totalRounds: 0, usaWins: 0, csaWins: 0, draws: 0,
       attackerWins: 0, defenderWins: 0, attackerRounds: 0,
       usaAttackWins: 0, usaAttackRounds: 0,
       usaDefenseWins: 0, usaDefenseRounds: 0,
@@ -882,6 +884,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const isUsaAttack = attacker === 'USA';
       const usaWins = entry.USA.wins;
       const csaWins = entry.CSA.wins;
+      const draws = entry.draws || 0;
       const usaCas = entry.USA.casualtiesTaken;
       const csaCas = entry.CSA.casualtiesTaken;
       const totalCasualties = usaCas + csaCas;
@@ -900,7 +903,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const avgMoraleCsa = averageMorale(entry.CSA.moraleStates || []);
 
       byMap[mapName] = {
-        plays: entry.plays, usaWins, csaWins,
+        plays: entry.plays, usaWins, csaWins, draws,
         attackerWins: attacker === null ? 0 : (isUsaAttack ? usaWins : csaWins),
         defenderWins: attacker === null ? 0 : (isUsaAttack ? csaWins : usaWins),
         hasAttacker: attacker !== null,
@@ -919,6 +922,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       overall.totalRounds += entry.plays;
       overall.usaWins += usaWins;
       overall.csaWins += csaWins;
+      overall.draws += draws;
       overall.usaCasualties += usaCas;
       overall.csaCasualties += csaCas;
       overall.totalCasualties += totalCasualties;
@@ -5932,13 +5936,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
-                        value={selectedWeek.round1Winner || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round1Winner: e.target.value || null })}
+                        value={selectedWeek.round1Draw ? 'draw' : (selectedWeek.round1Winner || '')}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateWeek(selectedWeek.id, v === 'draw'
+                            ? { round1Winner: null, round1Draw: true }
+                            : { round1Winner: v || null, round1Draw: false });
+                        }}
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
                         <option value="B">{teamNames.B}</option>
+                        {(mapMode(selectedWeek.round1Map) === 'conquest' || selectedWeek.round1Draw) && (
+                          <option value="draw">Draw</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -6044,13 +6056,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div>
                       <label className="block text-sm text-text-secondary mb-1">Winner</label>
                       <select
-                        value={selectedWeek.round2Winner || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round2Winner: e.target.value || null })}
+                        value={selectedWeek.round2Draw ? 'draw' : (selectedWeek.round2Winner || '')}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateWeek(selectedWeek.id, v === 'draw'
+                            ? { round2Winner: null, round2Draw: true }
+                            : { round2Winner: v || null, round2Draw: false });
+                        }}
                         className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
                         <option value="B">{teamNames.B}</option>
+                        {(mapMode(selectedWeek.round2Map) === 'conquest' || selectedWeek.round2Draw) && (
+                          <option value="draw">Draw</option>
+                        )}
                       </select>
                     </div>
                     <div>
@@ -7104,8 +7124,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               let roundCount = 0;
                               let playoffsScheduled = false;
                               for (const w of seasonWeeks) {
-                                if (w.round1Winner) roundCount += 1;
-                                if (w.round2Winner) roundCount += 1;
+                                if (w.round1Winner || w.round1Draw) roundCount += 1;
+                                if (w.round2Winner || w.round2Draw) roundCount += 1;
                                 if (w.isPlayoffs) playoffsScheduled = true;
                               }
                               const rosterSize = (season.units || []).length;

@@ -121,7 +121,9 @@ const addForm = (target, form) => {
   target.skirm += form.skirm || 0;
   target.oob += form.oob || 0;
 };
-const emptyMapEntry = () => ({ USA: emptySideBucket(), CSA: emptySideBucket(), plays: 0 });
+// `draws` counts rounds with no winner (Conquest/Contention ties). These still
+// add to `plays` and casualties, but to neither side's wins/losses.
+const emptyMapEntry = () => ({ USA: emptySideBucket(), CSA: emptySideBucket(), plays: 0, draws: 0 });
 const emptyUnitMapEntry = () => ({ USA: { wins: 0, losses: 0 }, CSA: { wins: 0, losses: 0 } });
 
 // Compute adjusted expected-A probability for a matchup using current state.
@@ -197,6 +199,7 @@ const cloneMapHistory = (src) => {
   for (const [name, e] of Object.entries(src || {})) {
     out[name] = {
       plays: e.plays,
+      draws: e.draws || 0,
       USA: { ...e.USA },
       CSA: { ...e.CSA },
     };
@@ -209,8 +212,10 @@ const cloneMapHistory = (src) => {
 // casualties taken/inflicted per side.
 const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
   const winner = week[`round${roundNum}Winner`];
+  const isDraw = !!week[`round${roundNum}Draw`];
   const mapName = canonicalMapName(week[`round${roundNum}Map`]);
-  if (!winner || !mapName) return;
+  // A round counts if it has a winner or is an explicit draw.
+  if ((!winner && !isDraw) || !mapName) return;
   const flipped = !!week[`round${roundNum}Flipped`];
   const usaTeamKey = flipped ? 'B' : 'A';
   const winnerSide = winner === usaTeamKey ? 'USA' : 'CSA';
@@ -234,8 +239,12 @@ const foldRoundIntoMapHistory = (mapHistory, week, roundNum) => {
 
   const entry = (mapHistory[mapName] ||= emptyMapEntry());
   entry.plays += 1;
-  entry[winnerSide].wins += 1;
-  entry[loseSide].losses += 1;
+  if (isDraw) {
+    entry.draws += 1;
+  } else {
+    entry[winnerSide].wins += 1;
+    entry[loseSide].losses += 1;
+  }
   entry.USA.casualtiesTaken += usaCas;
   entry.CSA.casualtiesTaken += csaCas;
   entry.USA.casualtiesInflicted += csaCas;

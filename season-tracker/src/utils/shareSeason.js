@@ -149,7 +149,9 @@ const encodeWeek = (wk, i, u, m) => {
   const flags = (wk.round1Flipped ? 1 : 0)
     | (wk.round2Flipped ? 2 : 0)
     | (wk.isPlayoffs ? 4 : 0)
-    | (wk.isSingleRoundLeads ? 8 : 0);
+    | (wk.isSingleRoundLeads ? 8 : 0)
+    | (wk.round1Draw ? 16 : 0)
+    | (wk.round2Draw ? 32 : 0);
 
   const leads = [
     wk.leadA != null ? u.indexOf(wk.leadA) : -1,
@@ -253,6 +255,8 @@ const decodeWeek = (t, i, u, m) => {
     round2Flipped: !!(flags & 2),
     isPlayoffs: !!(flags & 4),
     isSingleRoundLeads: !!(flags & 8),
+    round1Draw: !!(flags & 16),
+    round2Draw: !!(flags & 32),
     leadA: L(0), leadB: L(1),
     leadA_r1: L(2), leadB_r1: L(3),
     leadA_r2: L(4), leadB_r2: L(5),

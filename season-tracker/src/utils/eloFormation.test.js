@@ -50,6 +50,29 @@ describe('map history — optional formation losses', () => {
     expect(entry.USA.casualtiesTaken).toBe(179);
   });
 
+  it('folds a draw into plays + draws + casualties, but not wins/losses', () => {
+    const season = {
+      weeks: [
+        week({
+          round1Winner: null,
+          round1Draw: true,
+          round1Map: 'Smokestacks', // Conquest area
+          r1CasualtiesA: 500,
+          r1CasualtiesB: 480,
+        }),
+      ],
+    };
+    const entry = accumulateMapHistoryFromSeasons([season])['Smokestacks'];
+    expect(entry.plays).toBe(1);
+    expect(entry.draws).toBe(1);
+    expect(entry.USA.wins).toBe(0);
+    expect(entry.CSA.wins).toBe(0);
+    expect(entry.USA.losses).toBe(0);
+    expect(entry.CSA.losses).toBe(0);
+    expect(entry.USA.casualtiesTaken).toBe(500);
+    expect(entry.CSA.casualtiesTaken).toBe(480);
+  });
+
   it('collects per-side morale states (flip-aware)', () => {
     const normal = accumulateMapHistoryFromSeasons([
       { weeks: [week({ r1MoraleA: 'Battle Ready', r1MoraleB: 'Breaking' })] },

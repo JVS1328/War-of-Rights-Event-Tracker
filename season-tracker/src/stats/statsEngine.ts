@@ -414,6 +414,8 @@ export interface TrackerMapEntry {
   plays: number;
   usaWins: number;
   csaWins: number;
+  // Rounds with no winner (Conquest/Contention ties).
+  draws: number;
   totalCasualties: number;
   usaCasualties: number;
   csaCasualties: number;
@@ -436,6 +438,8 @@ export interface TrackerMapStats {
     totalRounds: number;
     usaWins: number;
     csaWins: number;
+    // Rounds with no winner (Conquest/Contention ties).
+    draws: number;
     attackerWins: number;
     defenderWins: number;
     // Rounds that have an attacker/defender (excludes Conquest/Contention).
