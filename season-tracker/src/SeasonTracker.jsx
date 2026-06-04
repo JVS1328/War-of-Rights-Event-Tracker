@@ -1754,6 +1754,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
     // Pull the event's player stats so we can offer a combined link.
     let bundle = null;
     try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); } catch { bundle = null; }
+    if (bundle) {
+      bundle.mapStats = {
+        overall: calculateMapStats(),
+        bySeason: Object.fromEntries(
+          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
+        ),
+      };
+    }
     const sbCount = bundle?.scoreboards.length ?? 0;
     const hasStats = sbCount > 0;
 
@@ -1830,6 +1838,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
       alert('No scoreboards imported for this event yet — nothing to share.');
       return;
     }
+    bundle.mapStats = {
+      overall: calculateMapStats(),
+      bySeason: Object.fromEntries(
+        activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
+      ),
+    };
     let url;
     try { url = await generateShortStatsShareUrl(bundle, activeEvent.name); }
     catch { alert("Couldn't create share link — try again."); return; }
@@ -1850,6 +1864,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
     let stats;
     try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
     catch { stats = undefined; }
+    if (stats) {
+      stats.mapStats = {
+        overall: calculateMapStats(),
+        bySeason: Object.fromEntries(
+          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
+        ),
+      };
+    }
     const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
 
     const data = isEvent
@@ -4566,6 +4588,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
               teamNames={teamNames}
               validMaps={ALL_MAPS}
+              trackerMapStats={statsAllSeasons ? calculateMapStats() : calculateSeasonMapStats()}
               onApplyRound={(weekId, updates) => {
                 const w = weeks.find(x => String(x.id) === weekId);
                 if (w) updateWeek(w.id, updates);

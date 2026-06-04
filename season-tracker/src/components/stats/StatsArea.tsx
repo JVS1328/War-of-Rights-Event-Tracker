@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, X, GitMerge } from 'lucide-react';
+import { Upload, Trash2, Pencil, X, GitMerge, ChevronDown, ChevronRight } from 'lucide-react';
 import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
@@ -10,12 +10,12 @@ import {
   computeRounds,
   computeOverview,
   computePlayerDetail,
-  computeMapBreakdown,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, MapStatRow } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
@@ -72,6 +72,12 @@ interface StatsAreaProps {
    * drives it from its existing season nav instead.
    */
   onSeasonScope?: (scope: string) => void;
+  /**
+   * Pre-computed map stats from the tracker's Elo engine. When provided, the
+   * Maps tab renders from this instead of deriving stats from scoreboards.
+   * The shared/read-only view omits this and falls back to scoreboard data.
+   */
+  trackerMapStats?: TrackerMapStats;
 }
 
 /** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
@@ -96,6 +102,7 @@ export function StatsPanel({
   seasons = [],
   seasonScope = OVERALL_SCOPE,
   onSeasonScope,
+  trackerMapStats,
   stats,
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
@@ -162,7 +169,6 @@ export function StatsPanel({
     [stats.assignments, opts],
   );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
-  const mapBreakdown = useMemo(() => computeMapBreakdown(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const playerDetail = useMemo(
     () => (playerKey ? computePlayerDetail(sbs, playerKey, stats.assignments, { ...opts, type: playerType }) : null),
@@ -295,7 +301,7 @@ export function StatsPanel({
         />
       )}
 
-      {tab === 'maps' && <MapsTab maps={mapBreakdown} hasData={hasData} />}
+      {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} />}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
@@ -1106,55 +1112,141 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
 
 // ── Maps ────────────────────────────────────────────────────────────────────
 
-function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
-  if (!hasData || maps.length === 0) {
+function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
+  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
+  const toggleArea = (key: string) =>
+    setOpenAreas((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  if (!trackerMapStats || trackerMapStats.overall.totalRounds === 0) {
     return (
       <Panel title="Maps">
-        <EmptyHint>Import scoreboards to see map breakdowns</EmptyHint>
+        <EmptyHint>No map data available</EmptyHint>
       </Panel>
     );
   }
+
+  const { overall, byMap } = trackerMapStats;
+
+  const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
+  const allMapNames = Object.keys(byMap);
+
   return (
-    <Panel title={`Maps (${maps.length})`}>
-      <DataTable<MapStatRow>
-        rows={maps}
-        getRowKey={(m) => m.map}
-        initialSortKey="rounds"
-        searchValue={(m) => m.map}
-        searchPlaceholder="Search maps…"
-        columns={[
-          {
-            key: 'map',
-            header: 'Map',
-            sortable: true,
-            sortValue: (m) => m.map,
-            render: (m) => (
-              <span>
-                <span className="text-[color:var(--color-text-0)]">{m.map}</span>
-                {m.modes.length > 0 && (
-                  <span className="ml-2 text-[color:var(--color-text-2)] text-xs">
-                    {m.modes.map((mo) => (mo.area ? `${mo.mode} · ${mo.area}` : mo.mode)).join(', ')}
-                  </span>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-px">
+        <Tile label="USA Overall" value={`${pct(overall.usaWins, overall.totalRounds)}%`} hint={`${overall.usaWins}/${overall.totalRounds}`} />
+        <Tile label="CSA Overall" value={`${pct(overall.csaWins, overall.totalRounds)}%`} hint={`${overall.csaWins}/${overall.totalRounds}`} />
+      </div>
+      <div className="grid grid-cols-2 gap-px">
+        <Tile label="Attackers Won" value={`${pct(overall.attackerWins, overall.totalRounds)}%`} hint={`${overall.attackerWins}/${overall.totalRounds}`} />
+        <Tile label="Defenders Won" value={`${pct(overall.defenderWins, overall.totalRounds)}%`} hint={`${overall.defenderWins}/${overall.totalRounds}`} />
+      </div>
+
+      {overall.totalCasualties > 0 && (
+        <Panel title="Casualties & formation makeup">
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-sm">
+            {([
+              { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation },
+              { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation },
+              { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal },
+            ] as const).map(({ label, total, form }) => (
+              <div key={label} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2">
+                <div className="text-[color:var(--color-text-0)] font-semibold">{label}: {total.toLocaleString()}</div>
+                {overall.hasFormation && (
+                  <div className="text-xs text-[color:var(--color-text-2)] mt-0.5">
+                    {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
+                  </div>
                 )}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {Object.entries(MAP_AREAS).map(([areaKey, areaMaps]) => {
+        const played = areaMaps.filter((m) => byMap[m]);
+        if (played.length === 0) return null;
+        const open = openAreas.has(areaKey);
+        const Chevron = open ? ChevronDown : ChevronRight;
+        return (
+          <Panel key={areaKey} title="">
+            <button
+              type="button"
+              onClick={() => toggleArea(areaKey)}
+              className="w-full flex items-center justify-between px-3 py-2 hover:bg-[color:var(--color-bg-3)] transition"
+            >
+              <span className="font-mono text-sm uppercase tracking-wider text-[color:var(--color-text-0)]">
+                {prettyArea(areaKey)} ({played.length})
               </span>
-            ),
-          },
-          { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (m) => m.rounds, render: (m) => m.rounds },
-          { key: 'usaWins', header: 'USA W', align: 'right', sortable: true, sortValue: (m) => m.usaWins, render: (m) => m.usaWins },
-          { key: 'csaWins', header: 'CSA W', align: 'right', sortable: true, sortValue: (m) => m.csaWins, render: (m) => m.csaWins },
-          { key: 'usaKills', header: 'USA K', align: 'right', sortable: true, sortValue: (m) => m.usaKills, render: (m) => m.usaKills.toLocaleString() },
-          { key: 'csaKills', header: 'CSA K', align: 'right', sortable: true, sortValue: (m) => m.csaKills, render: (m) => m.csaKills.toLocaleString() },
-          {
-            key: 'avgDur',
-            header: 'Avg Dur',
-            align: 'right',
-            sortable: true,
-            sortValue: (m) => m.avgDurationSeconds ?? -1,
-            render: (m) => fmtDuration(m.avgDurationSeconds),
-          },
-        ]}
-      />
-    </Panel>
+              <Chevron size={14} className="text-[color:var(--color-text-2)]" />
+            </button>
+            {open && (
+              <div className="p-2 space-y-2">
+                {played
+                  .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
+                  .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
+              </div>
+            )}
+          </Panel>
+        );
+      })}
+
+      {allMapNames.filter((m) => !areaOf(m)).length > 0 && (
+        <Panel title="Other">
+          <div className="p-2 space-y-2">
+            {allMapNames
+              .filter((m) => !areaOf(m))
+              .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
+              .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: number, t: number) => string }) {
+  return (
+    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[color:var(--color-text-0)]">{name}</span>
+        <span className="text-xs text-[color:var(--color-text-2)]">{s.plays} rounds</span>
+      </div>
+      <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
+        <div>
+          <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+          <span className="mx-2">|</span>
+          <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+        </div>
+        <div>
+          Avg losses: <span className="text-[color:var(--color-ok)]">USA {s.avgLossesUsa}</span>
+          <span className="mx-1">·</span>
+          <span className="text-[color:var(--color-accent)]">CSA {s.avgLossesCsa}</span>
+          <span className="text-[color:var(--color-text-2)]"> (total {s.totalCasualties.toLocaleString()}, {s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}/rd)</span>
+        </div>
+        {s.hasFormation && (
+          <>
+            <div>
+              Avg formation USA: {s.avgFormationUsa.in_form} IF · {s.avgFormationUsa.skirm} Sk · {s.avgFormationUsa.oob} OoL
+            </div>
+            <div>
+              Avg formation CSA: {s.avgFormationCsa.in_form} IF · {s.avgFormationCsa.skirm} Sk · {s.avgFormationCsa.oob} OoL
+            </div>
+          </>
+        )}
+        {s.hasMorale && (
+          <div>
+            Avg morale: <span className="text-[color:var(--color-ok)]">USA {s.avgMoraleUsa || '—'}</span>
+            <span className="mx-1">·</span>
+            <span className="text-[color:var(--color-accent)]">CSA {s.avgMoraleCsa || '—'}</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

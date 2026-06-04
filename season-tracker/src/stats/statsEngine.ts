@@ -410,13 +410,53 @@ export function computeOverview(
   };
 }
 
+export interface TrackerMapEntry {
+  plays: number;
+  usaWins: number;
+  csaWins: number;
+  totalCasualties: number;
+  usaCasualties: number;
+  csaCasualties: number;
+  avgLossesUsa: number;
+  avgLossesCsa: number;
+  avgFormationUsa: FormationCounts;
+  avgFormationCsa: FormationCounts;
+  hasFormation: boolean;
+  avgMoraleUsa?: string | null;
+  avgMoraleCsa?: string | null;
+  hasMorale?: boolean;
+}
+
+export interface TrackerMapStats {
+  overall: {
+    totalRounds: number;
+    usaWins: number;
+    csaWins: number;
+    attackerWins: number;
+    defenderWins: number;
+    usaCasualties: number;
+    csaCasualties: number;
+    totalCasualties: number;
+    usaFormation: FormationCounts;
+    csaFormation: FormationCounts;
+    formationTotal: FormationCounts;
+    hasFormation: boolean;
+  };
+  byMap: Record<string, TrackerMapEntry>;
+}
+
 export interface MapStatRow {
   map: string;
   rounds: number;
   usaWins: number;
   csaWins: number;
+  draws: number;
   usaKills: number;
   csaKills: number;
+  usaCasualties: number;
+  csaCasualties: number;
+  usaFormation: FormationCounts;
+  csaFormation: FormationCounts;
   avgDurationSeconds: number | null;
   modes: { mode: string; area: string | null; rounds: number }[];
 }
@@ -432,8 +472,13 @@ export function computeMapBreakdown(scoreboards: Scoreboard[]): MapStatRow[] {
         rounds: 0,
         usaWins: 0,
         csaWins: 0,
+        draws: 0,
         usaKills: 0,
         csaKills: 0,
+        usaCasualties: 0,
+        csaCasualties: 0,
+        usaFormation: { in_form: 0, skirm: 0, oob: 0 },
+        csaFormation: { in_form: 0, skirm: 0, oob: 0 },
         avgDurationSeconds: null,
         modes: [],
         _durTotal: 0,
@@ -445,10 +490,21 @@ export function computeMapBreakdown(scoreboards: Scoreboard[]): MapStatRow[] {
     r.rounds += 1;
     if (sb.meta.winner === 'USA') r.usaWins += 1;
     else if (sb.meta.winner === 'CSA') r.csaWins += 1;
+    else r.draws += 1;
     for (const p of sb.players) {
       if (p.team === 'USA') r.usaKills += p.kills;
       else r.csaKills += p.kills;
     }
+    const uc = sb.meta.casualties.USA;
+    r.usaCasualties += uc.total;
+    r.usaFormation.in_form += uc.inForm;
+    r.usaFormation.skirm += uc.skirm;
+    r.usaFormation.oob += uc.oob;
+    const cc = sb.meta.casualties.CSA;
+    r.csaCasualties += cc.total;
+    r.csaFormation.in_form += cc.inForm;
+    r.csaFormation.skirm += cc.skirm;
+    r.csaFormation.oob += cc.oob;
     const dur = roundDurationSeconds(sb);
     if (dur != null) {
       r._durTotal += dur;
