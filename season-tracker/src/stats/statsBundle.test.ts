@@ -60,6 +60,17 @@ describe('buildStatsBundle', () => {
     expect(buildStatsBundle([], {}).registryUnits).toEqual([]);
     expect(buildStatsBundle([], {}, {}, ['Texas Brigade']).registryUnits).toEqual(['Texas Brigade']);
   });
+
+  it('strips joinLeaves from packed scoreboards (dead weight, never read)', () => {
+    const withJL = record({
+      scoreboard: {
+        ...sb,
+        joinLeaves: [{ tsInRound: '0:10', name: 'Joe', steamId: '76561198000000001', action: 'joined' }],
+      },
+    });
+    const bundle = buildStatsBundle([withJL], {});
+    expect(bundle.scoreboards[0].scoreboard.joinLeaves).toEqual([]);
+  });
 });
 
 // Regression: a player-stats-only share must resolve (and merge) regiments the

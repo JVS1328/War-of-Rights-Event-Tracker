@@ -8,10 +8,10 @@ import {
 import StatsArea from './components/stats/StatsArea';
 import { averageMorale, MORALE_STATES } from './stats/morale';
 import {
-  generateShareUrl, generateShortShareUrl,
-  generateEventShareUrl, generateShortEventShareUrl,
-  generateStatsShareUrl, generateShortStatsShareUrl,
-  generateFullShareUrl, generateShortFullShareUrl,
+  generateShortShareUrl,
+  generateShortEventShareUrl,
+  generateShortStatsShareUrl,
+  generateShortFullShareUrl,
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
 import { isStatsBundle } from './stats/statsBundle';
@@ -1756,7 +1756,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!multi && !hasStats) {
       const flat = flattenActiveToLegacy(appState);
       let url;
-      try { url = await generateShortShareUrl(flat); } catch { url = generateShareUrl(flat); }
+      try { url = await generateShortShareUrl(flat); }
+      catch { alert("Couldn't create share link — try again."); return; }
       try { await navigator.clipboard.writeText(url); alert('Share link copied! (Active season)'); }
       catch { prompt('Copy this link to share:', url); }
       return;
@@ -1791,16 +1792,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!kind) return;
 
     let url;
-    if (kind === 'full') {
-      try { url = await generateShortFullShareUrl(activeEvent, bundle); }
-      catch { url = generateFullShareUrl(activeEvent, bundle); }
-    } else if (kind === 'event') {
-      try { url = await generateShortEventShareUrl(activeEvent); }
-      catch { url = generateEventShareUrl(activeEvent); }
-    } else {
-      const flat = flattenActiveToLegacy(appState);
-      try { url = await generateShortShareUrl(flat); }
-      catch { url = generateShareUrl(flat); }
+    try {
+      if (kind === 'full') {
+        url = await generateShortFullShareUrl(activeEvent, bundle);
+      } else if (kind === 'event') {
+        url = await generateShortEventShareUrl(activeEvent);
+      } else {
+        url = await generateShortShareUrl(flattenActiveToLegacy(appState));
+      }
+    } catch {
+      alert("Couldn't create share link — try again.");
+      return;
     }
 
     const label = kind === 'full' ? 'Everything' : kind === 'event' ? 'Whole event' : 'Active season';
@@ -1825,7 +1827,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
     let url;
     try { url = await generateShortStatsShareUrl(bundle, activeEvent.name); }
-    catch { url = generateStatsShareUrl(bundle, activeEvent.name); }
+    catch { alert("Couldn't create share link — try again."); return; }
     try {
       await navigator.clipboard.writeText(url);
       alert(`Player-stats link copied! (${bundle.scoreboards.length} scoreboard${bundle.scoreboards.length === 1 ? '' : 's'}, view-only)`);
