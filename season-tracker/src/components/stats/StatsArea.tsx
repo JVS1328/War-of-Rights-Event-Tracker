@@ -18,6 +18,8 @@ import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../s
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
+import { weekIdsForScope, OVERALL_SCOPE } from '../../stats/statsBundle';
+import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
 
 export interface WeekRef {
@@ -54,6 +56,21 @@ interface StatsAreaProps {
   validMaps?: string[];
   /** Writes auto-filled round fields back into the tracker's week. */
   onApplyRound?: (weekId: string, updates: Record<string, unknown>) => void;
+  /**
+   * All seasons (id, name, weekIds) for the season/Overall stats filter. A
+   * scoreboard belongs to a season when its `binding.weekId` is in that
+   * season's `weekIds`; unbound scoreboards show only under Overall.
+   */
+  seasons?: StatsBundleSeason[];
+  /** Selected filter scope: a season id, or `OVERALL_SCOPE` for all seasons. */
+  seasonScope?: string;
+  /**
+   * When provided, the panel renders its own season + Overall button row and
+   * calls this on change (the shared view). When absent, the scope is purely
+   * controlled by {@link seasonScope} and no buttons render — the live tracker
+   * drives it from its existing season nav instead.
+   */
+  onSeasonScope?: (scope: string) => void;
 }
 
 /** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
@@ -75,6 +92,9 @@ export function StatsPanel({
   teamNames = { A: 'USA', B: 'CSA' },
   validMaps = [],
   onApplyRound,
+  seasons = [],
+  seasonScope = OVERALL_SCOPE,
+  onSeasonScope,
   stats,
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
@@ -106,7 +126,18 @@ export function StatsPanel({
     setPlayerKey(key);
   };
 
-  const sbs = stats.scoreboards;
+  // Season filter (whole-view): keep only scoreboards bound to a week in the
+  // selected season. Overall (or no season data) leaves everything in. Unbound
+  // scoreboards have no season, so they surface only under Overall.
+  const scopeWeekIds = useMemo(() => weekIdsForScope(seasons, seasonScope), [seasons, seasonScope]);
+  const sbs = useMemo(() => {
+    const scoped = scopeWeekIds
+      ? stats.stored.filter((r) => r.binding != null && scopeWeekIds.has(r.binding.weekId))
+      : stats.stored;
+    return scoped
+      .map((s) => s.scoreboard)
+      .sort((a, b) => (a.recordedAt ?? '').localeCompare(b.recordedAt ?? ''));
+  }, [stats.stored, scopeWeekIds]);
   // Registered event units act as the default match list (overrides win; the
   // name-tag heuristic is the fallback for anything unmatched).
   const opts = useMemo(
@@ -158,6 +189,38 @@ export function StatsPanel({
 
   return (
     <div className="space-y-3">
+      {/* Season / Overall filter — rendered only when this panel owns the
+          control (the shared view). The live tracker drives `seasonScope` from
+          its own season nav, so it passes no handler and this row stays hidden. */}
+      {onSeasonScope && seasons.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
+          <span className="px-2 text-[color:var(--color-text-2)]">Season</span>
+          {seasons.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onSeasonScope(s.id)}
+              className={`px-3 py-1.5 transition ${
+                seasonScope === s.id
+                  ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
+                  : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+          <button
+            onClick={() => onSeasonScope(OVERALL_SCOPE)}
+            title="All seasons combined"
+            className={`px-3 py-1.5 transition ${
+              seasonScope === OVERALL_SCOPE
+                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
+                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
+            }`}
+          >
+            Overall
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
         {visibleTabs.map((t) => (
           <button

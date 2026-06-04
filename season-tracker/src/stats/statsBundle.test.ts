@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { buildStatsBundle, isStatsBundle, storedFromBundle, SHARED_EVENT_ID, STATS_BUNDLE_VERSION } from './statsBundle';
+import {
+  buildStatsBundle,
+  isStatsBundle,
+  storedFromBundle,
+  weekIdsForScope,
+  OVERALL_SCOPE,
+  SHARED_EVENT_ID,
+  STATS_BUNDLE_VERSION,
+} from './statsBundle';
 import { parseScoreboard } from './parseScoreboard';
 import { computeRegimentBreakdown } from './statsEngine';
 import { parseRegimentList } from './regimentMatcher';
@@ -61,6 +69,15 @@ describe('buildStatsBundle', () => {
     expect(buildStatsBundle([], {}, {}, ['Texas Brigade']).registryUnits).toEqual(['Texas Brigade']);
   });
 
+  it('carries seasons when provided and omits the field when empty', () => {
+    const withSeasons = buildStatsBundle([record()], {}, {}, [], [
+      { id: 'sea_1', name: 'Season 1', weekIds: ['1', '2'] },
+    ]);
+    expect(withSeasons.seasons).toEqual([{ id: 'sea_1', name: 'Season 1', weekIds: ['1', '2'] }]);
+    // No seasons → field omitted entirely (keeps older/seasonless payloads lean).
+    expect(buildStatsBundle([record()], {})).not.toHaveProperty('seasons');
+  });
+
   it('strips joinLeaves from packed scoreboards (dead weight, never read)', () => {
     const withJL = record({
       scoreboard: {
@@ -110,6 +127,28 @@ Texas Brigade Joe,1,2,1,2.00,1,0,0,76561198000000009
 
     expect(labels).toContain('Lone Star'); // registry match → merge alias applies
     expect(labels).not.toContain('TEXAS'); // not split back into the raw name tag
+  });
+});
+
+describe('weekIdsForScope', () => {
+  const seasons = [
+    { id: 'sea_1', name: 'Season 1', weekIds: ['1', '2'] },
+    { id: 'sea_2', name: 'Season 2', weekIds: ['3'] },
+  ];
+
+  it('returns null for Overall (no restriction)', () => {
+    expect(weekIdsForScope(seasons, OVERALL_SCOPE)).toBeNull();
+  });
+
+  it('returns the week-id set for a known season', () => {
+    expect(weekIdsForScope(seasons, 'sea_1')).toEqual(new Set(['1', '2']));
+    expect(weekIdsForScope(seasons, 'sea_2')).toEqual(new Set(['3']));
+  });
+
+  it('returns null when the season is unknown or there are no seasons', () => {
+    expect(weekIdsForScope(seasons, 'sea_404')).toBeNull();
+    expect(weekIdsForScope(undefined, 'sea_1')).toBeNull();
+    expect(weekIdsForScope([], 'sea_1')).toBeNull();
   });
 });
 

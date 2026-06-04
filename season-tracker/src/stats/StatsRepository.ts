@@ -1,5 +1,5 @@
 import type { Scoreboard, Team } from './types';
-import type { StatsBundle } from './statsBundle';
+import type { StatsBundle, StatsBundleSeason } from './statsBundle';
 
 /** Optional link from a scoreboard to a specific Week/Round in the tracker. */
 export interface ScoreboardBinding {
@@ -56,9 +56,10 @@ export interface StatsRepository {
   /**
    * Pack all of an event's scoreboards + assignments into a portable bundle.
    * `registryUnits` (the event's unit-registry names) is carried so a read-only
-   * shared view resolves regiments the same way the live editor does.
+   * shared view resolves regiments the same way the live editor does, and
+   * `seasons` (id/name/weekIds) so it can offer the same per-season filtering.
    */
-  exportEventStats(eventId: string, registryUnits?: string[]): Promise<StatsBundle>;
+  exportEventStats(eventId: string, registryUnits?: string[], seasons?: StatsBundleSeason[]): Promise<StatsBundle>;
   /** Restore a bundle under the target event; returns the scoreboard count. */
   importEventStats(eventId: string, bundle: StatsBundle): Promise<number>;
 }

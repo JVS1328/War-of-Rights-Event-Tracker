@@ -8,7 +8,7 @@ import type {
   StoredScoreboard,
 } from './StatsRepository';
 import { buildStatsBundle } from './statsBundle';
-import type { StatsBundle } from './statsBundle';
+import type { StatsBundle, StatsBundleSeason } from './statsBundle';
 
 const SCOREBOARDS = 'scoreboards';
 const ASSIGNMENTS = 'assignments';
@@ -176,13 +176,17 @@ export class LocalStatsRepository implements StatsRepository {
     await this.tx(ALIASES, 'readwrite', (s) => reqAsPromise(s.put(record)));
   }
 
-  async exportEventStats(eventId: string, registryUnits: string[] = []): Promise<StatsBundle> {
+  async exportEventStats(
+    eventId: string,
+    registryUnits: string[] = [],
+    seasons: StatsBundleSeason[] = [],
+  ): Promise<StatsBundle> {
     const records = await this.tx(SCOREBOARDS, 'readonly', (s) =>
       reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
     );
     const assignments = await this.getRegimentAssignments(eventId);
     const aliases = await this.getRegimentAliases(eventId);
-    return buildStatsBundle(records, assignments, aliases, registryUnits);
+    return buildStatsBundle(records, assignments, aliases, registryUnits, seasons);
   }
 
   async importEventStats(eventId: string, bundle: StatsBundle): Promise<number> {
