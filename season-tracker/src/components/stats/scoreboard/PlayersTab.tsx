@@ -266,20 +266,6 @@ function AvgT({ agg }: { agg: UnitAgg }) {
   );
 }
 
-/** `form / skirm / ool` death breakdown for company + regiment headers. */
-function FormationDeaths({ agg }: { agg: UnitAgg }) {
-  return (
-    <span title="deaths: in formation · skirmish · out of line">
-      <span className="text-[color:var(--color-text-2)]">d </span>
-      <span className="text-[color:var(--color-text-1)]">{agg.inForm}</span>
-      <span className="text-[color:var(--color-text-2)]"> / </span>
-      <span className="text-[color:var(--color-text-1)]">{agg.skirm}</span>
-      <span className="text-[color:var(--color-text-2)]"> / </span>
-      <span className="text-[color:var(--color-text-1)]">{agg.oob}</span>
-    </span>
-  );
-}
-
 function RegimentGroup({
   group,
   visiblePlayers,
@@ -325,11 +311,17 @@ function RegimentGroup({
                 <span className="text-[color:var(--color-text-2)]">k </span>
                 <span className="text-[color:var(--color-text-1)]">{agg.kills}</span>
               </span>
-              <span>
+              <span title="deaths: total [in formation / skirmish / out of line]">
                 <span className="text-[color:var(--color-text-2)]">d </span>
                 <span className="text-[color:var(--color-text-1)]">{agg.deaths}</span>
+                <span className="text-[color:var(--color-text-2)]"> [</span>
+                <span className="text-[color:var(--color-text-1)]">{agg.inForm}</span>
+                <span className="text-[color:var(--color-text-2)]"> / </span>
+                <span className="text-[color:var(--color-text-1)]">{agg.skirm}</span>
+                <span className="text-[color:var(--color-text-2)]"> / </span>
+                <span className="text-[color:var(--color-text-1)]">{agg.oob}</span>
+                <span className="text-[color:var(--color-text-2)]">]</span>
               </span>
-              <FormationDeaths agg={agg} />
               <span>
                 <span className="text-[color:var(--color-text-2)]">k/d </span>
                 <span className="text-[color:var(--color-text-0)]">{fmtKd(agg.kills, agg.deaths)}</span>
@@ -337,7 +329,10 @@ function RegimentGroup({
               <AvgT agg={agg} />
             </>
           )}
-          <span>{players.length}</span>
+          <span>
+            <span className="text-[color:var(--color-text-2)]">P </span>
+            <span className="text-[color:var(--color-text-1)]">{players.length}</span>
+          </span>
         </span>
       </button>
       {open && (
