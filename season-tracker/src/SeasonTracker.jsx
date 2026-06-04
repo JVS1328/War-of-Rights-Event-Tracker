@@ -18,7 +18,7 @@ import { statsRepo } from './stats/repo';
 import { isStatsBundle, OVERALL_SCOPE } from './stats/statsBundle';
 import { computeRegimentBreakdown } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
-import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk } from './stats/unitStats';
+import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts } from './stats/unitStats';
 import { FORMATION_SHORT, formatAvgT, AVG_TD_LABEL, AVG_TK_LABEL } from './stats/labels';
 import {
   migrateToV2,
@@ -2383,9 +2383,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const brks = perScoreboardBreakdown.filter(x => x.weekId && ids.has(String(x.weekId))).map(x => x.breakdown);
     return accumulateTokenSnaps(brks, tokenRegiments);
   };
+  const regBreakdownAsOfWeek = (maxWeekIdx) => {
+    const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
+    const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
+    return computeRegimentBreakdown(sbs.map(s => s.scoreboard), sbAssignments, engineOpts);
+  };
 
-  // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk).
-  const renderUnitStatsTable = (snaps) => {
+  // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk, player counts).
+  const renderUnitStatsTable = (snaps, regBreakdown) => {
+    const playerCounts = regBreakdown ? deriveTokenPlayerCounts(regBreakdown, tokenRegiments) : {};
     const rows = Object.entries(snaps)
       .filter(([, s]) => s.kills || s.deaths)
       .map(([unit, s]) => ({
@@ -2396,12 +2402,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
         form: s.deathsForm,
         td: unitSnapAvgTd(s),
         tk: unitSnapAvgTk(s),
+        uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
+        avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
       }))
       .sort((a, b) => b.kills - a.kills);
     if (rows.length === 0) {
       return (
         <p className="text-text-secondary text-center py-4 text-sm">
-          No assigned player stats yet. Use “Assign Player Stats” on a week to map units to scoreboard regiments.
+          No assigned player stats yet. Use "Assign Player Stats" on a week to map units to scoreboard regiments.
         </p>
       );
     }
@@ -2411,6 +2419,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
           <thead>
             <tr className="text-text-secondary border-b border-border-default">
               <th className="text-left py-2 px-2">Unit</th>
+              <th className="text-center py-2 px-2" title="Total unique players across all rounds">Players</th>
+              <th className="text-center py-2 px-2" title="Average player count per round">Avg/Rd</th>
               <th className="text-center py-2 px-2">K</th>
               <th className="text-center py-2 px-2">D</th>
               <th className="text-center py-2 px-2">K/D</th>
@@ -2423,6 +2433,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
             {rows.map((r, idx) => (
               <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
                 <td className="py-2 px-2 font-medium">{r.unit}</td>
+                <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
+                <td className="text-cyan-400 text-center py-2 px-2">{r.avgPlayers.toFixed(1)}</td>
                 <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
                 <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
                 <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
@@ -7238,7 +7250,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="mt-2">
                             <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals())}
+                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown)}
                           </div>
                         </div>
 
@@ -7354,9 +7366,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
                         )}
                       </h4>
-                      {renderUnitStatsTable(
-                        tokenSnapsAsOfWeek(selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1),
-                      )}
+                      {(() => {
+                        const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx));
+                      })()}
                     </div>
                   </div>
 
