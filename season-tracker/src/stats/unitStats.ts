@@ -101,3 +101,30 @@ export function unitSnapAvgTd(snap: UnitSnap): number | null {
 export function unitSnapAvgTk(snap: UnitSnap): number | null {
   return avgTicketCost(snap.killsForm.in_form, snap.killsForm.skirm, snap.killsForm.oob);
 }
+
+/**
+ * Derive unique-player and average-players-per-round counts for each token
+ * directly from a regiment breakdown. The breakdown must come from a single
+ * `computeRegimentBreakdown` call covering the desired scope so that
+ * `players` reflects true unique counts.
+ */
+export function deriveTokenPlayerCounts(
+  breakdown: readonly { regiment: string; players: number; avgPlayers: number }[],
+  tokenRegiments: Record<string, string[]>,
+): Record<string, { uniquePlayers: number; avgPlayers: number }> {
+  const byReg = new Map(breakdown.map((r) => [r.regiment, r]));
+  const out: Record<string, { uniquePlayers: number; avgPlayers: number }> = {};
+  for (const [token, regs] of Object.entries(tokenRegiments)) {
+    let uniquePlayers = 0;
+    let avgPlayers = 0;
+    for (const reg of regs) {
+      const r = byReg.get(reg);
+      if (r) {
+        uniquePlayers += r.players;
+        avgPlayers += r.avgPlayers;
+      }
+    }
+    out[token] = { uniquePlayers, avgPlayers };
+  }
+  return out;
+}
