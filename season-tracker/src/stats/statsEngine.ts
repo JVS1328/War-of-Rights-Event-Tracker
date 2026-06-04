@@ -3,6 +3,7 @@ import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
 import { avgTicketCost } from './labels';
+import { mapAttacker } from './mapCatalog';
 
 export interface FormationCounts {
   in_form: number;
@@ -894,4 +895,170 @@ export function computeCombatTotals(scoreboards: Scoreboard[]): CombatTotals {
     }
   }
   return { casualties, deathsByWeapon };
+}
+
+// ── Regiment context breakdown (by faction & attacker/defender role) ─────────
+
+export interface ContextStatSlice {
+  rounds: number;
+  players: number;
+  kills: number;
+  deaths: number;
+  kd: number;
+  casualtiesByFormation: FormationCounts;
+  killsByFormation: FormationCounts;
+  avgTd: number | null;
+  avgTk: number | null;
+  casualtiesByCause: Record<string, number>;
+  killsByCause: Record<string, number>;
+}
+
+export interface RegimentContextStats {
+  asUSA: ContextStatSlice;
+  asCSA: ContextStatSlice;
+  asAttacker: ContextStatSlice;
+  asDefender: ContextStatSlice;
+}
+
+function emptyContextSlice(): ContextStatSlice {
+  return {
+    rounds: 0,
+    players: 0,
+    kills: 0,
+    deaths: 0,
+    kd: 0,
+    casualtiesByFormation: { in_form: 0, skirm: 0, oob: 0 },
+    killsByFormation: { in_form: 0, skirm: 0, oob: 0 },
+    avgTd: null,
+    avgTk: null,
+    casualtiesByCause: {},
+    killsByCause: {},
+  };
+}
+
+function emptyRegimentContext(): RegimentContextStats {
+  return {
+    asUSA: emptyContextSlice(),
+    asCSA: emptyContextSlice(),
+    asAttacker: emptyContextSlice(),
+    asDefender: emptyContextSlice(),
+  };
+}
+
+function addToSlice(slice: ContextStatSlice, kills: number, deaths: number,
+  dIF: number, dSk: number, dOob: number, kf: FormationCounts) {
+  slice.kills += kills;
+  slice.deaths += deaths;
+  slice.casualtiesByFormation.in_form += dIF;
+  slice.casualtiesByFormation.skirm += dSk;
+  slice.casualtiesByFormation.oob += dOob;
+  slice.killsByFormation.in_form += kf.in_form;
+  slice.killsByFormation.skirm += kf.skirm;
+  slice.killsByFormation.oob += kf.oob;
+}
+
+function addCause(bucket: Record<string, number>, cause: string) {
+  bucket[cause] = (bucket[cause] ?? 0) + 1;
+}
+
+function finalizeSlice(slice: ContextStatSlice, rounds: Set<string>, players: Set<string>) {
+  slice.rounds = rounds.size;
+  slice.players = players.size;
+  slice.kd = kdOf(slice.kills, slice.deaths);
+  slice.avgTd = avgTicketCost(
+    slice.casualtiesByFormation.in_form,
+    slice.casualtiesByFormation.skirm,
+    slice.casualtiesByFormation.oob,
+  );
+  slice.avgTk = avgTicketCost(
+    slice.killsByFormation.in_form,
+    slice.killsByFormation.skirm,
+    slice.killsByFormation.oob,
+  );
+}
+
+/**
+ * Per-regiment stats split by faction (USA/CSA) and role (Attacker/Defender).
+ * Role slices are populated only for skirmish maps that have a defined attacker;
+ * conquest/contention rounds contribute to faction slices only.
+ */
+export function computeRegimentContextStats(
+  scoreboards: Scoreboard[],
+  assignments: RegimentAssignmentMap,
+  options: EngineOptions = {},
+): Record<string, RegimentContextStats> {
+  const result: Record<string, RegimentContextStats> = {};
+  const roundSets = new Map<string, { usa: Set<string>; csa: Set<string>; atk: Set<string>; def: Set<string> }>();
+  const playerSets = new Map<string, { usa: Set<string>; csa: Set<string>; atk: Set<string>; def: Set<string> }>();
+
+  const ensure = (reg: string) => {
+    if (!result[reg]) {
+      result[reg] = emptyRegimentContext();
+      roundSets.set(reg, { usa: new Set(), csa: new Set(), atk: new Set(), def: new Set() });
+      playerSets.set(reg, { usa: new Set(), csa: new Set(), atk: new Set(), def: new Set() });
+    }
+    return result[reg];
+  };
+
+  for (const sb of scoreboards) {
+    const atk = mapAttacker(sb.meta.map);
+
+    for (const p of sb.players) {
+      const reg = resolveFor(p.steamId, p.name, assignments, options.regimentList, options.aliasMap);
+      const ctx = ensure(reg);
+      const rs = roundSets.get(reg)!;
+      const ps = playerSets.get(reg)!;
+      const pk = p.steamId ?? p.name;
+      const kf = killFormInRound(sb, pk);
+
+      const teamSlice = p.team === 'USA' ? ctx.asUSA : ctx.asCSA;
+      const tk = p.team === 'USA' ? 'usa' as const : 'csa' as const;
+      addToSlice(teamSlice, p.kills, p.deaths, p.deathsInForm, p.deathsSkirm, p.deathsOob, kf);
+      rs[tk].add(sb.sourceFilename);
+      ps[tk].add(pk);
+
+      if (atk) {
+        const isAtk = p.team === atk;
+        const roleSlice = isAtk ? ctx.asAttacker : ctx.asDefender;
+        const rk = isAtk ? 'atk' as const : 'def' as const;
+        addToSlice(roleSlice, p.kills, p.deaths, p.deathsInForm, p.deathsSkirm, p.deathsOob, kf);
+        rs[rk].add(sb.sourceFilename);
+        ps[rk].add(pk);
+      }
+    }
+
+    for (const kill of sb.kills) {
+      const cause = kill.cause || 'Unknown';
+
+      if (kill.victimTeam) {
+        const vReg = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
+        const vCtx = ensure(vReg);
+        addCause((kill.victimTeam === 'USA' ? vCtx.asUSA : vCtx.asCSA).casualtiesByCause, cause);
+        if (atk) {
+          addCause((kill.victimTeam === atk ? vCtx.asAttacker : vCtx.asDefender).casualtiesByCause, cause);
+        }
+      }
+
+      if (kill.killer && kill.killerTeam) {
+        const kReg = resolveFor(kill.killerSteamId, kill.killer, assignments, options.regimentList, options.aliasMap);
+        const kCtx = ensure(kReg);
+        addCause((kill.killerTeam === 'USA' ? kCtx.asUSA : kCtx.asCSA).killsByCause, cause);
+        if (atk) {
+          addCause((kill.killerTeam === atk ? kCtx.asAttacker : kCtx.asDefender).killsByCause, cause);
+        }
+      }
+    }
+  }
+
+  for (const [reg] of Object.entries(result)) {
+    const ctx = result[reg];
+    const rs = roundSets.get(reg)!;
+    const ps = playerSets.get(reg)!;
+    finalizeSlice(ctx.asUSA, rs.usa, ps.usa);
+    finalizeSlice(ctx.asCSA, rs.csa, ps.csa);
+    finalizeSlice(ctx.asAttacker, rs.atk, ps.atk);
+    finalizeSlice(ctx.asDefender, rs.def, ps.def);
+  }
+
+  return result;
 }

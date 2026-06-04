@@ -16,9 +16,9 @@ import {
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
 import { isStatsBundle, OVERALL_SCOPE } from './stats/statsBundle';
-import { computeRegimentBreakdown } from './stats/statsEngine';
+import { computeRegimentBreakdown, computeRegimentContextStats } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
-import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts } from './stats/unitStats';
+import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps } from './stats/unitStats';
 import { FORMATION_SHORT, formatAvgT, AVG_TD_LABEL, AVG_TK_LABEL } from './stats/labels';
 import {
   migrateToV2,
@@ -149,6 +149,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [sbAliases, setSbAliases] = useState({});
   const [assignToken, setAssignToken] = useState(null);
   const [assignSel, setAssignSel] = useState([]);
+  const [expandedUnits, setExpandedUnits] = useState(new Set());
 
   // Balancer state
   const [balancerMaxDiff, setBalancerMaxDiff] = useState(1);
@@ -2388,10 +2389,49 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
     return computeRegimentBreakdown(sbs.map(s => s.scoreboard), sbAssignments, engineOpts);
   };
+  const regContextEventTotals = useMemo(
+    () => computeRegimentContextStats(sbStored.map(s => s.scoreboard), sbAssignments, engineOpts),
+    [sbStored, sbAssignments, engineOpts],
+  );
+  const regContextAsOfWeek = (maxWeekIdx) => {
+    const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
+    const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
+    return computeRegimentContextStats(sbs.map(s => s.scoreboard), sbAssignments, engineOpts);
+  };
+
+  const toggleExpandedUnit = (unit) => {
+    setExpandedUnits(prev => {
+      const next = new Set(prev);
+      if (next.has(unit)) next.delete(unit); else next.add(unit);
+      return next;
+    });
+  };
+
+  // Render a single context-slice row (used in expanded unit breakdown).
+  const renderContextRow = (label, snap, colSpan) => {
+    if (!snap || (!snap.kills && !snap.deaths)) return null;
+    const kd = snap.deaths > 0 ? snap.kills / snap.deaths : snap.kills;
+    return (
+      <tr className="bg-bg-card/50 text-[10px]">
+        <td className="py-1 px-2 pl-6 text-text-secondary italic">{label}</td>
+        <td className="text-cyan-400/70 text-center py-1 px-2" />
+        <td className="text-cyan-400/70 text-center py-1 px-2" />
+        <td className="text-green-400/70 text-center py-1 px-2">{snap.kills}</td>
+        <td className="text-red-400/70 text-center py-1 px-2">{snap.deaths}</td>
+        <td className="text-indigo-400/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
+        <td className="text-text-secondary text-center py-1 px-2">
+          {snap.deathsForm.in_form}/{snap.deathsForm.skirm}/{snap.deathsForm.oob}
+        </td>
+        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTd(snap))}</td>
+        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTk(snap))}</td>
+      </tr>
+    );
+  };
 
   // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk, player counts).
-  const renderUnitStatsTable = (snaps, regBreakdown) => {
+  const renderUnitStatsTable = (snaps, regBreakdown, contextStats) => {
     const playerCounts = regBreakdown ? deriveTokenPlayerCounts(regBreakdown, tokenRegiments) : {};
+    const ctxSnaps = contextStats ? deriveTokenContextSnaps(contextStats, tokenRegiments) : null;
     const rows = Object.entries(snaps)
       .filter(([, s]) => s.kills || s.deaths)
       .map(([unit, s]) => ({
@@ -2404,6 +2444,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
         tk: unitSnapAvgTk(s),
         uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
         avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
+        ctx: ctxSnaps?.[unit] ?? null,
       }))
       .sort((a, b) => b.kills - a.kills);
     if (rows.length === 0) {
@@ -2430,19 +2471,40 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => (
-              <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                <td className="py-2 px-2 font-medium">{r.unit}</td>
-                <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
-                <td className="text-cyan-400 text-center py-2 px-2">{r.avgPlayers.toFixed(1)}</td>
-                <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
-                <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
-                <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
-                <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
-                <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
-                <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
-              </tr>
-            ))}
+            {rows.map((r, idx) => {
+              const isOpen = expandedUnits.has(r.unit);
+              return (
+                <React.Fragment key={r.unit}>
+                  <tr
+                    className={`${idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'} ${r.ctx ? 'cursor-pointer hover:brightness-110' : ''}`}
+                    onClick={() => r.ctx && toggleExpandedUnit(r.unit)}
+                  >
+                    <td className="py-2 px-2 font-medium">
+                      {r.ctx && (
+                        <span className="inline-block w-3 mr-1 text-text-secondary">{isOpen ? '▾' : '▸'}</span>
+                      )}
+                      {r.unit}
+                    </td>
+                    <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
+                    <td className="text-cyan-400 text-center py-2 px-2">{r.avgPlayers.toFixed(1)}</td>
+                    <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
+                    <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
+                    <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
+                    <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
+                    <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
+                    <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
+                  </tr>
+                  {isOpen && r.ctx && (
+                    <>
+                      {renderContextRow('As USA', r.ctx.asUSA)}
+                      {renderContextRow('As CSA', r.ctx.asCSA)}
+                      {renderContextRow('As Attacker', r.ctx.asAttacker)}
+                      {renderContextRow('As Defender', r.ctx.asDefender)}
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -4209,6 +4271,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
             )}
           </div>
         )}
+
+        {(() => {
+          const top5 = Object.entries(byMap)
+            .sort(([, a], [, b]) => b.plays - a.plays)
+            .slice(0, 5);
+          if (top5.length === 0) return null;
+          return (
+            <div className="bg-bg-inset rounded-lg p-3 mb-2">
+              <div className="text-xs text-text-secondary uppercase tracking-wider mb-2 font-semibold">Most Played Maps</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-text-secondary border-b border-border-default">
+                    <th className="text-left py-1 px-1">#</th>
+                    <th className="text-left py-1 px-1">Map</th>
+                    <th className="text-center py-1 px-1">Rounds</th>
+                    <th className="text-center py-1 px-1">USA Win%</th>
+                    <th className="text-center py-1 px-1">CSA Win%</th>
+                    <th className="text-center py-1 px-1">Avg Cas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top5.map(([name, s], i) => (
+                    <tr key={name} className={i % 2 === 0 ? 'bg-bg-card' : ''}>
+                      <td className="py-1 px-1 text-text-secondary">{i + 1}</td>
+                      <td className="py-1 px-1 font-medium">{name}</td>
+                      <td className="text-center py-1 px-1">{s.plays}</td>
+                      <td className="text-center py-1 px-1 text-blue-400">{pct(s.usaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 text-red-400">{pct(s.csaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 text-text-secondary">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
         <div className="space-y-2">
           {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
@@ -7250,7 +7348,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="mt-2">
                             <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown)}
+                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals)}
                           </div>
                         </div>
 
@@ -7368,7 +7466,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </h4>
                       {(() => {
                         const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx));
+                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx));
                       })()}
                     </div>
                   </div>
