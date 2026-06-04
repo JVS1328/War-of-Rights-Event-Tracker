@@ -37,6 +37,8 @@ const DEFAULT_MAP_BIASES = {
   "River Town": 1.5, "Outskirts": 1.5, "Overlook": 1.5, "Valley": 1.5,
   "Garland's Stand": 2.5, "Cox's Push": 2.5, "Hatch's Attack": 2,
   "Anderson's Counterattack": 1, "Reno's Fall": 1.5, "Colquitt's Defence": 2,
+  // South Mountain Conquest/Contention areas (shared names; treated identically).
+  "Log Cabin": 1.5, "Wheat Fields": 1.5, "Rocky Slopes": 1.5, "Hilltop": 1.5,
   "Alexander Farm": 2, "Crossroads": 0, "Smith Field": 1,
   "Crecy's Cornfield": 1.5, "Crossley Creek": 1, "Larsen Homestead": 1.5,
   "South Woodlot": 1.5, "Flemming's Meadow": 2, "Wagon Road": 2,

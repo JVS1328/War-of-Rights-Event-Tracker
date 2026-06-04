@@ -79,9 +79,7 @@ const HARPERS_FERRY_CONQUEST = [
   'River Town', 'Outskirts', 'Overlook', 'Valley',
 ];
 
-// South Mountain Skirmish maps. Attacker flags carried over from the previous
-// USA_ATTACK_MAPS knowledge; canonical names to be reconciled against the mode
-// JSON when supplied (Antietam, Drill Camp, and Harpers Ferry confirmed below).
+// South Mountain Skirmish maps, confirmed from Skirmish.json.
 const SOUTH_MOUNTAIN_SKIRMISH: Array<[string, Attacker]> = [
   ["Garland's Stand", 'USA'],
   ["Cox's Push", 'USA'],
@@ -89,6 +87,10 @@ const SOUTH_MOUNTAIN_SKIRMISH: Array<[string, Attacker]> = [
   ["Anderson's Counterattack", 'CSA'],
   ["Reno's Fall", 'CSA'],
   ["Colquitt's Defence", 'USA'],
+];
+
+const SOUTH_MOUNTAIN_CONQUEST = [
+  'Log Cabin', 'Wheat Fields', 'Rocky Slopes', 'Hilltop',
 ];
 
 const DRILL_CAMP_SKIRMISH: Array<[string, Attacker]> = [
@@ -119,6 +121,7 @@ export const MAP_CATALOG: MapDef[] = [
   ...skirmish('harpers_ferry', HARPERS_FERRY_SKIRMISH),
   ...conquest('harpers_ferry', HARPERS_FERRY_CONQUEST),
   ...skirmish('south_mountain', SOUTH_MOUNTAIN_SKIRMISH),
+  ...conquest('south_mountain', SOUTH_MOUNTAIN_CONQUEST),
   ...skirmish('drill_camp', DRILL_CAMP_SKIRMISH),
   ...conquest('drill_camp', DRILL_CAMP_CONQUEST),
 ];

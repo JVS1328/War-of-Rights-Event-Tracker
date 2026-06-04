@@ -73,6 +73,10 @@ describe('areaOf', () => {
       expect(areaOf(m)).toBe('harpers_ferry');
       expect(hasAttacker(m)).toBe(false);
     }
+    for (const m of ['Log Cabin', 'Wheat Fields', 'Rocky Slopes', 'Hilltop']) {
+      expect(areaOf(m)).toBe('south_mountain');
+      expect(hasAttacker(m)).toBe(false);
+    }
   });
 
   it('returns null for unknown maps', () => {
