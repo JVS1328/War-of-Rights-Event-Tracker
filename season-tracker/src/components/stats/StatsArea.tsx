@@ -47,6 +47,41 @@ const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
 
+export interface TrackerMapEntry {
+  plays: number;
+  usaWins: number;
+  csaWins: number;
+  totalCasualties: number;
+  usaCasualties: number;
+  csaCasualties: number;
+  avgLossesUsa: number;
+  avgLossesCsa: number;
+  avgFormationUsa: FormationCounts;
+  avgFormationCsa: FormationCounts;
+  hasFormation: boolean;
+  avgMoraleUsa?: string | null;
+  avgMoraleCsa?: string | null;
+  hasMorale?: boolean;
+}
+
+export interface TrackerMapStats {
+  overall: {
+    totalRounds: number;
+    usaWins: number;
+    csaWins: number;
+    attackerWins: number;
+    defenderWins: number;
+    usaCasualties: number;
+    csaCasualties: number;
+    totalCasualties: number;
+    usaFormation: FormationCounts;
+    csaFormation: FormationCounts;
+    formationTotal: FormationCounts;
+    hasFormation: boolean;
+  };
+  byMap: Record<string, TrackerMapEntry>;
+}
+
 interface StatsAreaProps {
   eventId: string;
   eventName: string;
@@ -73,6 +108,12 @@ interface StatsAreaProps {
    * drives it from its existing season nav instead.
    */
   onSeasonScope?: (scope: string) => void;
+  /**
+   * Pre-computed map stats from the tracker's Elo engine. When provided, the
+   * Maps tab renders from this instead of deriving stats from scoreboards.
+   * The shared/read-only view omits this and falls back to scoreboard data.
+   */
+  trackerMapStats?: TrackerMapStats;
 }
 
 /** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
@@ -97,6 +138,7 @@ export function StatsPanel({
   seasons = [],
   seasonScope = OVERALL_SCOPE,
   onSeasonScope,
+  trackerMapStats,
   stats,
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
@@ -296,7 +338,7 @@ export function StatsPanel({
         />
       )}
 
-      {tab === 'maps' && <MapsTab maps={mapBreakdown} hasData={hasData} />}
+      {tab === 'maps' && <MapsTab maps={mapBreakdown} hasData={hasData} trackerMapStats={trackerMapStats} />}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
@@ -1107,7 +1149,72 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
 
 // ── Maps ────────────────────────────────────────────────────────────────────
 
-function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
+function mapViewFromScoreboards(maps: MapStatRow[]): TrackerMapStats {
+  const zero = (): FormationCounts => ({ in_form: 0, skirm: 0, oob: 0 });
+  const uF = zero();
+  const cF = zero();
+  let totalRounds = 0;
+  let usaWins = 0;
+  let csaWins = 0;
+  let usaCas = 0;
+  let csaCas = 0;
+  let attackerWins = 0;
+  let defenderWins = 0;
+  for (const m of maps) {
+    totalRounds += m.rounds;
+    usaWins += m.usaWins;
+    csaWins += m.csaWins;
+    usaCas += m.usaCasualties;
+    csaCas += m.csaCasualties;
+    uF.in_form += m.usaFormation.in_form;
+    uF.skirm += m.usaFormation.skirm;
+    uF.oob += m.usaFormation.oob;
+    cF.in_form += m.csaFormation.in_form;
+    cF.skirm += m.csaFormation.skirm;
+    cF.oob += m.csaFormation.oob;
+    const isUsaAttack = USA_ATTACK_MAPS.has(m.map);
+    attackerWins += isUsaAttack ? m.usaWins : m.csaWins;
+    defenderWins += isUsaAttack ? m.csaWins : m.usaWins;
+  }
+  const totalCas = usaCas + csaCas;
+  const fTotal = { in_form: uF.in_form + cF.in_form, skirm: uF.skirm + cF.skirm, oob: uF.oob + cF.oob };
+  const byMap: Record<string, TrackerMapEntry> = {};
+  for (const m of maps) {
+    const n = m.rounds || 1;
+    byMap[m.map] = {
+      plays: m.rounds,
+      usaWins: m.usaWins,
+      csaWins: m.csaWins,
+      totalCasualties: m.usaCasualties + m.csaCasualties,
+      usaCasualties: m.usaCasualties,
+      csaCasualties: m.csaCasualties,
+      avgLossesUsa: Math.round(m.usaCasualties / n),
+      avgLossesCsa: Math.round(m.csaCasualties / n),
+      avgFormationUsa: { in_form: Math.round(m.usaFormation.in_form / n), skirm: Math.round(m.usaFormation.skirm / n), oob: Math.round(m.usaFormation.oob / n) },
+      avgFormationCsa: { in_form: Math.round(m.csaFormation.in_form / n), skirm: Math.round(m.csaFormation.skirm / n), oob: Math.round(m.csaFormation.oob / n) },
+      hasFormation: m.usaFormation.in_form + m.usaFormation.skirm + m.usaFormation.oob + m.csaFormation.in_form + m.csaFormation.skirm + m.csaFormation.oob > 0,
+    };
+  }
+  return {
+    overall: {
+      totalRounds, usaWins, csaWins, attackerWins, defenderWins,
+      usaCasualties: usaCas, csaCasualties: csaCas, totalCasualties: totalCas,
+      usaFormation: uF, csaFormation: cF, formationTotal: fTotal,
+      hasFormation: fTotal.in_form + fTotal.skirm + fTotal.oob > 0,
+    },
+    byMap,
+  };
+}
+
+function MapsTab({
+  maps,
+  hasData,
+  trackerMapStats,
+}: {
+  maps: MapStatRow[];
+  hasData: boolean;
+  trackerMapStats?: TrackerMapStats;
+}) {
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (key: string) =>
     setOpenAreas((prev) => {
@@ -1117,57 +1224,45 @@ function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
       return next;
     });
 
-  if (!hasData || maps.length === 0) {
+  const view = useMemo(
+    () => trackerMapStats ?? mapViewFromScoreboards(maps),
+    [trackerMapStats, maps],
+  );
+  const { overall, byMap } = view;
+
+  if ((!hasData && !trackerMapStats) || overall.totalRounds === 0) {
     return (
       <Panel title="Maps">
-        <EmptyHint>Import scoreboards to see map breakdowns</EmptyHint>
+        <EmptyHint>No map data available</EmptyHint>
       </Panel>
     );
   }
 
-  const byName = new Map(maps.map((m) => [m.map, m]));
   const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
-  const totalRounds = maps.reduce((s, m) => s + m.rounds, 0);
-  const usaWins = maps.reduce((s, m) => s + m.usaWins, 0);
-  const csaWins = maps.reduce((s, m) => s + m.csaWins, 0);
-  const usaCas = maps.reduce((s, m) => s + m.usaCasualties, 0);
-  const csaCas = maps.reduce((s, m) => s + m.csaCasualties, 0);
-  const totalCas = usaCas + csaCas;
-  const usaForm = maps.reduce((f, m) => ({ in_form: f.in_form + m.usaFormation.in_form, skirm: f.skirm + m.usaFormation.skirm, oob: f.oob + m.usaFormation.oob }), { in_form: 0, skirm: 0, oob: 0 });
-  const csaForm = maps.reduce((f, m) => ({ in_form: f.in_form + m.csaFormation.in_form, skirm: f.skirm + m.csaFormation.skirm, oob: f.oob + m.csaFormation.oob }), { in_form: 0, skirm: 0, oob: 0 });
-  const totalForm = { in_form: usaForm.in_form + csaForm.in_form, skirm: usaForm.skirm + csaForm.skirm, oob: usaForm.oob + csaForm.oob };
-  const hasFormation = totalForm.in_form + totalForm.skirm + totalForm.oob > 0;
-
-  let attackerWins = 0;
-  let defenderWins = 0;
-  for (const m of maps) {
-    const isUsaAttack = USA_ATTACK_MAPS.has(m.map);
-    attackerWins += isUsaAttack ? m.usaWins : m.csaWins;
-    defenderWins += isUsaAttack ? m.csaWins : m.usaWins;
-  }
+  const allMapNames = Object.keys(byMap);
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-px">
-        <Tile label="USA Overall" value={`${pct(usaWins, totalRounds)}%`} hint={`${usaWins}/${totalRounds}`} />
-        <Tile label="CSA Overall" value={`${pct(csaWins, totalRounds)}%`} hint={`${csaWins}/${totalRounds}`} />
+        <Tile label="USA Overall" value={`${pct(overall.usaWins, overall.totalRounds)}%`} hint={`${overall.usaWins}/${overall.totalRounds}`} />
+        <Tile label="CSA Overall" value={`${pct(overall.csaWins, overall.totalRounds)}%`} hint={`${overall.csaWins}/${overall.totalRounds}`} />
       </div>
       <div className="grid grid-cols-2 gap-px">
-        <Tile label="Attackers Won" value={`${pct(attackerWins, totalRounds)}%`} hint={`${attackerWins}/${totalRounds}`} />
-        <Tile label="Defenders Won" value={`${pct(defenderWins, totalRounds)}%`} hint={`${defenderWins}/${totalRounds}`} />
+        <Tile label="Attackers Won" value={`${pct(overall.attackerWins, overall.totalRounds)}%`} hint={`${overall.attackerWins}/${overall.totalRounds}`} />
+        <Tile label="Defenders Won" value={`${pct(overall.defenderWins, overall.totalRounds)}%`} hint={`${overall.defenderWins}/${overall.totalRounds}`} />
       </div>
 
-      {totalCas > 0 && (
+      {overall.totalCasualties > 0 && (
         <Panel title="Casualties & formation makeup">
           <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-sm">
             {([
-              { label: 'USA', total: usaCas, form: usaForm },
-              { label: 'CSA', total: csaCas, form: csaForm },
-              { label: 'Overall', total: totalCas, form: totalForm },
+              { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation },
+              { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation },
+              { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal },
             ] as const).map(({ label, total, form }) => (
               <div key={label} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2">
                 <div className="text-[color:var(--color-text-0)] font-semibold">{label}: {total.toLocaleString()}</div>
-                {hasFormation && (
+                {overall.hasFormation && (
                   <div className="text-xs text-[color:var(--color-text-2)] mt-0.5">
                     {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
                   </div>
@@ -1179,7 +1274,7 @@ function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
       )}
 
       {Object.entries(MAP_AREAS).map(([areaKey, areaMaps]) => {
-        const played = areaMaps.filter((m) => byName.has(m));
+        const played = areaMaps.filter((m) => byMap[m]);
         if (played.length === 0) return null;
         const open = openAreas.has(areaKey);
         const Chevron = open ? ChevronDown : ChevronRight;
@@ -1198,87 +1293,65 @@ function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
             {open && (
               <div className="p-2 space-y-2">
                 {played
-                  .sort((a, b) => (byName.get(b)?.rounds ?? 0) - (byName.get(a)?.rounds ?? 0))
-                  .map((mapName) => {
-                    const s = byName.get(mapName)!;
-                    const avgCas = s.rounds > 0 ? Math.round((s.usaCasualties + s.csaCasualties) / s.rounds) : 0;
-                    const avgUsaCas = s.rounds > 0 ? Math.round(s.usaCasualties / s.rounds) : 0;
-                    const avgCsaCas = s.rounds > 0 ? Math.round(s.csaCasualties / s.rounds) : 0;
-                    const avgUsaForm = s.rounds > 0
-                      ? { in_form: Math.round(s.usaFormation.in_form / s.rounds), skirm: Math.round(s.usaFormation.skirm / s.rounds), oob: Math.round(s.usaFormation.oob / s.rounds) }
-                      : { in_form: 0, skirm: 0, oob: 0 };
-                    const avgCsaForm = s.rounds > 0
-                      ? { in_form: Math.round(s.csaFormation.in_form / s.rounds), skirm: Math.round(s.csaFormation.skirm / s.rounds), oob: Math.round(s.csaFormation.oob / s.rounds) }
-                      : { in_form: 0, skirm: 0, oob: 0 };
-                    const mapHasFormation =
-                      s.usaFormation.in_form + s.usaFormation.skirm + s.usaFormation.oob +
-                      s.csaFormation.in_form + s.csaFormation.skirm + s.csaFormation.oob > 0;
-                    return (
-                      <div key={mapName} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[color:var(--color-text-0)]">{mapName}</span>
-                          <span className="text-xs text-[color:var(--color-text-2)]">{s.rounds} rounds</span>
-                        </div>
-                        <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
-                          <div>
-                            <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.rounds)}%)</span>
-                            <span className="mx-2">|</span>
-                            <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.rounds)}%)</span>
-                          </div>
-                          <div>
-                            Avg losses: <span className="text-[color:var(--color-ok)]">USA {avgUsaCas}</span>
-                            <span className="mx-1">·</span>
-                            <span className="text-[color:var(--color-accent)]">CSA {avgCsaCas}</span>
-                            <span className="text-[color:var(--color-text-2)]"> (total {(s.usaCasualties + s.csaCasualties).toLocaleString()}, {avgCas}/rd)</span>
-                          </div>
-                          {mapHasFormation && (
-                            <>
-                              <div>
-                                Avg formation USA: {avgUsaForm.in_form} IF · {avgUsaForm.skirm} Sk · {avgUsaForm.oob} OoL
-                              </div>
-                              <div>
-                                Avg formation CSA: {avgCsaForm.in_form} IF · {avgCsaForm.skirm} Sk · {avgCsaForm.oob} OoL
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
+                  .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
               </div>
             )}
           </Panel>
         );
       })}
 
-      {/* Maps not in any known area */}
-      {maps.filter((m) => !areaOf(m.map)).length > 0 && (
+      {allMapNames.filter((m) => !areaOf(m)).length > 0 && (
         <Panel title="Other">
           <div className="p-2 space-y-2">
-            {maps
-              .filter((m) => !areaOf(m.map))
-              .sort((a, b) => b.rounds - a.rounds)
-              .map((s) => {
-                const avgCas = s.rounds > 0 ? Math.round((s.usaCasualties + s.csaCasualties) / s.rounds) : 0;
-                return (
-                  <div key={s.map} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[color:var(--color-text-0)]">{s.map}</span>
-                      <span className="text-xs text-[color:var(--color-text-2)]">{s.rounds} rounds</span>
-                    </div>
-                    <div className="text-xs text-[color:var(--color-text-2)]">
-                      <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.rounds)}%)</span>
-                      <span className="mx-2">|</span>
-                      <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.rounds)}%)</span>
-                      <span className="mx-2">·</span>
-                      <span>Avg {avgCas} cas/rd</span>
-                    </div>
-                  </div>
-                );
-              })}
+            {allMapNames
+              .filter((m) => !areaOf(m))
+              .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
+              .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
+
+function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: number, t: number) => string }) {
+  return (
+    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[color:var(--color-text-0)]">{name}</span>
+        <span className="text-xs text-[color:var(--color-text-2)]">{s.plays} rounds</span>
+      </div>
+      <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
+        <div>
+          <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+          <span className="mx-2">|</span>
+          <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+        </div>
+        <div>
+          Avg losses: <span className="text-[color:var(--color-ok)]">USA {s.avgLossesUsa}</span>
+          <span className="mx-1">·</span>
+          <span className="text-[color:var(--color-accent)]">CSA {s.avgLossesCsa}</span>
+          <span className="text-[color:var(--color-text-2)]"> (total {s.totalCasualties.toLocaleString()}, {s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}/rd)</span>
+        </div>
+        {s.hasFormation && (
+          <>
+            <div>
+              Avg formation USA: {s.avgFormationUsa.in_form} IF · {s.avgFormationUsa.skirm} Sk · {s.avgFormationUsa.oob} OoL
+            </div>
+            <div>
+              Avg formation CSA: {s.avgFormationCsa.in_form} IF · {s.avgFormationCsa.skirm} Sk · {s.avgFormationCsa.oob} OoL
+            </div>
+          </>
+        )}
+        {s.hasMorale && (
+          <div>
+            Avg morale: <span className="text-[color:var(--color-ok)]">USA {s.avgMoraleUsa || '—'}</span>
+            <span className="mx-1">·</span>
+            <span className="text-[color:var(--color-accent)]">CSA {s.avgMoraleCsa || '—'}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

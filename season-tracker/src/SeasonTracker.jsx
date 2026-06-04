@@ -4566,6 +4566,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
               teamNames={teamNames}
               validMaps={ALL_MAPS}
+              trackerMapStats={statsAllSeasons ? calculateMapStats() : calculateSeasonMapStats()}
               onApplyRound={(weekId, updates) => {
                 const w = weeks.find(x => String(x.id) === weekId);
                 if (w) updateWeek(w.id, updates);
