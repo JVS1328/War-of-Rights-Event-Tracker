@@ -11,6 +11,8 @@
         if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark');
         }
+        var family = localStorage.getItem('themeFamily') === 'classic' ? 'classic' : 'modern';
+        document.documentElement.setAttribute('data-theme', family);
       })();
     </script>
   </head>

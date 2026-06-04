@@ -6,6 +6,7 @@ import {
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
 import StatsArea from './components/stats/StatsArea';
+import { ThemeControls } from './components/ThemeControls';
 import { averageMorale, MORALE_STATES } from './stats/morale';
 import {
   generateShortShareUrl,
@@ -4379,7 +4380,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                 )}
               </div>
-              {/* Theme Toggle */}
+              {/* Theme: Modern | Classic family switch (light/dark toggle below) */}
+              <ThemeControls showMode={false} />
+              {/* Light/Dark Toggle */}
               <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded-md hover:bg-bg-inset transition"
