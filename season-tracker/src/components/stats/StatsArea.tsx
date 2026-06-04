@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, X, GitMerge } from 'lucide-react';
+import { Upload, Trash2, Pencil, X, GitMerge, ChevronDown, ChevronRight } from 'lucide-react';
 import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
@@ -16,6 +16,7 @@ import {
 import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, MapStatRow } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { MAP_AREAS, USA_ATTACK_MAPS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
@@ -1107,6 +1108,15 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
 // ── Maps ────────────────────────────────────────────────────────────────────
 
 function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
+  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
+  const toggleArea = (key: string) =>
+    setOpenAreas((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   if (!hasData || maps.length === 0) {
     return (
       <Panel title="Maps">
@@ -1114,47 +1124,162 @@ function MapsTab({ maps, hasData }: { maps: MapStatRow[]; hasData: boolean }) {
       </Panel>
     );
   }
+
+  const byName = new Map(maps.map((m) => [m.map, m]));
+  const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
+  const totalRounds = maps.reduce((s, m) => s + m.rounds, 0);
+  const usaWins = maps.reduce((s, m) => s + m.usaWins, 0);
+  const csaWins = maps.reduce((s, m) => s + m.csaWins, 0);
+  const usaCas = maps.reduce((s, m) => s + m.usaCasualties, 0);
+  const csaCas = maps.reduce((s, m) => s + m.csaCasualties, 0);
+  const totalCas = usaCas + csaCas;
+  const usaForm = maps.reduce((f, m) => ({ in_form: f.in_form + m.usaFormation.in_form, skirm: f.skirm + m.usaFormation.skirm, oob: f.oob + m.usaFormation.oob }), { in_form: 0, skirm: 0, oob: 0 });
+  const csaForm = maps.reduce((f, m) => ({ in_form: f.in_form + m.csaFormation.in_form, skirm: f.skirm + m.csaFormation.skirm, oob: f.oob + m.csaFormation.oob }), { in_form: 0, skirm: 0, oob: 0 });
+  const totalForm = { in_form: usaForm.in_form + csaForm.in_form, skirm: usaForm.skirm + csaForm.skirm, oob: usaForm.oob + csaForm.oob };
+  const hasFormation = totalForm.in_form + totalForm.skirm + totalForm.oob > 0;
+
+  let attackerWins = 0;
+  let defenderWins = 0;
+  for (const m of maps) {
+    const isUsaAttack = USA_ATTACK_MAPS.has(m.map);
+    attackerWins += isUsaAttack ? m.usaWins : m.csaWins;
+    defenderWins += isUsaAttack ? m.csaWins : m.usaWins;
+  }
+
   return (
-    <Panel title={`Maps (${maps.length})`}>
-      <DataTable<MapStatRow>
-        rows={maps}
-        getRowKey={(m) => m.map}
-        initialSortKey="rounds"
-        searchValue={(m) => m.map}
-        searchPlaceholder="Search maps…"
-        columns={[
-          {
-            key: 'map',
-            header: 'Map',
-            sortable: true,
-            sortValue: (m) => m.map,
-            render: (m) => (
-              <span>
-                <span className="text-[color:var(--color-text-0)]">{m.map}</span>
-                {m.modes.length > 0 && (
-                  <span className="ml-2 text-[color:var(--color-text-2)] text-xs">
-                    {m.modes.map((mo) => (mo.area ? `${mo.mode} · ${mo.area}` : mo.mode)).join(', ')}
-                  </span>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-px">
+        <Tile label="USA Overall" value={`${pct(usaWins, totalRounds)}%`} hint={`${usaWins}/${totalRounds}`} />
+        <Tile label="CSA Overall" value={`${pct(csaWins, totalRounds)}%`} hint={`${csaWins}/${totalRounds}`} />
+      </div>
+      <div className="grid grid-cols-2 gap-px">
+        <Tile label="Attackers Won" value={`${pct(attackerWins, totalRounds)}%`} hint={`${attackerWins}/${totalRounds}`} />
+        <Tile label="Defenders Won" value={`${pct(defenderWins, totalRounds)}%`} hint={`${defenderWins}/${totalRounds}`} />
+      </div>
+
+      {totalCas > 0 && (
+        <Panel title="Casualties & formation makeup">
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-sm">
+            {([
+              { label: 'USA', total: usaCas, form: usaForm },
+              { label: 'CSA', total: csaCas, form: csaForm },
+              { label: 'Overall', total: totalCas, form: totalForm },
+            ] as const).map(({ label, total, form }) => (
+              <div key={label} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2">
+                <div className="text-[color:var(--color-text-0)] font-semibold">{label}: {total.toLocaleString()}</div>
+                {hasFormation && (
+                  <div className="text-xs text-[color:var(--color-text-2)] mt-0.5">
+                    {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
+                  </div>
                 )}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {Object.entries(MAP_AREAS).map(([areaKey, areaMaps]) => {
+        const played = areaMaps.filter((m) => byName.has(m));
+        if (played.length === 0) return null;
+        const open = openAreas.has(areaKey);
+        const Chevron = open ? ChevronDown : ChevronRight;
+        return (
+          <Panel key={areaKey} title="">
+            <button
+              type="button"
+              onClick={() => toggleArea(areaKey)}
+              className="w-full flex items-center justify-between px-3 py-2 hover:bg-[color:var(--color-bg-3)] transition"
+            >
+              <span className="font-mono text-sm uppercase tracking-wider text-[color:var(--color-text-0)]">
+                {prettyArea(areaKey)} ({played.length})
               </span>
-            ),
-          },
-          { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (m) => m.rounds, render: (m) => m.rounds },
-          { key: 'usaWins', header: 'USA W', align: 'right', sortable: true, sortValue: (m) => m.usaWins, render: (m) => m.usaWins },
-          { key: 'csaWins', header: 'CSA W', align: 'right', sortable: true, sortValue: (m) => m.csaWins, render: (m) => m.csaWins },
-          { key: 'usaKills', header: 'USA K', align: 'right', sortable: true, sortValue: (m) => m.usaKills, render: (m) => m.usaKills.toLocaleString() },
-          { key: 'csaKills', header: 'CSA K', align: 'right', sortable: true, sortValue: (m) => m.csaKills, render: (m) => m.csaKills.toLocaleString() },
-          {
-            key: 'avgDur',
-            header: 'Avg Dur',
-            align: 'right',
-            sortable: true,
-            sortValue: (m) => m.avgDurationSeconds ?? -1,
-            render: (m) => fmtDuration(m.avgDurationSeconds),
-          },
-        ]}
-      />
-    </Panel>
+              <Chevron size={14} className="text-[color:var(--color-text-2)]" />
+            </button>
+            {open && (
+              <div className="p-2 space-y-2">
+                {played
+                  .sort((a, b) => (byName.get(b)?.rounds ?? 0) - (byName.get(a)?.rounds ?? 0))
+                  .map((mapName) => {
+                    const s = byName.get(mapName)!;
+                    const avgCas = s.rounds > 0 ? Math.round((s.usaCasualties + s.csaCasualties) / s.rounds) : 0;
+                    const avgUsaCas = s.rounds > 0 ? Math.round(s.usaCasualties / s.rounds) : 0;
+                    const avgCsaCas = s.rounds > 0 ? Math.round(s.csaCasualties / s.rounds) : 0;
+                    const avgUsaForm = s.rounds > 0
+                      ? { in_form: Math.round(s.usaFormation.in_form / s.rounds), skirm: Math.round(s.usaFormation.skirm / s.rounds), oob: Math.round(s.usaFormation.oob / s.rounds) }
+                      : { in_form: 0, skirm: 0, oob: 0 };
+                    const avgCsaForm = s.rounds > 0
+                      ? { in_form: Math.round(s.csaFormation.in_form / s.rounds), skirm: Math.round(s.csaFormation.skirm / s.rounds), oob: Math.round(s.csaFormation.oob / s.rounds) }
+                      : { in_form: 0, skirm: 0, oob: 0 };
+                    const mapHasFormation =
+                      s.usaFormation.in_form + s.usaFormation.skirm + s.usaFormation.oob +
+                      s.csaFormation.in_form + s.csaFormation.skirm + s.csaFormation.oob > 0;
+                    return (
+                      <div key={mapName} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[color:var(--color-text-0)]">{mapName}</span>
+                          <span className="text-xs text-[color:var(--color-text-2)]">{s.rounds} rounds</span>
+                        </div>
+                        <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
+                          <div>
+                            <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.rounds)}%)</span>
+                            <span className="mx-2">|</span>
+                            <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.rounds)}%)</span>
+                          </div>
+                          <div>
+                            Avg losses: <span className="text-[color:var(--color-ok)]">USA {avgUsaCas}</span>
+                            <span className="mx-1">·</span>
+                            <span className="text-[color:var(--color-accent)]">CSA {avgCsaCas}</span>
+                            <span className="text-[color:var(--color-text-2)]"> (total {(s.usaCasualties + s.csaCasualties).toLocaleString()}, {avgCas}/rd)</span>
+                          </div>
+                          {mapHasFormation && (
+                            <>
+                              <div>
+                                Avg formation USA: {avgUsaForm.in_form} IF · {avgUsaForm.skirm} Sk · {avgUsaForm.oob} OoL
+                              </div>
+                              <div>
+                                Avg formation CSA: {avgCsaForm.in_form} IF · {avgCsaForm.skirm} Sk · {avgCsaForm.oob} OoL
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </Panel>
+        );
+      })}
+
+      {/* Maps not in any known area */}
+      {maps.filter((m) => !areaOf(m.map)).length > 0 && (
+        <Panel title="Other">
+          <div className="p-2 space-y-2">
+            {maps
+              .filter((m) => !areaOf(m.map))
+              .sort((a, b) => b.rounds - a.rounds)
+              .map((s) => {
+                const avgCas = s.rounds > 0 ? Math.round((s.usaCasualties + s.csaCasualties) / s.rounds) : 0;
+                return (
+                  <div key={s.map} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[color:var(--color-text-0)]">{s.map}</span>
+                      <span className="text-xs text-[color:var(--color-text-2)]">{s.rounds} rounds</span>
+                    </div>
+                    <div className="text-xs text-[color:var(--color-text-2)]">
+                      <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.rounds)}%)</span>
+                      <span className="mx-2">|</span>
+                      <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.rounds)}%)</span>
+                      <span className="mx-2">·</span>
+                      <span>Avg {avgCas} cas/rd</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </Panel>
+      )}
+    </div>
   );
 }
 
