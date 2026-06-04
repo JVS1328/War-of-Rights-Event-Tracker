@@ -3934,7 +3934,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
       if (!team1 || !team2) return null;
       let t1Wins = 0;
       let t2Wins = 0;
+      let sameLeadBothRounds = false;
+
       for (const w of playoffWeeks) {
+        const r1Leads = roundLeads(w, 1);
+        const r2Leads = roundLeads(w, 2);
+
+        // If the same unit leads both rounds on a night, this is a best-of-3 series
+        if (
+          r1Leads.leadA && r1Leads.leadB &&
+          r1Leads.leadA === r2Leads.leadA &&
+          r1Leads.leadB === r2Leads.leadB
+        ) {
+          const involvesBoth =
+            (r1Leads.leadA === team1.unit && r1Leads.leadB === team2.unit) ||
+            (r1Leads.leadA === team2.unit && r1Leads.leadB === team1.unit);
+          if (involvesBoth) sameLeadBothRounds = true;
+        }
+
         for (const r of [1, 2]) {
           const winner = w[`round${r}Winner`];
           if (!winner) continue;
@@ -3942,7 +3959,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
           if (!leadA || !leadB) continue;
           const winningLead = winner === 'A' ? leadA : leadB;
           const losingLead = winner === 'A' ? leadB : leadA;
-          // Only count this round if it pits team1's lead against team2's lead.
           const isMatch =
             (winningLead === team1.unit && losingLead === team2.unit) ||
             (winningLead === team2.unit && losingLead === team1.unit);
@@ -3951,7 +3967,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
           else if (winningLead === team2.unit) t2Wins++;
         }
       }
-      const needed = Math.floor((roundsPerMatch || 1) / 2) + 1;
+
+      const effectiveRounds = sameLeadBothRounds ? Math.max(roundsPerMatch || 1, 3) : (roundsPerMatch || 1);
+      const needed = Math.floor(effectiveRounds / 2) + 1;
       if (t1Wins >= needed && t1Wins > t2Wins) return team1;
       if (t2Wins >= needed && t2Wins > t1Wins) return team2;
       return null;
