@@ -15,7 +15,7 @@ export function Pill({ children, tone = 'neutral' }: { children: ReactNode; tone
   const colorVar = TONE_VAR[tone];
   return (
     <span
-      className="inline-flex items-center gap-1 border px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-mono"
+      className="inline-flex items-center gap-1 border px-1.5 py-0.5 text-xs uppercase tracking-wider font-mono"
       style={{ borderColor: colorVar, color: colorVar }}
     >
       {children}

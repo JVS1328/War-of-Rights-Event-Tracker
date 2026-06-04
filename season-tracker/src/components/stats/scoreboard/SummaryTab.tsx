@@ -68,7 +68,7 @@ export function SummaryTab({
   const csaWeaponTotal = Object.values(meta.deathsByWeapon.CSA).reduce((n, v) => n + v, 0);
 
   return (
-    <div className="text-[12px] font-mono">
+    <div className="text-base font-mono">
       {canBind && buildAutofill && weeks.length > 0 && (
         <div className="p-3 border-b border-[color:var(--color-border)]">
           <BindPanel
@@ -101,9 +101,9 @@ export function SummaryTab({
       </section>
 
       <section className="p-4 border-b border-[color:var(--color-border)]">
-        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">casualties</div>
+        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">casualties</div>
         <table className="w-full">
-          <thead className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+          <thead className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
             <tr>
               <th className="text-left px-3 py-1"></th>
               <th className="text-right px-3 py-1">USA</th>
@@ -122,12 +122,12 @@ export function SummaryTab({
       </section>
 
       <section className="p-4">
-        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">deaths by weapon</div>
+        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">deaths by weapon</div>
         {weaponKeys.length === 0 ? (
-          <div className="text-[10px] text-[color:var(--color-text-2)] py-2">No weapon data</div>
+          <div className="text-xs text-[color:var(--color-text-2)] py-2">No weapon data</div>
         ) : (
           <table className="w-full">
-            <thead className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+            <thead className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
               <tr>
                 <th className="text-left px-3 py-1">weapon</th>
                 <th className="text-right px-3 py-1">USA died</th>
@@ -182,10 +182,10 @@ function BindPanel({
     'bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]';
   return (
     <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 space-y-2">
-      <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">
+      <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
         Bind to event round → auto-fill standings
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <select value={weekId} onChange={(e) => setWeekId(e.target.value)} className={selectCls}>
           <option value="">Select week…</option>
           {weeks.map((w) => (
@@ -206,7 +206,7 @@ function BindPanel({
           Apply auto-fill
         </button>
       </div>
-      <div className="text-[10px] text-[color:var(--color-text-1)] space-y-0.5">
+      <div className="text-xs text-[color:var(--color-text-1)] space-y-0.5">
         <div>
           Map:{' '}
           {af.validMap ? (
@@ -227,7 +227,7 @@ function BindPanel({
         </div>
       </div>
       {stored?.binding && (
-        <div className="text-[10px] text-[color:var(--color-ok)]">
+        <div className="text-xs text-[color:var(--color-ok)]">
           Currently bound to {weeks.find((w) => w.id === stored.binding!.weekId)?.name ?? 'a week'} · Round{' '}
           {stored.binding.round}
         </div>

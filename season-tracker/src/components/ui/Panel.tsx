@@ -67,7 +67,7 @@ export function Panel({
             : undefined
         }
       >
-        <h2 className="text-[11px] uppercase tracking-wider text-[color:var(--color-text-1)] font-mono flex items-center gap-2">
+        <h2 className="text-sm uppercase tracking-wider text-[color:var(--color-text-1)] font-mono flex items-center gap-2">
           {collapsible && (
             <span className="text-[color:var(--color-text-2)] inline-block w-3">
               {open ? '▼' : '▶'}
@@ -77,7 +77,7 @@ export function Panel({
         </h2>
         {right && (
           <div
-            className="text-[10px] text-[color:var(--color-text-2)] font-mono"
+            className="text-xs text-[color:var(--color-text-2)] font-mono"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >

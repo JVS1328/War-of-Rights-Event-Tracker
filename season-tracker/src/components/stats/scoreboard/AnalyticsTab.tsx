@@ -19,7 +19,7 @@ import type {
   NemesisRow,
 } from '../../../stats/roundAnalytics';
 
-const SECTION_HEAD = 'mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]';
+const SECTION_HEAD = 'mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]';
 
 function IndividualList({
   title,
@@ -37,7 +37,7 @@ function IndividualList({
   return (
     <div>
       <div className={SECTION_HEAD}>{title}</div>
-      <table className="w-full text-[11px]">
+      <table className="w-full text-sm">
         <tbody>
           {rows.map((r, i) => (
             <tr
@@ -48,7 +48,7 @@ function IndividualList({
               <td className="w-6 px-1 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{i + 1}</td>
               <td className="px-1 py-0.5">
                 <div className="truncate text-[color:var(--color-text-0)]">{r.name}</div>
-                {r.regiment && <div className="truncate text-[9px] text-[color:var(--color-text-2)]">{r.regiment}</div>}
+                {r.regiment && <div className="truncate text-2xs text-[color:var(--color-text-2)]">{r.regiment}</div>}
               </td>
               <td className="px-1 py-0.5 text-right font-semibold tabular-nums whitespace-nowrap" style={{ color }}>
                 {r.value}
@@ -74,7 +74,7 @@ function RateList({ title, rows, kind }: { title: string; rows: UnitRateRow[]; k
           const rate = isLoss ? r.lossRate : r.killRate;
           const detail = isLoss ? `${r.deaths} cas · ${r.players} plr` : `${r.kills} k · ${r.players} plr`;
           return (
-            <div key={`${r.regiment}-${r.team}-${i}`} className="text-[11px]">
+            <div key={`${r.regiment}-${r.team}-${i}`} className="text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-[color:var(--color-text-0)]">
                   <span className="text-[color:var(--color-text-2)]">{i + 1}.</span> {r.regiment}
@@ -86,7 +86,7 @@ function RateList({ title, rows, kind }: { title: string; rows: UnitRateRow[]; k
               <div className="relative mt-0.5 h-1.5 bg-[color:var(--color-bg-2)]">
                 <div className="absolute left-0 top-0 h-full" style={{ width: `${(rate / max) * 100}%`, backgroundColor: color }} />
               </div>
-              <div className="text-[9px] text-[color:var(--color-text-2)]">{detail}</div>
+              <div className="text-2xs text-[color:var(--color-text-2)]">{detail}</div>
             </div>
           );
         })}
@@ -110,21 +110,21 @@ function DeathCard({
   const color = tone === 'ok' ? 'var(--color-ok)' : 'var(--color-danger)';
   return (
     <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-wider" style={{ color }}>
+      <div className="text-xs uppercase tracking-wider" style={{ color }}>
         {title}
       </div>
       <button
         onClick={() => onOpenPlayer(row.victimKey)}
-        className="mt-0.5 block max-w-full truncate text-left text-[12px] text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
+        className="mt-0.5 block max-w-full truncate text-left text-base text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
       >
         {row.victim}
       </button>
-      <div className="text-[9px] text-[color:var(--color-text-2)]">
+      <div className="text-2xs text-[color:var(--color-text-2)]">
         {row.regiment ? `${row.regiment} · ` : ''}
         {row.ts || '—'}
       </div>
       {row.killer && (
-        <div className="mt-0.5 truncate text-[10px] text-[color:var(--color-text-1)]">
+        <div className="mt-0.5 truncate text-xs text-[color:var(--color-text-1)]">
           by{' '}
           <button onClick={() => row.killerKey && onOpenPlayer(row.killerKey)} className="hover:text-[color:var(--color-accent)]">
             {row.killer}
@@ -141,7 +141,7 @@ function NemesisList({ rows, onOpenPlayer }: { rows: NemesisRow[]; onOpenPlayer:
   return (
     <div>
       <div className={SECTION_HEAD}>Nemeses</div>
-      <div className="space-y-0.5 text-[11px]">
+      <div className="space-y-0.5 text-sm">
         {rows.map((r, i) => (
           <div key={`${r.killerKey}-${r.victimKey}-${i}`} className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1">
@@ -156,7 +156,7 @@ function NemesisList({ rows, onOpenPlayer }: { rows: NemesisRow[]; onOpenPlayer:
             </div>
             <span className="shrink-0 tabular-nums text-[color:var(--color-text-0)]">
               <span className="font-semibold">{r.count}</span>{' '}
-              <span className="text-[9px] text-[color:var(--color-text-2)]">{r.count === 1 ? 'kill' : 'kills'}</span>
+              <span className="text-2xs text-[color:var(--color-text-2)]">{r.count === 1 ? 'kill' : 'kills'}</span>
             </span>
           </div>
         ))}

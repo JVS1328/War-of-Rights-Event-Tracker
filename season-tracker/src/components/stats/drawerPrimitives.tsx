@@ -23,8 +23,8 @@ export function Cell({ label, value, title }: { label: string; value: ReactNode;
       className={`border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5 ${title ? 'cursor-help' : ''}`}
       title={title}
     >
-      <div className="text-[9px] uppercase tracking-wider text-[color:var(--color-text-2)]">{label}</div>
-      <div className="text-[13px] tabular-nums text-[color:var(--color-text-0)]">{value}</div>
+      <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{label}</div>
+      <div className="text-lg tabular-nums text-[color:var(--color-text-0)]">{value}</div>
     </div>
   );
 }
@@ -35,11 +35,11 @@ export function CauseTable({ title, data }: { title: string; data: Record<string
   const total = rows.reduce((s, [, v]) => s + v, 0);
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-2)]">{title}</div>
+      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">{title}</div>
       {rows.length === 0 ? (
-        <div className="text-[10px] text-[color:var(--color-text-2)] py-2">No killfeed data</div>
+        <div className="text-xs text-[color:var(--color-text-2)] py-2">No killfeed data</div>
       ) : (
-        <table className="w-full text-[11px]">
+        <table className="w-full text-sm">
           <tbody>
             {rows.map(([cause, count]) => (
               <tr key={cause} className="border-b border-[color:var(--color-border)]">

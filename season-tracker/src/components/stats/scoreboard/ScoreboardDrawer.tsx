@@ -71,7 +71,7 @@ export function ScoreboardDrawer({
       {!sb ? (
         <EmptyHint>No data</EmptyHint>
       ) : (
-        <div className="text-[12px]">
+        <div className="text-base">
           <Tabs tab={tab} onChange={setTab} />
           {tab === 'summary' && (
             <SummaryTab
@@ -96,7 +96,7 @@ export function ScoreboardDrawer({
 
 function Tabs({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
   return (
-    <div className="flex border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-[11px] uppercase tracking-wider font-mono">
+    <div className="flex border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-sm uppercase tracking-wider font-mono">
       {TABS.map((t) => (
         <button
           key={t}
