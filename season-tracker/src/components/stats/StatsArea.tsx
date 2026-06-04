@@ -1220,6 +1220,41 @@ function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
         </Panel>
       )}
 
+      {(() => {
+        const top5 = Object.entries(byMap)
+          .sort(([, a], [, b]) => b.plays - a.plays)
+          .slice(0, 5);
+        if (top5.length === 0) return null;
+        return (
+          <Panel title="Most Played Maps">
+            <table className="w-full font-mono text-sm">
+              <thead>
+                <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+                  <th className="px-2 py-1 text-left w-6">#</th>
+                  <th className="px-2 py-1 text-left">Map</th>
+                  <th className="px-2 py-1 text-right">Rounds</th>
+                  <th className="px-2 py-1 text-right">USA Win%</th>
+                  <th className="px-2 py-1 text-right">CSA Win%</th>
+                  <th className="px-2 py-1 text-right">Avg Cas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top5.map(([name, s], i) => (
+                  <tr key={name} className="border-b border-[color:var(--color-border)]">
+                    <td className="px-2 py-1 text-[color:var(--color-text-2)]">{i + 1}</td>
+                    <td className="px-2 py-1 text-[color:var(--color-text-0)]">{name}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{s.plays}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-ok)]">{pct(s.usaWins, s.plays)}%</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-accent)]">{pct(s.csaWins, s.plays)}%</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        );
+      })()}
+
       {Object.entries(MAP_AREAS).map(([areaKey, areaMaps]) => {
         const played = areaMaps.filter((m) => byMap[m]);
         if (played.length === 0) return null;

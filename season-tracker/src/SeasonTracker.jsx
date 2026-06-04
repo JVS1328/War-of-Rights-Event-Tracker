@@ -4272,6 +4272,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
           </div>
         )}
 
+        {(() => {
+          const top5 = Object.entries(byMap)
+            .sort(([, a], [, b]) => b.plays - a.plays)
+            .slice(0, 5);
+          if (top5.length === 0) return null;
+          return (
+            <div className="bg-bg-inset rounded-lg p-3 mb-2">
+              <div className="text-xs text-text-secondary uppercase tracking-wider mb-2 font-semibold">Most Played Maps</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-text-secondary border-b border-border-default">
+                    <th className="text-left py-1 px-1">#</th>
+                    <th className="text-left py-1 px-1">Map</th>
+                    <th className="text-center py-1 px-1">Rounds</th>
+                    <th className="text-center py-1 px-1">USA Win%</th>
+                    <th className="text-center py-1 px-1">CSA Win%</th>
+                    <th className="text-center py-1 px-1">Avg Cas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top5.map(([name, s], i) => (
+                    <tr key={name} className={i % 2 === 0 ? 'bg-bg-card' : ''}>
+                      <td className="py-1 px-1 text-text-secondary">{i + 1}</td>
+                      <td className="py-1 px-1 font-medium">{name}</td>
+                      <td className="text-center py-1 px-1">{s.plays}</td>
+                      <td className="text-center py-1 px-1 text-blue-400">{pct(s.usaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 text-red-400">{pct(s.csaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 text-text-secondary">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+
         <div className="space-y-2">
           {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
             const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
