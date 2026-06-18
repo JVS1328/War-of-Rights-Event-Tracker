@@ -347,82 +347,120 @@ export const decodeSharePayload = (encoded) => {
   }
 };
 
+// --- Short-link storage (chunked upload/download) --------------------------
+// A single Upstash REST value/request is capped near 1 MB, so the encoded
+// payload is split into sub-1MB string chunks stored under separate keys, with
+// a small manifest recording the count. Chunking both directions also clears
+// Vercel's ~4.5MB per-request body limit, so short links work regardless of
+// payload size.
+
+const CHUNK_SIZE = 500_000;   // chars per chunk — safely under the ~1MB/request cap
+const SHARE_CONCURRENCY = 5;  // bounded parallelism for chunk up/downloads
+
+// SHA-256 hex of a string. The short id is its first 8 chars — the same scheme
+// the server used before, so identical payloads still dedupe to the same id.
+const sha256Hex = async (str) => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  let hex = '';
+  for (const b of new Uint8Array(buf)) hex += b.toString(16).padStart(2, '0');
+  return hex;
+};
+
+export const splitIntoChunks = (str, size = CHUNK_SIZE) => {
+  const chunks = [];
+  for (let i = 0; i < str.length; i += size) chunks.push(str.slice(i, i + size));
+  return chunks;
+};
+
+// Run an async task over each item with bounded concurrency, preserving order.
+const runBounded = async (items, limit, fn) => {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+};
+
+const postShare = async (body) => {
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  return res;
+};
+
+// Upload an encoded payload as chunks + a manifest; returns the short id.
+// Exported with an overridable chunk size so tests can exercise the multi-chunk
+// path without megabytes of data.
+export const putSharePayload = async (encoded, chunkSize = CHUNK_SIZE) => {
+  const id = (await sha256Hex(encoded)).slice(0, 8);
+  const chunks = splitIntoChunks(encoded, chunkSize);
+  // Store every chunk first...
+  await runBounded(chunks, SHARE_CONCURRENCY, (chunk, index) => postShare({ id, index, chunk }));
+  // ...then the manifest, so a reader never sees it pointing at missing chunks.
+  await postShare({ id, total: chunks.length });
+  return id;
+};
+
+const shortUrl = (id) => `${window.location.origin + window.location.pathname}#s=${id}`;
+const inlineUrl = (encoded) => `${window.location.origin + window.location.pathname}#share=${encoded}`;
+
 // --- URL generation ---
 
-export const generateShareUrl = (state) => {
-  const encoded = encodeSharePayload(createV2SeasonPayload(state));
-  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
-};
+export const generateShareUrl = (state) =>
+  inlineUrl(encodeSharePayload(createV2SeasonPayload(state)));
 
-export const generateShortShareUrl = async (state) => {
-  const payload = encodeSharePayload(createV2SeasonPayload(state));
-  const res = await fetch('/api/share', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload }),
-  });
-  if (!res.ok) throw new Error('Share API unavailable');
-  const { id } = await res.json();
-  return `${window.location.origin + window.location.pathname}#s=${id}`;
-};
+export const generateShortShareUrl = async (state) =>
+  shortUrl(await putSharePayload(encodeSharePayload(createV2SeasonPayload(state))));
 
-export const generateEventShareUrl = (event) => {
-  const encoded = encodeSharePayload(createV2EventPayload(event));
-  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
-};
+export const generateEventShareUrl = (event) =>
+  inlineUrl(encodeSharePayload(createV2EventPayload(event)));
 
-export const generateShortEventShareUrl = async (event) => {
-  const payload = encodeSharePayload(createV2EventPayload(event));
-  const res = await fetch('/api/share', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload }),
-  });
-  if (!res.ok) throw new Error('Share API unavailable');
-  const { id } = await res.json();
-  return `${window.location.origin + window.location.pathname}#s=${id}`;
-};
+export const generateShortEventShareUrl = async (event) =>
+  shortUrl(await putSharePayload(encodeSharePayload(createV2EventPayload(event))));
 
-export const generateStatsShareUrl = (bundle, name) => {
-  const encoded = encodeSharePayload(createV2StatsPayload(bundle, name));
-  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
-};
+export const generateStatsShareUrl = (bundle, name) =>
+  inlineUrl(encodeSharePayload(createV2StatsPayload(bundle, name)));
 
-export const generateShortStatsShareUrl = async (bundle, name) => {
-  const payload = encodeSharePayload(createV2StatsPayload(bundle, name));
-  const res = await fetch('/api/share', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload }),
-  });
-  if (!res.ok) throw new Error('Share API unavailable');
-  const { id } = await res.json();
-  return `${window.location.origin + window.location.pathname}#s=${id}`;
-};
+export const generateShortStatsShareUrl = async (bundle, name) =>
+  shortUrl(await putSharePayload(encodeSharePayload(createV2StatsPayload(bundle, name))));
 
-export const generateFullShareUrl = (event, bundle) => {
-  const encoded = encodeSharePayload(createV2FullPayload(event, bundle));
-  return `${window.location.origin + window.location.pathname}#share=${encoded}`;
-};
+export const generateFullShareUrl = (event, bundle) =>
+  inlineUrl(encodeSharePayload(createV2FullPayload(event, bundle)));
 
-export const generateShortFullShareUrl = async (event, bundle) => {
-  const payload = encodeSharePayload(createV2FullPayload(event, bundle));
-  const res = await fetch('/api/share', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payload }),
-  });
-  if (!res.ok) throw new Error('Share API unavailable');
-  const { id } = await res.json();
-  return `${window.location.origin + window.location.pathname}#s=${id}`;
-};
+export const generateShortFullShareUrl = async (event, bundle) =>
+  shortUrl(await putSharePayload(encodeSharePayload(createV2FullPayload(event, bundle))));
 
+// Reassemble a shared payload by id. Legacy single-value links return the
+// payload inline; chunked links return a manifest and we fetch each chunk.
 export const fetchSharePayload = async (id) => {
   try {
     const res = await fetch(`/api/share?id=${encodeURIComponent(id)}`);
     if (!res.ok) return null;
-    const { payload } = await res.json();
-    return decodeSharePayload(payload);
+    const data = await res.json();
+
+    if (typeof data.payload === 'string') return decodeSharePayload(data.payload);
+
+    if (data.chunked && Number.isInteger(data.total) && data.total > 0) {
+      const indices = Array.from({ length: data.total }, (_, i) => i);
+      const parts = await runBounded(indices, SHARE_CONCURRENCY, async (i) => {
+        const r = await fetch(`/api/share?id=${encodeURIComponent(id)}&chunk=${i}`);
+        if (!r.ok) throw new Error('Missing chunk');
+        const d = await r.json();
+        if (typeof d.chunk !== 'string') throw new Error('Bad chunk');
+        return d.chunk;
+      });
+      return decodeSharePayload(parts.join(''));
+    }
+
+    return null;
   } catch {
     return null;
   }
