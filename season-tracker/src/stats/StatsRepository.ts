@@ -35,6 +35,14 @@ export interface ListQuery {
 export type RegimentAssignmentMap = Record<string, string>;
 
 /**
+ * Steam-id assignments (pins) keyed by scope, where a scope key is
+ * `OVERALL_SCOPE` (applies to every season) or a season id (overrides Overall
+ * for that season only). A player pinned to different regiments across seasons
+ * resolves under the scope of the round being viewed.
+ */
+export type ScopedAssignments = Record<string, RegimentAssignmentMap>;
+
+/**
  * Storage-agnostic stats persistence. The client uses LocalStatsRepository
  * (IndexedDB); a future ApiStatsRepository (backend) can implement the same
  * interface without any UI changes.
@@ -45,9 +53,17 @@ export interface StatsRepository {
   listScoreboards(query: ListQuery): Promise<ScoreboardSummary[]>;
   deleteScoreboard(id: string): Promise<void>;
 
+  /** Event-wide (Overall) pins — a view over the Overall scope of the scoped map. */
   getRegimentAssignments(eventId: string): Promise<RegimentAssignmentMap>;
   setRegimentAssignment(eventId: string, steamId: string, regiment: string): Promise<void>;
   setRegimentAssignments(eventId: string, assignments: RegimentAssignmentMap): Promise<void>;
+
+  /** All pins keyed by scope (OVERALL_SCOPE or a season id). */
+  getRegimentAssignmentsScoped(eventId: string): Promise<ScopedAssignments>;
+  /** Pin one player within a scope (upsert). */
+  setRegimentAssignmentScoped(eventId: string, scope: string, steamId: string, regiment: string): Promise<void>;
+  /** Pin several players within a scope at once (upsert). */
+  setRegimentAssignmentsScoped(eventId: string, scope: string, assignments: RegimentAssignmentMap): Promise<void>;
 
   /**
    * Event-wide (Overall) regiment rename/merge map (sourceLabel → targetLabel).

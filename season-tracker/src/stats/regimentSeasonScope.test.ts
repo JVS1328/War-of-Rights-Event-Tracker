@@ -90,6 +90,30 @@ describe('season-scoped Overall regiment resolution (option B)', () => {
   });
 });
 
+describe('season-scoped steam-id pins (assignmentsFor)', () => {
+  it('pins one player to different regiments in different seasons', () => {
+    const assignmentsFor = (sb: { sourceFilename: string }) =>
+      sb.sourceFilename === sbS1.sourceFilename
+        ? { '76561198000000001': 'A' } // Joe → A in Season 1
+        : { '76561198000000001': 'B' }; // Joe → B in Season 2
+    const regs = computeRegimentBreakdown(boards, {}, { assignmentsFor });
+    const by = Object.fromEntries(regs.map((r) => [r.regiment, r]));
+    expect(by.A.players).toBe(1);
+    expect(by.A.kills).toBe(5); // Joe (Season 1)
+    expect(by.B.players).toBe(1);
+    expect(by.B.kills).toBe(3); // Joe (Season 2)
+    // Bob is unpinned, so his name tag [GA] resolves the same across seasons.
+    expect(by.GA.players).toBe(1);
+    expect(by.GA.kills).toBe(6); // Bob 4 + 2
+  });
+
+  it('falls back to the flat assignments when assignmentsFor yields nothing', () => {
+    const regs = computeRegimentBreakdown([sbS1], { '76561198000000002': 'PINNED' }, {});
+    const by = Object.fromEntries(regs.map((r) => [r.regiment, r]));
+    expect(by.PINNED?.players).toBe(1); // Bob pinned via the flat map
+  });
+});
+
 describe('single-season view applies the season alias only', () => {
   it('merges within Season 1', () => {
     const regs = computeRegimentBreakdown([sbS1], {}, { aliasMap: effectiveAliasMap({ sea_1: S1_ALIASES }, 'sea_1') });
@@ -182,5 +206,18 @@ describe('buildStatsBundle carries season-scoped aliases', () => {
     const bundle = buildStatsBundle([rec()], {}, {}, [], [], scoped);
     expect(bundle.aliases).toEqual({ A: 'B' }); // Overall carried flat for old viewers
     expect(bundle.aliasesScoped).toEqual(scoped); // full structure for new viewers
+  });
+
+  it('carries assignmentsScoped when a season-specific pin exists', () => {
+    const scopedAsg = { [OVERALL_SCOPE]: { '1': 'A' }, sea_1: { '2': 'B' } };
+    const bundle = buildStatsBundle([rec()], {}, {}, [], [], undefined, scopedAsg);
+    expect(bundle.assignments).toEqual({ '1': 'A' }); // Overall pins flat for old viewers
+    expect(bundle.assignmentsScoped).toEqual(scopedAsg);
+  });
+
+  it('omits assignmentsScoped for an Overall-only event', () => {
+    const bundle = buildStatsBundle([rec()], { '1': 'A' });
+    expect(bundle.assignments).toEqual({ '1': 'A' });
+    expect(bundle).not.toHaveProperty('assignmentsScoped');
   });
 });

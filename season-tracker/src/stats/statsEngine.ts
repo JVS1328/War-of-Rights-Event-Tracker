@@ -58,6 +58,14 @@ export interface EngineOptions {
    * identity in the others. Omit it (the default) for a single flat map.
    */
   aliasMapFor?: (sb: Scoreboard) => Record<string, string> | undefined;
+  /**
+   * Per-scoreboard steam-id assignment (pin) selection, mirroring
+   * {@link aliasMapFor}: given a scoreboard, return the pins to apply to its
+   * rows. When set it takes precedence over the flat `assignments` argument, so
+   * a player pinned to one regiment in some seasons and another later resolves
+   * correctly per round. Omit it (the default) to use the flat `assignments`.
+   */
+  assignmentsFor?: (sb: Scoreboard) => RegimentAssignmentMap | undefined;
 }
 
 /**
@@ -116,8 +124,9 @@ function resolveRow(
   assignments: RegimentAssignmentMap,
   options: EngineOptions,
 ): string {
+  const asg = options.assignmentsFor ? options.assignmentsFor(sb) ?? assignments : assignments;
   const aliasMap = options.aliasMapFor ? options.aliasMapFor(sb) : options.aliasMap;
-  return resolveFor(steamId, name, assignments, options.regimentList, aliasMap);
+  return resolveFor(steamId, name, asg, options.regimentList, aliasMap);
 }
 
 /** Find a player's roster entry within a scoreboard (steam id, else name+team). */

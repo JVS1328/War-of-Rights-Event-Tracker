@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { statsRepo as repo } from '../../stats/repo';
-import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from '../../stats/StatsRepository';
+import type { RegimentAssignmentMap, ScopedAssignments, ScoreboardBinding, StoredScoreboard } from '../../stats/StatsRepository';
 import { parseScoreboard } from '../../stats/parseScoreboard';
 import type { Scoreboard } from '../../stats/types';
 import { resolveRegiment } from '../../stats/regimentMatcher';
-import { storedFromBundle, normalizeScopedAliases, OVERALL_SCOPE } from '../../stats/statsBundle';
+import { storedFromBundle, normalizeScopedAliases, normalizeScopedMap, OVERALL_SCOPE } from '../../stats/statsBundle';
 import type { ScopedAliases, StatsBundle } from '../../stats/statsBundle';
 
 export interface UseStats {
@@ -12,7 +12,8 @@ export interface UseStats {
   stored: StoredScoreboard[];
   /** Scoreboards sorted oldest→newest (so the freshest name wins in aggregates). */
   scoreboards: Scoreboard[];
-  assignments: RegimentAssignmentMap;
+  /** Steam-id pins keyed by scope (OVERALL_SCOPE or a season id). */
+  assignments: ScopedAssignments;
   /**
    * Season-scoped regiment rename/merge maps (scope → sourceLabel → targetLabel),
    * where a scope key is `OVERALL_SCOPE` or a season id.
@@ -22,9 +23,10 @@ export interface UseStats {
   remove: (id: string) => Promise<void>;
   bind: (id: string, binding: ScoreboardBinding) => Promise<void>;
   applyRegimentList: (text: string) => Promise<void>;
-  setAssignment: (steamId: string, regiment: string) => Promise<void>;
-  /** Persist many per-player assignments at once (the staged-edit Save). */
-  bulkAssign: (entries: RegimentAssignmentMap) => Promise<void>;
+  /** Pin one player within a scope (OVERALL_SCOPE default, or a season id). */
+  setAssignment: (steamId: string, regiment: string, scope?: string) => Promise<void>;
+  /** Persist many per-player pins at once within a scope (the staged-edit Save). */
+  bulkAssign: (entries: RegimentAssignmentMap, scope?: string) => Promise<void>;
   /**
    * Rename or merge within a scope: map a regiment label onto another
    * (transitive). `scope` is `OVERALL_SCOPE` (default) for an event-wide rename,
@@ -38,7 +40,7 @@ export interface UseStats {
 
 export function useStats(eventId: string): UseStats {
   const [stored, setStored] = useState<StoredScoreboard[]>([]);
-  const [assignments, setAssignments] = useState<RegimentAssignmentMap>({});
+  const [assignments, setAssignments] = useState<ScopedAssignments>({});
   const [aliases, setAliasesState] = useState<ScopedAliases>({});
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +49,7 @@ export function useStats(eventId: string): UseStats {
     const summaries = await repo.listScoreboards({ eventId });
     const full = await Promise.all(summaries.map((s) => repo.getScoreboard(s.id)));
     setStored(full.filter((s): s is StoredScoreboard => s != null));
-    setAssignments(await repo.getRegimentAssignments(eventId));
+    setAssignments(await repo.getRegimentAssignmentsScoped(eventId));
     setAliasesState(await repo.getRegimentAliasesScoped(eventId));
     setLoading(false);
   }, [eventId]);
@@ -112,16 +114,16 @@ export function useStats(eventId: string): UseStats {
   );
 
   const setAssignment = useCallback(
-    async (steamId: string, regiment: string) => {
-      await repo.setRegimentAssignment(eventId, steamId, regiment);
+    async (steamId: string, regiment: string, scope: string = OVERALL_SCOPE) => {
+      await repo.setRegimentAssignmentScoped(eventId, scope, steamId, regiment);
       await reload();
     },
     [eventId, reload],
   );
 
   const bulkAssign = useCallback(
-    async (entries: RegimentAssignmentMap) => {
-      if (Object.keys(entries).length) await repo.setRegimentAssignments(eventId, entries);
+    async (entries: RegimentAssignmentMap, scope: string = OVERALL_SCOPE) => {
+      if (Object.keys(entries).length) await repo.setRegimentAssignmentsScoped(eventId, scope, entries);
       await reload();
     },
     [eventId, reload],
@@ -191,7 +193,7 @@ export function readOnlyStatsFromBundle(bundle: StatsBundle): UseStats {
     loading: false,
     stored,
     scoreboards,
-    assignments: bundle.assignments ?? {},
+    assignments: normalizeScopedMap(bundle.assignmentsScoped ?? bundle.assignments),
     aliases: normalizeScopedAliases(bundle.aliasesScoped ?? bundle.aliases),
     importFiles: async () => ({ imported: 0, failed: [] }),
     remove: noop,

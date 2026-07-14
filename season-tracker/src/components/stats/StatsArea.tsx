@@ -20,7 +20,7 @@ import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
-import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource } from '../../stats/statsBundle';
+import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, scopedMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
 
@@ -160,20 +160,31 @@ export function StatsPanel({
     () => aliasMapBySource(stats.stored, seasons, stats.aliases),
     [stats.stored, seasons, stats.aliases],
   );
+  // Steam-id pins resolve the same way: Overall pins plus the round's season
+  // pins (season wins), so a player pinned to different regiments across seasons
+  // lands in the right one each round.
+  const overallAssignments = useMemo(() => stats.assignments[OVERALL_SCOPE] ?? {}, [stats.assignments]);
+  const assignmentBySource = useMemo(
+    () => scopedMapBySource(stats.stored, seasons, stats.assignments),
+    [stats.stored, seasons, stats.assignments],
+  );
   const opts = useMemo(
     () => ({
       regimentList,
       aliasMapFor: (sb: Scoreboard) => aliasBySource.get(sb.sourceFilename) ?? overallAlias,
+      assignmentsFor: (sb: Scoreboard) => assignmentBySource.get(sb.sourceFilename) ?? overallAssignments,
     }),
-    [regimentList, aliasBySource, overallAlias],
+    [regimentList, aliasBySource, overallAlias, assignmentBySource, overallAssignments],
   );
 
+  // Positional `assignments` is only a fallback — `opts.assignmentsFor` selects
+  // per-scoreboard pins, so the Overall pins are the sensible base here.
   const players = useMemo(
-    () => computePlayerLeaderboard(sbs, stats.assignments, { ...opts, type: typeFilter }),
-    [sbs, stats.assignments, opts, typeFilter],
+    () => computePlayerLeaderboard(sbs, overallAssignments, { ...opts, type: typeFilter }),
+    [sbs, overallAssignments, opts, typeFilter],
   );
-  const regiments = useMemo(() => computeRegimentBreakdown(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
-  const regimentContext = useMemo(() => computeRegimentContextStats(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
+  const regiments = useMemo(() => computeRegimentBreakdown(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
+  const regimentContext = useMemo(() => computeRegimentContextStats(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
   const selectedStored = useMemo(() => stats.stored.find((s) => s.id === scoreboardId) ?? null, [scoreboardId, stats.stored]);
   // Season regiment resolver shared with the round drawer's Players tab, so its
@@ -181,19 +192,19 @@ export function StatsPanel({
   // Resolves under the open round's own season scope (or Overall when none).
   const resolveRegiment = useMemo(
     () => (steamId: string | null, name: string) => {
-      const aliasMap = selectedStored
-        ? aliasBySource.get(selectedStored.scoreboard.sourceFilename) ?? overallAlias
-        : overallAlias;
-      const r = resolveFor(steamId, name, stats.assignments, regimentList, aliasMap);
+      const src = selectedStored?.scoreboard.sourceFilename;
+      const aliasMap = (src && aliasBySource.get(src)) || overallAlias;
+      const asg = (src && assignmentBySource.get(src)) || overallAssignments;
+      const r = resolveFor(steamId, name, asg, regimentList, aliasMap);
       return r === UNTAGGED ? null : r;
     },
-    [stats.assignments, regimentList, aliasBySource, overallAlias, selectedStored],
+    [regimentList, aliasBySource, overallAlias, assignmentBySource, overallAssignments, selectedStored],
   );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
-  const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
+  const overview = useMemo(() => computeOverview(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const playerDetail = useMemo(
-    () => (playerKey ? computePlayerDetail(sbs, playerKey, stats.assignments, { ...opts, type: playerType }) : null),
-    [playerKey, playerType, sbs, stats.assignments, opts],
+    () => (playerKey ? computePlayerDetail(sbs, playerKey, overallAssignments, { ...opts, type: playerType }) : null),
+    [playerKey, playerType, sbs, overallAssignments, opts],
   );
 
   const openRound = (filename: string) => {
@@ -695,7 +706,7 @@ function RegimentsTab({
     setMoveTarget('');
   };
   const save = async () => {
-    await stats.bulkAssign(pending);
+    await stats.bulkAssign(pending, seasonScope);
     reset();
   };
   // Where an edit lands, spelled out so a season-scoped rename can't be mistaken
@@ -748,7 +759,7 @@ function RegimentsTab({
           </button>
           {editMode && (
             <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-              Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately —{' '}
+              Pick a regiment per player, or check several and move them together. Pins apply on Save; rename/merge apply immediately — both{' '}
               <span className="text-[color:var(--color-text-1)]">
                 {seasonScope === OVERALL_SCOPE ? 'to all seasons' : `to ${seasonName ?? 'this season'} only`}
               </span>

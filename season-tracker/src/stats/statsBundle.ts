@@ -1,5 +1,5 @@
 import type { Scoreboard } from './types';
-import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
+import type { RegimentAssignmentMap, ScopedAssignments, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
 import type { TrackerMapStats } from './statsEngine';
 
 /**
@@ -104,10 +104,27 @@ export function aliasMapBySource(
   return out;
 }
 
+// Steam-id assignments (pins) share the exact scoped shape (scope → key → value)
+// and layering rules as aliases, so these generic aliases document intent at the
+// assignment call sites without a second copy of the logic.
+export const normalizeScopedMap = normalizeScopedAliases;
+export const effectiveScopedMap = effectiveAliasMap;
+export const scopedMapBySource = aliasMapBySource;
+
 export interface StatsBundle {
   v: number;
   scoreboards: StatsBundleEntry[];
+  /**
+   * Steam-id pins. Carries the Overall scope only (back-compat); newer viewers
+   * prefer {@link StatsBundle.assignmentsScoped}.
+   */
   assignments: RegimentAssignmentMap;
+  /**
+   * Season-scoped steam-id pins (scope → steamId → label). Present only when at
+   * least one season-specific pin exists; otherwise omitted and viewers rely on
+   * {@link StatsBundle.assignments}.
+   */
+  assignmentsScoped?: ScopedAssignments;
   /**
    * Regiment rename/merge map (sourceLabel → targetLabel). Carries the Overall
    * scope only, so viewers predating season-scoped aliases still apply the
@@ -160,14 +177,20 @@ export function buildStatsBundle(
   registryUnits: string[] = [],
   seasons: StatsBundleSeason[] = [],
   scopedAliases?: ScopedAliases,
+  scopedAssignments?: ScopedAssignments,
 ): StatsBundle {
   const scoped = scopedAliases
     ? normalizeScopedAliases(scopedAliases)
     : normalizeScopedAliases(aliases);
   const overall = scoped[OVERALL_SCOPE] ?? {};
-  // Only carry the scoped field when a season-specific scope exists — Overall-only
+  const scopedAsg = scopedAssignments
+    ? normalizeScopedMap(scopedAssignments)
+    : normalizeScopedMap(assignments);
+  const overallAsg = scopedAsg[OVERALL_SCOPE] ?? {};
+  // Only carry the scoped fields when a season-specific scope exists — Overall-only
   // events stay as lean as before this feature.
   const hasSeasonScope = Object.keys(scoped).some((s) => s !== OVERALL_SCOPE);
+  const hasSeasonAsg = Object.keys(scopedAsg).some((s) => s !== OVERALL_SCOPE);
   return {
     v: STATS_BUNDLE_VERSION,
     scoreboards: records.map((r) => ({
@@ -177,7 +200,8 @@ export function buildStatsBundle(
       scoreboard: { ...r.scoreboard, joinLeaves: [] },
       ...(r.binding ? { binding: r.binding } : {}),
     })),
-    assignments: { ...assignments },
+    assignments: { ...overallAsg },
+    ...(hasSeasonAsg ? { assignmentsScoped: scopedAsg } : {}),
     aliases: { ...overall },
     ...(hasSeasonScope ? { aliasesScoped: scoped } : {}),
     registryUnits: [...registryUnits],

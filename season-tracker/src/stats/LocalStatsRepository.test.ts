@@ -127,6 +127,55 @@ describe('LocalStatsRepository — regiment aliases (rename/merge)', () => {
   });
 });
 
+describe('LocalStatsRepository — season-scoped steam-id pins', () => {
+  it('round-trips scoped pins and exposes Overall through the flat getter', async () => {
+    const repo = freshRepo();
+    expect(await repo.getRegimentAssignmentsScoped('e')).toEqual({});
+    await repo.setRegimentAssignmentsScoped('e', OVERALL_SCOPE, { a: 'X' });
+    await repo.setRegimentAssignmentScoped('e', 'sea_5', 'a', 'Y'); // same player, Season 5
+    expect(await repo.getRegimentAssignmentsScoped('e')).toEqual({
+      [OVERALL_SCOPE]: { a: 'X' },
+      sea_5: { a: 'Y' },
+    });
+    expect(await repo.getRegimentAssignments('e')).toEqual({ a: 'X' }); // flat = Overall
+  });
+
+  it('reads a legacy flat pin as the Overall scope and overwrites it in place', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAssignment('e', 'a', 'X'); // legacy-style flat write
+    expect(await repo.getRegimentAssignmentsScoped('e')).toEqual({ [OVERALL_SCOPE]: { a: 'X' } });
+    await repo.setRegimentAssignment('e', 'a', 'Z'); // same key, overwrites
+    expect(await repo.getRegimentAssignmentsScoped('e')).toEqual({ [OVERALL_SCOPE]: { a: 'Z' } });
+  });
+
+  it('keeps Overall and season pins for the same player independent', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAssignmentScoped('e', OVERALL_SCOPE, 'a', 'X');
+    await repo.setRegimentAssignmentScoped('e', 'sea_5', 'a', 'Y');
+    await repo.setRegimentAssignmentScoped('e', OVERALL_SCOPE, 'a', 'X2'); // touch Overall only
+    const scoped = await repo.getRegimentAssignmentsScoped('e');
+    expect(scoped[OVERALL_SCOPE]).toEqual({ a: 'X2' });
+    expect(scoped.sea_5).toEqual({ a: 'Y' });
+  });
+
+  it('carries scoped pins through export and import', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260101_120000.csv'));
+    await repo.setRegimentAssignmentsScoped('src', OVERALL_SCOPE, { a: 'X' });
+    await repo.setRegimentAssignmentsScoped('src', 'sea_5', { a: 'Y' });
+
+    const bundle = await repo.exportEventStats('src');
+    expect(bundle.assignments).toEqual({ a: 'X' });
+    expect(bundle.assignmentsScoped).toEqual({ [OVERALL_SCOPE]: { a: 'X' }, sea_5: { a: 'Y' } });
+
+    await repo.importEventStats('dst', bundle);
+    expect(await repo.getRegimentAssignmentsScoped('dst')).toEqual({
+      [OVERALL_SCOPE]: { a: 'X' },
+      sea_5: { a: 'Y' },
+    });
+  });
+});
+
 describe('LocalStatsRepository — season-scoped regiment aliases', () => {
   it('defaults to an empty scoped map and round-trips a scoped set', async () => {
     const repo = freshRepo();
