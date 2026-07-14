@@ -1,5 +1,5 @@
 import type { Scoreboard } from './types';
-import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
+import type { RegimentAssignmentMap, ScopedAssignments, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
 import type { TrackerMapStats } from './statsEngine';
 
 /**
@@ -29,12 +29,115 @@ export interface StatsBundleSeason {
 /** Filter scope meaning "every season combined" (no season restriction). */
 export const OVERALL_SCOPE = 'overall';
 
+/**
+ * Regiment rename/merge maps keyed by scope. A scope key is either
+ * {@link OVERALL_SCOPE} (applies to every season) or a season id (applies only
+ * when that season is resolved). Each value is a `sourceLabel → targetLabel`
+ * map. The Overall view resolves each scoreboard under its own season's scope
+ * (season entries layered over Overall), so a unit renamed/merged in one season
+ * keeps its own identity in the others.
+ */
+export type ScopedAliases = Record<string, Record<string, string>>;
+
+/**
+ * Coerce a possibly-legacy alias value into the scoped shape. A flat
+ * `Record<string, string>` (the pre-scoping format) becomes an Overall-only
+ * scope; an already-scoped map is returned as-is. Detection: a scoped map's
+ * values are objects, a flat map's values are strings.
+ */
+export function normalizeScopedAliases(
+  x: ScopedAliases | Record<string, string> | undefined | null,
+): ScopedAliases {
+  if (!x || typeof x !== 'object') return {};
+  const values = Object.values(x);
+  const isFlat = values.some((v) => typeof v === 'string');
+  if (isFlat) {
+    const flat = x as Record<string, string>;
+    return Object.keys(flat).length ? { [OVERALL_SCOPE]: { ...flat } } : {};
+  }
+  const out: ScopedAliases = {};
+  for (const [scope, map] of Object.entries(x as ScopedAliases)) {
+    if (map && typeof map === 'object' && Object.keys(map).length) out[scope] = { ...map };
+  }
+  return out;
+}
+
+/**
+ * The flat rename/merge map to apply for a given scope: Overall entries with the
+ * season's own entries layered on top (season wins). For {@link OVERALL_SCOPE}
+ * this is just the Overall entries.
+ */
+export function effectiveAliasMap(scoped: ScopedAliases, scope: string): Record<string, string> {
+  const overall = scoped[OVERALL_SCOPE] ?? {};
+  if (scope === OVERALL_SCOPE) return { ...overall };
+  return { ...overall, ...(scoped[scope] ?? {}) };
+}
+
+/**
+ * For the Overall view (option B): map each scoreboard (by sourceFilename) to
+ * the effective alias map for the season it belongs to. A scoreboard belongs to
+ * a season when its `binding.weekId` is one of that season's `weekIds`; unbound
+ * scoreboards (and any whose season has no entry) fall back to Overall.
+ */
+export function aliasMapBySource(
+  stored: { scoreboard: { sourceFilename: string }; binding?: ScoreboardBinding }[],
+  seasons: StatsBundleSeason[] | undefined,
+  scoped: ScopedAliases,
+): Map<string, Record<string, string>> {
+  const weekToSeason = new Map<string, string>();
+  for (const s of seasons ?? []) for (const w of s.weekIds) weekToSeason.set(w, s.id);
+  // Cache one merged map per scope so boards in the same season share the object.
+  const byScope = new Map<string, Record<string, string>>();
+  const forScope = (scope: string) => {
+    let m = byScope.get(scope);
+    if (!m) {
+      m = effectiveAliasMap(scoped, scope);
+      byScope.set(scope, m);
+    }
+    return m;
+  };
+  const out = new Map<string, Record<string, string>>();
+  for (const r of stored) {
+    const seasonId = r.binding ? weekToSeason.get(r.binding.weekId) : undefined;
+    out.set(r.scoreboard.sourceFilename, forScope(seasonId ?? OVERALL_SCOPE));
+  }
+  return out;
+}
+
+// Steam-id assignments (pins) share the exact scoped shape (scope → key → value)
+// and layering rules as aliases, so these generic aliases document intent at the
+// assignment call sites without a second copy of the logic.
+export const normalizeScopedMap = normalizeScopedAliases;
+export const effectiveScopedMap = effectiveAliasMap;
+export const scopedMapBySource = aliasMapBySource;
+
 export interface StatsBundle {
   v: number;
   scoreboards: StatsBundleEntry[];
+  /**
+   * Steam-id pins. Carries the Overall scope only (back-compat); newer viewers
+   * prefer {@link StatsBundle.assignmentsScoped}.
+   */
   assignments: RegimentAssignmentMap;
-  /** Regiment rename/merge map (sourceLabel → targetLabel). */
+  /**
+   * Season-scoped steam-id pins (scope → steamId → label). Present only when at
+   * least one season-specific pin exists; otherwise omitted and viewers rely on
+   * {@link StatsBundle.assignments}.
+   */
+  assignmentsScoped?: ScopedAssignments;
+  /**
+   * Regiment rename/merge map (sourceLabel → targetLabel). Carries the Overall
+   * scope only, so viewers predating season-scoped aliases still apply the
+   * event-wide renames. Newer viewers prefer {@link StatsBundle.aliasesScoped}.
+   */
   aliases: Record<string, string>;
+  /**
+   * Season-scoped rename/merge maps (scope → sourceLabel → targetLabel). Present
+   * only when at least one season-specific alias exists; Overall-only events omit
+   * it and rely on {@link StatsBundle.aliases}. Bundles shared before this field
+   * existed simply lack it and degrade to the Overall map.
+   */
+  aliasesScoped?: ScopedAliases;
   /**
    * The event's registry unit names, so a read-only shared view resolves (and
    * merges) regiments identically to the live editor. Without this, registry-
@@ -59,14 +162,35 @@ export interface StatsBundle {
   };
 }
 
-/** Pack stored scoreboards + assignments + aliases into an event-agnostic bundle. */
+/**
+ * Pack stored scoreboards + assignments + aliases into an event-agnostic bundle.
+ * `aliases` is the flat Overall map (back-compat); pass `scopedAliases` to also
+ * carry season-scoped renames/merges so a shared view reproduces per-season
+ * resolution. When `scopedAliases` is given it supersedes `aliases` as the
+ * source of the Overall map, so callers can pass the whole scoped structure and
+ * leave `aliases` empty.
+ */
 export function buildStatsBundle(
   records: StoredScoreboard[],
   assignments: RegimentAssignmentMap,
   aliases: Record<string, string> = {},
   registryUnits: string[] = [],
   seasons: StatsBundleSeason[] = [],
+  scopedAliases?: ScopedAliases,
+  scopedAssignments?: ScopedAssignments,
 ): StatsBundle {
+  const scoped = scopedAliases
+    ? normalizeScopedAliases(scopedAliases)
+    : normalizeScopedAliases(aliases);
+  const overall = scoped[OVERALL_SCOPE] ?? {};
+  const scopedAsg = scopedAssignments
+    ? normalizeScopedMap(scopedAssignments)
+    : normalizeScopedMap(assignments);
+  const overallAsg = scopedAsg[OVERALL_SCOPE] ?? {};
+  // Only carry the scoped fields when a season-specific scope exists — Overall-only
+  // events stay as lean as before this feature.
+  const hasSeasonScope = Object.keys(scoped).some((s) => s !== OVERALL_SCOPE);
+  const hasSeasonAsg = Object.keys(scopedAsg).some((s) => s !== OVERALL_SCOPE);
   return {
     v: STATS_BUNDLE_VERSION,
     scoreboards: records.map((r) => ({
@@ -76,8 +200,10 @@ export function buildStatsBundle(
       scoreboard: { ...r.scoreboard, joinLeaves: [] },
       ...(r.binding ? { binding: r.binding } : {}),
     })),
-    assignments: { ...assignments },
-    aliases: { ...aliases },
+    assignments: { ...overallAsg },
+    ...(hasSeasonAsg ? { assignmentsScoped: scopedAsg } : {}),
+    aliases: { ...overall },
+    ...(hasSeasonScope ? { aliasesScoped: scoped } : {}),
     registryUnits: [...registryUnits],
     // Omitted when empty so older/seasonless payloads stay lean.
     ...(seasons.length

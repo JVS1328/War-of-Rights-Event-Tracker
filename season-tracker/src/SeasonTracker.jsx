@@ -15,10 +15,10 @@ import {
   generateShortFullShareUrl,
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
-import { isStatsBundle, OVERALL_SCOPE } from './stats/statsBundle';
+import { isStatsBundle, OVERALL_SCOPE, effectiveAliasMap, effectiveScopedMap, aliasMapBySource, scopedMapBySource } from './stats/statsBundle';
 import { computeRegimentBreakdown, computeRegimentContextStats } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
-import { deriveTokenSnaps, accumulateTokenSnaps, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps } from './stats/unitStats';
+import { deriveTokenSnaps, accumulateTokenSnaps, accumulateTokenSnapsScoped, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps, normalizeScopedTokenRegiments, effectiveTokenRegiments, unionTokenRegiments } from './stats/unitStats';
 import { FORMATION_SHORT, formatAvgT, AVG_TD_LABEL, AVG_TK_LABEL } from './stats/labels';
 import {
   migrateToV2,
@@ -149,6 +149,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [sbAliases, setSbAliases] = useState({});
   const [assignToken, setAssignToken] = useState(null);
   const [assignSel, setAssignSel] = useState([]);
+  // Scope the Assign dialog writes to: OVERALL_SCOPE (all seasons) or a season id.
+  const [assignScope, setAssignScope] = useState(OVERALL_SCOPE);
   const [expandedUnits, setExpandedUnits] = useState(new Set());
 
   // Balancer state
@@ -2301,10 +2303,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // ── Player-stat assignment (tracker token ← scoreboard regiment(s)) ─────────
-  // The token→regiments map lives on the event; per-unit stats are derived from
-  // scoreboards. Casualty input no longer feeds round totals (those stay owned
-  // by the per-side casualty/formation inputs, so untagged kills/deaths survive).
-  const tokenRegiments = activeEvent?.tokenRegiments || {};
+  // The token→regiments map lives on the event, now keyed by scope (Overall or a
+  // season id) so a unit's roster can differ per season. Per-unit stats are
+  // derived from scoreboards. Casualty input no longer feeds round totals (those
+  // stay owned by the per-side casualty/formation inputs, so untagged kills/
+  // deaths survive). Legacy flat maps read as the Overall scope.
+  const tokenRegimentsScoped = useMemo(
+    () => normalizeScopedTokenRegiments(activeEvent?.tokenRegiments),
+    [activeEvent],
+  );
+  // The mapping in effect for the active season (Overall defaults with this
+  // season's per-token overrides layered on). Drives the current-season
+  // displays, the claimed-by locks, and the Assign dialog.
+  const tokenRegiments = useMemo(
+    () => effectiveTokenRegiments(tokenRegimentsScoped, appState.activeSeasonId ?? OVERALL_SCOPE),
+    [tokenRegimentsScoped, appState.activeSeasonId],
+  );
 
   const loadScoreboardData = useCallback(async () => {
     const eventId = appState.activeEventId;
@@ -2312,8 +2326,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const summaries = await statsRepo.listScoreboards({ eventId });
       const full = await Promise.all(summaries.map((s) => statsRepo.getScoreboard(s.id)));
       setSbStored(full.filter(Boolean));
-      setSbAssignments(await statsRepo.getRegimentAssignments(eventId));
-      setSbAliases(await statsRepo.getRegimentAliases(eventId));
+      // Scoped maps (scope → …); resolution picks each round's season below.
+      setSbAssignments(await statsRepo.getRegimentAssignmentsScoped(eventId));
+      setSbAliases(await statsRepo.getRegimentAliasesScoped(eventId));
     } catch {
       setSbStored([]); setSbAssignments({}); setSbAliases({});
     }
@@ -2347,38 +2362,73 @@ const SeasonTracker = ({ initialShareData = null }) => {
     () => parseRegimentList(registryUnitNames.join('\n')),
     [registryUnitNames],
   );
+  // Which season a bound week belongs to (for per-round season-scoped
+  // resolution). A plain object, not a Map — `Map` is shadowed by the lucide
+  // icon import in this module.
+  const weekToSeason = useMemo(() => {
+    const m = {};
+    for (const s of statsSeasonRefs) for (const w of s.weekIds) m[String(w)] = s.id;
+    return m;
+  }, [statsSeasonRefs]);
+  const seasonOfWeek = useCallback(
+    (weekId) => (weekId ? weekToSeason[String(weekId)] ?? OVERALL_SCOPE : OVERALL_SCOPE),
+    [weekToSeason],
+  );
+  // Season-scoped resolution, exactly like the Stats view: each scoreboard's rows
+  // resolve under its own season's renames/pins (Overall defaults layered under
+  // season overrides), so the tracker's regiment labels match the Stats view.
+  const overallAlias = useMemo(() => effectiveAliasMap(sbAliases, OVERALL_SCOPE), [sbAliases]);
+  const overallAssign = useMemo(() => effectiveScopedMap(sbAssignments, OVERALL_SCOPE), [sbAssignments]);
+  const aliasBySource = useMemo(() => aliasMapBySource(sbStored, statsSeasonRefs, sbAliases), [sbStored, statsSeasonRefs, sbAliases]);
+  const assignmentBySource = useMemo(() => scopedMapBySource(sbStored, statsSeasonRefs, sbAssignments), [sbStored, statsSeasonRefs, sbAssignments]);
   const engineOpts = useMemo(
-    () => ({ regimentList: registryRegimentList, aliasMap: sbAliases }),
-    [registryRegimentList, sbAliases],
+    () => ({
+      regimentList: registryRegimentList,
+      aliasMapFor: (sb) => aliasBySource.get(sb.sourceFilename) ?? overallAlias,
+      assignmentsFor: (sb) => assignmentBySource.get(sb.sourceFilename) ?? overallAssign,
+    }),
+    [registryRegimentList, aliasBySource, overallAlias, assignmentBySource, overallAssign],
   );
   // Regiment breakdown across every scoreboard (the Assign-modal pool + preview).
   const eventRegBreakdown = useMemo(
-    () => computeRegimentBreakdown(sbStored.map(s => s.scoreboard), sbAssignments, engineOpts),
-    [sbStored, sbAssignments, engineOpts],
+    () => computeRegimentBreakdown(sbStored.map(s => s.scoreboard), overallAssign, engineOpts),
+    [sbStored, overallAssign, engineOpts],
   );
   // Per-scoreboard breakdown tagged with its round binding (week-scoped sums).
   const perScoreboardBreakdown = useMemo(
     () => sbStored.map(s => ({
       weekId: s.binding?.weekId ?? null,
       round: s.binding?.round ?? null,
-      breakdown: computeRegimentBreakdown([s.scoreboard], sbAssignments, engineOpts),
+      breakdown: computeRegimentBreakdown([s.scoreboard], overallAssign, engineOpts),
     })),
-    [sbStored, sbAssignments, engineOpts],
+    [sbStored, overallAssign, engineOpts],
   );
   const availableRegiments = useMemo(
     () => eventRegBreakdown.map(r => r.regiment).filter(r => r !== 'UNTAGGED').sort((a, b) => a.localeCompare(b)),
     [eventRegBreakdown],
   );
-  const regimentClaimedBy = useMemo(() => {
+  // Claimed-by map for the scope the Assign dialog is editing, so a regiment
+  // already taken by another token in that scope locks (a regiment can belong to
+  // different tokens in different seasons).
+  const assignClaimedBy = useMemo(() => {
     const m = {};
-    for (const [token, regs] of Object.entries(tokenRegiments)) for (const r of regs) m[r] = token;
+    const mapping = effectiveTokenRegiments(tokenRegimentsScoped, assignScope);
+    for (const [token, regs] of Object.entries(mapping)) for (const r of regs) m[r] = token;
     return m;
-  }, [tokenRegiments]);
+  }, [tokenRegimentsScoped, assignScope]);
+  // Full cross-season roster per token (every regiment across every scope), for
+  // the event-totals unique-player / context tallies.
+  const tokenRegimentsUnion = useMemo(() => unionTokenRegiments(tokenRegimentsScoped), [tokenRegimentsScoped]);
 
-  // Per-token stats derived live from scoreboards. Event scope = all bound
-  // scoreboards; season scope = those bound to active-season weeks ≤ maxWeekIdx.
+  // Per-token stats derived live from scoreboards. Event totals roll each
+  // scoreboard up under its own season's token→regiments mapping (so a unit whose
+  // roster changed across seasons totals correctly); the as-of-week view is all
+  // within the active season, so it uses that season's mapping.
   const tokenSnapsEventTotals = () =>
-    accumulateTokenSnaps(perScoreboardBreakdown.map(x => x.breakdown), tokenRegiments);
+    accumulateTokenSnapsScoped(perScoreboardBreakdown.map(x => ({
+      breakdown: x.breakdown,
+      mapping: effectiveTokenRegiments(tokenRegimentsScoped, seasonOfWeek(x.weekId)),
+    })));
   const tokenSnapsAsOfWeek = (maxWeekIdx) => {
     const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
     const brks = perScoreboardBreakdown.filter(x => x.weekId && ids.has(String(x.weekId))).map(x => x.breakdown);
@@ -2387,16 +2437,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const regBreakdownAsOfWeek = (maxWeekIdx) => {
     const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
     const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
-    return computeRegimentBreakdown(sbs.map(s => s.scoreboard), sbAssignments, engineOpts);
+    return computeRegimentBreakdown(sbs.map(s => s.scoreboard), overallAssign, engineOpts);
   };
   const regContextEventTotals = useMemo(
-    () => computeRegimentContextStats(sbStored.map(s => s.scoreboard), sbAssignments, engineOpts),
-    [sbStored, sbAssignments, engineOpts],
+    () => computeRegimentContextStats(sbStored.map(s => s.scoreboard), overallAssign, engineOpts),
+    [sbStored, overallAssign, engineOpts],
   );
   const regContextAsOfWeek = (maxWeekIdx) => {
     const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
     const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
-    return computeRegimentContextStats(sbs.map(s => s.scoreboard), sbAssignments, engineOpts);
+    return computeRegimentContextStats(sbs.map(s => s.scoreboard), overallAssign, engineOpts);
   };
 
   const toggleExpandedUnit = (unit) => {
@@ -2429,9 +2479,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk, player counts).
-  const renderUnitStatsTable = (snaps, regBreakdown, contextStats) => {
-    const playerCounts = regBreakdown ? deriveTokenPlayerCounts(regBreakdown, tokenRegiments) : {};
-    const ctxSnaps = contextStats ? deriveTokenContextSnaps(contextStats, tokenRegiments) : null;
+  // `mapping` is the token→regiments map for player-count/context derivation:
+  // the active season's for as-of-week, the cross-season union for event totals.
+  const renderUnitStatsTable = (snaps, regBreakdown, contextStats, mapping = tokenRegiments) => {
+    const playerCounts = regBreakdown ? deriveTokenPlayerCounts(regBreakdown, mapping) : {};
+    const ctxSnaps = contextStats ? deriveTokenContextSnaps(contextStats, mapping) : null;
     const rows = Object.entries(snaps)
       .filter(([, s]) => s.kills || s.deaths)
       .map(([unit, s]) => ({
@@ -2521,7 +2573,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Recompute per-(week,round,token) snapshots from every bound scoreboard for a
   // mapping and persist them onto the weeks (portable fallback for the Stats
   // view when scoreboards aren't loaded). Tokens with no data are omitted.
-  const backfillUnitSnapshots = (mapping) => {
+  const backfillUnitSnapshots = (scoped) => {
     const groups = {};
     for (const { weekId, round, breakdown } of perScoreboardBreakdown) {
       if (!weekId || (round !== 1 && round !== 2)) continue;
@@ -2533,6 +2585,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
       const sep = k.lastIndexOf('::');
       const weekId = k.slice(0, sep);
       const round = k.slice(sep + 2);
+      // Each week rolls up under its own season's token→regiments mapping.
+      const mapping = effectiveTokenRegiments(scoped, seasonOfWeek(weekId));
       const snaps = accumulateTokenSnaps(brks, mapping);
       const kept = {};
       for (const [t, s] of Object.entries(snaps)) if (s.kills || s.deaths) kept[t] = s;
@@ -2548,15 +2602,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
     })));
   };
 
-  const openAssign = (token) => { setAssignToken(token); setAssignSel(tokenRegiments[token] || []); };
+  // Preselect the scope that currently defines this token: its own season
+  // override when one exists (so you keep editing that), else the Overall
+  // default (so an ordinary edit stays global, as it did before scoping).
+  const openAssign = (token) => {
+    const seasonId = appState.activeSeasonId ?? OVERALL_SCOPE;
+    const initScope = (seasonId !== OVERALL_SCOPE && tokenRegimentsScoped[seasonId]?.[token]) ? seasonId : OVERALL_SCOPE;
+    setAssignToken(token);
+    setAssignScope(initScope);
+    setAssignSel(effectiveTokenRegiments(tokenRegimentsScoped, initScope)[token] || []);
+  };
+  // Switch the edit scope, re-seeding the selection from that scope's current
+  // list for the token (a season with no override starts from the inherited set).
+  const changeAssignScope = (scope) => {
+    setAssignScope(scope);
+    setAssignSel(effectiveTokenRegiments(tokenRegimentsScoped, scope)[assignToken] || []);
+  };
   const toggleAssignReg = (reg) =>
     setAssignSel(sel => sel.includes(reg) ? sel.filter(r => r !== reg) : [...sel, reg]);
   const saveAssign = () => {
     if (!assignToken) return;
-    const next = { ...tokenRegiments };
-    if (assignSel.length) next[assignToken] = [...assignSel]; else delete next[assignToken];
-    setAppState(prev => updateActiveEvent(prev, ev => ({ ...ev, tokenRegiments: next })));
-    backfillUnitSnapshots(next);
+    const scope = assignScope || OVERALL_SCOPE;
+    const nextScoped = { ...tokenRegimentsScoped };
+    const scopeMap = { ...(nextScoped[scope] || {}) };
+    // Empty selection clears the entry — for a season scope this reverts the
+    // token to the Overall default rather than pinning it to nothing.
+    if (assignSel.length) scopeMap[assignToken] = [...assignSel]; else delete scopeMap[assignToken];
+    if (Object.keys(scopeMap).length) nextScoped[scope] = scopeMap; else delete nextScoped[scope];
+    setAppState(prev => updateActiveEvent(prev, ev => ({ ...ev, tokenRegiments: nextScoped })));
+    backfillUnitSnapshots(nextScoped);
     setAssignToken(null);
   };
 
@@ -7008,6 +7082,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     Toggle the scoreboard regiment(s) that played as <span className="font-semibold">{assignToken}</span>. Regiments already claimed by another token are locked.
                   </p>
 
+                  {/* Scope: apply to all seasons, or override just the active season. */}
+                  {activeSeason && (
+                    <div className="mb-3">
+                      <div className="flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono">
+                        {[{ id: OVERALL_SCOPE, label: 'All seasons' }, { id: activeSeason.id, label: activeSeason.name }].map(opt => (
+                          <button
+                            key={opt.id}
+                            onClick={() => changeAssignScope(opt.id)}
+                            className={`px-2 py-1 rounded border transition ${assignScope === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-border-default text-text-secondary hover:bg-bg-inset'}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-text-secondary mt-1">
+                        {assignScope === OVERALL_SCOPE
+                          ? 'Applies to every season (unless a season overrides it).'
+                          : `Overrides this assignment for ${activeSeason.name} only.`}
+                      </p>
+                    </div>
+                  )}
+
                   {(() => {
                     const snap = deriveTokenSnaps(eventRegBreakdown, { [assignToken]: assignSel })[assignToken];
                     const kd = snap.deaths > 0 ? (snap.kills / snap.deaths).toFixed(2) : String(snap.kills);
@@ -7027,7 +7123,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <p className="text-text-secondary text-xs text-center py-3">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
                     )}
                     {availableRegiments.map(reg => {
-                      const owner = regimentClaimedBy[reg];
+                      const owner = assignClaimedBy[reg];
                       const lockedByOther = owner && owner !== assignToken;
                       return (
                         <label
@@ -7348,7 +7444,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="mt-2">
                             <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals)}
+                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion)}
                           </div>
                         </div>
 

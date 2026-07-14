@@ -1,5 +1,72 @@
 import type { FormationCounts, ContextStatSlice, RegimentContextStats } from './statsEngine';
 import { avgTicketCost } from './labels';
+import { OVERALL_SCOPE } from './statsBundle';
+
+/** token → the scoreboard regiment labels that played as it. */
+export type TokenRegiments = Record<string, string[]>;
+/**
+ * Token→regiments keyed by scope (OVERALL_SCOPE or a season id). A season's own
+ * entry for a token replaces the Overall entry entirely (a unit's roster that
+ * changes in one season doesn't disturb the others); tokens a season leaves
+ * unset inherit the Overall assignment.
+ */
+export type ScopedTokenRegiments = Record<string, TokenRegiments>;
+
+/** Coerce a legacy flat map ({token: string[]}) or scoped map into scoped shape. */
+export function normalizeScopedTokenRegiments(
+  x: ScopedTokenRegiments | TokenRegiments | undefined | null,
+): ScopedTokenRegiments {
+  if (!x || typeof x !== 'object') return {};
+  const clean = (m: TokenRegiments): TokenRegiments => {
+    const out: TokenRegiments = {};
+    for (const [t, regs] of Object.entries(m || {})) if (Array.isArray(regs) && regs.length) out[t] = [...regs];
+    return out;
+  };
+  // Flat map: values are arrays of labels. Scoped: values are objects.
+  const isFlat = Object.values(x).some((v) => Array.isArray(v));
+  if (isFlat) {
+    const cleaned = clean(x as TokenRegiments);
+    return Object.keys(cleaned).length ? { [OVERALL_SCOPE]: cleaned } : {};
+  }
+  const out: ScopedTokenRegiments = {};
+  for (const [scope, map] of Object.entries(x as ScopedTokenRegiments)) {
+    const cleaned = clean(map);
+    if (Object.keys(cleaned).length) out[scope] = cleaned;
+  }
+  return out;
+}
+
+/**
+ * The token→regiments map in effect for a scope: Overall assignments with the
+ * season's own per-token entries layered on top (season replaces the whole list
+ * for a token). For OVERALL_SCOPE this is just the Overall assignments.
+ */
+export function effectiveTokenRegiments(
+  scoped: ScopedTokenRegiments,
+  scope: string,
+): TokenRegiments {
+  const overall = scoped[OVERALL_SCOPE] ?? {};
+  if (scope === OVERALL_SCOPE) return { ...overall };
+  return { ...overall, ...(scoped[scope] ?? {}) };
+}
+
+/**
+ * Every regiment a token has been assigned across all scopes, de-duplicated —
+ * the token's full roster over the event. Used for cross-season ("event totals")
+ * unique-player and context tallies, where any scope's regiment can contribute.
+ */
+export function unionTokenRegiments(scoped: ScopedTokenRegiments): TokenRegiments {
+  const out: Record<string, Set<string>> = {};
+  for (const map of Object.values(scoped)) {
+    for (const [token, regs] of Object.entries(map)) {
+      (out[token] ??= new Set<string>());
+      for (const r of regs) out[token].add(r);
+    }
+  }
+  const result: TokenRegiments = {};
+  for (const [token, set] of Object.entries(out)) result[token] = [...set];
+  return result;
+}
 
 /**
  * Per-token stat snapshot — the summable components needed to show K/D, the
@@ -90,6 +157,25 @@ export function accumulateTokenSnaps(
   for (const breakdown of breakdowns) {
     const snaps = deriveTokenSnaps(breakdown, tokenRegiments);
     for (const [token, snap] of Object.entries(snaps)) out[token] = addUnitSnap(out[token], snap);
+  }
+  return out;
+}
+
+/**
+ * Like {@link accumulateTokenSnaps} but each breakdown carries its own token
+ * mapping — used for the season-scoped Overall (event-totals) view, where a
+ * scoreboard from one season must roll up under that season's token→regiments
+ * assignment, not a single global one.
+ */
+export function accumulateTokenSnapsScoped(
+  items: { breakdown: RegimentLike[]; mapping: TokenRegiments }[],
+): Record<string, UnitSnap> {
+  const out: Record<string, UnitSnap> = {};
+  for (const { breakdown, mapping } of items) {
+    const snaps = deriveTokenSnaps(breakdown, mapping);
+    for (const [token, snap] of Object.entries(snaps)) {
+      out[token] = addUnitSnap(out[token] ?? emptyUnitSnap(), snap);
+    }
   }
   return out;
 }
