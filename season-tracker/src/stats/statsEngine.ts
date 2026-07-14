@@ -1,4 +1,4 @@
-import type { RosterEntry, Scoreboard, Team, TeamCasualties } from './types';
+import type { RosterEntry, Scoreboard, ScoreboardPlayer, Team, TeamCasualties } from './types';
 import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
@@ -50,6 +50,14 @@ export interface EngineOptions {
    * followed transitively, so merged regiments roll into their target.
    */
   aliasMap?: Record<string, string>;
+  /**
+   * Per-scoreboard alias selection for the season-scoped Overall view: given a
+   * scoreboard, return the rename/merge map to apply to its rows. When set it
+   * takes precedence over {@link aliasMap}, letting each round resolve under its
+   * own season's scope so a unit renamed/split in one season keeps its own
+   * identity in the others. Omit it (the default) for a single flat map.
+   */
+  aliasMapFor?: (sb: Scoreboard) => Record<string, string> | undefined;
 }
 
 /**
@@ -95,6 +103,23 @@ export function resolveFor(
   return applyAlias(base, aliasMap);
 }
 
+/**
+ * Resolve a regiment for one player-round, honoring the per-scoreboard alias map
+ * (season-scoped Overall view) when provided, else the flat `aliasMap`. Every
+ * regiment resolution inside a scoreboard loop goes through here so per-season
+ * renames/merges apply to the correct rounds.
+ */
+function resolveRow(
+  sb: Scoreboard,
+  steamId: string | null,
+  name: string,
+  assignments: RegimentAssignmentMap,
+  options: EngineOptions,
+): string {
+  const aliasMap = options.aliasMapFor ? options.aliasMapFor(sb) : options.aliasMap;
+  return resolveFor(steamId, name, assignments, options.regimentList, aliasMap);
+}
+
 /** Find a player's roster entry within a scoreboard (steam id, else name+team). */
 function findRoster(sb: Scoreboard, steamId: string | null, name: string, team: Team): RosterEntry | undefined {
   if (steamId) {
@@ -135,6 +160,60 @@ function killFormInRound(sb: Scoreboard, key: string): FormationCounts {
   return f;
 }
 
+/** A zeroed player row keyed by steam id (or name when the player is anonymous). */
+function emptyPlayerRow(key: string, steamId: string | null, name: string, team: Team): PlayerStatRow {
+  return {
+    key,
+    steamId,
+    name,
+    regiment: '',
+    team,
+    rounds: 0,
+    kills: 0,
+    deaths: 0,
+    kd: 0,
+    deathsInForm: 0,
+    deathsSkirm: 0,
+    deathsOob: 0,
+    killsInForm: 0,
+    killsSkirm: 0,
+    killsOob: 0,
+    avgTd: null,
+    avgTk: null,
+  };
+}
+
+/** Fold one player-round (roster totals + killfeed formations) into a running row. */
+function addPlayerRound(row: PlayerStatRow, sb: Scoreboard, p: ScoreboardPlayer, key: string): void {
+  row.name = p.name;
+  row.team = p.team;
+  row.rounds += 1;
+  row.kills += p.kills;
+  row.deaths += p.deaths;
+  row.deathsInForm += p.deathsInForm;
+  row.deathsSkirm += p.deathsSkirm;
+  row.deathsOob += p.deathsOob;
+  // Kills-by-formation only from this (role-matching) round.
+  const kf = killFormInRound(sb, key);
+  row.killsInForm += kf.in_form;
+  row.killsSkirm += kf.skirm;
+  row.killsOob += kf.oob;
+}
+
+/** Fill derived fields (k/d, avg ticket costs) on a fully-accumulated player row. */
+function finalizePlayerRow(row: PlayerStatRow): void {
+  row.kd = kdOf(row.kills, row.deaths);
+  row.avgTd = avgTicketCost(row.deathsInForm, row.deathsSkirm, row.deathsOob);
+  row.avgTk = avgTicketCost(row.killsInForm, row.killsSkirm, row.killsOob);
+}
+
+/** Role filter for a player-round: 'inf' excludes battery rounds, 'arty' keeps only them. */
+function roundMatchesType(sb: Scoreboard, p: ScoreboardPlayer, type: PlayerType): boolean {
+  if (type === 'all') return true;
+  const battery = isBattery(findRoster(sb, p.steamId, p.name, p.team));
+  return type === 'arty' ? battery : !battery;
+}
+
 /** Per-player aggregate across the supplied scoreboards. */
 export function computePlayerLeaderboard(
   scoreboards: Scoreboard[],
@@ -143,60 +222,30 @@ export function computePlayerLeaderboard(
 ): PlayerStatRow[] {
   const type: PlayerType = options.type ?? 'all';
   const acc = new Map<string, PlayerStatRow>();
+  // The scoreboard of each player's most recent round, so their single displayed
+  // regiment resolves under the latest season's scope (Overall, option B).
+  const latest = new Map<string, Scoreboard>();
 
   for (const sb of scoreboards) {
     for (const p of sb.players) {
-      // A player-round is artillery when their roster entry sits in a battery.
-      const batteryRound = isBattery(findRoster(sb, p.steamId, p.name, p.team));
-      if (type === 'inf' && batteryRound) continue;
-      if (type === 'arty' && !batteryRound) continue;
+      if (!roundMatchesType(sb, p, type)) continue;
 
       const key = p.steamId ?? p.name;
+      const prevLatest = latest.get(key);
+      if (!prevLatest || (sb.recordedAt ?? '') >= (prevLatest.recordedAt ?? '')) latest.set(key, sb);
       let row = acc.get(key);
       if (!row) {
-        row = {
-          key,
-          steamId: p.steamId,
-          name: p.name,
-          regiment: '',
-          team: p.team,
-          rounds: 0,
-          kills: 0,
-          deaths: 0,
-          kd: 0,
-          deathsInForm: 0,
-          deathsSkirm: 0,
-          deathsOob: 0,
-          killsInForm: 0,
-          killsSkirm: 0,
-          killsOob: 0,
-          avgTd: null,
-          avgTk: null,
-        };
+        row = emptyPlayerRow(key, p.steamId, p.name, p.team);
         acc.set(key, row);
       }
-      row.name = p.name;
-      row.team = p.team;
-      row.rounds += 1;
-      row.kills += p.kills;
-      row.deaths += p.deaths;
-      row.deathsInForm += p.deathsInForm;
-      row.deathsSkirm += p.deathsSkirm;
-      row.deathsOob += p.deathsOob;
-      // Kills-by-formation only from this (role-matching) round.
-      const kf = killFormInRound(sb, key);
-      row.killsInForm += kf.in_form;
-      row.killsSkirm += kf.skirm;
-      row.killsOob += kf.oob;
+      addPlayerRound(row, sb, p, key);
     }
   }
 
   const rows = [...acc.values()];
   for (const r of rows) {
-    r.regiment = resolveFor(r.steamId, r.name, assignments, options.regimentList, options.aliasMap);
-    r.kd = kdOf(r.kills, r.deaths);
-    r.avgTd = avgTicketCost(r.deathsInForm, r.deathsSkirm, r.deathsOob);
-    r.avgTk = avgTicketCost(r.killsInForm, r.killsSkirm, r.killsOob);
+    r.regiment = resolveRow(latest.get(r.key)!, r.steamId, r.name, assignments, options);
+    finalizePlayerRow(r);
   }
   rows.sort((a, b) => b.kills - a.kills);
   return rows;
@@ -391,9 +440,13 @@ export function computeOverview(
     }
   }
 
-  const regiments = new Set(
-    computePlayerLeaderboard(scoreboards, assignments, options).map((p) => p.regiment),
-  );
+  // Distinct regiments = labels resolved per round, so a unit that existed only
+  // in an earlier season (Overall, option B) still counts even if all its
+  // players later moved to other regiments.
+  const regiments = new Set<string>();
+  for (const sb of scoreboards) {
+    for (const p of sb.players) regiments.add(resolveRow(sb, p.steamId, p.name, assignments, options));
+  }
 
   return {
     totalRounds: scoreboards.length,
@@ -618,6 +671,9 @@ export function computePlayerDetail(
   };
   const type = options.type ?? 'all';
   let found = false;
+  // The player's most recent round, so their regiment resolves under the latest
+  // season's scope (Overall, option B).
+  let latestSb: Scoreboard | null = null;
   // Names used across rounds, in chronological (oldest→newest) order of appearance.
   const nameOrder: string[] = [];
 
@@ -629,6 +685,7 @@ export function computePlayerDetail(
     if (type === 'arty' && !batteryRound) continue;
 
     found = true;
+    if (!latestSb || (sb.recordedAt ?? '') >= (latestSb.recordedAt ?? '')) latestSb = sb;
     detail.steamId = p.steamId;
     detail.name = p.name;
     nameOrder.push(p.name);
@@ -688,7 +745,7 @@ export function computePlayerDetail(
     detail.aliases.push(n);
   }
   detail.kd = kdOf(detail.kills, detail.deaths);
-  detail.regiment = resolveFor(detail.steamId, detail.name, assignments, options.regimentList, options.aliasMap);
+  detail.regiment = resolveRow(latestSb!, detail.steamId, detail.name, assignments, options);
   detail.avgTd = avgTicketCost(detail.deathsInForm, detail.deathsSkirm, detail.deathsOob);
   detail.avgTk = avgTicketCost(detail.killsInForm, detail.killsSkirm, detail.killsOob);
   return detail;
@@ -737,7 +794,7 @@ export function computeRegimentBreakdown(
   assignments: RegimentAssignmentMap,
   options: EngineOptions = {},
 ): RegimentStatRow[] {
-  const players = computePlayerLeaderboard(scoreboards, assignments, options);
+  const type: PlayerType = options.type ?? 'all';
 
   const byReg = new Map<
     string,
@@ -771,24 +828,52 @@ export function computeRegimentBreakdown(
     return r;
   };
 
-  for (const p of players) {
-    const r = ensure(p.regiment);
-    r.players += 1;
-    r.kills += p.kills;
-    r.deaths += p.deaths;
-    r.casualtiesByFormation.in_form += p.deathsInForm;
-    r.casualtiesByFormation.skirm += p.deathsSkirm;
-    r.casualtiesByFormation.oob += p.deathsOob;
-    r.killsByFormation.in_form += p.killsInForm;
-    r.killsByFormation.skirm += p.killsSkirm;
-    r.killsByFormation.oob += p.killsOob;
-    r.topPlayers.push(p);
+  // Player aggregates split by the label each player held IN EACH ROUND, so a
+  // player whose unit split/merged or who changed regiments between seasons
+  // contributes to every regiment they belonged to (Overall, option B). In a
+  // single flat view a player holds one label, so this collapses to one row per
+  // player — identical to the old per-leaderboard rollup.
+  const regPlayers = new Map<string, Map<string, PlayerStatRow>>();
+  for (const sb of scoreboards) {
+    for (const p of sb.players) {
+      if (!roundMatchesType(sb, p, type)) continue;
+      const regiment = resolveRow(sb, p.steamId, p.name, assignments, options);
+      const key = p.steamId ?? p.name;
+      let pmap = regPlayers.get(regiment);
+      if (!pmap) {
+        pmap = new Map<string, PlayerStatRow>();
+        regPlayers.set(regiment, pmap);
+      }
+      let row = pmap.get(key);
+      if (!row) {
+        row = emptyPlayerRow(key, p.steamId, p.name, p.team);
+        row.regiment = regiment;
+        pmap.set(key, row);
+      }
+      addPlayerRound(row, sb, p, key);
+    }
+  }
+  for (const [regiment, pmap] of regPlayers) {
+    const r = ensure(regiment);
+    for (const row of pmap.values()) {
+      finalizePlayerRow(row);
+      r.players += 1;
+      r.kills += row.kills;
+      r.deaths += row.deaths;
+      r.casualtiesByFormation.in_form += row.deathsInForm;
+      r.casualtiesByFormation.skirm += row.deathsSkirm;
+      r.casualtiesByFormation.oob += row.deathsOob;
+      r.killsByFormation.in_form += row.killsInForm;
+      r.killsByFormation.skirm += row.killsSkirm;
+      r.killsByFormation.oob += row.killsOob;
+      r.topPlayers.push(row);
+    }
   }
 
   // Per-round, per-regiment rollup + rounds + casualties by cause (killfeed).
   for (const sb of scoreboards) {
     for (const p of sb.players) {
-      const regiment = resolveFor(p.steamId, p.name, assignments, options.regimentList, options.aliasMap);
+      const regiment = resolveRow(sb, p.steamId, p.name, assignments, options);
       const r = ensure(regiment);
       r._roundSet.add(sb.sourceFilename);
       let rr = r._perRound.get(sb.sourceFilename);
@@ -824,12 +909,12 @@ export function computeRegimentBreakdown(
     for (const kill of sb.kills) {
       const cause = kill.cause || 'Unknown';
       // Suffered: the victim's regiment took this casualty.
-      const victimReg = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
+      const victimReg = resolveRow(sb, kill.victimSteamId, kill.victim, assignments, options);
       const vr = ensure(victimReg);
       vr.casualtiesByCause[cause] = (vr.casualtiesByCause[cause] ?? 0) + 1;
       // Inflicted: the killer's regiment dealt this kill (skip environment deaths).
       if (kill.killer) {
-        const killerReg = resolveFor(kill.killerSteamId, kill.killer, assignments, options.regimentList, options.aliasMap);
+        const killerReg = resolveRow(sb, kill.killerSteamId, kill.killer, assignments, options);
         const kr = ensure(killerReg);
         kr.killsByCause[cause] = (kr.killsByCause[cause] ?? 0) + 1;
       }
@@ -1004,7 +1089,7 @@ export function computeRegimentContextStats(
     const atk = mapAttacker(sb.meta.area ?? sb.meta.map);
 
     for (const p of sb.players) {
-      const reg = resolveFor(p.steamId, p.name, assignments, options.regimentList, options.aliasMap);
+      const reg = resolveRow(sb, p.steamId, p.name, assignments, options);
       const ctx = ensure(reg);
       const rs = roundSets.get(reg)!;
       const ps = playerSets.get(reg)!;
@@ -1031,7 +1116,7 @@ export function computeRegimentContextStats(
       const cause = kill.cause || 'Unknown';
 
       if (kill.victimTeam) {
-        const vReg = resolveFor(kill.victimSteamId, kill.victim, assignments, options.regimentList, options.aliasMap);
+        const vReg = resolveRow(sb, kill.victimSteamId, kill.victim, assignments, options);
         const vCtx = ensure(vReg);
         addCause((kill.victimTeam === 'USA' ? vCtx.asUSA : vCtx.asCSA).casualtiesByCause, cause);
         if (atk) {
@@ -1040,7 +1125,7 @@ export function computeRegimentContextStats(
       }
 
       if (kill.killer && kill.killerTeam) {
-        const kReg = resolveFor(kill.killerSteamId, kill.killer, assignments, options.regimentList, options.aliasMap);
+        const kReg = resolveRow(sb, kill.killerSteamId, kill.killer, assignments, options);
         const kCtx = ensure(kReg);
         addCause((kill.killerTeam === 'USA' ? kCtx.asUSA : kCtx.asCSA).killsByCause, cause);
         if (atk) {

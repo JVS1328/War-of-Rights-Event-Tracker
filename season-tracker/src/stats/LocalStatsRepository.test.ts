@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect } from 'vitest';
 import { LocalStatsRepository } from './LocalStatsRepository';
 import { parseScoreboard } from './parseScoreboard';
+import { OVERALL_SCOPE } from './statsBundle';
 
 const CSV = (winner: string) => `round_start_time,16:00:00
 round_end_time,16:30:00
@@ -123,6 +124,55 @@ describe('LocalStatsRepository — regiment aliases (rename/merge)', () => {
     await repo.setRegimentAliases('e', { A: 'B', C: 'D' });
     await repo.setRegimentAliases('e', { A: 'B' }); // C→D removed
     expect(await repo.getRegimentAliases('e')).toEqual({ A: 'B' });
+  });
+});
+
+describe('LocalStatsRepository — season-scoped regiment aliases', () => {
+  it('defaults to an empty scoped map and round-trips a scoped set', async () => {
+    const repo = freshRepo();
+    expect(await repo.getRegimentAliasesScoped('e')).toEqual({});
+    const scoped = { [OVERALL_SCOPE]: { A: 'B' }, sea_1: { AL: 'CB', GA: 'CB' } };
+    await repo.setRegimentAliasesScoped('e', scoped);
+    expect(await repo.getRegimentAliasesScoped('e')).toEqual(scoped);
+  });
+
+  it('exposes the Overall scope through the flat getter', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAliasesScoped('e', { [OVERALL_SCOPE]: { A: 'B' }, sea_1: { AL: 'CB' } });
+    expect(await repo.getRegimentAliases('e')).toEqual({ A: 'B' });
+  });
+
+  it('flat set replaces only the Overall scope, preserving season scopes', async () => {
+    const repo = freshRepo();
+    await repo.setRegimentAliasesScoped('e', { [OVERALL_SCOPE]: { A: 'B' }, sea_1: { AL: 'CB' } });
+    await repo.setRegimentAliases('e', { A: 'Z' }); // touches Overall only
+    expect(await repo.getRegimentAliasesScoped('e')).toEqual({
+      [OVERALL_SCOPE]: { A: 'Z' },
+      sea_1: { AL: 'CB' },
+    });
+  });
+
+  it('reads a legacy flat record as the Overall scope (migrate-on-read)', async () => {
+    const repo = freshRepo();
+    // Simulate a pre-scoping record written by the old flat setter.
+    await repo.setRegimentAliases('e', { A: 'B' });
+    expect(await repo.getRegimentAliasesScoped('e')).toEqual({ [OVERALL_SCOPE]: { A: 'B' } });
+  });
+
+  it('carries scoped aliases through export and merges them on import', async () => {
+    const repo = freshRepo();
+    await repo.saveScoreboard('src', parseScoreboard(CSV('CSA'), 'scoreboard_20260101_120000.csv'));
+    await repo.setRegimentAliasesScoped('src', { [OVERALL_SCOPE]: { A: 'B' }, sea_1: { AL: 'CB' } });
+
+    const bundle = await repo.exportEventStats('src');
+    expect(bundle.aliases).toEqual({ A: 'B' });
+    expect(bundle.aliasesScoped).toEqual({ [OVERALL_SCOPE]: { A: 'B' }, sea_1: { AL: 'CB' } });
+
+    await repo.importEventStats('dst', bundle);
+    expect(await repo.getRegimentAliasesScoped('dst')).toEqual({
+      [OVERALL_SCOPE]: { A: 'B' },
+      sea_1: { AL: 'CB' },
+    });
   });
 });
 

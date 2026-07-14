@@ -7,8 +7,8 @@ import type {
   StatsRepository,
   StoredScoreboard,
 } from './StatsRepository';
-import { buildStatsBundle } from './statsBundle';
-import type { StatsBundle, StatsBundleSeason } from './statsBundle';
+import { buildStatsBundle, normalizeScopedAliases, OVERALL_SCOPE } from './statsBundle';
+import type { ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
 
 const SCOREBOARDS = 'scoreboards';
 const ASSIGNMENTS = 'assignments';
@@ -24,7 +24,10 @@ interface AssignmentRecord {
 
 interface AliasRecord {
   eventId: string;
-  map: Record<string, string>; // sourceLabel → targetLabel (rename/merge)
+  /** Legacy flat map (pre-season-scoping); read for back-compat, migrated on next write. */
+  map?: Record<string, string>;
+  /** Season-scoped rename/merge maps (scope → sourceLabel → targetLabel). */
+  scoped?: ScopedAliases;
 }
 
 /** Promise wrapper around an IDBRequest. */
@@ -164,16 +167,33 @@ export class LocalStatsRepository implements StatsRepository {
     });
   }
 
-  async getRegimentAliases(eventId: string): Promise<Record<string, string>> {
+  async getRegimentAliasesScoped(eventId: string): Promise<ScopedAliases> {
     const rec = await this.tx(ALIASES, 'readonly', (s) =>
       reqAsPromise<AliasRecord | undefined>(s.get(eventId)),
     );
-    return rec?.map ?? {};
+    if (!rec) return {};
+    // Prefer the scoped field; fall back to (and migrate-on-read) the legacy map.
+    return normalizeScopedAliases(rec.scoped ?? rec.map);
+  }
+
+  async setRegimentAliasesScoped(eventId: string, scoped: ScopedAliases): Promise<void> {
+    const normalized = normalizeScopedAliases(scoped);
+    // Persist only the scoped shape; the legacy `map` field is dropped on write.
+    const record: AliasRecord = { eventId, scoped: normalized };
+    await this.tx(ALIASES, 'readwrite', (s) => reqAsPromise(s.put(record)));
+  }
+
+  async getRegimentAliases(eventId: string): Promise<Record<string, string>> {
+    const scoped = await this.getRegimentAliasesScoped(eventId);
+    return scoped[OVERALL_SCOPE] ?? {};
   }
 
   async setRegimentAliases(eventId: string, map: Record<string, string>): Promise<void> {
-    const record: AliasRecord = { eventId, map };
-    await this.tx(ALIASES, 'readwrite', (s) => reqAsPromise(s.put(record)));
+    // Flat set replaces the Overall scope, preserving any season-specific scopes.
+    const scoped = await this.getRegimentAliasesScoped(eventId);
+    if (Object.keys(map).length) scoped[OVERALL_SCOPE] = { ...map };
+    else delete scoped[OVERALL_SCOPE];
+    await this.setRegimentAliasesScoped(eventId, scoped);
   }
 
   async exportEventStats(
@@ -185,8 +205,8 @@ export class LocalStatsRepository implements StatsRepository {
       reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
     );
     const assignments = await this.getRegimentAssignments(eventId);
-    const aliases = await this.getRegimentAliases(eventId);
-    return buildStatsBundle(records, assignments, aliases, registryUnits, seasons);
+    const scoped = await this.getRegimentAliasesScoped(eventId);
+    return buildStatsBundle(records, assignments, scoped[OVERALL_SCOPE] ?? {}, registryUnits, seasons, scoped);
   }
 
   async importEventStats(eventId: string, bundle: StatsBundle): Promise<number> {
@@ -196,9 +216,15 @@ export class LocalStatsRepository implements StatsRepository {
     if (bundle.assignments && Object.keys(bundle.assignments).length) {
       await this.setRegimentAssignments(eventId, bundle.assignments);
     }
-    if (bundle.aliases && Object.keys(bundle.aliases).length) {
-      const existing = await this.getRegimentAliases(eventId);
-      await this.setRegimentAliases(eventId, { ...existing, ...bundle.aliases });
+    // Prefer the scoped field; older bundles carry only the flat Overall map.
+    const incoming = normalizeScopedAliases(bundle.aliasesScoped ?? bundle.aliases);
+    if (Object.keys(incoming).length) {
+      const existing = await this.getRegimentAliasesScoped(eventId);
+      const merged: ScopedAliases = { ...existing };
+      for (const [scope, map] of Object.entries(incoming)) {
+        merged[scope] = { ...(existing[scope] ?? {}), ...map };
+      }
+      await this.setRegimentAliasesScoped(eventId, merged);
     }
     return bundle.scoreboards?.length ?? 0;
   }

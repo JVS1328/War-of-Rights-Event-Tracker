@@ -1,5 +1,5 @@
 import type { Scoreboard, Team } from './types';
-import type { StatsBundle, StatsBundleSeason } from './statsBundle';
+import type { ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
 
 /** Optional link from a scoreboard to a specific Week/Round in the tracker. */
 export interface ScoreboardBinding {
@@ -49,9 +49,20 @@ export interface StatsRepository {
   setRegimentAssignment(eventId: string, steamId: string, regiment: string): Promise<void>;
   setRegimentAssignments(eventId: string, assignments: RegimentAssignmentMap): Promise<void>;
 
-  /** Regiment rename/merge map (sourceLabel → targetLabel) for the event. */
+  /**
+   * Event-wide (Overall) regiment rename/merge map (sourceLabel → targetLabel).
+   * A view over the Overall scope of {@link getRegimentAliasesScoped}.
+   */
   getRegimentAliases(eventId: string): Promise<Record<string, string>>;
   setRegimentAliases(eventId: string, map: Record<string, string>): Promise<void>;
+
+  /**
+   * Season-scoped rename/merge maps (scope → sourceLabel → targetLabel), where a
+   * scope key is `OVERALL_SCOPE` or a season id. Overall entries apply to every
+   * season; a season's own entries layer on top when that season is resolved.
+   */
+  getRegimentAliasesScoped(eventId: string): Promise<ScopedAliases>;
+  setRegimentAliasesScoped(eventId: string, scoped: ScopedAliases): Promise<void>;
 
   /**
    * Pack all of an event's scoreboards + assignments into a portable bundle.

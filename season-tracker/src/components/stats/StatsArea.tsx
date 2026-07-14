@@ -14,13 +14,13 @@ import {
   resolveFor,
 } from '../../stats/statsEngine';
 import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats } from '../../stats/statsEngine';
-import type { Team } from '../../stats/types';
+import type { Scoreboard, Team } from '../../stats/types';
 import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
-import { weekIdsForScope, OVERALL_SCOPE } from '../../stats/statsBundle';
+import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
 
@@ -149,9 +149,23 @@ export function StatsPanel({
   }, [stats.stored, scopeWeekIds]);
   // Registered event units act as the default match list (overrides win; the
   // name-tag heuristic is the fallback for anything unmatched).
+  const regimentList = useMemo(() => parseRegimentList(registryUnits.join('\n')), [registryUnits]);
+  // The Overall rename/merge map, applied to every season.
+  const overallAlias = useMemo(() => effectiveAliasMap(stats.aliases, OVERALL_SCOPE), [stats.aliases]);
+  // Each scoreboard → the rename/merge map for the season it belongs to (season
+  // entries layered over Overall). This drives season-scoped resolution: in the
+  // Overall view a unit renamed/split in one season keeps its own identity in the
+  // others; in a single-season view every in-scope board maps to that season.
+  const aliasBySource = useMemo(
+    () => aliasMapBySource(stats.stored, seasons, stats.aliases),
+    [stats.stored, seasons, stats.aliases],
+  );
   const opts = useMemo(
-    () => ({ regimentList: parseRegimentList(registryUnits.join('\n')), aliasMap: stats.aliases }),
-    [registryUnits, stats.aliases],
+    () => ({
+      regimentList,
+      aliasMapFor: (sb: Scoreboard) => aliasBySource.get(sb.sourceFilename) ?? overallAlias,
+    }),
+    [regimentList, aliasBySource, overallAlias],
   );
 
   const players = useMemo(
@@ -161,14 +175,19 @@ export function StatsPanel({
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const regimentContext = useMemo(() => computeRegimentContextStats(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
+  const selectedStored = useMemo(() => stats.stored.find((s) => s.id === scoreboardId) ?? null, [scoreboardId, stats.stored]);
   // Season regiment resolver shared with the round drawer's Players tab, so its
   // "unit" grouping matches the Regiments tab (assignments → list → name tag).
+  // Resolves under the open round's own season scope (or Overall when none).
   const resolveRegiment = useMemo(
     () => (steamId: string | null, name: string) => {
-      const r = resolveFor(steamId, name, stats.assignments, opts.regimentList, opts.aliasMap);
+      const aliasMap = selectedStored
+        ? aliasBySource.get(selectedStored.scoreboard.sourceFilename) ?? overallAlias
+        : overallAlias;
+      const r = resolveFor(steamId, name, stats.assignments, regimentList, aliasMap);
       return r === UNTAGGED ? null : r;
     },
-    [stats.assignments, opts],
+    [stats.assignments, regimentList, aliasBySource, overallAlias, selectedStored],
   );
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, stats.assignments, opts), [sbs, stats.assignments, opts]);
@@ -176,7 +195,6 @@ export function StatsPanel({
     () => (playerKey ? computePlayerDetail(sbs, playerKey, stats.assignments, { ...opts, type: playerType }) : null),
     [playerKey, playerType, sbs, stats.assignments, opts],
   );
-  const selectedStored = useMemo(() => stats.stored.find((s) => s.id === scoreboardId) ?? null, [scoreboardId, stats.stored]);
 
   const openRound = (filename: string) => {
     const s = stats.stored.find((x) => x.scoreboard.sourceFilename === filename);
@@ -301,6 +319,8 @@ export function StatsPanel({
           focusRegiment={focusRegiment}
           focusNonce={focusNonce}
           readOnly={readOnly}
+          seasonScope={seasonScope}
+          seasonName={seasons.find((s) => s.id === seasonScope)?.name ?? null}
         />
       )}
 
@@ -566,6 +586,8 @@ function RegimentsTab({
   focusRegiment,
   focusNonce,
   readOnly = false,
+  seasonScope,
+  seasonName,
 }: {
   regiments: RegimentStatRow[];
   regimentContext: Record<string, RegimentContextStats>;
@@ -575,6 +597,10 @@ function RegimentsTab({
   focusRegiment: string | null;
   focusNonce: number;
   readOnly?: boolean;
+  /** The stats view's current scope: `OVERALL_SCOPE` or a season id. */
+  seasonScope: string;
+  /** Display name of the scoped season, or null under Overall. */
+  seasonName: string | null;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -611,7 +637,27 @@ function RegimentsTab({
   }, [regiments, sortKey, sortDir]);
 
   const pendingCount = Object.keys(pending).length;
-  const aliasList = Object.entries(stats.aliases);
+  // Active renames/merges to show: the current scope's own entries, plus (in a
+  // season view) the inherited Overall entries, tagged so it's clear which apply
+  // everywhere vs. only here. Each is undoable within its own scope.
+  const aliasEntries = useMemo(() => {
+    const own = Object.entries(stats.aliases[seasonScope] ?? {}).map(([from, to]) => ({
+      from,
+      to,
+      scope: seasonScope,
+      inherited: false,
+    }));
+    const inherited =
+      seasonScope === OVERALL_SCOPE
+        ? []
+        : Object.entries(stats.aliases[OVERALL_SCOPE] ?? {}).map(([from, to]) => ({
+            from,
+            to,
+            scope: OVERALL_SCOPE,
+            inherited: true,
+          }));
+    return [...own, ...inherited];
+  }, [stats.aliases, seasonScope]);
 
   const reset = () => {
     setPending({});
@@ -652,23 +698,29 @@ function RegimentsTab({
     await stats.bulkAssign(pending);
     reset();
   };
+  // Where an edit lands, spelled out so a season-scoped rename can't be mistaken
+  // for a global one (and vice-versa).
+  const scopeNote =
+    seasonScope === OVERALL_SCOPE
+      ? 'This applies to ALL seasons.'
+      : `This applies to ${seasonName ?? 'this season'} only.`;
   const rename = (from: string) => {
     if (from === UNTAGGED) return;
-    const raw = window.prompt(`Rename regiment "${from}" to:`, from);
+    const raw = window.prompt(`Rename regiment "${from}" to:\n(${scopeNote})`, from);
     const to = raw?.trim();
     if (!to || to === from) return;
-    if (allRegiments.includes(to) && !window.confirm(`"${to}" already exists — this will MERGE "${from}" into it. Continue?`)) return;
-    void stats.setAlias(from, to);
+    if (allRegiments.includes(to) && !window.confirm(`"${to}" already exists — this will MERGE "${from}" into it. ${scopeNote} Continue?`)) return;
+    void stats.setAlias(from, to, seasonScope);
   };
   const merge = (from: string, into: string) => {
     if (!into || into === from || from === UNTAGGED || into === UNTAGGED) return;
-    if (!window.confirm(`Merge "${from}" into "${into}"? All of its players and stats will move. You can undo this later.`)) return;
-    void stats.setAlias(from, into);
+    if (!window.confirm(`Merge "${from}" into "${into}"? All of its players and stats will move. ${scopeNote} You can undo this later.`)) return;
+    void stats.setAlias(from, into, seasonScope);
   };
   const removeRegiment = (label: string) => {
     if (label === UNTAGGED) return;
-    if (!window.confirm(`Remove "${label}"? All of its players move to ${UNTAGGED}. You can undo this later.`)) return;
-    void stats.setAlias(label, UNTAGGED);
+    if (!window.confirm(`Remove "${label}"? All of its players move to ${UNTAGGED}. ${scopeNote} You can undo this later.`)) return;
+    void stats.setAlias(label, UNTAGGED, seasonScope);
   };
 
   const edit: RegEdit = { editMode, allRegiments, pending, selected, stageMove, toggleSelect, rename, merge, removeRegiment };
@@ -696,20 +748,34 @@ function RegimentsTab({
           </button>
           {editMode && (
             <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-              Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately.
+              Pick a regiment per player, or check several and move them together. Changes apply on Save. Rename/merge apply immediately —{' '}
+              <span className="text-[color:var(--color-text-1)]">
+                {seasonScope === OVERALL_SCOPE ? 'to all seasons' : `to ${seasonName ?? 'this season'} only`}
+              </span>
+              .
             </span>
           )}
         </div>
       )}
 
-      {/* Active renames/merges */}
-      {editMode && aliasList.length > 0 && (
+      {/* Active renames/merges — current scope's own edits plus inherited Overall ones. */}
+      {editMode && aliasEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
           <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges / removals:</span>
-          {aliasList.map(([from, to]) => (
-            <span key={from} className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5">
+          {aliasEntries.map(({ from, to, scope, inherited }) => (
+            <span
+              key={`${scope}:${from}`}
+              className={`flex items-center gap-1 border border-[color:var(--color-border)] px-1.5 py-0.5 ${
+                inherited ? 'bg-[color:var(--color-bg-1)] opacity-80' : 'bg-[color:var(--color-bg-2)]'
+              }`}
+            >
               <span className="text-[color:var(--color-text-1)]">{from} → {to}</span>
-              <button onClick={() => void stats.removeAlias(from)} title="Undo" className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]">
+              {inherited && <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">all</span>}
+              <button
+                onClick={() => void stats.removeAlias(from, scope)}
+                title={inherited ? 'Undo (affects all seasons)' : 'Undo'}
+                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+              >
                 <X size={11} />
               </button>
             </span>

@@ -4,8 +4,8 @@ import type { RegimentAssignmentMap, ScoreboardBinding, StoredScoreboard } from 
 import { parseScoreboard } from '../../stats/parseScoreboard';
 import type { Scoreboard } from '../../stats/types';
 import { resolveRegiment } from '../../stats/regimentMatcher';
-import { storedFromBundle } from '../../stats/statsBundle';
-import type { StatsBundle } from '../../stats/statsBundle';
+import { storedFromBundle, normalizeScopedAliases, OVERALL_SCOPE } from '../../stats/statsBundle';
+import type { ScopedAliases, StatsBundle } from '../../stats/statsBundle';
 
 export interface UseStats {
   loading: boolean;
@@ -13,8 +13,11 @@ export interface UseStats {
   /** Scoreboards sorted oldest→newest (so the freshest name wins in aggregates). */
   scoreboards: Scoreboard[];
   assignments: RegimentAssignmentMap;
-  /** Regiment rename/merge map (sourceLabel → targetLabel). */
-  aliases: Record<string, string>;
+  /**
+   * Season-scoped regiment rename/merge maps (scope → sourceLabel → targetLabel),
+   * where a scope key is `OVERALL_SCOPE` or a season id.
+   */
+  aliases: ScopedAliases;
   importFiles: (files: FileList | File[]) => Promise<{ imported: number; failed: string[] }>;
   remove: (id: string) => Promise<void>;
   bind: (id: string, binding: ScoreboardBinding) => Promise<void>;
@@ -22,17 +25,21 @@ export interface UseStats {
   setAssignment: (steamId: string, regiment: string) => Promise<void>;
   /** Persist many per-player assignments at once (the staged-edit Save). */
   bulkAssign: (entries: RegimentAssignmentMap) => Promise<void>;
-  /** Rename or merge: map a regiment label onto another (transitive). */
-  setAlias: (from: string, to: string) => Promise<void>;
-  /** Undo a rename/merge for one source label. */
-  removeAlias: (from: string) => Promise<void>;
+  /**
+   * Rename or merge within a scope: map a regiment label onto another
+   * (transitive). `scope` is `OVERALL_SCOPE` (default) for an event-wide rename,
+   * or a season id to confine it to that season.
+   */
+  setAlias: (from: string, to: string, scope?: string) => Promise<void>;
+  /** Undo a rename/merge for one source label within a scope. */
+  removeAlias: (from: string, scope?: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
 export function useStats(eventId: string): UseStats {
   const [stored, setStored] = useState<StoredScoreboard[]>([]);
   const [assignments, setAssignments] = useState<RegimentAssignmentMap>({});
-  const [aliases, setAliasesState] = useState<Record<string, string>>({});
+  const [aliases, setAliasesState] = useState<ScopedAliases>({});
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -41,7 +48,7 @@ export function useStats(eventId: string): UseStats {
     const full = await Promise.all(summaries.map((s) => repo.getScoreboard(s.id)));
     setStored(full.filter((s): s is StoredScoreboard => s != null));
     setAssignments(await repo.getRegimentAssignments(eventId));
-    setAliasesState(await repo.getRegimentAliases(eventId));
+    setAliasesState(await repo.getRegimentAliasesScoped(eventId));
     setLoading(false);
   }, [eventId]);
 
@@ -121,21 +128,27 @@ export function useStats(eventId: string): UseStats {
   );
 
   const setAlias = useCallback(
-    async (from: string, to: string) => {
-      const next = { ...aliases };
-      if (!to || from === to) delete next[from];
-      else next[from] = to;
-      await repo.setRegimentAliases(eventId, next);
+    async (from: string, to: string, scope: string = OVERALL_SCOPE) => {
+      const next: ScopedAliases = { ...aliases };
+      const scopeMap = { ...(next[scope] ?? {}) };
+      if (!to || from === to) delete scopeMap[from];
+      else scopeMap[from] = to;
+      if (Object.keys(scopeMap).length) next[scope] = scopeMap;
+      else delete next[scope];
+      await repo.setRegimentAliasesScoped(eventId, next);
       await reload();
     },
     [eventId, aliases, reload],
   );
 
   const removeAlias = useCallback(
-    async (from: string) => {
-      const next = { ...aliases };
-      delete next[from];
-      await repo.setRegimentAliases(eventId, next);
+    async (from: string, scope: string = OVERALL_SCOPE) => {
+      const next: ScopedAliases = { ...aliases };
+      const scopeMap = { ...(next[scope] ?? {}) };
+      delete scopeMap[from];
+      if (Object.keys(scopeMap).length) next[scope] = scopeMap;
+      else delete next[scope];
+      await repo.setRegimentAliasesScoped(eventId, next);
       await reload();
     },
     [eventId, aliases, reload],
@@ -179,7 +192,7 @@ export function readOnlyStatsFromBundle(bundle: StatsBundle): UseStats {
     stored,
     scoreboards,
     assignments: bundle.assignments ?? {},
-    aliases: bundle.aliases ?? {},
+    aliases: normalizeScopedAliases(bundle.aliasesScoped ?? bundle.aliases),
     importFiles: async () => ({ imported: 0, failed: [] }),
     remove: noop,
     bind: noop,
