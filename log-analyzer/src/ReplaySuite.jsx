@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, Film, Trophy, Users, MapPin, Paperclip, Trash2,
   AlertTriangle, Clapperboard, Pencil, Check,
-  Activity, Navigation, Star, Swords, Flame,
+  Activity, Navigation, Star, Swords, Flame, Share2, FileDown,
 } from 'lucide-react';
 import { parseReplayCsv, looksLikeReplayCsv, timestampFromFilename } from './utils/replayParser';
 import { encodeReplay, decodeReplay } from './utils/replayCodec';
@@ -18,6 +18,8 @@ import Leadership from './components/afteraction/Leadership';
 import Engagement from './components/afteraction/Engagement';
 import Heatmap from './components/afteraction/Heatmap';
 import EventStats from './components/eventstats/EventStats';
+import { createEventShareUrl } from './share/shareEvent';
+import { computeEventStats } from './analytics/eventStats';
 
 const TEAM_NAME = { 1: 'USA', 2: 'CSA', USA: 'USA', CSA: 'CSA' };
 
@@ -39,7 +41,7 @@ function updateRound(event, roundId, patch) {
   return { ...event, rounds: event.rounds.map(r => (r.id === roundId ? { ...r, ...patch } : r)) };
 }
 
-export default function ReplaySuite() {
+export default function ReplaySuite({ initialEvent = null, initialReplays = null }) {
   const [event, setEvent] = useState(null);
   const [selectedRoundId, setSelectedRoundId] = useState(null);
   const [replays, setReplays] = useState(() => new Map());
@@ -53,12 +55,27 @@ export default function ReplaySuite() {
   const fileInputRef = useRef(null);
   const scoreboardInputRef = useRef(null);
 
-  // --- boot: load persisted event (or a fresh one) ---
+  // --- boot: hydrate from a shared event if one was passed, else load the
+  // persisted event (or a fresh one) ---
   useEffect(() => {
+    if (initialEvent) {
+      setEvent(initialEvent);
+      saveEvent(initialEvent);
+      if (initialReplays && initialReplays.size) {
+        setReplays(new Map(initialReplays));
+        (async () => {
+          for (const [id, replay] of initialReplays) {
+            try { await putReplay(id, encodeReplay(replay)); } catch { /* best effort */ }
+          }
+        })();
+      }
+      if (initialEvent.rounds.length) setSelectedRoundId(initialEvent.rounds[0].id);
+      return;
+    }
     const evt = loadEvent() || newEvent();
     setEvent(evt);
     if (evt.rounds.length) setSelectedRoundId(evt.rounds[0].id);
-  }, []);
+  }, [initialEvent, initialReplays]);
 
   // --- persist event on change ---
   useEffect(() => {
@@ -209,6 +226,43 @@ export default function ReplaySuite() {
     setEditingName(false);
   };
 
+  const handleShare = async () => {
+    if (!event.rounds.length) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const url = await createEventShareUrl(event, replays);
+      try {
+        await navigator.clipboard.writeText(url);
+        setNotice({ kind: 'info', text: 'Share link copied to clipboard.' });
+      } catch {
+        setNotice({ kind: 'info', text: url });
+      }
+    } catch (err) {
+      console.error('Share failed', err);
+      setNotice({ kind: 'error', text: 'Could not build a share link — see console.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!event.rounds.length) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const stats = computeEventStats(event.rounds, replays);
+      // Lazy-load the PDF generator so @react-pdf stays out of the main bundle.
+      const { generateEventReportPDF } = await import('./export/eventReport');
+      await generateEventReportPDF({ event, stats });
+    } catch (err) {
+      console.error('Report export failed', err);
+      setNotice({ kind: 'error', text: 'Report export failed — see console.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // --- drag & drop over the whole surface ---
   const onDrop = (e) => {
     e.preventDefault();
@@ -274,6 +328,26 @@ export default function ReplaySuite() {
                   Event stats
                 </button>
               </div>
+            )}
+            {hasRounds && (
+              <>
+                <button
+                  onClick={handleExport}
+                  disabled={busy}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-50 text-slate-200 text-sm rounded transition"
+                  title="Download an after-action report (PDF)"
+                >
+                  <FileDown className="w-4 h-4" /> Report
+                </button>
+                <button
+                  onClick={handleShare}
+                  disabled={busy}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-50 text-slate-200 text-sm rounded transition"
+                  title="Copy a share link for this event"
+                >
+                  <Share2 className="w-4 h-4" /> Share
+                </button>
+              </>
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
