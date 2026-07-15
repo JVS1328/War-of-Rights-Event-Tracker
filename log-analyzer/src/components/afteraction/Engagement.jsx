@@ -34,12 +34,12 @@ export default function Engagement({ replay }) {
         hint="Opposing players within musket range each frame. The rise marks the clash; the trough in closest-approach marks the moment lines met."
         right={(
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-slate-500 mr-1">Range</span>
+            <span className="text-[11px] text-faint mr-1">Range</span>
             {THRESHOLDS.map((t) => (
               <button
                 key={t}
                 onClick={() => setThreshold(t)}
-                className={`px-2 py-0.5 text-[11px] rounded transition ${threshold === t ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                className={`px-2 py-0.5 text-[11px] rounded-md transition ${threshold === t ? 'bg-accent text-[#14110a]' : 'bg-elevated text-muted hover:text-text'}`}
               >
                 {t}m
               </button>

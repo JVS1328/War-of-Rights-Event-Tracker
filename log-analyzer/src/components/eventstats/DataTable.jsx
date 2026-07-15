@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Search, ChevronRight } from 'lucide-react';
 
-// Compact sortable / searchable / expandable table in the Replay Suite style.
-// Column API mirrors season-tracker's: { key, header, align?, sortable?,
-// sortValue?(row), render(row), className? }.
+// Compact sortable / searchable / expandable table. Column API mirrors
+// season-tracker's: { key, header, align?, sortable?, sortValue?(row),
+// render(row), className? }.
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
@@ -56,22 +56,22 @@ export default function DataTable({
   });
 
   return (
-    <div className="bg-slate-800 rounded-lg overflow-hidden">
+    <div className="card overflow-hidden">
       {searchValue && (
-        <div className="flex items-center gap-2 border-b border-slate-700 px-3 py-1.5">
-          <Search className="w-3.5 h-3.5 text-slate-500" />
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <Search className="w-3.5 h-3.5 text-faint" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 outline-none"
+            className="w-full bg-transparent text-sm text-text placeholder:text-faint outline-none"
           />
         </div>
       )}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-700 bg-slate-800">
+            <tr className="border-b border-border">
               {renderExpanded && <th className="w-6" />}
               {columns.map((col) => {
                 const active = sortKey === col.key;
@@ -80,10 +80,10 @@ export default function DataTable({
                   <th
                     key={col.key}
                     onClick={() => onHeaderClick(col)}
-                    className={`px-2 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 ${ALIGN[col.align ?? 'left']} ${canSort ? 'cursor-pointer select-none hover:text-slate-300' : ''}`}
+                    className={`px-2.5 py-2 text-[11px] uppercase tracking-[0.06em] text-faint font-medium ${ALIGN[col.align ?? 'left']} ${canSort ? 'cursor-pointer select-none hover:text-text' : ''}`}
                   >
                     {col.header}
-                    {active && <span className="ml-1 text-amber-400">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                    {active && <span className="ml-1 text-accent">{sortDir === 'asc' ? '▲' : '▼'}</span>}
                   </th>
                 );
               })}
@@ -92,7 +92,7 @@ export default function DataTable({
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={columns.length + (renderExpanded ? 1 : 0)} className="px-3 py-6 text-center text-slate-500 text-xs">
+                <td colSpan={columns.length + (renderExpanded ? 1 : 0)} className="px-3 py-8 text-center text-faint text-xs">
                   {emptyHint}
                 </td>
               </tr>
@@ -104,22 +104,22 @@ export default function DataTable({
                 <FragmentRow key={key}>
                   <tr
                     onClick={renderExpanded ? () => toggle(key) : undefined}
-                    className={`border-b border-slate-700/60 ${renderExpanded ? 'cursor-pointer hover:bg-slate-700/40' : ''}`}
+                    className={`border-b border-border/60 ${renderExpanded ? 'cursor-pointer hover:bg-elevated' : ''}`}
                   >
                     {renderExpanded && (
-                      <td className="pl-2 text-slate-500">
+                      <td className="pl-2.5 text-faint">
                         <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                       </td>
                     )}
                     {columns.map((col) => (
-                      <td key={col.key} className={`px-2 py-1.5 text-slate-200 tabular-nums ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}>
+                      <td key={col.key} className={`px-2.5 py-2 text-text tabular-nums ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}>
                         {col.render(row)}
                       </td>
                     ))}
                   </tr>
                   {renderExpanded && isExpanded && (
-                    <tr className="bg-slate-900/40">
-                      <td colSpan={columns.length + 1} className="px-3 py-2">
+                    <tr className="bg-elevated">
+                      <td colSpan={columns.length + 1} className="px-3 py-3">
                         {renderExpanded(row)}
                       </td>
                     </tr>

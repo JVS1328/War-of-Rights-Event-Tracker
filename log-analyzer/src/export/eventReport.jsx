@@ -183,7 +183,7 @@ function ReportDoc({ event, stats, generatedAt }) {
           ))}
         </View>
 
-        <Text style={s.footer} render={({ pageNumber, totalPages }) => `Replay Suite · After-Action · page ${pageNumber} / ${totalPages}`} fixed />
+        <Text style={s.footer} render={({ pageNumber, totalPages }) => `WoR After Action Tool · page ${pageNumber} / ${totalPages}`} fixed />
       </Page>
     </Document>
   );

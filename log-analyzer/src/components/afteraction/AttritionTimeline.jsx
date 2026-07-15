@@ -65,7 +65,7 @@ export default function AttritionTimeline({ replay, scoreboard }) {
           />
           {data.byCause.length > 0 && (
             <div className="mt-3">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">By cause (USA / CSA)</div>
+              <div className="text-[11px] uppercase tracking-[0.06em] text-faint mb-1">By cause (USA / CSA)</div>
               <BarMeter
                 split
                 rows={data.byCause.map((c) => ({ key: c.cause, label: c.cause, usa: c.usa, csa: c.csa }))}
@@ -76,7 +76,7 @@ export default function AttritionTimeline({ replay, scoreboard }) {
         </Card>
       ) : (
         <Card title="Casualties over time">
-          <div className="text-xs text-slate-500 py-2">
+          <div className="text-xs text-faint py-2">
             Attach a scoreboard CSV to this round to overlay true casualties (killer → victim → cause) on the timeline.
           </div>
         </Card>

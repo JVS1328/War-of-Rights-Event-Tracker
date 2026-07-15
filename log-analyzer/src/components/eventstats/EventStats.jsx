@@ -32,7 +32,7 @@ export default function EventStats({ event, replays }) {
           <button
             key={t.key}
             onClick={() => setSub(t.key)}
-            className={`px-3 py-1.5 text-xs rounded transition ${sub === t.key ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+            className={`tab ${sub === t.key ? 'tab-active' : ''}`}
           >
             {t.label}
           </button>
@@ -60,14 +60,14 @@ function Overview({ stats }) {
         <StatTile label="Casualties" value={o.casualties} />
       </div>
       {o.scoreboardRounds === 0 && (
-        <div className="text-xs text-slate-500 bg-slate-800 rounded-lg p-3">
+        <div className="text-xs text-muted card p-3.5 leading-relaxed">
           No scoreboards attached yet — combat columns are zero. Attach scoreboard CSVs to rounds to see kills,
           casualties and ticket value. Roster, rounds played and distance come from the replays alone.
         </div>
       )}
       {topUnits.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-3">
-          <div className="text-sm font-semibold text-slate-200 mb-2">Top units by kills</div>
+        <div className="card p-4">
+          <div className="text-[13px] font-semibold text-text mb-2.5 tracking-tight">Top units by kills</div>
           <BarMeter
             rows={topUnits.map((u) => ({ key: u.regiment, label: u.regiment, value: u.kills, color: teamColor(u.team) }))}
             valueFormat={(v) => `${v}`}
@@ -83,7 +83,7 @@ function PlayersTable({ rows }) {
     { key: 'name', header: 'Player', sortable: true, sortValue: (r) => r.name,
       render: (r) => <span className="flex items-center gap-1.5"><TeamDot team={r.team} /><span className="truncate max-w-[220px]">{r.name}</span></span> },
     { key: 'regiment', header: 'Unit', sortable: true, sortValue: (r) => r.regiment,
-      render: (r) => <span className="text-slate-400">{r.regiment === UNTAGGED ? '—' : r.regiment}</span> },
+      render: (r) => <span className="text-muted">{r.regiment === UNTAGGED ? '—' : r.regiment}</span> },
     { key: 'rounds', header: 'R', align: 'right', sortable: true, sortValue: (r) => r.rounds, render: (r) => r.rounds },
     { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (r) => r.kills, render: (r) => r.kills },
     { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (r) => r.deaths, render: (r) => r.deaths },
@@ -139,7 +139,7 @@ function UnitDetail({ unit }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Casualties by stance</div>
+        <div className="text-[11px] uppercase tracking-[0.06em] text-faint mb-1">Casualties by stance</div>
         <div className="space-y-0.5 text-[12px]">
           <StanceRow label={FORMATION_SHORT.in_form} value={cas.inForm} />
           <StanceRow label={FORMATION_SHORT.skirm} value={cas.skirm} />
@@ -147,18 +147,18 @@ function UnitDetail({ unit }) {
         </div>
       </div>
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Casualties by cause</div>
+        <div className="text-[11px] uppercase tracking-[0.06em] text-faint mb-1">Casualties by cause</div>
         {unit.casualtiesByCause.length ? (
           <BarMeter rows={unit.casualtiesByCause.map((c) => ({ key: c.cause, label: c.cause, value: c.count }))} />
-        ) : <div className="text-xs text-slate-500">No scoreboard data.</div>}
+        ) : <div className="text-xs text-faint">No scoreboard data.</div>}
       </div>
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Top players</div>
+        <div className="text-[11px] uppercase tracking-[0.06em] text-faint mb-1">Top players</div>
         <div className="space-y-0.5 text-[12px]">
           {unit.topPlayers.map((p) => (
             <div key={p.key} className="flex items-center gap-2">
-              <span className="truncate flex-1 text-slate-300" title={p.name}>{p.name}</span>
-              <span className="tabular-nums text-slate-400">{p.kills}/{p.deaths}</span>
+              <span className="truncate flex-1 text-muted" title={p.name}>{p.name}</span>
+              <span className="tabular-nums text-muted">{p.kills}/{p.deaths}</span>
             </div>
           ))}
         </div>
@@ -170,8 +170,8 @@ function UnitDetail({ unit }) {
 function StanceRow({ label, value }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="flex-1 text-slate-400">{label}</span>
-      <span className="tabular-nums text-slate-200">{value}</span>
+      <span className="flex-1 text-muted">{label}</span>
+      <span className="tabular-nums text-text">{value}</span>
     </div>
   );
 }

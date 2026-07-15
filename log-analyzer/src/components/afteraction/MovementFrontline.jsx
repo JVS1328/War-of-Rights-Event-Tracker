@@ -51,7 +51,7 @@ export default function MovementFrontline({ replay }) {
             ]}
           />
         ) : (
-          <div className="text-xs text-slate-500 py-2">Not enough two-sided data to anchor an attack axis.</div>
+          <div className="text-xs text-faint py-2">Not enough two-sided data to anchor an attack axis.</div>
         )}
       </Card>
 

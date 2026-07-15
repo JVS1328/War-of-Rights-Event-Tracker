@@ -116,15 +116,15 @@ export default function LineChart({ times, series, height = 240, yFormat = (v) =
         {/* y grid + labels */}
         {ticks.map((tk, i) => (
           <g key={i}>
-            <line x1={PAD.l} x2={w - PAD.r} y1={sy(tk)} y2={sy(tk)} stroke="#1e293b" strokeWidth="1" />
-            <text x={PAD.l - 6} y={sy(tk) + 3} textAnchor="end" fontSize="10" fill="#64748b">{yFormat(tk)}</text>
+            <line x1={PAD.l} x2={w - PAD.r} y1={sy(tk)} y2={sy(tk)} style={{ stroke: 'var(--chart-grid)' }} strokeWidth="1" />
+            <text x={PAD.l - 6} y={sy(tk) + 3} textAnchor="end" fontSize="10" style={{ fill: 'var(--chart-axis)' }}>{yFormat(tk)}</text>
           </g>
         ))}
         {/* x labels (start / mid / end) */}
         {[t0, (t0 + t1) / 2, t1].map((t, i) => (
-          <text key={i} x={sx(t)} y={height - 6} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} fontSize="10" fill="#64748b">{fmtClock(t - t0)}</text>
+          <text key={i} x={sx(t)} y={height - 6} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'} fontSize="10" style={{ fill: 'var(--chart-axis)' }}>{fmtClock(t - t0)}</text>
         ))}
-        {yLabel && <text x={PAD.l} y={PAD.t - 1} fontSize="9" fill="#475569">{yLabel}</text>}
+        {yLabel && <text x={PAD.l} y={PAD.t - 1} fontSize="9" style={{ fill: 'var(--chart-axis)' }}>{yLabel}</text>}
 
         {/* markers */}
         {markers.map((m, i) => (
@@ -151,7 +151,7 @@ export default function LineChart({ times, series, height = 240, yFormat = (v) =
 
         {/* hover crosshair */}
         {hoverIdx != null && (
-          <line x1={sx(times[hoverIdx])} x2={sx(times[hoverIdx])} y1={PAD.t} y2={height - PAD.b} stroke="#475569" strokeWidth="1" />
+          <line x1={sx(times[hoverIdx])} x2={sx(times[hoverIdx])} y1={PAD.t} y2={height - PAD.b} style={{ stroke: 'var(--chart-axis)' }} strokeWidth="1" />
         )}
         {hoverIdx != null && active.map((s) => {
           const v = s.values[hoverIdx];
@@ -162,8 +162,8 @@ export default function LineChart({ times, series, height = 240, yFormat = (v) =
 
       {/* hover readout */}
       {hoverIdx != null && (
-        <div className="text-[11px] text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5 px-1 min-h-[16px]">
-          <span className="text-slate-500 tabular-nums">{fmtClock(times[hoverIdx] - t0)}</span>
+        <div className="text-[11px] text-muted flex flex-wrap gap-x-3 gap-y-0.5 px-1 min-h-[16px]">
+          <span className="text-faint tabular-nums">{fmtClock(times[hoverIdx] - t0)}</span>
           {active.map((s) => {
             const v = s.values[hoverIdx];
             return (
@@ -184,7 +184,7 @@ export default function LineChart({ times, series, height = 240, yFormat = (v) =
             className={`flex items-center gap-1 text-[11px] transition ${hidden.has(s.key) ? 'opacity-40' : ''}`}
           >
             <span className="inline-block w-3 h-0.5 rounded" style={{ background: s.color, borderTop: s.dashed ? `2px dashed ${s.color}` : undefined }} />
-            <span className="text-slate-300">{s.label}</span>
+            <span className="text-muted">{s.label}</span>
           </button>
         ))}
       </div>

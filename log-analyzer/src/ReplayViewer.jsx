@@ -7,8 +7,8 @@ import { roundStartSec, killToReplayTs, lastIndexLE } from './utils/killAlign.js
 // USA = team 1 = blue, CSA = team 2 = red. Hard-coded — replay is a god-view
 // (not a player POV), so friend/foe inversion doesn't apply.
 const TEAM_COLOR = {
-  1: '#3b82f6',
-  2: '#ef4444',
+  1: '#4a7fdc',
+  2: '#d1553c',
 };
 const TEAM_NAME  = { 1: 'USA', 2: 'CSA' };
 
@@ -241,16 +241,12 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
     const ctx = cv.getContext('2d');
     ctx.clearRect(0, 0, canvasSize.w, canvasSize.h);
 
-    // background
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
-
     // map image
     if (mapImg) {
       const tl = mapToScreen(0, 0);
       ctx.drawImage(mapImg, tl.x, tl.y, mapImg.width * view.zoom, mapImg.height * view.zoom);
     } else if (mapSlug) {
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#9fa2a9';
       ctx.font = '14px system-ui, sans-serif';
       ctx.fillText(`Loading map ${mapSlug}…`, 20, 30);
     } else {
@@ -427,19 +423,19 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
   }, [frame, replay.playerCount, replay.tracks.x]);
 
   return (
-    <div className="bg-slate-700 rounded-lg p-4">
+    <div className="card p-4">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <div className="text-sm font-semibold text-amber-400">
+        <div className="text-sm font-semibold text-accent">
           Replay · {replay.meta.map || 'unknown map'}
           {replay.meta.area && ` · ${replay.meta.area}`}
         </div>
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-muted">
           {replay.frameCount} frames @ {replay.meta.sampleRateHz} Hz · {replay.playerCount} players
         </div>
         {followedPlayer && (
           <button
             onClick={() => setFollowIdx(-1)}
-            className="ml-auto flex items-center gap-1 px-2 py-1 bg-amber-700 hover:bg-amber-600 text-white text-xs rounded transition"
+            className="ml-auto flex items-center gap-1 px-2 py-1 bg-accent hover:bg-accent-hover text-[#14110a] text-xs rounded transition"
             title="Stop following"
           >
             <Crosshair className="w-3 h-3" /> Following: {followedPlayer.name}
@@ -452,7 +448,7 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
         {/* canvas */}
         <div
           ref={containerRef}
-          className="relative bg-slate-900 rounded overflow-hidden"
+          className="relative bg-app rounded-lg overflow-hidden border border-border"
           style={{ minHeight: '480px', height: '60vh', touchAction: 'none' }}
         >
           <canvas
@@ -465,19 +461,19 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
             onMouseUp={onMouseUp}
             onMouseLeave={() => { draggingRef.current = null; setHover(null); }}
           />
-          <div className="absolute top-2 right-2 bg-slate-800/80 text-xs text-slate-300 px-2 py-1 rounded">
+          <div className="absolute top-2 right-2 bg-surface/90 border border-border text-xs text-text px-2 py-1 rounded">
             {presentCount}/{replay.playerCount} alive
           </div>
 
           {/* Live casualty panel + kill feed (top-left, collapsible) */}
           {timedKills.events.length > 0 && (
-            <div className="absolute top-2 left-2 bg-slate-800/90 border border-slate-700 rounded shadow-lg text-xs text-slate-200 overflow-hidden max-w-[280px]">
+            <div className="absolute top-2 left-2 bg-surface/90 border border-border rounded shadow-lg text-xs text-text overflow-hidden max-w-[280px]">
               <button
                 onClick={() => setFeedCollapsed(c => !c)}
-                className="w-full px-2 py-1 flex items-center gap-1.5 hover:bg-slate-700/60 transition"
+                className="w-full px-2 py-1 flex items-center gap-1.5 hover:bg-elevated transition"
                 title={feedCollapsed ? 'Expand' : 'Collapse'}
               >
-                <Skull className="w-3.5 h-3.5 text-amber-400" />
+                <Skull className="w-3.5 h-3.5 text-accent" />
                 <span className="font-semibold flex-1 text-left">Casualties · {liveStats.total}</span>
                 {feedCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
               </button>
@@ -492,7 +488,7 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
                   {/* By cause */}
                   {Object.keys(liveStats.byCause).length > 0 && (
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">By cause</div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">By cause</div>
                       <div className="space-y-0.5">
                         {Object.entries(liveStats.byCause)
                           .sort((a, b) => (b[1][1] + b[1][2]) - (a[1][1] + a[1][2]))
@@ -506,7 +502,7 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
                   {/* By formation */}
                   {Object.keys(liveStats.byFormation).length > 0 && (
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">By formation</div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">By formation</div>
                       <div className="space-y-0.5">
                         {Object.entries(liveStats.byFormation)
                           .sort((a, b) => (b[1][1] + b[1][2]) - (a[1][1] + a[1][2]))
@@ -520,7 +516,7 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
                   {/* Recent kill feed */}
                   {liveStats.feed.length > 0 && (
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Recent kills</div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted mb-0.5">Recent kills</div>
                       <div className="space-y-0.5">
                         {liveStats.feed.map((ev, i) => (
                           <KillRow key={`${ev.ts}-${i}`} ev={ev} baseTime={baseTime} />
@@ -544,14 +540,14 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
             const top  = Math.min(hover.y + 12, canvasSize.h - 60);
             return (
               <div
-                className="absolute pointer-events-none bg-slate-900/95 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 shadow-lg max-w-[220px]"
+                className="absolute pointer-events-none bg-surface/90 border border-border rounded px-2 py-1 text-xs text-text shadow-lg max-w-[220px]"
                 style={{ left, top }}
               >
                 <div className="flex items-center gap-1.5 font-semibold">
                   <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
                   <span className="truncate">{p.name}</span>
                 </div>
-                <div className="text-slate-400 text-[10px]">
+                <div className="text-muted text-[10px]">
                   {TEAM_NAME[p.team] || `Team ${p.team}`}{role && ` · ${role}`}
                 </div>
               </div>
@@ -560,15 +556,15 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
         </div>
 
         {/* player list */}
-        <div className="bg-slate-800 rounded p-2 flex flex-col" style={{ height: '60vh', minHeight: '480px' }}>
+        <div className="bg-surface rounded p-2 flex flex-col" style={{ height: '60vh', minHeight: '480px' }}>
           <div className="relative mb-2">
-            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
             <input
               type="text"
               value={playerFilter}
               onChange={e => setPlayerFilter(e.target.value)}
               placeholder="Filter…"
-              className="w-full pl-7 pr-2 py-1 text-xs bg-slate-900 border border-slate-700 rounded text-slate-200 focus:outline-none focus:border-amber-500"
+              className="w-full pl-7 pr-2 py-1 text-xs inset text-text focus:outline-none focus:border-accent"
             />
           </div>
           <div className="flex-1 overflow-y-auto space-y-2">
@@ -609,21 +605,21 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={() => setPlaying(p => !p)}
-          className="p-2 bg-amber-600 hover:bg-amber-500 text-white rounded transition"
+          className="p-2 bg-accent hover:bg-accent-hover text-[#14110a] rounded transition"
           title={playing ? 'Pause' : 'Play'}
         >
           {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         </button>
         <button
           onClick={() => goToFrame(frame - Math.round(replay.meta.sampleRateHz * 5))}
-          className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded transition"
+          className="p-2 bg-elevated hover:bg-border-strong text-[#14110a] rounded transition"
           title="Back 5s"
         >
           <SkipBack className="w-4 h-4" />
         </button>
         <button
           onClick={() => goToFrame(frame + Math.round(replay.meta.sampleRateHz * 5))}
-          className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded transition"
+          className="p-2 bg-elevated hover:bg-border-strong text-[#14110a] rounded transition"
           title="Forward 5s"
         >
           <SkipForward className="w-4 h-4" />
@@ -635,9 +631,9 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
           step={1}
           value={frame}
           onChange={e => goToFrame(parseInt(e.target.value, 10))}
-          className="flex-1 accent-amber-500"
+          className="flex-1 accent-[var(--accent)]"
         />
-        <div className="text-xs text-slate-300 tabular-nums w-24 text-right">
+        <div className="text-xs text-text tabular-nums w-24 text-right">
           {formatTime(currentTime)} / {formatTime(totalDuration)}
         </div>
         <div className="flex gap-1">
@@ -647,8 +643,8 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
               onClick={() => setSpeed(s)}
               className={`px-2 py-1 text-xs rounded transition ${
                 speed === s
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-slate-600 text-slate-200 hover:bg-slate-500'
+                  ? 'bg-accent text-[#14110a]'
+                  : 'bg-elevated text-text hover:bg-border-strong'
               }`}
             >
               {s}x
@@ -680,9 +676,9 @@ function PlayerGroup({ label, color, players, followIdx, onPick, frame, replay }
               key={p.index}
               onClick={() => onPick(isFollowed ? -1 : p.index)}
               className={`w-full text-left text-xs px-1.5 py-0.5 rounded flex items-center gap-1.5 transition ${
-                isFollowed ? 'bg-amber-700 text-white' :
-                alive       ? 'text-slate-200 hover:bg-slate-700' :
-                              'text-slate-500 hover:bg-slate-700'
+                isFollowed ? 'bg-accent text-[#14110a]' :
+                alive       ? 'text-text hover:bg-elevated' :
+                              'text-faint hover:bg-elevated'
               }`}
               title={p.name}
             >
@@ -698,14 +694,14 @@ function PlayerGroup({ label, color, players, followIdx, onPick, frame, replay }
 
 function TeamBox({ label, color, count, final }) {
   return (
-    <div className="bg-slate-900/70 rounded px-1.5 py-1">
+    <div className="bg-surface/90 border border-border rounded px-1.5 py-1">
       <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide" style={{ color }}>
         <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: color }} />
         {label}
       </div>
       <div className="font-bold text-sm tabular-nums" style={{ color }}>
         {count}
-        {final != null && <span className="text-slate-500 text-[10px] font-normal"> / {final}</span>}
+        {final != null && <span className="text-faint text-[10px] font-normal"> / {final}</span>}
       </div>
     </div>
   );
@@ -715,9 +711,9 @@ function SplitRow({ label, usa, csa }) {
   return (
     <div className="flex items-center gap-1 text-[11px] tabular-nums">
       <span className="flex-1 truncate" title={label}>{label}</span>
-      <span className="text-blue-400 w-5 text-right">{usa || ''}</span>
-      <span className="text-slate-400">/</span>
-      <span className="text-red-400 w-5 text-left">{csa || ''}</span>
+      <span className="text-usa w-5 text-right">{usa || ''}</span>
+      <span className="text-muted">/</span>
+      <span className="text-csa w-5 text-left">{csa || ''}</span>
     </div>
   );
 }
@@ -728,13 +724,13 @@ function KillRow({ ev, baseTime = 0 }) {
   const killer = ev.killer || '(environment)';
   return (
     <div className="text-[11px] flex items-center gap-1 leading-tight">
-      <span className="text-slate-500 tabular-nums shrink-0" title={ev.time || ''}>
+      <span className="text-faint tabular-nums shrink-0" title={ev.time || ''}>
         {formatRoundTime(ev.ts - baseTime)}
       </span>
       <span className="truncate" style={{ color: killerColor }} title={killer}>{killer}</span>
-      <span className="text-slate-500 shrink-0">►</span>
+      <span className="text-faint shrink-0">►</span>
       <span className="truncate" style={{ color: victimColor }} title={ev.victim}>{ev.victim}</span>
-      {ev.cause && <span className="text-slate-500 text-[10px] shrink-0">·{ev.cause}</span>}
+      {ev.cause && <span className="text-faint text-[10px] shrink-0">·{ev.cause}</span>}
     </div>
   );
 }

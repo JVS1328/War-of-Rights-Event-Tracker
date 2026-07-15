@@ -33,11 +33,11 @@ function App() {
 
   if (shareError) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-app text-text flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-bold mb-2">Share link not found</h2>
-          <p className="text-slate-400 mb-4">This link may have expired or is invalid.</p>
-          <a href={window.location.pathname} className="text-amber-400 hover:text-amber-300">Open Replay Suite</a>
+          <h2 className="text-xl font-semibold mb-2 tracking-tight">Share link not found</h2>
+          <p className="text-muted mb-4">This link may have expired or is invalid.</p>
+          <a href={window.location.pathname} className="text-accent hover:text-accent-hover">Open WoR After Action Tool</a>
         </div>
       </div>
     );

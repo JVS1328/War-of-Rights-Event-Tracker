@@ -119,7 +119,7 @@ export default function Heatmap({ replay, scoreboard }) {
   if (!slug) {
     return (
       <Card title="Heatmap">
-        <div className="text-xs text-amber-400 py-2">No map calibration for &quot;{replay.meta.map}&quot; — can&apos;t project positions.</div>
+        <div className="text-xs text-accent py-2">No map calibration for &quot;{replay.meta.map}&quot; — can&apos;t project positions.</div>
       </Card>
     );
   }
@@ -135,7 +135,7 @@ export default function Heatmap({ replay, scoreboard }) {
               <button
                 key={t.key}
                 onClick={() => setTeamKey(t.key)}
-                className={`px-2 py-0.5 text-[11px] rounded transition ${teamKey === t.key ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                className={`px-2 py-0.5 text-[11px] rounded-md transition ${teamKey === t.key ? 'bg-accent text-[#14110a]' : 'bg-elevated text-muted hover:text-text'}`}
               >
                 {t.label}
               </button>
@@ -144,7 +144,7 @@ export default function Heatmap({ replay, scoreboard }) {
           {kills && (
             <button
               onClick={() => setShowCasualties((s) => !s)}
-              className={`px-2 py-0.5 text-[11px] rounded transition ${showCasualties ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+              className={`px-2 py-0.5 text-[11px] rounded-md transition ${showCasualties ? 'bg-accent-soft text-text' : 'bg-elevated text-muted hover:text-text'}`}
               title="Toggle casualty locations from the scoreboard"
             >
               Casualties
@@ -153,15 +153,15 @@ export default function Heatmap({ replay, scoreboard }) {
         </div>
       )}
     >
-      <div ref={wrapRef} className="w-full bg-slate-900 rounded overflow-hidden">
+      <div ref={wrapRef} className="w-full bg-app rounded-lg overflow-hidden border border-border">
         {mapImg ? (
           <canvas ref={canvasRef} className="block w-full" />
         ) : (
-          <div className="p-12 text-center text-slate-500 text-sm">Loading map…</div>
+          <div className="p-12 text-center text-faint text-sm">Loading map…</div>
         )}
       </div>
       {showCasualties && casualties.length > 0 && (
-        <div className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-3">
+        <div className="text-[11px] text-faint mt-1.5 flex items-center gap-3">
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: TEAM.usa }} /> USA fell</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: TEAM.csa }} /> CSA fell</span>
           <span>· {casualties.length} casualties located</span>
