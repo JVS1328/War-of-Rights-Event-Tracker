@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import LineChart from '../charts/LineChart';
 import { Card, StatTile } from './Card';
 import { roundTimes } from '../../analytics/presence';
 import { engagementOverTime, peakContactFrame } from '../../analytics/engagement';
 
 const THRESHOLDS = [20, 40, 80]; // meters — musket bands
+const clampRange = (n) => Math.max(1, Math.min(500, Math.round(n)));
 
 function fmtClock(s) {
   if (!Number.isFinite(s)) return '—';
@@ -14,6 +15,18 @@ function fmtClock(s) {
 
 export default function Engagement({ replay }) {
   const [threshold, setThreshold] = useState(40);
+  const [rangeText, setRangeText] = useState('40');
+  // Keep the text field in sync when a preset (or clamp) changes the threshold.
+  useEffect(() => { setRangeText(String(threshold)); }, [threshold]);
+
+  // Commit the typed range — only recompute engagement on a valid, committed
+  // value (blur / Enter), not on every keystroke.
+  const commitRange = () => {
+    const n = parseInt(rangeText, 10);
+    if (Number.isFinite(n)) setThreshold(clampRange(n));
+    else setRangeText(String(threshold));
+  };
+
   const times = useMemo(() => roundTimes(replay), [replay]);
   const eng = useMemo(() => engagementOverTime(replay, threshold), [replay, threshold]);
   const peak = useMemo(() => peakContactFrame(eng), [eng]);
@@ -44,6 +57,19 @@ export default function Engagement({ replay }) {
                 {t}m
               </button>
             ))}
+            <label className="flex items-center rounded-md bg-elevated ml-1 focus-within:ring-1 focus-within:ring-accent" title="Custom range in meters (1–500)">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={rangeText}
+                onChange={(e) => setRangeText(e.target.value.replace(/[^0-9]/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { commitRange(); e.currentTarget.blur(); } }}
+                onBlur={commitRange}
+                aria-label="Custom range in meters"
+                className={`w-10 bg-transparent pl-1.5 py-0.5 text-[11px] text-right outline-none tabular-nums ${THRESHOLDS.includes(threshold) ? 'text-muted' : 'text-text'}`}
+              />
+              <span className="pr-1.5 text-[11px] text-faint select-none">m</span>
+            </label>
           </div>
         )}
       >

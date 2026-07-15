@@ -1,11 +1,20 @@
 import { createClient } from 'redis';
 import crypto from 'node:crypto';
 
-// Raised again from 5 MB to 10 MB so inline replay payloads (top-down
-// player traces) reliably fit. When they exceed this the client falls
-// back to stuffing the entire blob into the URL fragment, which is what
-// produced the 8 MB share links we saw in the wild. Payloads are still
-// pako-compressed on the client; the cap protects Redis from runaways.
+// Allow the request body up to 10 MB. Without this an API route's default
+// body parser caps at ~1 MB and rejects large event payloads with a 413
+// *before* our own check runs — the client then falls back to stuffing the
+// whole blob into the URL fragment (the multi-MB inline share links we saw
+// in the wild). Keep this in step with MAX_PAYLOAD below.
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: '10mb' },
+  },
+};
+
+// Server-side cap on the stored payload. Payloads are pako-compressed on the
+// client; the cap protects Redis from runaways while still leaving room for
+// multi-round events with inlined replay traces.
 const MAX_PAYLOAD = 10 * 1024 * 1024;
 
 let redis;

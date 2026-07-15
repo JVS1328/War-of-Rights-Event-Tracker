@@ -18,7 +18,6 @@ import MovementFrontline from './components/afteraction/MovementFrontline';
 import Leadership from './components/afteraction/Leadership';
 import Engagement from './components/afteraction/Engagement';
 import Heatmap from './components/afteraction/Heatmap';
-import EventStats from './components/eventstats/EventStats';
 import { createEventShareUrl } from './share/shareEvent';
 import { computeEventStats } from './analytics/eventStats';
 
@@ -51,7 +50,6 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState('rounds');   // 'rounds' | 'event'
   const { theme, toggle: toggleTheme } = useTheme();
 
   const fileInputRef = useRef(null);
@@ -233,6 +231,8 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
     setBusy(true);
     setNotice(null);
     try {
+      // Yield once so the button's busy state paints before the encode runs.
+      await new Promise((r) => setTimeout(r, 0));
       const url = await createEventShareUrl(event, replays);
       try {
         await navigator.clipboard.writeText(url);
@@ -316,12 +316,6 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
 
           <div className="ml-auto flex items-center gap-2">
             {hasRounds && (
-              <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-elevated border border-border">
-                <button onClick={() => setView('rounds')} className={`px-3 py-1 text-xs rounded-md transition ${view === 'rounds' ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'}`}>Rounds</button>
-                <button onClick={() => setView('event')} className={`px-3 py-1 text-xs rounded-md transition ${view === 'event' ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'}`}>Event</button>
-              </div>
-            )}
-            {hasRounds && (
               <>
                 <button onClick={handleExport} disabled={busy} className="btn btn-ghost" title="Download an after-action report (PDF)">
                   <FileDown className="w-4 h-4" /> <span className="hidden sm:inline">Report</span>
@@ -359,10 +353,6 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
 
       {!hasRounds ? (
         <EmptyState onPick={() => fileInputRef.current?.click()} busy={busy} dragOver={dragOver} />
-      ) : view === 'event' ? (
-        <div className="max-w-[1400px] mx-auto px-4 py-4">
-          <EventStats event={event} replays={replays} />
-        </div>
       ) : (
         <div className="max-w-[1400px] mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* round list */}
