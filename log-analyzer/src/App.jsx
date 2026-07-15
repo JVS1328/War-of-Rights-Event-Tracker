@@ -1,59 +1,49 @@
 import { useState, useEffect } from 'react';
-import LogAnalyzer from './LogAnalyzer';
-import { getShareFromUrl, fetchSharePayload, restoreShareState } from './utils/shareAnalysis';
+import ReplaySuite from './ReplaySuite';
+import { getShareFromUrl, fetchSharePayload, restoreEventShare } from './share/shareEvent';
 
 function App() {
-  const [shareData, setShareData] = useState(undefined);
+  // undefined = still resolving a possible share link; null = no share;
+  // { event, replays } = a shared event to hydrate.
+  const [shared, setShared] = useState(undefined);
   const [shareError, setShareError] = useState(false);
 
   useEffect(() => {
-    const loadShare = async () => {
+    const load = async () => {
       setShareError(false);
-      const result = getShareFromUrl();
-
-      if (result?.pending) {
-        const data = await fetchSharePayload(result.id);
-        if (data) {
-          setShareData(restoreShareState(data));
-        } else {
-          setShareError(true);
-          setShareData(null);
-        }
-      } else if (result) {
-        setShareData(restoreShareState(result));
+      const res = getShareFromUrl();
+      if (res?.pending) {
+        const data = await fetchSharePayload(res.id);
+        if (data) setShared(restoreEventShare(data));
+        else { setShareError(true); setShared(null); }
+      } else if (res) {
+        setShared(restoreEventShare(res));
       } else {
-        setShareData(null);
+        setShared(null);
+      }
+      // Drop the share hash so a refresh loads the now-persisted local copy.
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
     };
-
-    loadShare();
-
-    const onHashChange = () => loadShare();
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    load();
   }, []);
 
-  if (shareData === undefined) return null;
+  if (shared === undefined) return null;
 
   if (shareError) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-app text-text flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-bold mb-2">Share Link Not Found</h2>
-          <p className="text-slate-400 mb-4">This share link may have expired or is invalid.</p>
-          <a href={window.location.pathname} className="text-amber-400 hover:text-amber-300">
-            Open Log Analyzer
-          </a>
+          <h2 className="text-xl font-semibold mb-2 tracking-tight">Share link not found</h2>
+          <p className="text-muted mb-4">This link may have expired or is invalid.</p>
+          <a href={window.location.pathname} className="text-accent hover:text-accent-hover">Open WoR After Action Tool</a>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="App">
-      <LogAnalyzer initialShareData={shareData} />
-    </div>
-  );
+  return <ReplaySuite initialEvent={shared?.event || null} initialReplays={shared?.replays || null} />;
 }
 
 export default App;
