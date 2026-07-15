@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import LineChart from '../charts/LineChart';
-import BarMeter from '../charts/BarMeter';
+import DataTable from '../ui/DataTable';
 import { Card } from './Card';
 import { TEAM } from './teams';
 import { roundTimes } from '../../analytics/presence';
@@ -11,6 +11,26 @@ import {
 const M_TO_YD = 1.0936;
 const yd = (m) => (m == null ? null : m * M_TO_YD);
 
+const teamColor = (t) => (t === 1 ? TEAM.usa : t === 2 ? TEAM.csa : '#a3a3a3');
+
+function TeamDot({ team }) {
+  return <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: teamColor(team) }} />;
+}
+
+// Distance cell with a small proportional bar so the ranking reads at a glance
+// even when the table is sorted or filtered.
+function DistCell({ value, max, color }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <div className="h-1.5 w-16 bg-elevated rounded-full overflow-hidden hidden sm:block">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="tabular-nums w-16 text-right">{Math.round(value)} yd</span>
+    </div>
+  );
+}
+
 export default function MovementFrontline({ replay }) {
   const d = useMemo(() => {
     const times = roundTimes(replay);
@@ -19,10 +39,12 @@ export default function MovementFrontline({ replay }) {
     const front = frontlineOverTime(replay, centroids);
     const spread = spreadOverTime(replay, centroids);
     const dist = distancePerPlayer(replay);
+    // Every player, ranked by ground covered (not just the top movers) so the
+    // table below can page/search across the whole roster.
     const movers = replay.players
-      .map((p, i) => ({ key: String(i), label: p.name, team: p.team, value: dist[i] * M_TO_YD }))
+      .map((p, i) => ({ key: String(i), name: p.name || `Player ${i + 1}`, team: p.team, value: dist[i] * M_TO_YD }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 12);
+      .map((m, i) => ({ ...m, rank: i + 1 }));
     return {
       times,
       sep,
@@ -31,8 +53,23 @@ export default function MovementFrontline({ replay }) {
         : null,
       spread: { usa: spread.usa.map(yd), csa: spread.csa.map(yd) },
       movers,
+      maxDist: movers.length ? movers[0].value : 1,
     };
   }, [replay]);
+
+  const columns = useMemo(() => [
+    { key: 'rank', header: '#', align: 'right', sortable: true, sortValue: (r) => r.rank,
+      render: (r) => <span className="text-faint tabular-nums">{r.rank}</span> },
+    { key: 'name', header: 'Player', sortable: true, sortValue: (r) => r.name,
+      render: (r) => (
+        <span className="flex items-center gap-1.5">
+          <TeamDot team={r.team} />
+          <span className="truncate max-w-[260px]" title={r.name}>{r.name}</span>
+        </span>
+      ) },
+    { key: 'value', header: 'Ground covered', align: 'right', sortable: true, sortValue: (r) => r.value,
+      render: (r) => <DistCell value={r.value} max={d.maxDist} color={teamColor(r.team)} /> },
+  ], [d.maxDist]);
 
   return (
     <div className="space-y-3">
@@ -76,10 +113,17 @@ export default function MovementFrontline({ replay }) {
         />
       </Card>
 
-      <Card title="Most ground covered" hint="Total distance traveled per player.">
-        <BarMeter
-          rows={d.movers.map((m) => ({ key: m.key, label: m.label, value: m.value, color: TEAM[m.team === 1 ? 'usa' : 'csa'] }))}
-          valueFormat={(v) => `${Math.round(v)}yd`}
+      <Card title="Total ground covered" hint="Distance traveled per player across the round — search for anyone and page through the whole roster.">
+        <DataTable
+          columns={columns}
+          rows={d.movers}
+          getRowKey={(r) => r.key}
+          initialSortKey="value"
+          initialSortDir="desc"
+          searchValue={(r) => r.name}
+          searchPlaceholder="Search players…"
+          pageSize={10}
+          emptyHint="No players matched."
         />
       </Card>
     </div>

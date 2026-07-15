@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import ReplaySuite from './ReplaySuite';
-import { getShareFromUrl, fetchSharePayload, restoreEventShare } from './share/shareEvent';
+import { getShareFromUrl, fetchSharePayload } from './share/shareEvent';
 
 function App() {
   // undefined = still resolving a possible share link; null = no share;
@@ -14,10 +14,10 @@ function App() {
       const res = getShareFromUrl();
       if (res?.pending) {
         const data = await fetchSharePayload(res.id);
-        if (data) setShared(restoreEventShare(data));
+        if (data) setShared(data);
         else { setShareError(true); setShared(null); }
       } else if (res) {
-        setShared(restoreEventShare(res));
+        setShared(res);
       } else {
         setShared(null);
       }

@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react';
-import { Search, ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, ChevronRight, ChevronLeft } from 'lucide-react';
 
-// Compact sortable / searchable / expandable table. Column API mirrors
-// season-tracker's: { key, header, align?, sortable?, sortValue?(row),
+// Compact sortable / searchable / expandable / paginated table. Column API
+// mirrors season-tracker's: { key, header, align?, sortable?, sortValue?(row),
 // render(row), className? }.
+//
+// Pass `pageSize` to paginate — the footer only appears when the filtered set
+// spills past one page.
 
 const ALIGN = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
@@ -17,11 +20,13 @@ export default function DataTable({
   searchPlaceholder = 'Search…',
   renderExpanded,
   emptyHint = 'No data',
+  pageSize,
 }) {
   const [sortKey, setSortKey] = useState(initialSortKey);
   const [sortDir, setSortDir] = useState(initialSortDir);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
+  const [page, setPage] = useState(0);
 
   const sortedColumn = columns.find((c) => c.key === sortKey);
 
@@ -42,6 +47,14 @@ export default function DataTable({
       return String(av).localeCompare(String(bv)) * dir;
     });
   }, [filtered, sortedColumn, sortDir]);
+
+  // Pagination — clamp the page whenever the result set or sort changes so we
+  // never strand the view on an empty trailing page.
+  const paginated = pageSize != null && pageSize > 0;
+  const pageCount = paginated ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  useEffect(() => { setPage(0); }, [query, sortKey, sortDir, pageSize]);
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = paginated ? sorted.slice(safePage * pageSize, safePage * pageSize + pageSize) : sorted;
 
   const onHeaderClick = (col) => {
     if (!col.sortable || !col.sortValue) return;
@@ -90,14 +103,14 @@ export default function DataTable({
             </tr>
           </thead>
           <tbody>
-            {sorted.length === 0 && (
+            {visible.length === 0 && (
               <tr>
                 <td colSpan={columns.length + (renderExpanded ? 1 : 0)} className="px-3 py-8 text-center text-faint text-xs">
                   {emptyHint}
                 </td>
               </tr>
             )}
-            {sorted.map((row) => {
+            {visible.map((row) => {
               const key = getRowKey(row);
               const isExpanded = expanded.has(key);
               return (
@@ -130,6 +143,32 @@ export default function DataTable({
           </tbody>
         </table>
       </div>
+      {paginated && sorted.length > pageSize && (
+        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2 text-[11px] text-muted">
+          <span className="tabular-nums">
+            {safePage * pageSize + 1}–{Math.min(sorted.length, safePage * pageSize + pageSize)} of {sorted.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="btn-bare p-1 disabled:opacity-30 hover:text-text"
+              title="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="tabular-nums px-1">{safePage + 1} / {pageCount}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              disabled={safePage >= pageCount - 1}
+              className="btn-bare p-1 disabled:opacity-30 hover:text-text"
+              title="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
