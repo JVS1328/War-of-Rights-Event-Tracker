@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Play, Pause, SkipBack, SkipForward, X, Crosshair, Search, ChevronDown, ChevronUp, Skull } from 'lucide-react';
 import { MAPS, worldMetersToMapPx, headingToMapDelta } from './utils/mapCalibration.js';
 import { LEADER_KIND } from './utils/replayParser.js';
+import { roundStartSec, killToReplayTs, lastIndexLE } from './utils/killAlign.js';
 
 // USA = team 1 = blue, CSA = team 2 = red. Hard-coded — replay is a god-view
 // (not a player POV), so friend/foe inversion doesn't apply.
@@ -39,46 +40,9 @@ function frameIndexForTime(frameTimes, targetSec) {
   return lo;
 }
 
-// Parse "HH:MM:SS" into seconds since midnight. Returns null on bad input.
-function hmsToSec(s) {
-  if (!s) return null;
-  const m = String(s).match(/(\d{1,2}):(\d{2}):(\d{2})/);
-  if (!m) return null;
-  return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
-}
-
-// Recover the round's t_s=0 wallclock from replay meta. The parser computes
-// this directly from "first sample's hms minus its t_s" and stores it in
-// meta.roundStartSec — that field is authoritative. The legacy fallback
-// reads the recorder's `round_started_at` / `round_ended_at` header, which
-// is reliable enough when no per-sample wallclock survived the round trip.
-function roundStartSec(meta) {
-  if (Number.isFinite(meta?.roundStartSec)) return meta.roundStartSec;
-  return hmsToSec(meta?.startedAt);
-}
-
-// Map a scoreboard kill wallclock to replay-frame t_s. Handles a day rollover
-// in the rare case of a round straddling midnight.
-function killToReplayTs(killTime, startSec) {
-  const k = hmsToSec(killTime);
-  if (k == null || startSec == null) return null;
-  let dt = k - startSec;
-  if (dt < -3600) dt += 86400;
-  return dt;
-}
-
-// Binary-search for the index of the last element with ts <= targetTs.
-// Returns -1 when target is before the first element.
-function lastIndexLE(sortedTs, targetTs) {
-  if (sortedTs.length === 0 || targetTs < sortedTs[0]) return -1;
-  let lo = 0, hi = sortedTs.length - 1;
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sortedTs[mid] <= targetTs) lo = mid;
-    else hi = mid;
-  }
-  return sortedTs[hi] <= targetTs ? hi : lo;
-}
+// Time-alignment helpers (hmsToSec / roundStartSec / killToReplayTs /
+// lastIndexLE) now live in utils/killAlign.js so the analytics modules and the
+// viewer share one implementation.
 
 // Props:
 //   replay          — parsed replay struct (required; the spine of the view)

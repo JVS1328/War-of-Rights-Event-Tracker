@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, Film, Trophy, Users, MapPin, Paperclip, Trash2,
   AlertTriangle, Clapperboard, Pencil, Check,
+  Activity, Navigation, Star, Swords, Flame,
 } from 'lucide-react';
 import { parseReplayCsv, looksLikeReplayCsv, timestampFromFilename } from './utils/replayParser';
 import { encodeReplay, decodeReplay } from './utils/replayCodec';
@@ -11,6 +12,11 @@ import {
   loadEvent, saveEvent, newEvent, makeRound, upsertRound, nearestRoundForTimestamp,
 } from './event/eventStore';
 import ReplayViewer from './ReplayViewer';
+import AttritionTimeline from './components/afteraction/AttritionTimeline';
+import MovementFrontline from './components/afteraction/MovementFrontline';
+import Leadership from './components/afteraction/Leadership';
+import Engagement from './components/afteraction/Engagement';
+import Heatmap from './components/afteraction/Heatmap';
 
 const TEAM_NAME = { 1: 'USA', 2: 'CSA', USA: 'USA', CSA: 'CSA' };
 
@@ -392,6 +398,15 @@ function RoundListItem({ round, index, selected, onSelect }) {
   );
 }
 
+const ROUND_TABS = [
+  { key: 'playback', label: 'Playback', icon: Film },
+  { key: 'attrition', label: 'Attrition', icon: Activity },
+  { key: 'movement', label: 'Movement', icon: Navigation },
+  { key: 'leadership', label: 'Leadership', icon: Star },
+  { key: 'engagement', label: 'Engagement', icon: Swords },
+  { key: 'heatmap', label: 'Heatmap', icon: Flame },
+];
+
 function RoundView({ round, replay, onAttachScoreboard, onDetachScoreboard, onRemove }) {
   const meta = round.meta;
   const win = winnerLabel(meta.winner);
@@ -399,6 +414,11 @@ function RoundView({ round, replay, onAttachScoreboard, onDetachScoreboard, onRe
   const finalCasualties = sb?.metadata
     ? { usa: sb.metadata.casualties_usa, csa: sb.metadata.casualties_csa }
     : null;
+
+  // Reset to Playback when switching rounds so a tab never renders against the
+  // wrong replay for a frame.
+  const [tab, setTab] = useState('playback');
+  useEffect(() => { setTab('playback'); }, [round.id]);
 
   return (
     <div className="space-y-3">
@@ -442,13 +462,40 @@ function RoundView({ round, replay, onAttachScoreboard, onDetachScoreboard, onRe
         </div>
       </div>
 
-      {/* viewer */}
-      {replay ? (
-        <ReplayViewer replay={replay} kills={sb?.kills || null} finalCasualties={finalCasualties} />
-      ) : (
+      {!replay ? (
         <div className="bg-slate-800 rounded-lg p-12 text-center text-slate-400 text-sm">
           Loading replay from cache…
         </div>
+      ) : (
+        <>
+          {/* tab bar */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {ROUND_TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition ${
+                    tab === t.key ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* tab content */}
+          {tab === 'playback' && (
+            <ReplayViewer replay={replay} kills={sb?.kills || null} finalCasualties={finalCasualties} />
+          )}
+          {tab === 'attrition' && <AttritionTimeline replay={replay} scoreboard={sb} />}
+          {tab === 'movement' && <MovementFrontline replay={replay} />}
+          {tab === 'leadership' && <Leadership replay={replay} />}
+          {tab === 'engagement' && <Engagement replay={replay} />}
+          {tab === 'heatmap' && <Heatmap replay={replay} scoreboard={sb} />}
+        </>
       )}
     </div>
   );
