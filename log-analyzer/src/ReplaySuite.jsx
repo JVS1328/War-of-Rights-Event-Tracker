@@ -17,6 +17,7 @@ import MovementFrontline from './components/afteraction/MovementFrontline';
 import Leadership from './components/afteraction/Leadership';
 import Engagement from './components/afteraction/Engagement';
 import Heatmap from './components/afteraction/Heatmap';
+import EventStats from './components/eventstats/EventStats';
 
 const TEAM_NAME = { 1: 'USA', 2: 'CSA', USA: 'USA', CSA: 'CSA' };
 
@@ -47,6 +48,7 @@ export default function ReplaySuite() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [view, setView] = useState('rounds');   // 'rounds' | 'event'
 
   const fileInputRef = useRef(null);
   const scoreboardInputRef = useRef(null);
@@ -258,9 +260,20 @@ export default function ReplaySuite() {
           </div>
           <div className="ml-auto flex items-center gap-2">
             {hasRounds && (
-              <span className="text-xs text-slate-400">
-                {event.rounds.length} round{event.rounds.length === 1 ? '' : 's'}
-              </span>
+              <div className="flex items-center rounded overflow-hidden border border-slate-700">
+                <button
+                  onClick={() => setView('rounds')}
+                  className={`px-3 py-1 text-xs transition ${view === 'rounds' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                >
+                  Rounds
+                </button>
+                <button
+                  onClick={() => setView('event')}
+                  className={`px-3 py-1 text-xs transition ${view === 'event' ? 'bg-slate-700 text-white' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                >
+                  Event stats
+                </button>
+              </div>
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -291,6 +304,10 @@ export default function ReplaySuite() {
 
       {!hasRounds ? (
         <EmptyState onPick={() => fileInputRef.current?.click()} busy={busy} dragOver={dragOver} />
+      ) : view === 'event' ? (
+        <div className="max-w-[1400px] mx-auto px-4 py-4">
+          <EventStats event={event} replays={replays} />
+        </div>
       ) : (
         <div className="max-w-[1400px] mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* round list */}
