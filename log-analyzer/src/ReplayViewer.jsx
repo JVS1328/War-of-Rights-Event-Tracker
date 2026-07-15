@@ -80,7 +80,14 @@ function lastIndexLE(sortedTs, targetTs) {
   return sortedTs[hi] <= targetTs ? hi : lo;
 }
 
-export default function ReplayViewer({ replay, round }) {
+// Props:
+//   replay          — parsed replay struct (required; the spine of the view)
+//   kills           — optional array of scoreboard kill events (killer/victim/
+//                     cause/time/…). When present, the live casualty panel +
+//                     kill feed light up, aligned to replay t_s. Absent for a
+//                     replay-only round.
+//   finalCasualties — optional { usa, csa } round-final totals for the "X / Y".
+export default function ReplayViewer({ replay, kills = null, finalCasualties = null }) {
   // --- core playback state ---
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -142,9 +149,9 @@ export default function ReplayViewer({ replay, round }) {
   // wallclock. Sorted by ts so live slicing is a single binary search.
   const timedKills = useMemo(() => {
     const startSec = roundStartSec(replay.meta);
-    if (startSec == null || !round?.kills) return { ts: new Float32Array(0), events: [] };
+    if (startSec == null || !kills) return { ts: new Float32Array(0), events: [] };
     const rows = [];
-    for (const k of round.kills) {
+    for (const k of kills) {
       // killLog rows have `time`; non-killLog rounds carry empty objects.
       if (!k.time) continue;
       const ts = killToReplayTs(k.time, startSec);
@@ -153,7 +160,7 @@ export default function ReplayViewer({ replay, round }) {
     }
     rows.sort((a, b) => a.ts - b.ts);
     return { ts: Float32Array.from(rows.map(r => r.ts)), events: rows };
-  }, [replay.meta, round]);
+  }, [replay.meta, kills]);
 
   // --- live counters at the current frame ---
   // Walks events up to current t_s, bucketing per team / cause / formation.
@@ -188,14 +195,13 @@ export default function ReplayViewer({ replay, round }) {
   // Round-final totals from metadata for the "X / Y" display. Only used when
   // present (older rounds may not have a metadata block).
   const finalTotals = useMemo(() => {
-    const m = round?.metadata || {};
-    const usa = parseInt(m.casualties_usa, 10);
-    const csa = parseInt(m.casualties_csa, 10);
+    const usa = finalCasualties ? parseInt(finalCasualties.usa, 10) : NaN;
+    const csa = finalCasualties ? parseInt(finalCasualties.csa, 10) : NaN;
     return {
       usa: Number.isFinite(usa) ? usa : null,
       csa: Number.isFinite(csa) ? csa : null,
     };
-  }, [round]);
+  }, [finalCasualties]);
 
   // --- precompute team buckets for the player list ---
   const teamBuckets = useMemo(() => {
