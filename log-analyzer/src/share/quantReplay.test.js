@@ -38,6 +38,14 @@ describe('quantized share replay', () => {
     expect(dot).toBeGreaterThan(0.99); // near-parallel
   });
 
+  it('downsamples frames by a stride, keeping every stride-th frame', () => {
+    const r = decodeQuantReplay(encodeQuantReplay(replay, 2));
+    expect(r.frameCount).toBe(Math.ceil(replay.frameCount / 2)); // 6 → 3
+    expect(r.playerCount).toBe(replay.playerCount);
+    // frame times are frames 0, 2, 4 of the source
+    expect(Array.from(r.frameTimes)).toEqual([0, 1, 2].map((j) => replay.frameTimes[j * 2]));
+  });
+
   it('drops z (rebuilt as zeros)', () => {
     const r = decodeQuantReplay(encodeQuantReplay(replay));
     expect(r.tracks.z.length).toBe(replay.frameCount * replay.playerCount);

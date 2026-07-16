@@ -25,20 +25,30 @@ const RANGE = 65534;              // int16 data span (-32767 … 32767)
 const enc = new TextEncoder();
 const dec = new TextDecoder('utf-8');
 
-export function encodeQuantReplay(replay) {
-  const F = replay.frameCount;
+// `stride` keeps every stride-th frame (1 = all). Downsampling in time is the
+// last lever for events whose full traces overflow the share store — the
+// analytics aggregate over frames so they stay meaningful, and playback just
+// gets coarser.
+export function encodeQuantReplay(replay, stride = 1) {
+  const s = Math.max(1, Math.floor(stride) || 1);
+  const Fsrc = replay.frameCount;
   const P = replay.playerCount;
+  const F = Math.ceil(Fsrc / s);     // shared (possibly downsampled) frame count
   const N = F * P;
   const { x, y, fx, fy, lk } = replay.tracks;
 
-  // Bounds over sampled positions only (unsampled x is NaN).
+  // Bounds over sampled positions in the kept frames only (unsampled x is NaN).
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (let i = 0; i < N; i++) {
-    if (Number.isNaN(x[i])) continue;
-    if (x[i] < minX) minX = x[i];
-    if (x[i] > maxX) maxX = x[i];
-    if (y[i] < minY) minY = y[i];
-    if (y[i] > maxY) maxY = y[i];
+  for (let j = 0; j < F; j++) {
+    const base = (j * s) * P;
+    for (let p = 0; p < P; p++) {
+      const i = base + p;
+      if (Number.isNaN(x[i])) continue;
+      if (x[i] < minX) minX = x[i];
+      if (x[i] > maxX) maxX = x[i];
+      if (y[i] < minY) minY = y[i];
+      if (y[i] > maxY) maxY = y[i];
+    }
   }
   if (!Number.isFinite(minX)) { minX = 0; maxX = 0; minY = 0; maxY = 0; }
   const spanX = maxX - minX;
@@ -49,28 +59,36 @@ export function encodeQuantReplay(replay) {
   const qfx = new Int8Array(N);
   const qfy = new Int8Array(N);
   const qlk = new Uint8Array(N);
+  const ft = new Float32Array(F);
+  const srcFt = replay.frameTimes;
   const qpos = (v, min, span) => {
     if (span <= 0) return 0;
     let q = Math.round(((v - min) / span) * RANGE) - 32767;
     if (q < -32767) q = -32767; else if (q > 32767) q = 32767;
     return q;
   };
-  for (let i = 0; i < N; i++) {
-    if (Number.isNaN(x[i])) { qx[i] = SENTINEL; continue; } // rest stay 0
-    qx[i] = qpos(x[i], minX, spanX);
-    qy[i] = qpos(y[i], minY, spanY);
-    const len = Math.hypot(fx[i], fy[i]);
-    if (len > 1e-6) {
-      qfx[i] = Math.max(-127, Math.min(127, Math.round((fx[i] / len) * 127)));
-      qfy[i] = Math.max(-127, Math.min(127, Math.round((fy[i] / len) * 127)));
+  for (let j = 0; j < F; j++) {
+    const sf = j * s;
+    ft[j] = srcFt[sf];
+    const sBase = sf * P;
+    const dBase = j * P;
+    for (let p = 0; p < P; p++) {
+      const si = sBase + p;
+      const di = dBase + p;
+      if (Number.isNaN(x[si])) { qx[di] = SENTINEL; continue; } // rest stay 0
+      qx[di] = qpos(x[si], minX, spanX);
+      qy[di] = qpos(y[si], minY, spanY);
+      const len = Math.hypot(fx[si], fy[si]);
+      if (len > 1e-6) {
+        qfx[di] = Math.max(-127, Math.min(127, Math.round((fx[si] / len) * 127)));
+        qfy[di] = Math.max(-127, Math.min(127, Math.round((fy[si] / len) * 127)));
+      }
+      qlk[di] = lk[si];
     }
-    qlk[i] = lk[i];
   }
 
   const metaBytes = enc.encode(JSON.stringify(replay.meta));
   const playersBytes = enc.encode(JSON.stringify(replay.players));
-  const ft = replay.frameTimes instanceof Float32Array
-    ? replay.frameTimes : Float32Array.from(replay.frameTimes);
 
   const HEAD = 28; // fmt+flags+pad(4) F(4) P(4) minX,spanX,minY,spanY(16)
   const total = HEAD
