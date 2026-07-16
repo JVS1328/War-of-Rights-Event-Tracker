@@ -22,17 +22,36 @@ const PREFIX = 'analyzer-share:';
 // request, so it works cleanly on serverless where a long-lived node-redis TCP
 // socket does not (cold starts, dropped connections, and unreachable hosts are
 // the usual reason POSTs fail and links fall back to inline). Falls back to a
-// classic node-redis TCP client when only REDIS_URL is configured.
+// classic node-redis TCP client when only a redis:// URL is configured.
 //
-//   Upstash / Vercel KV:  UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
-//                         (or KV_REST_API_URL + KV_REST_API_TOKEN)
-//   node-redis:           REDIS_URL
+// Vercel's storage integrations PREFIX every var with the store name, e.g.
+// `upstash_KV_REST_API_URL` / `upstash_KV_REST_API_TOKEN`, so we resolve by
+// suffix rather than exact name — any prefix is accepted:
+//
+//   REST (preferred):  *KV_REST_API_URL   + *KV_REST_API_TOKEN
+//                      (or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN)
+//   TCP  (fallback):   *REDIS_URL  or  *KV_URL   (rediss:// is fine)
+//
+// The suffix match deliberately targets *_KV_REST_API_TOKEN, which does NOT
+// match *_KV_REST_API_READ_ONLY_TOKEN — we need write access to store links.
+
+// Resolve an env var by exact name first, then by `_<name>` suffix so an
+// integration prefix (upstash_, storage_, …) is picked up without renaming.
+export function pickEnv(...names) {
+  for (const name of names) {
+    if (process.env[name]) return process.env[name];
+    const hit = Object.entries(process.env).find(([k, v]) => v && k.endsWith(`_${name}`));
+    if (hit) return hit[1];
+  }
+  return undefined;
+}
+
 let store;
 async function getStore() {
   if (store) return store;
 
-  const restUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const restToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  const restUrl = pickEnv('UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL');
+  const restToken = pickEnv('UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_TOKEN');
   if (restUrl && restToken) {
     const { Redis } = await import('@upstash/redis');
     // Store/return raw strings — our payload is base64url, not JSON, so leave
@@ -42,14 +61,15 @@ async function getStore() {
     return store;
   }
 
-  if (process.env.REDIS_URL) {
+  const redisUrl = pickEnv('REDIS_URL', 'KV_URL');
+  if (redisUrl) {
     const { createClient } = await import('redis');
-    const client = await createClient({ url: process.env.REDIS_URL }).connect();
+    const client = await createClient({ url: redisUrl }).connect();
     store = { get: (k) => client.get(k), set: (k, v) => client.set(k, v) };
     return store;
   }
 
-  throw new Error('No share store configured (set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN, or REDIS_URL)');
+  throw new Error('No share store configured (set *KV_REST_API_URL + *KV_REST_API_TOKEN, or a *REDIS_URL)');
 }
 
 export default async function handler(req, res) {
