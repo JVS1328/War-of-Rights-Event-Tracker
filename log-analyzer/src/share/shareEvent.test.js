@@ -36,8 +36,11 @@ describe('event share serialization', () => {
     expect(rr.frameCount).toBe(replay.frameCount);
     expect(rr.playerCount).toBe(replay.playerCount);
     expect(rr.meta.map).toBe('Antietam');
-    // tracks survive bit-for-bit
-    expect(Array.from(rr.tracks.x.slice(0, 3))).toEqual(Array.from(replay.tracks.x.slice(0, 3)));
+    // positions survive within quantization tolerance (well under a metre)
+    for (let i = 0; i < 3; i++) {
+      expect(Math.abs(rr.tracks.x[i] - replay.tracks.x[i])).toBeLessThan(1);
+      expect(Math.abs(rr.tracks.y[i] - replay.tracks.y[i])).toBeLessThan(1);
+    }
   });
 
   it('deduplicates a replay referenced by multiple rounds', () => {

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Upload, X, Film, Trophy, Users, MapPin, Paperclip, Trash2,
   AlertTriangle, Pencil, Check,
-  Activity, Navigation, Star, Swords, Flame, Share2, FileDown, Sun, Moon,
+  Activity, Navigation, Flag, Swords, Flame, Share2, FileDown, Sun, Moon,
 } from 'lucide-react';
 import { useTheme } from './utils/useTheme';
 import { parseReplayCsv, looksLikeReplayCsv, timestampFromFilename } from './utils/replayParser';
@@ -467,7 +467,7 @@ const ROUND_TABS = [
   { key: 'playback', label: 'Playback', icon: Film },
   { key: 'attrition', label: 'Attrition', icon: Activity },
   { key: 'movement', label: 'Movement', icon: Navigation },
-  { key: 'leadership', label: 'Leadership', icon: Star },
+  { key: 'leadership', label: 'Flags & Officers', icon: Flag },
   { key: 'engagement', label: 'Engagement', icon: Swords },
   { key: 'heatmap', label: 'Heatmap', icon: Flame },
 ];
