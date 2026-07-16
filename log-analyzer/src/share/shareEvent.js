@@ -46,9 +46,15 @@ function serializeEvent(event) {
   };
 }
 
-// --- encode: event + replays → base64url payload string ---
+// --- encode: event + replays → { payload: base64url string, stride } ---
 
-export function encodeEventShare(event, replays) {
+// Keep the stored payload under this many base64 chars so it fits the share
+// store's per-request limit (Upstash's free tier caps a request at ~1 MB) and
+// the serverless body cap. Events too large for that are downsampled in time
+// (see stride, below) until they fit.
+const SHARE_BUDGET = 850_000;
+
+function buildAtStride(event, replays, stride) {
   const order = [];
   const blobs = [];
   const seen = new Set();
@@ -58,7 +64,7 @@ export function encodeEventShare(event, replays) {
     const replay = replays.get(rid);
     if (!replay) continue;
     seen.add(rid);
-    const buf = new Uint8Array(encodeQuantReplay(replay));
+    const buf = new Uint8Array(encodeQuantReplay(replay, stride));
     order.push({ id: rid, len: buf.byteLength });
     blobs.push(buf);
   }
@@ -75,10 +81,32 @@ export function encodeEventShare(event, replays) {
   let off = 5 + header.byteLength;
   for (const b of blobs) { container.set(b, off); off += b.byteLength; }
 
-  // level 6: near the size of level 9 on float-heavy position data but much
-  // faster, which is what keeps the (large) share build responsive.
-  const deflated = pako.deflateRaw(container, { level: 6 });
-  return bufferToBase64Url(deflated);
+  // level 6: near level 9's size on position data but much faster.
+  return bufferToBase64Url(pako.deflateRaw(container, { level: 6 }));
+}
+
+export function encodeEventShare(event, replays, { maxBytes = SHARE_BUDGET } = {}) {
+  // Estimate a starting stride from the total player-frames so a huge event
+  // usually fits on the first pass without an expensive full-resolution build.
+  // ~5.5 base64 bytes per quantized player-frame is a safe over-estimate.
+  let totalPF = 0;
+  const seen = new Set();
+  for (const round of event.rounds) {
+    const rid = round.replayId;
+    if (!rid || seen.has(rid)) continue;
+    seen.add(rid);
+    const rp = replays.get(rid);
+    if (rp) totalPF += rp.frameCount * rp.playerCount;
+  }
+  let stride = maxBytes > 0 ? Math.max(1, Math.ceil((totalPF * 5.5) / maxBytes)) : 1;
+  let payload = buildAtStride(event, replays, stride);
+
+  // Correct the estimate against the real compressed size (increase only).
+  for (let i = 0; i < 5 && maxBytes > 0 && payload.length > maxBytes && stride < 4096; i++) {
+    stride = Math.max(stride + 1, Math.ceil(stride * (payload.length / maxBytes) * 1.05));
+    payload = buildAtStride(event, replays, stride);
+  }
+  return { payload, stride };
 }
 
 // --- decode: base64url payload string → { event, replays: Map } ---
@@ -130,9 +158,10 @@ function shareBase() {
 }
 
 // Try the short link (Redis) first; fall back to an inline fragment on failure
-// (API down or payload over the server cap). Returns the shareable URL.
+// (API down or payload over the server cap). Returns { url, stride }, where
+// stride > 1 means the shared copy was downsampled in time to fit.
 export async function createEventShareUrl(event, replays) {
-  const encoded = encodeEventShare(event, replays);
+  const { payload: encoded, stride } = encodeEventShare(event, replays);
   try {
     const res = await fetch('/api/share', {
       method: 'POST',
@@ -141,12 +170,12 @@ export async function createEventShareUrl(event, replays) {
     });
     if (res.ok) {
       const { id } = await res.json();
-      return `${shareBase()}#s=${id}`;
+      return { url: `${shareBase()}#s=${id}`, stride };
     }
   } catch (err) {
     console.warn('Short share link failed, falling back to inline', err);
   }
-  return `${shareBase()}#share=${encoded}`;
+  return { url: `${shareBase()}#share=${encoded}`, stride };
 }
 
 // Inspect the URL hash for a share. Returns { pending, id } for a short link,

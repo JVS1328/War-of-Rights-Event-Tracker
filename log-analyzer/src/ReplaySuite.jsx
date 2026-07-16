@@ -233,10 +233,13 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
     try {
       // Yield once so the button's busy state paints before the encode runs.
       await new Promise((r) => setTimeout(r, 0));
-      const url = await createEventShareUrl(event, replays);
+      const { url, stride } = await createEventShareUrl(event, replays);
+      const note = stride > 1
+        ? ` Shared playback was thinned to 1 in every ${stride} frames so the link fits — your local copy is untouched.`
+        : '';
       try {
         await navigator.clipboard.writeText(url);
-        setNotice({ kind: 'info', text: 'Share link copied to clipboard.' });
+        setNotice({ kind: 'info', text: `Share link copied to clipboard.${note}` });
       } catch {
         setNotice({ kind: 'info', text: url });
       }
