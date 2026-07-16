@@ -5,23 +5,25 @@
 // behind a short id via /api/share (Redis) or inline in the URL fragment as a
 // fallback.
 //
-// Transport format (v2): a single binary container
+// Transport format (v3): a single binary container
 //
-//   [u8 version=2][u32 headerLen LE][header JSON utf-8][replay0][replay1]…
+//   [u8 version=3][u32 headerLen LE][header JSON utf-8][replay0][replay1]…
 //
-// deflated ONCE (raw binary) and base64url'd ONCE. The old v1 format base64'd
-// each replay blob, embedded those strings in JSON, then deflated + base64'd
-// the whole thing again — double-encoding that inflated the payload ~35% and
-// made deflate chew on already-base64'd bytes (which barely compress). Packing
-// the raw replay bytes and compressing them directly is both markedly faster
-// and small enough that events which used to overflow the short-link cap (and
-// fall back to multi-MB inline URLs) now get a real short link. v1 links are
-// still decoded for backward compatibility.
+// deflated ONCE (raw binary) and base64url'd ONCE. Two size wins stack here:
+//   1. No double-encoding. The old v1 format base64'd each replay, embedded
+//      those strings in JSON, then deflated + base64'd the whole thing again —
+//      inflating the payload and making deflate chew on already-base64'd bytes.
+//   2. Quantized replay blobs (see ./quantReplay): int16 positions, int8
+//      headings, dropped z — ~1/3 the bytes of the full-fidelity codec, which
+//      is what actually brings large multi-round events under the short-link
+//      cap instead of falling back to multi-MB inline URLs.
+// v2 (full-fidelity blobs) and v1 (legacy JSON) links are still decoded.
 
 import pako from 'pako';
-import { encodeReplay, decodeReplay, bufferToBase64Url, base64UrlToBuffer } from '../utils/replayCodec';
+import { decodeReplay, bufferToBase64Url, base64UrlToBuffer } from '../utils/replayCodec';
+import { encodeQuantReplay, decodeQuantReplay } from './quantReplay';
 
-const VERSION = 2;
+const VERSION = 3;
 const enc = new TextEncoder();
 const dec = new TextDecoder('utf-8');
 
@@ -56,7 +58,7 @@ export function encodeEventShare(event, replays) {
     const replay = replays.get(rid);
     if (!replay) continue;
     seen.add(rid);
-    const buf = new Uint8Array(encodeReplay(replay));
+    const buf = new Uint8Array(encodeQuantReplay(replay));
     order.push({ id: rid, len: buf.byteLength });
     blobs.push(buf);
   }
@@ -84,22 +86,26 @@ export function encodeEventShare(event, replays) {
 export function decodeEventShare(encoded) {
   const bytes = new Uint8Array(base64UrlToBuffer(encoded));
   const inflated = pako.inflateRaw(bytes);
-  if (inflated[0] === VERSION) return decodeV2(inflated);
-  return decodeV1(inflated); // legacy links (whole buffer is JSON)
+  const v = inflated[0];
+  if (v === 3) return decodeContainer(inflated, decodeQuantReplay); // quantized blobs
+  if (v === 2) return decodeContainer(inflated, decodeReplay);      // full-fidelity blobs
+  return decodeV1(inflated);                                        // legacy JSON
 }
 
-function decodeV2(inflated) {
+// Shared decode for the binary container formats (v2/v3); `decodeBlob` turns a
+// replay blob's ArrayBuffer back into a replay.
+function decodeContainer(inflated, decodeBlob) {
   const dv = new DataView(inflated.buffer, inflated.byteOffset, inflated.byteLength);
   const headerLen = dv.getUint32(1, true);
   const header = JSON.parse(dec.decode(inflated.subarray(5, 5 + headerLen)));
   let off = 5 + headerLen;
   const replays = new Map();
   for (const { id, len } of header.rp || []) {
-    // Copy each blob out to its own buffer so the Float32 views in
-    // decodeReplay land on a fresh, 4-byte-aligned ArrayBuffer.
+    // Copy each blob out to its own buffer so the typed-array views inside the
+    // decoder land on a fresh, aligned ArrayBuffer.
     const slice = inflated.slice(off, off + len);
     off += len;
-    try { replays.set(id, decodeReplay(slice.buffer)); }
+    try { replays.set(id, decodeBlob(slice.buffer)); }
     catch (err) { console.warn('Failed to decode shared replay', id, err); }
   }
   return { event: header.event, replays };

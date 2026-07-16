@@ -4,7 +4,7 @@ import { parseScoreboardCsv } from '../scoreboard/parseScoreboard';
 import { REPLAY_CSV, SCOREBOARD_CSV } from '../__fixtures__/synthetic';
 import { presenceOverTime, peakPresence, casualtiesOverTime, casualtiesByCause } from './presence';
 import { centroidsOverTime, centroidSeparation, distancePerPlayer, frontlineOverTime } from './movement';
-import { leadershipOverTime, leaderSpans } from './leadership';
+import { leadershipOverTime, leaderSpans, flagBearers } from './leadership';
 import { engagementOverTime, peakContactFrame } from './engagement';
 import { presencePoints, casualtyPoints } from './heatmap';
 import { regimentLabel, groupPlayersByRegiment } from './regiments';
@@ -80,6 +80,16 @@ describe('leadership', () => {
     expect(spans[0]).toMatchObject({ name: '[1stTX]Colonel_Alice', kind: 'officer', frames: 6 });
     const carol = spans.find((s) => s.name === '[2ndMS]Carol');
     expect(carol).toMatchObject({ kind: 'flag', frames: 5 });
+  });
+
+  it('ranks flag-bearers by longest alive-with-flag in a single life', () => {
+    // Carol carries frames 0-2 (3), dies at frame 3, recarries 4-5 (2). Best
+    // single life = 3 frames = 1.5s; total = 5 frames = 2.5s; picked up twice.
+    const fb = flagBearers(replay);
+    expect(fb).toHaveLength(1);
+    expect(fb[0]).toMatchObject({ name: '[2ndMS]Carol', team: 2, pickups: 2 });
+    expect(near(fb[0].bestLifeSeconds, 1.5)).toBe(true);
+    expect(near(fb[0].totalSeconds, 2.5)).toBe(true);
   });
 });
 
