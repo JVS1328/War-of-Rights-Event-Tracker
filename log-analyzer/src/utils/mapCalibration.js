@@ -5,7 +5,7 @@
 // (lifted verbatim from wor-rangefinder), so we convert meters → yards at
 // the boundary, then apply a 3-point affine to land on map pixels.
 
-const YARDS_PER_METER = 1.0936;
+export const YARDS_PER_METER = 1.0936;
 
 // Map id used internally. Keys match the rangefinder slugs.
 export const MAPS = {
@@ -85,6 +85,18 @@ export function worldMetersToMapPx(slug, xMeters, yMeters) {
   const x = xMeters * YARDS_PER_METER;
   const y = yMeters * YARDS_PER_METER;
   return { x: t.a * x + t.b * y + t.c, y: t.d * x + t.e * y + t.f };
+}
+
+// Approximate map-pixels per yard for a slug — the uniform scale of the affine
+// linear part (sqrt of its determinant). Used to draw a proximity circle whose
+// radius is expressed in yards. Returns null when the slug isn't recognized.
+// (The affine can shear slightly, so a true yard-circle is an ellipse in map
+// space; for the small radii used here this scalar is a fine approximation.)
+export function mapPxPerYard(slug) {
+  const t = TRANSFORMS[slug];
+  if (!t) return null;
+  const det = t.a * t.e - t.b * t.d;
+  return Math.sqrt(Math.abs(det));
 }
 
 // Project a heading vector (meter-space unit vector) to map-pixel space.

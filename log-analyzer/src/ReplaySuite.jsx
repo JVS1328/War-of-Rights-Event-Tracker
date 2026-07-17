@@ -544,7 +544,7 @@ function RoundView({ round, replay, onAttachScoreboard, onDetachScoreboard, onRe
 
           {/* tab content */}
           {tab === 'playback' && (
-            <ReplayViewer replay={replay} kills={sb?.kills || null} finalCasualties={finalCasualties} />
+            <ReplayViewer replay={replay} kills={sb?.kills || null} finalCasualties={finalCasualties} scoreboard={sb || null} />
           )}
           {tab === 'attrition' && <AttritionTimeline replay={replay} scoreboard={sb} />}
           {tab === 'movement' && <MovementFrontline replay={replay} />}
