@@ -64,8 +64,10 @@ function encodeBranch(s) {
 export function parseReplayCsv(text) {
   if (!looksLikeReplayCsv(text)) return null;
 
-  // Strip BOM, normalize newlines.
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  // Strip a leading BOM, normalize newlines. The BOM is written as the
+  // escape rather than a literal char so it isn't flagged as irregular
+  // whitespace in source.
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
 
   // --- header ---
   const meta = {};

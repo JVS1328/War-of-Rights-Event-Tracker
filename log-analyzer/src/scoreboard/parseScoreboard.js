@@ -40,9 +40,13 @@ export function looksLikeScoreboardCsv(text) {
 
 // Parse a scoreboard CSV into a round-shaped object:
 //   { startTime, endTime, duration, kills[], playerKills, playerFormations,
-//     metadata, players[], adjustedCasualties, isScoreboard }
+//     metadata, players[], roster[], adjustedCasualties, isScoreboard }
 // `kills[]` entries carry { player, victim, time, killer, cause,
-// victimFormation, victimTeam, killerTeam } when a kill log is present.
+// victimFormation, victimTeam, killerTeam, killerSteamId, victimSteamId } when a
+// kill log is present. `players[]` carry an optional `steamId`. `roster[]` (when
+// the scoreboard has a roster section) carries per-player
+// { name, team, regiment, company, className, rank, steamId } — the in-game
+// regiment/company/role the viewer surfaces on hover and in the side panel.
 export function parseScoreboardCsv(csvText) {
   const rawLines = csvText.split('\n').map(l => l.replace(/\r$/, ''));
   if (rawLines.length < 2) return null;
@@ -101,6 +105,18 @@ export function parseScoreboardCsv(csvText) {
     }
   }
 
+  // Find the roster section header (team,regiment,company,name,class,rank,
+  // steam_id) — it sits between the player rows and the kill log in newer
+  // scoreboards and carries each player's in-game regiment/company/role and
+  // SteamID. Absent in older/replay-only rounds, which is fine.
+  let rosterHeaderIdx = -1;
+  for (let i = playerEndIdx; i < rawLines.length; i++) {
+    if (rawLines[i].trim().toLowerCase().startsWith('team,regiment')) {
+      rosterHeaderIdx = i;
+      break;
+    }
+  }
+
   // Parse players.
   const nameIdx = playerHeader.indexOf('name');
   const teamIdx = playerHeader.indexOf('team');
@@ -109,6 +125,7 @@ export function parseScoreboardCsv(csvText) {
   const formIdx = playerHeader.indexOf('deaths_in_form');
   const skirmIdx = playerHeader.indexOf('deaths_skirm');
   const oobIdx = playerHeader.indexOf('deaths_oob');
+  const steamIdx = playerHeader.indexOf('steam_id');
 
   const players = [];
   for (let i = playerHeaderIdx + 1; i < playerEndIdx; i++) {
@@ -124,10 +141,44 @@ export function parseScoreboardCsv(csvText) {
     if (formIdx >= 0) player.deathsInForm = parseInt(parts[formIdx]) || 0;
     if (skirmIdx >= 0) player.deathsSkirm = parseInt(parts[skirmIdx]) || 0;
     if (oobIdx >= 0) player.deathsOob = parseInt(parts[oobIdx]) || 0;
+    // SteamID64s exceed Number.MAX_SAFE_INTEGER — keep as a string so the id
+    // survives round-tripping (used for Steam profile links in the viewer).
+    if (steamIdx >= 0) player.steamId = (parts[steamIdx] || '').trim() || null;
     players.push(player);
   }
 
   if (players.length === 0) return null;
+
+  // Parse the roster section if present. Rows end at the first blank line after
+  // the header. Regiment/company/class/rank/steamId are all optional per row
+  // (e.g. an "Unenlisted" player has no company or rank).
+  const roster = [];
+  if (rosterHeaderIdx >= 0) {
+    const rHeader = parseCSVLine(rawLines[rosterHeaderIdx]).map(h => h.toLowerCase().trim());
+    const rTeamIdx = rHeader.indexOf('team');
+    const rRegIdx = rHeader.indexOf('regiment');
+    const rCoyIdx = rHeader.indexOf('company');
+    const rNameIdx = rHeader.indexOf('name');
+    const rClassIdx = rHeader.indexOf('class');
+    const rRankIdx = rHeader.indexOf('rank');
+    const rSteamIdx = rHeader.indexOf('steam_id');
+    const cell = (parts, idx) => (idx >= 0 ? (parts[idx] || '').trim() : '');
+    for (let i = rosterHeaderIdx + 1; i < rawLines.length; i++) {
+      if (!rawLines[i].trim()) break;               // section ends at blank line
+      const parts = parseCSVLine(rawLines[i]);
+      const name = cell(parts, rNameIdx);
+      if (!name) continue;
+      roster.push({
+        name,
+        team: cell(parts, rTeamIdx) || null,        // text team ("USA"/"CSA")
+        regiment: cell(parts, rRegIdx) || null,
+        company: cell(parts, rCoyIdx) || null,
+        className: cell(parts, rClassIdx) || null,
+        rank: cell(parts, rRankIdx) || null,
+        steamId: cell(parts, rSteamIdx) || null,
+      });
+    }
+  }
 
   // Parse kill log if present.
   const killLog = [];
@@ -136,8 +187,10 @@ export function parseScoreboardCsv(csvText) {
     const tIdx = klHeader.indexOf('time');
     const krIdx = klHeader.indexOf('killer');
     const ktIdx = klHeader.indexOf('killer_team');
+    const ksIdx = klHeader.indexOf('killer_steam_id');
     const vIdx = klHeader.indexOf('victim');
     const vtIdx = klHeader.indexOf('victim_team');
+    const vsIdx = klHeader.indexOf('victim_steam_id');
     const vfIdx = klHeader.indexOf('victim_formation');
     const cIdx = klHeader.indexOf('cause');
 
@@ -151,8 +204,10 @@ export function parseScoreboardCsv(csvText) {
         time,
         killer: parts[krIdx >= 0 ? krIdx : 1].trim(),
         killerTeam: parseInt(parts[ktIdx >= 0 ? ktIdx : 2]),
+        killerSteamId: ksIdx >= 0 ? (parts[ksIdx] || '').trim() || null : null,
         victim: parts[vIdx >= 0 ? vIdx : 3].trim(),
         victimTeam: parseInt(parts[vtIdx >= 0 ? vtIdx : 4]),
+        victimSteamId: vsIdx >= 0 ? (parts[vsIdx] || '').trim() || null : null,
         victimFormation: vfIdx >= 0 ? parts[vfIdx].trim() : null,
         cause: cIdx >= 0 ? parts[cIdx].trim() : null,
       });
@@ -197,6 +252,8 @@ export function parseScoreboardCsv(csvText) {
       victimFormation: k.victimFormation,
       victimTeam: k.victimTeam,
       killerTeam: k.killerTeam,
+      killerSteamId: k.killerSteamId,
+      victimSteamId: k.victimSteamId,
     }));
 
     const times = killLog.map(k => k.time);
@@ -244,6 +301,7 @@ export function parseScoreboardCsv(csvText) {
     playerFormations,
     metadata: Object.keys(metadata).length > 0 ? metadata : null,
     players,
+    roster,
   };
 
   return scoreboard;

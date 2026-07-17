@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, X, Crosshair, Search, ChevronDown, ChevronUp, Skull } from 'lucide-react';
-import { MAPS, worldMetersToMapPx, headingToMapDelta } from './utils/mapCalibration.js';
+import {
+  Play, Pause, SkipBack, SkipForward, X, Crosshair, Search, ChevronDown, ChevronUp,
+  Skull, ExternalLink, Users,
+} from 'lucide-react';
+import { MAPS, worldMetersToMapPx, headingToMapDelta, mapPxPerYard } from './utils/mapCalibration.js';
 import { LEADER_KIND } from './utils/replayParser.js';
 import { roundStartSec, killToReplayTs, lastIndexLE } from './utils/killAlign.js';
+import {
+  buildPlayerDirectory, steamProfileUrl, shortCompany, groupEntriesByRegiment,
+} from './analytics/playerDirectory.js';
+import { countNearby } from './analytics/proximity.js';
+import { UNTAGGED } from './stats/regimentMatcher';
 
 // USA = team 1 = blue, CSA = team 2 = red. Hard-coded — replay is a god-view
 // (not a player POV), so friend/foe inversion doesn't apply.
@@ -51,7 +59,11 @@ function frameIndexForTime(frameTimes, targetSec) {
 //                     kill feed light up, aligned to replay t_s. Absent for a
 //                     replay-only round.
 //   finalCasualties — optional { usa, csa } round-final totals for the "X / Y".
-export default function ReplayViewer({ replay, kills = null, finalCasualties = null }) {
+//   scoreboard      — optional parsed scoreboard object. When present, its
+//                     roster/player rows enrich each replay player with an
+//                     in-game regiment/company/role + SteamID (surfaced on
+//                     hover, in the side panel, and via profile links).
+export default function ReplayViewer({ replay, kills = null, finalCasualties = null, scoreboard = null }) {
   // --- core playback state ---
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -59,6 +71,20 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
   const [followIdx, setFollowIdx] = useState(-1);
   const [playerFilter, setPlayerFilter] = useState('');
   const [feedCollapsed, setFeedCollapsed] = useState(false);
+
+  // --- player directory: replay players ↔ scoreboard roster/steam ---
+  const directory = useMemo(
+    () => buildPlayerDirectory(replay, scoreboard),
+    [replay, scoreboard],
+  );
+
+  // --- side-panel grouping: by regiment (default) or flat by team ---
+  const [panelGroupMode, setPanelGroupMode] = useState('regiment');
+
+  // --- proximity grouping overlay ---
+  const [groupRange, setGroupRange] = useState(false);
+  const [groupRadiusYd, setGroupRadiusYd] = useState(10);
+  const [groupScope, setGroupScope] = useState('team'); // 'team' | 'all'
 
   // --- canvas state ---
   const canvasRef = useRef(null);
@@ -215,12 +241,33 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
     };
   }, [view, canvasSize.w, canvasSize.h]);
 
-  const screenToMap = useCallback((sx, sy) => {
-    return {
-      x: (sx - canvasSize.w / 2) / view.zoom + view.panX,
-      y: (sy - canvasSize.h / 2) / view.zoom + view.panY,
-    };
-  }, [view, canvasSize.w, canvasSize.h]);
+  // Nearby-count for a player at the current frame, honoring the scope toggle.
+  const nearbyCount = useCallback(
+    (idx) => (idx == null || idx < 0)
+      ? 0
+      : countNearby(replay, frame, idx, groupRadiusYd, { sameTeamOnly: groupScope === 'team' }),
+    [replay, frame, groupRadiusYd, groupScope],
+  );
+
+  // --- proximity overlay: a DOM circle + count around the probed player ---
+  // The probe is whoever is hovered, else the followed player. Drawn as an
+  // absolutely-positioned element (not on the canvas) so hover-move doesn't
+  // force a full canvas repaint. Radius is projected from yards → map px →
+  // screen px via the map's affine scale and the current zoom.
+  const groupOverlay = useMemo(() => {
+    if (!groupRange || !mapSlug || groupRadiusYd <= 0) return null;
+    const target = hover ? hover.idx : (followIdx >= 0 ? followIdx : -1);
+    if (target < 0) return null;
+    const base = frame * replay.playerCount + target;
+    const wx = replay.tracks.x[base];
+    if (Number.isNaN(wx)) return null;
+    const mp = worldMetersToMapPx(mapSlug, wx, replay.tracks.y[base]);
+    if (!mp) return null;
+    const sp = mapToScreen(mp.x, mp.y);
+    const pxPerYard = mapPxPerYard(mapSlug) || 0;
+    const rPx = pxPerYard * groupRadiusYd * view.zoom;
+    return { x: sp.x, y: sp.y, rPx, count: nearbyCount(target) };
+  }, [groupRange, mapSlug, groupRadiusYd, hover, followIdx, frame, replay, mapToScreen, view.zoom, nearbyCount]);
 
   // --- follow camera: re-center every frame on the followed player ---
   useEffect(() => {
@@ -413,6 +460,11 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
   const currentTime   = (replay.frameTimes[frame] || 0) - baseTime;
 
   const followedPlayer = followIdx >= 0 ? replay.players[followIdx] : null;
+  const teams = [
+    { key: 'usa',   label: 'USA',   color: TEAM_COLOR[1], players: teamBuckets.usa },
+    { key: 'csa',   label: 'CSA',   color: TEAM_COLOR[2], players: teamBuckets.csa },
+    { key: 'other', label: 'Other', color: '#a3a3a3',     players: teamBuckets.other },
+  ];
   const presentCount = useMemo(() => {
     const P = replay.playerCount;
     const base = frame * P;
@@ -463,6 +515,52 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
           />
           <div className="absolute top-2 right-2 bg-surface/90 border border-border text-xs text-text px-2 py-1 rounded">
             {presentCount}/{replay.playerCount} alive
+          </div>
+
+          {/* Grouping range controls (bottom-left) */}
+          <div className="absolute bottom-2 left-2 bg-surface/90 border border-border rounded shadow-lg text-xs text-text px-2 py-1.5">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={groupRange}
+                onChange={e => setGroupRange(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              <Users className="w-3.5 h-3.5 text-accent" />
+              <span className="font-semibold">Grouping</span>
+            </label>
+            {groupRange && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="range"
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={groupRadiusYd}
+                    onChange={e => setGroupRadiusYd(parseInt(e.target.value, 10))}
+                    className="w-20 accent-[var(--accent)]"
+                    title="Grouping radius"
+                  />
+                  <span className="tabular-nums w-10">{groupRadiusYd} yd</span>
+                </div>
+                <div className="flex rounded overflow-hidden border border-border">
+                  <button
+                    onClick={() => setGroupScope('team')}
+                    className={`px-1.5 py-0.5 text-[10px] transition ${groupScope === 'team' ? 'bg-accent text-[#14110a]' : 'bg-elevated text-text hover:bg-border-strong'}`}
+                    title="Count only same-team players"
+                  >Team</button>
+                  <button
+                    onClick={() => setGroupScope('all')}
+                    className={`px-1.5 py-0.5 text-[10px] transition ${groupScope === 'all' ? 'bg-accent text-[#14110a]' : 'bg-elevated text-text hover:bg-border-strong'}`}
+                    title="Count all nearby players"
+                  >All</button>
+                </div>
+              </div>
+            )}
+            {groupRange && (
+              <div className="mt-1 text-faint text-[10px]">Hover or select a player to count their group.</div>
+            )}
           </div>
 
           {/* Live casualty panel + kill feed (top-left, collapsible) */}
@@ -528,19 +626,44 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
               )}
             </div>
           )}
+          {/* Proximity grouping circle + count (probes hovered/followed player) */}
+          {groupOverlay && (
+            <>
+              <div
+                className="absolute pointer-events-none rounded-full border-2 border-accent/70"
+                style={{
+                  left: groupOverlay.x - groupOverlay.rPx,
+                  top: groupOverlay.y - groupOverlay.rPx,
+                  width: groupOverlay.rPx * 2,
+                  height: groupOverlay.rPx * 2,
+                  background: 'rgba(251,191,36,0.08)',
+                }}
+              />
+              <div
+                className="absolute pointer-events-none flex items-center gap-1 bg-accent text-[#14110a] text-[11px] font-bold px-1.5 py-0.5 rounded shadow -translate-x-1/2"
+                style={{ left: groupOverlay.x, top: groupOverlay.y - groupOverlay.rPx - 20 }}
+                title={`${groupOverlay.count} ${groupScope === 'team' ? 'friendly' : ''} within ${groupRadiusYd} yd`.trim()}
+              >
+                <Users className="w-3 h-3" /> {groupOverlay.count}
+              </div>
+            </>
+          )}
           {hover && (() => {
             const p = replay.players[hover.idx];
+            const detail = directory.details[hover.idx] || {};
             const color = TEAM_COLOR[p.team] || '#a3a3a3';
             const kind = leaderKindForFrame(replay, frame, hover.idx);
-            const role = kind === LEADER_KIND.OFFICER ? 'Officer'
-                       : kind === LEADER_KIND.FLAG    ? 'Flag bearer'
-                       :                                 null;
+            const leaderRole = kind === LEADER_KIND.OFFICER ? 'Officer'
+                             : kind === LEADER_KIND.FLAG    ? 'Flag bearer'
+                             :                                 null;
+            const regiment = detail.regiment || (detail.tagRegiment && detail.tagRegiment !== UNTAGGED ? detail.tagRegiment : null);
+            const near = groupRange ? nearbyCount(hover.idx) : null;
             // Clamp inside the container so the tooltip doesn't clip off-screen.
             const left = Math.min(hover.x + 12, canvasSize.w - 220);
-            const top  = Math.min(hover.y + 12, canvasSize.h - 60);
+            const top  = Math.min(hover.y + 12, canvasSize.h - 96);
             return (
               <div
-                className="absolute pointer-events-none bg-surface/90 border border-border rounded px-2 py-1 text-xs text-text shadow-lg max-w-[220px]"
+                className="absolute pointer-events-none bg-surface/95 border border-border rounded px-2 py-1 text-xs text-text shadow-lg max-w-[220px]"
                 style={{ left, top }}
               >
                 <div className="flex items-center gap-1.5 font-semibold">
@@ -548,8 +671,21 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
                   <span className="truncate">{p.name}</span>
                 </div>
                 <div className="text-muted text-[10px]">
-                  {TEAM_NAME[p.team] || `Team ${p.team}`}{role && ` · ${role}`}
+                  {TEAM_NAME[p.team] || `Team ${p.team}`}{leaderRole && ` · ${leaderRole}`}
                 </div>
+                {regiment && (
+                  <div className="text-[10px] mt-0.5">
+                    <span className="text-accent">{regiment}</span>
+                    {detail.company && <span className="text-muted"> · {detail.company}</span>}
+                  </div>
+                )}
+                {detail.role && <div className="text-muted text-[10px]">{detail.role}</div>}
+                {near != null && (
+                  <div className="text-[10px] mt-0.5 flex items-center gap-1 text-accent">
+                    <Users className="w-3 h-3" /> {near} {groupScope === 'team' ? 'friendly' : 'nearby'} within {groupRadiusYd} yd
+                  </div>
+                )}
+                {detail.steamId && <div className="text-faint text-[10px] mt-0.5">Click to select · Steam link in panel</div>}
               </div>
             );
           })()}
@@ -557,46 +693,71 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
 
         {/* player list */}
         <div className="bg-surface rounded p-2 flex flex-col" style={{ height: '60vh', minHeight: '480px' }}>
-          <div className="relative mb-2">
-            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
-            <input
-              type="text"
-              value={playerFilter}
-              onChange={e => setPlayerFilter(e.target.value)}
-              placeholder="Filter…"
-              className="w-full pl-7 pr-2 py-1 text-xs inset text-text focus:outline-none focus:border-accent"
+          {/* selected (followed) player detail card */}
+          {followedPlayer && (
+            <SelectedPlayerCard
+              player={followedPlayer}
+              detail={directory.details[followIdx]}
+              color={TEAM_COLOR[followedPlayer.team] || '#a3a3a3'}
+              teamName={TEAM_NAME[followedPlayer.team] || `Team ${followedPlayer.team}`}
+              leaderKind={leaderKindForFrame(replay, frame, followIdx)}
+              nearby={groupRange ? nearbyCount(followIdx) : null}
+              groupScope={groupScope}
+              groupRadiusYd={groupRadiusYd}
+              onClear={() => setFollowIdx(-1)}
             />
+          )}
+          <div className="flex items-center gap-1.5 mb-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-faint" />
+              <input
+                type="text"
+                value={playerFilter}
+                onChange={e => setPlayerFilter(e.target.value)}
+                placeholder="Filter…"
+                className="w-full pl-7 pr-2 py-1 text-xs inset text-text focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div className="flex rounded overflow-hidden border border-border shrink-0" title="Group the roster by regiment or flat by team">
+              <button
+                onClick={() => setPanelGroupMode('regiment')}
+                className={`px-1.5 py-1 text-[10px] transition ${panelGroupMode === 'regiment' ? 'bg-accent text-[#14110a]' : 'bg-elevated text-text hover:bg-border-strong'}`}
+              >Regt</button>
+              <button
+                onClick={() => setPanelGroupMode('team')}
+                className={`px-1.5 py-1 text-[10px] transition ${panelGroupMode === 'team' ? 'bg-accent text-[#14110a]' : 'bg-elevated text-text hover:bg-border-strong'}`}
+              >Team</button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto space-y-2">
-            <PlayerGroup
-              label={`USA (${teamBuckets.usa.length})`}
-              color={TEAM_COLOR[1]}
-              players={teamBuckets.usa.filter(filterMatch)}
-              followIdx={followIdx}
-              onPick={setFollowIdx}
-              frame={frame}
-              replay={replay}
-            />
-            <PlayerGroup
-              label={`CSA (${teamBuckets.csa.length})`}
-              color={TEAM_COLOR[2]}
-              players={teamBuckets.csa.filter(filterMatch)}
-              followIdx={followIdx}
-              onPick={setFollowIdx}
-              frame={frame}
-              replay={replay}
-            />
-            {teamBuckets.other.length > 0 && (
-              <PlayerGroup
-                label={`Other (${teamBuckets.other.length})`}
-                color="#a3a3a3"
-                players={teamBuckets.other.filter(filterMatch)}
-                followIdx={followIdx}
-                onPick={setFollowIdx}
-                frame={frame}
-                replay={replay}
-              />
-            )}
+            {teams.map(t => {
+              const entries = t.players.filter(filterMatch);
+              if (!entries.length) return null;
+              return panelGroupMode === 'regiment' ? (
+                <RegimentTeamSection
+                  key={t.key}
+                  team={t}
+                  entries={entries}
+                  directory={directory}
+                  followIdx={followIdx}
+                  onPick={setFollowIdx}
+                  frame={frame}
+                  replay={replay}
+                />
+              ) : (
+                <PlayerGroup
+                  key={t.key}
+                  label={`${t.label} (${t.players.length})`}
+                  color={t.color}
+                  players={entries}
+                  followIdx={followIdx}
+                  onPick={setFollowIdx}
+                  frame={frame}
+                  replay={replay}
+                  directory={directory}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -656,11 +817,8 @@ export default function ReplayViewer({ replay, kills = null, finalCasualties = n
   );
 }
 
-function PlayerGroup({ label, color, players, followIdx, onPick, frame, replay }) {
+function PlayerGroup({ label, color, players, followIdx, onPick, frame, replay, directory }) {
   if (players.length === 0) return null;
-  const P = replay.playerCount;
-  const base = frame * P;
-  const xs = replay.tracks.x;
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-wide mb-1 flex items-center gap-2" style={{ color }}>
@@ -668,26 +826,168 @@ function PlayerGroup({ label, color, players, followIdx, onPick, frame, replay }
         {label}
       </div>
       <div className="space-y-0.5">
-        {players.map(p => {
-          const alive = !Number.isNaN(xs[base + p.index]);
-          const isFollowed = p.index === followIdx;
-          return (
-            <button
-              key={p.index}
-              onClick={() => onPick(isFollowed ? -1 : p.index)}
-              className={`w-full text-left text-xs px-1.5 py-0.5 rounded flex items-center gap-1.5 transition ${
-                isFollowed ? 'bg-accent text-[#14110a]' :
-                alive       ? 'text-text hover:bg-elevated' :
-                              'text-faint hover:bg-elevated'
-              }`}
-              title={p.name}
-            >
-              <LeaderGlyph kind={leaderKindForFrame(replay, frame, p.index)} color={color} />
-              <span className="truncate">{p.name}</span>
-            </button>
-          );
-        })}
+        {players.map(p => (
+          <PlayerRow
+            key={p.index}
+            entry={p}
+            detail={directory?.details[p.index]}
+            color={color}
+            frame={frame}
+            replay={replay}
+            followIdx={followIdx}
+            onPick={onPick}
+          />
+        ))}
       </div>
+    </div>
+  );
+}
+
+// One team's players grouped by regiment (with company splits). Used when the
+// side panel is in "Regt" mode.
+function RegimentTeamSection({ team, entries, directory, followIdx, onPick, frame, replay }) {
+  const groups = groupEntriesByRegiment(entries, directory.details);
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide mb-1 flex items-center gap-2" style={{ color: team.color }}>
+        <span className="inline-block w-2 h-2 rounded-full" style={{ background: team.color }} />
+        {team.label} ({entries.length})
+      </div>
+      <div className="space-y-1.5">
+        {groups.map(g => (
+          <div key={g.regiment}>
+            <div className="flex items-center gap-1.5 px-1 py-0.5 text-[11px]">
+              <span className="font-semibold text-text truncate" title={g.regiment}>
+                {g.regiment === UNTAGGED ? 'Untagged' : g.regiment}
+              </span>
+              <span className="text-faint tabular-nums">{g.count}</span>
+              {g.companies.length > 0 && (
+                <span className="ml-auto flex items-center gap-1 flex-wrap justify-end">
+                  {g.companies.map(c => (
+                    <span key={c.company} className="text-[10px] text-muted bg-elevated rounded px-1 tabular-nums" title={`${c.company}: ${c.count}`}>
+                      {shortCompany(c.company)} {c.count}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
+            <div className="space-y-0.5 pl-1 border-l border-border ml-1">
+              {g.entries.map(p => (
+                <PlayerRow
+                  key={p.index}
+                  entry={p}
+                  detail={directory.details[p.index]}
+                  color={team.color}
+                  frame={frame}
+                  replay={replay}
+                  followIdx={followIdx}
+                  onPick={onPick}
+                  showCompany
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A single player row: leader glyph, name, optional company chip, and a Steam
+// profile link when a SteamID resolved. The row itself toggles follow; the
+// Steam link is a separate anchor so it doesn't hijack the follow click.
+function PlayerRow({ entry, detail, color, frame, replay, followIdx, onPick, showCompany = false }) {
+  const P = replay.playerCount;
+  const alive = !Number.isNaN(replay.tracks.x[frame * P + entry.index]);
+  const isFollowed = entry.index === followIdx;
+  const steam = detail?.steamId ? steamProfileUrl(detail.steamId) : null;
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onPick(isFollowed ? -1 : entry.index)}
+        className={`flex-1 min-w-0 text-left text-xs px-1.5 py-0.5 rounded flex items-center gap-1.5 transition ${
+          isFollowed ? 'bg-accent text-[#14110a]' :
+          alive       ? 'text-text hover:bg-elevated' :
+                        'text-faint hover:bg-elevated'
+        }`}
+        title={entry.name}
+      >
+        <LeaderGlyph kind={leaderKindForFrame(replay, frame, entry.index)} color={color} />
+        <span className="truncate">{entry.name}</span>
+        {showCompany && detail?.company && (
+          <span className={`ml-auto shrink-0 text-[10px] rounded px-1 tabular-nums ${isFollowed ? 'bg-[#14110a]/15' : 'bg-elevated text-muted'}`}>
+            {shortCompany(detail.company)}
+          </span>
+        )}
+      </button>
+      {steam && <SteamLink url={steam} />}
+    </div>
+  );
+}
+
+function SteamLink({ url }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      onClick={e => e.stopPropagation()}
+      className="shrink-0 p-1 rounded text-faint hover:text-accent hover:bg-elevated transition"
+      title="Open Steam profile"
+    >
+      <ExternalLink className="w-3 h-3" />
+    </a>
+  );
+}
+
+// Detail card for the currently-followed player, shown atop the side panel.
+function SelectedPlayerCard({ player, detail, color, teamName, leaderKind, nearby, groupScope, groupRadiusYd, onClear }) {
+  const d = detail || {};
+  const leaderRole = leaderKind === LEADER_KIND.OFFICER ? 'Officer'
+                   : leaderKind === LEADER_KIND.FLAG    ? 'Flag bearer'
+                   :                                       null;
+  const regiment = d.regiment || (d.tagRegiment && d.tagRegiment !== UNTAGGED ? d.tagRegiment : null);
+  const steam = d.steamId ? steamProfileUrl(d.steamId) : null;
+  return (
+    <div className="mb-2 rounded border border-border bg-elevated/60 px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <Crosshair className="w-3.5 h-3.5 shrink-0" style={{ color }} />
+        <span className="font-semibold text-sm truncate" title={player.name}>{player.name}</span>
+        <button onClick={onClear} className="ml-auto shrink-0 text-faint hover:text-text" title="Stop following">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="text-[11px] text-muted mt-0.5">
+        <span style={{ color }}>{teamName}</span>{leaderRole && <span> · {leaderRole}</span>}
+      </div>
+      {(regiment || d.role) && (
+        <div className="text-[11px] mt-0.5 leading-snug">
+          {regiment && (
+            <div>
+              <span className="text-accent">{regiment}</span>
+              {d.company && <span className="text-muted"> · {d.company}</span>}
+            </div>
+          )}
+          {d.role && <div className="text-muted">{d.role}</div>}
+        </div>
+      )}
+      {nearby != null && (
+        <div className="text-[11px] mt-1 flex items-center gap-1 text-accent">
+          <Users className="w-3 h-3" /> {nearby} {groupScope === 'team' ? 'friendly' : 'nearby'} within {groupRadiusYd} yd
+        </div>
+      )}
+      {steam ? (
+        <a
+          href={steam}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-accent hover:text-accent-hover"
+        >
+          <ExternalLink className="w-3 h-3" /> Steam profile
+        </a>
+      ) : (
+        <div className="mt-1.5 text-[10px] text-faint">No SteamID (attach a scoreboard with a roster)</div>
+      )}
     </div>
   );
 }
