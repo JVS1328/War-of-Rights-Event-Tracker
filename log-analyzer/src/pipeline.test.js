@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { parseReplayCsv, looksLikeReplayCsv, timestampFromFilename } from './utils/replayParser';
 import { parseScoreboardCsv, looksLikeScoreboardCsv } from './scoreboard/parseScoreboard';
-import { makeRound, upsertRound, nearestRoundForTimestamp, newEvent } from './event/eventStore';
+import {
+  makeRound, upsertRound, nearestRoundForTimestamp, newEvent,
+  matchScoreboardsToRounds, scoreboardStartSec,
+} from './event/eventStore';
 
 // A tiny synthetic replay: 3 players over 6 frames on Antietam. Carol (idx 2)
 // is intentionally missing from frame index 3 (t_s 1.5) to exercise the
@@ -120,5 +123,132 @@ describe('event model', () => {
     // a scoreboard hours away doesn't match
     const farTs = timestampFromFilename('scoreboard_20260715_180000.csv').getTime();
     expect(nearestRoundForTimestamp(evt, farTs)).toBe(null);
+  });
+});
+
+// End-to-end of the ReplaySuite ingest path: two real replays + two real
+// scoreboards, uploaded together. Replay filenames are stamped at round END and
+// scoreboard filenames at round START, the offset that used to pile both
+// scoreboards onto the first round. The batch matcher must keep them 1:1.
+describe('two-round ingest (regression: scoreboards must not merge)', () => {
+  // Round 1 — round starts 20:00:00 (hms), replay saved (filename) at 20:12.
+  const REPLAY_1 = `map,Antietam
+mode,Skirmish
+area,The Cornfield
+winner,1
+sample_rate_hz,2.0
+samples,2
+
+t_s,hms,name,team,x,y,z,fwd_x,fwd_y,branch,role_idx,leader_kind,regiment_crc,company
+0.0,20:00:00,[1stTX]Alice,1,1620,2600,10,1,0,inf,0,officer,tx01,0
+0.0,20:00:00,[2ndMS]Bob,2,1500,2620,10,-1,0,inf,0,none,ms02,0
+0.5,20:00:00,[1stTX]Alice,1,1626,2601,10,1,0,inf,0,officer,tx01,0
+0.5,20:00:00,[2ndMS]Bob,2,1496,2618,10,-1,0,inf,0,none,ms02,0
+`;
+  // Round 2 — round starts 20:13:00 (hms), replay saved (filename) at 20:27.
+  const REPLAY_2 = `map,Antietam
+mode,Skirmish
+area,The Sunken Road
+winner,2
+sample_rate_hz,2.0
+samples,2
+
+t_s,hms,name,team,x,y,z,fwd_x,fwd_y,branch,role_idx,leader_kind,regiment_crc,company
+0.0,20:13:00,[1stTX]Alice,1,1720,2700,10,1,0,inf,0,officer,tx01,0
+0.0,20:13:00,[9thNY]Cara,1,1700,2680,10,1,0,inf,0,none,ny09,0
+0.5,20:13:00,[1stTX]Alice,1,1726,2701,10,1,0,inf,0,officer,tx01,0
+0.5,20:13:00,[9thNY]Cara,1,1696,2698,10,1,0,inf,0,none,ny09,0
+`;
+  const SCOREBOARD_1 = `map,Antietam
+area,The Cornfield
+winner,1
+round_start_time,20:00:00
+round_end_time,20:12:00
+casualties_usa,0
+casualties_csa,1
+
+name,team,kills,deaths
+[1stTX]Alice,1,1,0
+[2ndMS]Bob,2,0,1
+
+time,killer,killer_team,victim,victim_team,victim_formation,cause
+20:05:00,[1stTX]Alice,1,[2ndMS]Bob,2,skirm,Rifle
+`;
+  const SCOREBOARD_2 = `map,Antietam
+area,The Sunken Road
+winner,2
+round_start_time,20:13:00
+round_end_time,20:27:00
+casualties_usa,1
+casualties_csa,0
+
+name,team,kills,deaths
+[1stTX]Alice,1,0,1
+[9thNY]Cara,1,0,0
+
+time,killer,killer_team,victim,victim_team,victim_formation,cause
+20:20:00,[3rdAR]Dan,2,[1stTX]Alice,1,in_form,Minie
+`;
+
+  // Mirror of the (module-private) updateRound helper in ReplaySuite.
+  const updateRound = (event, roundId, patch) => ({
+    ...event,
+    rounds: event.rounds.map(r => (r.id === roundId ? { ...r, ...patch } : r)),
+  });
+
+  it('attaches each scoreboard to its own round despite the filename offset', () => {
+    // --- build rounds from the two replays (as ingestFiles does) ---
+    let evt = newEvent();
+    const p1 = parseReplayCsv(REPLAY_1);
+    const p2 = parseReplayCsv(REPLAY_2);
+    evt = upsertRound(evt, makeRound('r1', 'replay_20260718_201200.csv', p1, timestampFromFilename));
+    evt = upsertRound(evt, makeRound('r2', 'replay_20260718_202700.csv', p2, timestampFromFilename));
+
+    // sanity: the replays expose their real round-start seconds
+    const roundStartSec = (h, m) => h * 3600 + m * 60;
+    expect(evt.rounds.find(r => r.id === 'r1').meta.roundStartSec).toBe(roundStartSec(20, 0));
+    expect(evt.rounds.find(r => r.id === 'r2').meta.roundStartSec).toBe(roundStartSec(20, 13));
+
+    // --- the batch scoreboard match (as ingestFiles does) ---
+    const files = [
+      { name: 'scoreboard_20260718_200000.csv', text: SCOREBOARD_1 }, // round 1 (start-stamped)
+      { name: 'scoreboard_20260718_201300.csv', text: SCOREBOARD_2 }, // round 2 (start-stamped)
+    ];
+    const parsedScoreboards = files.map(f => {
+      const sb = parseScoreboardCsv(f.text);
+      const d = timestampFromFilename(f.name);
+      return { name: f.name, sb, ts: d ? d.getTime() : null, startSec: scoreboardStartSec(sb) };
+    });
+    const roundInfos = evt.rounds.map(r => ({
+      id: r.id, ts: r.ts, startSec: r.meta?.roundStartSec ?? null, hasScoreboard: !!r.scoreboard,
+    }));
+    const { assignments, unmatched } = matchScoreboardsToRounds(roundInfos, parsedScoreboards);
+    parsedScoreboards.forEach((ps, idx) => {
+      if (assignments[idx]) evt = updateRound(evt, assignments[idx], { scoreboard: ps.sb, scoreboardFilename: ps.name });
+    });
+
+    // --- assert: no merge. Each round keeps its own scoreboard. ---
+    expect(unmatched).toEqual([]);
+    const r1 = evt.rounds.find(r => r.id === 'r1');
+    const r2 = evt.rounds.find(r => r.id === 'r2');
+    expect(r1.scoreboardFilename).toBe('scoreboard_20260718_200000.csv');
+    expect(r2.scoreboardFilename).toBe('scoreboard_20260718_201300.csv');
+    expect(r1.scoreboard.metadata.area).toBe('The Cornfield');
+    expect(r2.scoreboard.metadata.area).toBe('The Sunken Road');
+    // the two rounds hold distinct scoreboards — the reported bug is gone
+    expect(r1.scoreboard).not.toBe(r2.scoreboard);
+    expect(r1.scoreboard.metadata.round_start_time).toBe('20:00:00');
+    expect(r2.scoreboard.metadata.round_start_time).toBe('20:13:00');
+  });
+
+  it('the old per-file nearest match would have collapsed them (documents the bug)', () => {
+    let evt = newEvent();
+    evt = upsertRound(evt, makeRound('r1', 'replay_20260718_201200.csv', parseReplayCsv(REPLAY_1), timestampFromFilename));
+    evt = upsertRound(evt, makeRound('r2', 'replay_20260718_202700.csv', parseReplayCsv(REPLAY_2), timestampFromFilename));
+    const sb1Ts = timestampFromFilename('scoreboard_20260718_200000.csv').getTime();
+    const sb2Ts = timestampFromFilename('scoreboard_20260718_201300.csv').getTime();
+    // Both nearest-match to the same round — the behaviour we replaced.
+    expect(nearestRoundForTimestamp(evt, sb1Ts)).toBe('r1');
+    expect(nearestRoundForTimestamp(evt, sb2Ts)).toBe('r1');
   });
 });
