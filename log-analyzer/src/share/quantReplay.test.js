@@ -1,9 +1,38 @@
 import { describe, it, expect } from 'vitest';
+import pako from 'pako';
 import { parseReplayCsv } from '../utils/replayParser';
 import { REPLAY_CSV } from '../__fixtures__/synthetic';
 import { encodeQuantReplay, decodeQuantReplay } from './quantReplay';
 
 const replay = parseReplayCsv(REPLAY_CSV);
+
+// A realistically-sized replay (players doing smooth random walks with a few
+// presence gaps) so the delta encoding's compression win is visible — the tiny
+// hand fixture is dominated by fixed header/JSON overhead.
+function syntheticReplay(P, F, seed = 5) {
+  let s = seed >>> 0;
+  const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  const N = F * P;
+  const x = new Float32Array(N), y = new Float32Array(N), z = new Float32Array(N);
+  const fx = new Float32Array(N), fy = new Float32Array(N); const lk = new Uint8Array(N);
+  x.fill(NaN);
+  const px = [], py = [], va = [];
+  for (let p = 0; p < P; p++) { px[p] = 1000 + rnd() * 2000; py[p] = 1000 + rnd() * 2000; va[p] = rnd() * 6.28; }
+  for (let f = 0; f < F; f++) for (let p = 0; p < P; p++) {
+    const i = f * P + p;
+    if ((f + p) % 97 < 2) continue; // sparse presence gaps
+    va[p] += (rnd() - 0.5) * 0.3; const sp = 1 + rnd() * 1.2;
+    px[p] += Math.cos(va[p]) * sp; py[p] += Math.sin(va[p]) * sp;
+    x[i] = px[p]; y[i] = py[p]; z[i] = 10;
+    fx[i] = Math.cos(va[p]); fy[i] = Math.sin(va[p]); lk[i] = 0;
+  }
+  return {
+    meta: { map: 'Antietam', area: 'The Cornfield', roundStartSec: 50400, sampleRateHz: 2, sampleCount: F },
+    players: Array.from({ length: P }, (_, p) => ({ name: `[Reg${p % 12}]Player_${p}`, team: 1 + (p % 2) })),
+    frameTimes: Float32Array.from({ length: F }, (_, f) => f * 0.5),
+    tracks: { x, y, z, fx, fy, lk }, frameCount: F, playerCount: P,
+  };
+}
 
 describe('quantized share replay', () => {
   it('round-trips positions within tolerance and preserves the sampled mask + leader kind', () => {
@@ -52,10 +81,30 @@ describe('quantized share replay', () => {
     expect(r.tracks.z.every((v) => v === 0)).toBe(true);
   });
 
-  it('is much smaller than the full-fidelity codec', async () => {
+  it('deflates to far less than the full-fidelity codec (the share metric)', async () => {
+    // Share payloads are deflated before storage, and the delta encoding is
+    // built to compress well there — so compare deflated sizes on a realistic
+    // replay, which is what actually determines how many frames fit a share.
     const { encodeReplay } = await import('../utils/replayCodec');
-    const full = encodeReplay(replay).byteLength;
-    const quant = encodeQuantReplay(replay).byteLength;
-    expect(quant).toBeLessThan(full * 0.75);
+    const big = syntheticReplay(48, 900);
+    const full = pako.deflateRaw(new Uint8Array(encodeReplay(big)), { level: 6 }).length;
+    const quant = pako.deflateRaw(new Uint8Array(encodeQuantReplay(big)), { level: 6 }).length;
+    expect(quant).toBeLessThan(full * 0.5);
+  });
+
+  it('round-trips a realistic multi-hundred-frame replay with gaps', () => {
+    const big = syntheticReplay(32, 600, 9);
+    const r = decodeQuantReplay(encodeQuantReplay(big));
+    expect(r.frameCount).toBe(600);
+    expect(r.playerCount).toBe(32);
+    const N = 600 * 32;
+    let sampled = 0;
+    for (let i = 0; i < N; i++) {
+      if (Number.isNaN(big.tracks.x[i])) { expect(Number.isNaN(r.tracks.x[i])).toBe(true); continue; }
+      sampled++;
+      expect(Math.abs(r.tracks.x[i] - big.tracks.x[i])).toBeLessThan(0.5);
+      expect(Math.abs(r.tracks.y[i] - big.tracks.y[i])).toBeLessThan(0.5);
+    }
+    expect(sampled).toBeGreaterThan(15000);
   });
 });

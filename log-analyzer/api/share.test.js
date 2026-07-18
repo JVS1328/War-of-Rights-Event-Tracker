@@ -117,4 +117,58 @@ describe('api/share handler', () => {
     expect((await call('GET', { query: { id: 'deadbeef' } })).statusCode).toBe(404);
     expect((await call('POST', { body: {} })).statusCode).toBe(400);
   });
+
+  // --- chunked uploads (large events) ---------------------------------------
+
+  const ID = 'abcd1234';
+
+  it('stores chunks under per-index keys and a manifest, then serves them back', async () => {
+    // Upload 3 chunks...
+    for (let i = 0; i < 3; i++) {
+      expect((await call('POST', { body: { id: ID, index: i, chunk: `part${i}` } })).body).toEqual({ ok: true });
+    }
+    // ...then the manifest.
+    expect((await call('POST', { body: { id: ID, total: 3 } })).body).toEqual({ id: ID });
+    expect(kv.get(`analyzer-share:${ID}`)).toBe(JSON.stringify({ n: 3 }));
+    expect(kv.get(`analyzer-share:${ID}:1`)).toBe('part1');
+
+    // GET the id → manifest (not a raw payload).
+    expect((await call('GET', { query: { id: ID } })).body).toEqual({ chunked: true, total: 3 });
+    // GET each chunk back.
+    for (let i = 0; i < 3; i++) {
+      expect((await call('GET', { query: { id: ID, chunk: String(i) } })).body).toEqual({ chunk: `part${i}` });
+    }
+  });
+
+  it('reassembles a chunked payload byte-for-byte', async () => {
+    const parts = ['AAAA', 'BBBB', 'CC'];
+    for (let i = 0; i < parts.length; i++) await call('POST', { body: { id: ID, index: i, chunk: parts[i] } });
+    await call('POST', { body: { id: ID, total: parts.length } });
+
+    const manifest = (await call('GET', { query: { id: ID } })).body;
+    let joined = '';
+    for (let i = 0; i < manifest.total; i++) {
+      joined += (await call('GET', { query: { id: ID, chunk: String(i) } })).body.chunk;
+    }
+    expect(joined).toBe('AAAABBBBCC');
+  });
+
+  it('rejects a bad id, an oversized chunk, and too many chunks', async () => {
+    expect((await call('POST', { body: { id: 'NOPE', index: 0, chunk: 'x' } })).statusCode).toBe(400);
+    const huge = 'x'.repeat(600_001);
+    expect((await call('POST', { body: { id: ID, index: 0, chunk: huge } })).statusCode).toBe(413);
+    expect((await call('POST', { body: { id: ID, total: 2000 } })).statusCode).toBe(413);
+    expect((await call('POST', { body: { id: ID, total: 0 } })).statusCode).toBe(400);
+  });
+
+  it('404s a chunk GET for an unwritten index', async () => {
+    expect((await call('GET', { query: { id: ID, chunk: '5' } })).statusCode).toBe(404);
+  });
+
+  it('does not overwrite an already-stored chunk (write-once), refreshes TTL', async () => {
+    kv.set(`analyzer-share:${ID}:0`, 'ORIGINAL');
+    expect((await call('POST', { body: { id: ID, index: 0, chunk: 'REPLACEMENT' } })).statusCode).toBe(200);
+    expect(kv.get(`analyzer-share:${ID}:0`)).toBe('ORIGINAL');
+    expect(expires).toContainEqual({ key: `analyzer-share:${ID}:0`, seconds: 31_536_000 });
+  });
 });
