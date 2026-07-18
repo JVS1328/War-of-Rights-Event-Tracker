@@ -48,11 +48,13 @@ function serializeEvent(event) {
 
 // --- encode: event + replays → { payload: base64url string, stride } ---
 
-// Keep the stored payload under this many base64 chars so it fits the share
-// store's per-request limit (Upstash's free tier caps a request at ~1 MB) and
-// the serverless body cap. Events too large for that are downsampled in time
-// (see stride, below) until they fit.
-const SHARE_BUDGET = 850_000;
+// Target size (base64 chars) for the whole stored payload. Uploads are now
+// CHUNKED (see putSharePayload), so this is no longer bounded by the store's
+// ~1 MB per-request limit — it's a fidelity/UX budget: how much we're willing
+// to store and have the recipient download+decode before trading playback
+// frames away via `stride`. Set generously so realistic multi-round events
+// share at full fidelity (stride 1); only very large events get downsampled.
+const SHARE_BUDGET = 12_000_000;
 
 function buildAtStride(event, replays, stride) {
   const order = [];
@@ -88,7 +90,10 @@ function buildAtStride(event, replays, stride) {
 export function encodeEventShare(event, replays, { maxBytes = SHARE_BUDGET } = {}) {
   // Estimate a starting stride from the total player-frames so a huge event
   // usually fits on the first pass without an expensive full-resolution build.
-  // ~5.5 base64 bytes per quantized player-frame is a safe over-estimate.
+  // ~4 base64 chars per delta-quantized player-frame is a deliberate UNDER-
+  // estimate (real is ~4.5–6): the correction loop below only ever raises
+  // stride, so starting low just risks an extra build, while starting high
+  // would strand frames that never come back.
   let totalPF = 0;
   const seen = new Set();
   for (const round of event.rounds) {
@@ -98,7 +103,7 @@ export function encodeEventShare(event, replays, { maxBytes = SHARE_BUDGET } = {
     const rp = replays.get(rid);
     if (rp) totalPF += rp.frameCount * rp.playerCount;
   }
-  let stride = maxBytes > 0 ? Math.max(1, Math.ceil((totalPF * 5.5) / maxBytes)) : 1;
+  let stride = maxBytes > 0 ? Math.max(1, Math.ceil((totalPF * 4.0) / maxBytes)) : 1;
   let payload = buildAtStride(event, replays, stride);
 
   // Correct the estimate against the real compressed size (increase only).
@@ -157,23 +162,81 @@ function shareBase() {
   return `${window.location.origin}${window.location.pathname}`;
 }
 
-// Try the short link (Redis) first; fall back to an inline fragment on failure
-// (API down or payload over the server cap). Returns { url, stride }, where
-// stride > 1 means the shared copy was downsampled in time to fit.
+// A single Upstash REST value/request is capped near 1 MB, so the encoded
+// payload is uploaded as sub-1MB string chunks under separate keys plus a small
+// manifest — the same scheme the season-tracker uses. This is what lets a
+// full-fidelity multi-round event share without being downsampled to fit one
+// request.
+const CHUNK_SIZE = 500_000;   // chars/chunk — safely under the ~1MB/request cap
+const SHARE_CONCURRENCY = 5;  // bounded parallelism for chunk up/downloads
+// A browser/URL can't carry a multi-MB fragment, so the inline fallback is only
+// viable for small events. Above this, the short link is the only transport.
+const INLINE_MAX = 60_000;
+
+// SHA-256 hex of a string; the short id is its first 8 chars (matches the id the
+// server would compute for a legacy single-value link, so dedupe is stable).
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  let hex = '';
+  for (const b of new Uint8Array(buf)) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
+
+export function splitIntoChunks(str, size = CHUNK_SIZE) {
+  const chunks = [];
+  for (let i = 0; i < str.length; i += size) chunks.push(str.slice(i, i + size));
+  return chunks;
+}
+
+// Run an async task over each item with bounded concurrency, preserving order.
+async function runBounded(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+async function postShare(body) {
+  const res = await fetch('/api/share', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Share API unavailable');
+  return res;
+}
+
+// Upload an encoded payload as chunks + a manifest; returns the short id. The
+// chunk size is overridable so tests can exercise the multi-chunk path cheaply.
+export async function putSharePayload(encoded, chunkSize = CHUNK_SIZE) {
+  const id = (await sha256Hex(encoded)).slice(0, 8);
+  const chunks = splitIntoChunks(encoded, chunkSize);
+  // Store every chunk first, then the manifest, so a reader never sees a
+  // manifest that points at chunks which aren't written yet.
+  await runBounded(chunks, SHARE_CONCURRENCY, (chunk, index) => postShare({ id, index, chunk }));
+  await postShare({ id, total: chunks.length });
+  return id;
+}
+
+// Try the short link (chunked upload) first; fall back to an inline fragment
+// only for small events. Returns { url, stride }, where stride > 1 means the
+// shared copy was downsampled in time to fit the size budget.
 export async function createEventShareUrl(event, replays) {
   const { payload: encoded, stride } = encodeEventShare(event, replays);
   try {
-    const res = await fetch('/api/share', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload: encoded }),
-    });
-    if (res.ok) {
-      const { id } = await res.json();
-      return { url: `${shareBase()}#s=${id}`, stride };
-    }
+    const id = await putSharePayload(encoded);
+    return { url: `${shareBase()}#s=${id}`, stride };
   } catch (err) {
     console.warn('Short share link failed, falling back to inline', err);
+  }
+  if (encoded.length > INLINE_MAX) {
+    throw new Error('Share service is unavailable and this event is too large for an inline link.');
   }
   return { url: `${shareBase()}#share=${encoded}`, stride };
 }
@@ -191,12 +254,29 @@ export function getShareFromUrl() {
 }
 
 // Fetch + decode a short-link payload by id → { event, replays } or null.
+// Legacy single-value links return the payload inline; chunked links return a
+// manifest and we fetch each chunk and reassemble in order.
 export async function fetchSharePayload(id) {
   try {
     const res = await fetch(`/api/share?id=${encodeURIComponent(id)}`);
     if (!res.ok) return null;
-    const { payload } = await res.json();
-    return decodeEventShare(payload);
+    const data = await res.json();
+
+    if (typeof data.payload === 'string') return decodeEventShare(data.payload);
+
+    if (data.chunked && Number.isInteger(data.total) && data.total > 0) {
+      const indices = Array.from({ length: data.total }, (_, i) => i);
+      const parts = await runBounded(indices, SHARE_CONCURRENCY, async (i) => {
+        const r = await fetch(`/api/share?id=${encodeURIComponent(id)}&chunk=${i}`);
+        if (!r.ok) throw new Error('Missing chunk');
+        const d = await r.json();
+        if (typeof d.chunk !== 'string') throw new Error('Bad chunk');
+        return d.chunk;
+      });
+      return decodeEventShare(parts.join(''));
+    }
+
+    return null;
   } catch {
     return null;
   }

@@ -10,7 +10,8 @@ import { encodeReplay, decodeReplay } from './utils/replayCodec';
 import { putReplay, getReplay, deleteReplay, computeReplayId } from './utils/replayStore';
 import { parseScoreboardCsv, looksLikeScoreboardCsv } from './scoreboard/parseScoreboard';
 import {
-  loadEvent, saveEvent, newEvent, makeRound, upsertRound, nearestRoundForTimestamp,
+  loadEvent, saveEvent, newEvent, makeRound, upsertRound,
+  matchScoreboardsToRounds, scoreboardStartSec,
 } from './event/eventStore';
 import ReplayViewer from './ReplayViewer';
 import AttritionTimeline from './components/afteraction/AttritionTimeline';
@@ -157,19 +158,37 @@ export default function ReplaySuite({ initialEvent = null, initialReplays = null
         if (!firstNewRoundId) firstNewRoundId = id;
       }
 
-      // Scoreboards → auto-attach to the nearest replay round by filename time.
+      // Scoreboards → auto-attach to replay rounds as a single 1:1 batch. Doing
+      // the whole batch at once (rather than one nearest-match per file) is what
+      // stops two scoreboards from collapsing onto the same round.
       const unmatched = [];
+      const parsedScoreboards = [];
       for (const sf of scoreboardFiles) {
         const sb = parseScoreboardCsv(sf.text);
         if (!sb) { unmatched.push(sf.name); continue; }
         const d = timestampFromFilename(sf.name);
-        const roundId = nearestRoundForTimestamp(nextEvent, d ? d.getTime() : null);
-        if (roundId) {
-          nextEvent = updateRound(nextEvent, roundId, { scoreboard: sb, scoreboardFilename: sf.name });
-        } else {
-          unmatched.push(sf.name);
-        }
+        parsedScoreboards.push({
+          name: sf.name,
+          sb,
+          ts: d ? d.getTime() : null,
+          startSec: scoreboardStartSec(sb),
+        });
       }
+      const roundInfos = nextEvent.rounds.map(r => ({
+        id: r.id,
+        ts: r.ts,
+        startSec: r.meta?.roundStartSec ?? null,
+        hasScoreboard: !!r.scoreboard,
+      }));
+      const { assignments } = matchScoreboardsToRounds(roundInfos, parsedScoreboards);
+      parsedScoreboards.forEach((ps, idx) => {
+        const roundId = assignments[idx];
+        if (roundId) {
+          nextEvent = updateRound(nextEvent, roundId, { scoreboard: ps.sb, scoreboardFilename: ps.name });
+        } else {
+          unmatched.push(ps.name);
+        }
+      });
 
       setReplays(nextReplays);
       setEvent(nextEvent);
