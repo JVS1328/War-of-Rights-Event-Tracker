@@ -5,7 +5,7 @@ import { Redis } from '@upstash/redis';
 // with a manifest (`{"n":<count>}`) recording how many. This removes the old
 // single-value size ceiling — short links now work regardless of payload size.
 const MAX_CHUNK = 600_000;       // per-chunk char limit — keeps each request < ~1MB
-const MAX_CHUNKS = 64;           // ~38MB backstop — well above any real payload, well below a runaway upload
+const MAX_CHUNKS = 1024;         // ~512MB backstop so a runaway upload can't hammer Redis
 const SHARE_TTL = 31_536_000;    // 1 year, in seconds — abandoned/orphan chunks self-clean
 
 const ID_RE = /^[0-9a-f]{8}$/;

@@ -97,8 +97,8 @@ describe('api/share handler', () => {
   });
 
   it('rejects too many chunks with 413', async () => {
-    expect((await call('POST', { body: { id, total: 65 } })).statusCode).toBe(413);
-    expect((await call('POST', { body: { id, index: 64, chunk: 'AAA' } })).statusCode).toBe(400);
+    expect((await call('POST', { body: { id, total: 1025 } })).statusCode).toBe(413);
+    expect((await call('POST', { body: { id, index: 1024, chunk: 'AAA' } })).statusCode).toBe(400);
   });
 
   it('rejects an invalid id with 400', async () => {
