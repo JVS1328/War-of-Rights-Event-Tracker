@@ -31,6 +31,17 @@ function getRedis() {
   return redis;
 }
 
+// Write-once set with TTL. Ids are content hashes, so an existing key already
+// holds these exact bytes — NX means a re-upload is a no-op and, crucially,
+// that nobody can replace the content behind someone else's already-shared
+// link (the id arrives from the client, so without NX any known link could be
+// silently rewritten). On a dedupe hit, refresh the TTL instead so a re-shared
+// link doesn't expire a year after the *first* share.
+async function setOnce(client, key, value) {
+  const created = await client.set(key, value, { nx: true, ex: SHARE_TTL });
+  if (created === null) await client.expire(key, SHARE_TTL);
+}
+
 export default async function handler(req, res) {
   let client;
   try {
@@ -54,7 +65,7 @@ export default async function handler(req, res) {
       if (total > MAX_CHUNKS) {
         return res.status(413).json({ error: 'Too many chunks' });
       }
-      await client.set(`season-share:${id}`, JSON.stringify({ n: total }), { ex: SHARE_TTL });
+      await setOnce(client, `season-share:${id}`, JSON.stringify({ n: total }));
       return res.status(200).json({ id });
     }
 
@@ -68,7 +79,7 @@ export default async function handler(req, res) {
     if (chunk.length > MAX_CHUNK) {
       return res.status(413).json({ error: 'Chunk too large' });
     }
-    await client.set(`season-share:${id}:${index}`, chunk, { ex: SHARE_TTL });
+    await setOnce(client, `season-share:${id}:${index}`, chunk);
     return res.status(200).json({ ok: true });
   }
 
