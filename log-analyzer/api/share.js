@@ -17,6 +17,7 @@ export const config = {
 // client; the cap protects the store from runaways.
 const MAX_PAYLOAD = 10 * 1024 * 1024;
 const PREFIX = 'analyzer-share:';
+const SHARE_TTL = 31_536_000; // 1 year, in seconds — abandoned shares self-clean
 
 // Storage backend. Prefer Upstash's HTTP/REST client — it's stateless per
 // request, so it works cleanly on serverless where a long-lived node-redis TCP
@@ -57,7 +58,12 @@ async function getStore() {
     // Store/return raw strings — our payload is base64url, not JSON, so leave
     // Upstash's automatic (de)serialization off to avoid surprises.
     const redis = new Redis({ url: restUrl, token: restToken, automaticDeserialization: false });
-    store = { get: (k) => redis.get(k), set: (k, v) => redis.set(k, v) };
+    store = {
+      get: (k) => redis.get(k),
+      // Resolves truthy when the key was created, null when it already existed.
+      setOnce: (k, v) => redis.set(k, v, { nx: true, ex: SHARE_TTL }),
+      expire: (k) => redis.expire(k, SHARE_TTL),
+    };
     return store;
   }
 
@@ -65,7 +71,11 @@ async function getStore() {
   if (redisUrl) {
     const { createClient } = await import('redis');
     const client = await createClient({ url: redisUrl }).connect();
-    store = { get: (k) => client.get(k), set: (k, v) => client.set(k, v) };
+    store = {
+      get: (k) => client.get(k),
+      setOnce: (k, v) => client.set(k, v, { NX: true, EX: SHARE_TTL }),
+      expire: (k) => client.expire(k, SHARE_TTL),
+    };
     return store;
   }
 
@@ -90,8 +100,14 @@ export default async function handler(req, res) {
       return res.status(413).json({ error: 'Payload too large' });
     }
 
+    // Write-once: the id is a hash of the payload, so an existing key already
+    // holds these exact bytes — or is a deliberate hash-prefix collision trying
+    // to replace someone's shared link. Either way, never overwrite; a dedupe
+    // hit just refreshes the TTL so re-shared links stay live.
     const id = crypto.createHash('sha256').update(payload).digest('hex').slice(0, 8);
-    await client.set(`${PREFIX}${id}`, payload);
+    const key = `${PREFIX}${id}`;
+    const created = await client.setOnce(key, payload);
+    if (!created) await client.expire(key);
     return res.status(200).json({ id });
   }
 

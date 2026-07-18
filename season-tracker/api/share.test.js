@@ -1,13 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Shared in-memory store backing the mocked Upstash client; `sets` records every
-// write (with its opts) so we can assert the TTL.
-const { store, sets } = vi.hoisted(() => ({ store: new Map(), sets: [] }));
+// Shared in-memory store backing the mocked Upstash client; `sets` and
+// `expires` record every call (with opts) so we can assert TTL + NX behavior.
+const { store, sets, expires } = vi.hoisted(() => ({ store: new Map(), sets: [], expires: [] }));
 
 vi.mock('@upstash/redis', () => ({
   Redis: class {
-    async set(key, value, opts) { sets.push({ key, value, opts }); store.set(key, value); }
+    // Mirrors real SET semantics: with `nx`, an existing key is left untouched
+    // and null is returned; otherwise the write lands and "OK" comes back.
+    async set(key, value, opts) {
+      sets.push({ key, value, opts });
+      if (opts?.nx && store.has(key)) return null;
+      store.set(key, value);
+      return 'OK';
+    }
     async get(key) { return store.has(key) ? store.get(key) : null; }
+    async expire(key, seconds) { expires.push({ key, seconds }); return store.has(key) ? 1 : 0; }
   },
 }));
 
@@ -28,6 +36,7 @@ const call = (method, opts) => {
 beforeEach(() => {
   store.clear();
   sets.length = 0;
+  expires.length = 0;
   process.env.UPSTASH_REDIS_REST_URL = 'http://localhost';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
 });
@@ -45,11 +54,32 @@ describe('api/share handler', () => {
     expect((await call('GET', { query: { id, chunk: '1' } })).body).toEqual({ chunk: 'BBB' });
   });
 
-  it('sets a 1-year TTL on every write', async () => {
+  it('sets a 1-year TTL and NX on every write', async () => {
     await call('POST', { body: { id, index: 0, chunk: 'AAA' } });
     await call('POST', { body: { id, total: 1 } });
     expect(sets).toHaveLength(2);
-    for (const s of sets) expect(s.opts).toEqual({ ex: 31_536_000 });
+    for (const s of sets) expect(s.opts).toEqual({ nx: true, ex: 31_536_000 });
+  });
+
+  it('never overwrites an existing chunk or manifest (write-once ids)', async () => {
+    await call('POST', { body: { id, index: 0, chunk: 'AAA' } });
+    await call('POST', { body: { id, total: 1 } });
+
+    // A second writer targeting the same id succeeds at the HTTP level (dedupe
+    // is normal for identical payloads) but must not change stored content.
+    expect((await call('POST', { body: { id, index: 0, chunk: 'EVIL' } })).statusCode).toBe(200);
+    expect((await call('POST', { body: { id, total: 64 } })).statusCode).toBe(200);
+
+    expect((await call('GET', { query: { id, chunk: '0' } })).body).toEqual({ chunk: 'AAA' });
+    expect((await call('GET', { query: { id } })).body).toEqual({ chunked: true, total: 1 });
+  });
+
+  it('refreshes the TTL on a dedupe hit instead of rewriting', async () => {
+    await call('POST', { body: { id, index: 0, chunk: 'AAA' } });
+    expect(expires).toHaveLength(0);
+
+    await call('POST', { body: { id, index: 0, chunk: 'AAA' } });
+    expect(expires).toEqual([{ key: `season-share:${id}:0`, seconds: 31_536_000 }]);
   });
 
   it('returns a legacy single-value payload as { payload }', async () => {
@@ -67,7 +97,8 @@ describe('api/share handler', () => {
   });
 
   it('rejects too many chunks with 413', async () => {
-    expect((await call('POST', { body: { id, total: 99999 } })).statusCode).toBe(413);
+    expect((await call('POST', { body: { id, total: 65 } })).statusCode).toBe(413);
+    expect((await call('POST', { body: { id, index: 64, chunk: 'AAA' } })).statusCode).toBe(400);
   });
 
   it('rejects an invalid id with 400', async () => {
