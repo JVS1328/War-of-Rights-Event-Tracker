@@ -3,6 +3,9 @@ import type { ScoreboardPlayer, Kill } from '../../../stats/types';
 import {
   buildKillStanceIndex,
   killStanceOf,
+  buildCauseIndex,
+  killedWithOf,
+  diedToOf,
   groupByRegiment,
   sumKD,
   comparePlayers,
@@ -64,6 +67,45 @@ describe('playersModel — kill stance index', () => {
   it('returns the empty stance for a player with no kills', () => {
     const idx = buildKillStanceIndex(kills);
     expect(killStanceOf(bravo, idx)).toEqual({ inForm: 0, skirm: 0, oob: 0 });
+  });
+});
+
+describe('playersModel — cause index', () => {
+  // Alpha (s1): kills Bravo/Zed with Minie, Charlie with Bayonet; dies to Bayonet.
+  // Charlie (steamless): kills Alpha with Bayonet. Bravo (s2): kills Zed with an
+  // empty cause (→ unknown) and dies to a killer-less environment "Fall damage".
+  const causeKills: Kill[] = [
+    kill({ killer: 'Alpha', killerSteamId: 's1', victim: 'Bravo', victimSteamId: 's2', cause: 'Minie' }),
+    kill({ killer: 'Alpha', killerSteamId: 's1', victim: 'Zed', victimSteamId: 's9', cause: 'Minie' }),
+    kill({ killer: 'Alpha', killerSteamId: 's1', victim: 'Charlie', victimSteamId: null, cause: 'Bayonet' }),
+    kill({ killer: 'Charlie', killerSteamId: null, victim: 'Alpha', victimSteamId: 's1', cause: 'Bayonet' }),
+    kill({ killer: null, killerSteamId: null, victim: 'Bravo', victimSteamId: 's2', cause: 'Fall damage' }),
+    kill({ killer: 'Bravo', killerSteamId: 's2', victim: 'Zed', victimSteamId: 's9', cause: '' }),
+  ];
+
+  it('breaks down "killed with" per killer (steam id, then name)', () => {
+    const idx = buildCauseIndex(causeKills);
+    expect(killedWithOf(alpha, idx)).toEqual({ Minie: 2, Bayonet: 1 });
+    expect(killedWithOf(charlie, idx)).toEqual({ Bayonet: 1 });
+  });
+
+  it('labels an empty cause as "unknown"', () => {
+    const idx = buildCauseIndex(causeKills);
+    expect(killedWithOf(bravo, idx)).toEqual({ unknown: 1 });
+  });
+
+  it('breaks down "died to", including killer-less environment deaths', () => {
+    const idx = buildCauseIndex(causeKills);
+    expect(diedToOf(alpha, idx)).toEqual({ Bayonet: 1 });
+    expect(diedToOf(bravo, idx)).toEqual({ Minie: 1, 'Fall damage': 1 });
+    expect(diedToOf(charlie, idx)).toEqual({ Bayonet: 1 });
+  });
+
+  it('returns an empty breakdown for a player who neither killed nor died', () => {
+    const idx = buildCauseIndex(causeKills);
+    const ghost = player({ steamId: 's404', name: 'Ghost' });
+    expect(killedWithOf(ghost, idx)).toEqual({});
+    expect(diedToOf(ghost, idx)).toEqual({});
   });
 });
 

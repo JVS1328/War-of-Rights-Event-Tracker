@@ -477,7 +477,7 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
         </button>
       ),
     },
-    { key: 'rounds', header: 'R', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
+    { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
     { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
     { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
     { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
@@ -1004,7 +1004,7 @@ function RegimentPanel({
               <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
                 <th className="px-2 py-1 text-left">When</th>
                 <th className="px-2 py-1 text-left">Map · Area</th>
-                <th className="px-2 py-1 text-right">Plr</th>
+                <th className="px-2 py-1 text-right">Players</th>
                 <th className="px-2 py-1 text-right">K</th>
                 <th className="px-2 py-1 text-right">D</th>
                 <th className="px-2 py-1 text-right">K/D</th>
@@ -1055,7 +1055,7 @@ function RegimentPanel({
                     </button>
                   ),
                 },
-                { key: 'rounds', header: 'R', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
+                { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
                 { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
                 { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
                 { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
