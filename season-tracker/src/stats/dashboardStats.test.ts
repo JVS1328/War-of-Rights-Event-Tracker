@@ -6,6 +6,7 @@ import {
   computeRounds,
   computeOverview,
   computeMapBreakdown,
+  computeScoreboardMapStats,
   computeRegimentBreakdown,
   computePlayerDetail,
 } from './statsEngine';
@@ -149,6 +150,36 @@ describe('map breakdown', () => {
     const dc = maps.find((m) => m.map === 'DrillCamp')!;
     expect(dc.rounds).toBe(1);
     expect(dc.csaWins).toBe(1);
+  });
+});
+
+describe('scoreboard map stats (Maps tab source)', () => {
+  it('aggregates wins & casualties per map into the tracker shape', () => {
+    const { overall, byMap } = computeScoreboardMapStats(boards);
+    expect(overall.totalRounds).toBe(2);
+    expect(overall.usaWins).toBe(1);
+    expect(overall.csaWins).toBe(1);
+    // USA lost 2 (R1) + 1 (R2) = 3; CSA lost 1 + 1 = 2; total 5.
+    expect(overall.usaCasualties).toBe(3);
+    expect(overall.csaCasualties).toBe(2);
+    expect(overall.totalCasualties).toBe(5);
+    // Only R1 supplied a formation breakdown: USA IF1/Sk1 + CSA IF1 → IF2/Sk1/OoL0.
+    expect(overall.formationTotal).toEqual({ in_form: 2, skirm: 1, oob: 0 });
+    expect(overall.hasFormation).toBe(true);
+
+    expect(Object.keys(byMap)).toHaveLength(2);
+    const drill = Object.values(byMap).find((m) => m.csaWins === 1)!;
+    expect(drill.plays).toBe(1);
+    expect(drill.usaCasualties).toBe(2);
+    expect(drill.avgFormationUsa).toEqual({ in_form: 1, skirm: 1, oob: 0 });
+    expect(drill.hasFormation).toBe(true);
+  });
+
+  it('returns an empty projection when there are no scoreboards', () => {
+    const { overall, byMap } = computeScoreboardMapStats([]);
+    expect(overall.totalRounds).toBe(0);
+    expect(overall.hasFormation).toBe(false);
+    expect(Object.keys(byMap)).toHaveLength(0);
   });
 });
 
