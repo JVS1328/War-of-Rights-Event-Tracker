@@ -322,9 +322,16 @@ function RegimentGroup({
         <span className="flex items-center gap-3 text-[color:var(--color-text-2)] tabular-nums">
           {showStats && (
             <>
-              <span>
+              <span title="kills: total [in formation / skirmish / out of line]">
                 <span className="text-[color:var(--color-text-2)]">k </span>
                 <span className="text-[color:var(--color-text-1)]">{agg.kills}</span>
+                <span className="text-[color:var(--color-text-2)]"> [</span>
+                <span className="text-[color:var(--color-text-1)]">{agg.killInForm}</span>
+                <span className="text-[color:var(--color-text-2)]"> / </span>
+                <span className="text-[color:var(--color-text-1)]">{agg.killSkirm}</span>
+                <span className="text-[color:var(--color-text-2)]"> / </span>
+                <span className="text-[color:var(--color-text-1)]">{agg.killOob}</span>
+                <span className="text-[color:var(--color-text-2)]">]</span>
               </span>
               <span title="deaths: total [in formation / skirmish / out of line]">
                 <span className="text-[color:var(--color-text-2)]">d </span>

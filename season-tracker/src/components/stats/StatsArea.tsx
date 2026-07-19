@@ -11,6 +11,7 @@ import {
   computeRounds,
   computeOverview,
   computePlayerDetail,
+  computeScoreboardMapStats,
   resolveFor,
 } from '../../stats/statsEngine';
 import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats } from '../../stats/statsEngine';
@@ -186,6 +187,9 @@ export function StatsPanel({
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentContext = useMemo(() => computeRegimentContextStats(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
+  // Map stats derived from the imported scoreboards (every round, bound or not),
+  // as an alternative to the tracker's week-bound map stats in the Maps tab.
+  const scoreboardMapStats = useMemo(() => computeScoreboardMapStats(sbs), [sbs]);
   const selectedStored = useMemo(() => stats.stored.find((s) => s.id === scoreboardId) ?? null, [scoreboardId, stats.stored]);
   // Season regiment resolver shared with the round drawer's Players tab, so its
   // "unit" grouping matches the Regiments tab (assignments → list → name tag).
@@ -335,7 +339,7 @@ export function StatsPanel({
         />
       )}
 
-      {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} />}
+      {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} scoreboardMapStats={scoreboardMapStats} />}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
@@ -949,7 +953,7 @@ function RegimentPanel({
             <span title="Total unique players · average players fielded per round">
               {`${reg.players}p · ${reg.avgPlayers.toFixed(1)}/rd`}
             </span>
-            {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · ${reg.kd.toFixed(2)} · `}
+            {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · K/D ${reg.kd.toFixed(2)} · `}
             <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
             {' · '}
             <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
@@ -1239,7 +1243,19 @@ function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeComba
 
 // ── Maps ────────────────────────────────────────────────────────────────────
 
-function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
+function MapsTab({
+  trackerMapStats,
+  scoreboardMapStats,
+}: {
+  trackerMapStats?: TrackerMapStats;
+  scoreboardMapStats?: TrackerMapStats;
+}) {
+  const trackerRounds = trackerMapStats?.overall.totalRounds ?? 0;
+  const scoreboardRounds = scoreboardMapStats?.overall.totalRounds ?? 0;
+  // Default to the tracker's stats when it has any; otherwise fall back to the
+  // scoreboard-derived stats so the tab isn't empty just because nothing is
+  // bound to a week yet.
+  const [source, setSource] = useState<'tracker' | 'scoreboard'>(trackerRounds > 0 ? 'tracker' : 'scoreboard');
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (key: string) =>
     setOpenAreas((prev) => {
@@ -1249,15 +1265,46 @@ function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
       return next;
     });
 
-  if (!trackerMapStats || trackerMapStats.overall.totalRounds === 0) {
+  const sourceToggle = (
+    <div className="flex items-center gap-1 font-mono text-xs uppercase tracking-wider">
+      <span className="text-[color:var(--color-text-2)]" title="Tracker: rounds bound to a week. Scoreboards: every imported round, bound or not.">
+        Source
+      </span>
+      {([
+        ['tracker', 'Tracker', trackerRounds],
+        ['scoreboard', 'Scoreboards', scoreboardRounds],
+      ] as const).map(([key, label, n]) => (
+        <button
+          key={key}
+          onClick={() => setSource(key)}
+          className={`border border-[color:var(--color-border)] px-2 py-0.5 ${
+            source === key ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
+          }`}
+        >
+          {label} <span className="tabular-nums opacity-60">({n})</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const stats = source === 'tracker' ? trackerMapStats : scoreboardMapStats;
+
+  if (!stats || stats.overall.totalRounds === 0) {
     return (
-      <Panel title="Maps">
-        <EmptyHint>No map data available</EmptyHint>
-      </Panel>
+      <div className="space-y-3">
+        {sourceToggle}
+        <Panel title="Maps">
+          <EmptyHint>
+            {source === 'tracker'
+              ? 'No tracker map data — bind rounds to weeks, or switch to Scoreboards'
+              : 'No scoreboard map data — import scoreboards to populate it'}
+          </EmptyHint>
+        </Panel>
+      </div>
     );
   }
 
-  const { overall, byMap } = trackerMapStats;
+  const { overall, byMap } = stats;
 
   const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
   const allMapNames = Object.keys(byMap);
@@ -1267,6 +1314,7 @@ function MapsTab({ trackerMapStats }: { trackerMapStats?: TrackerMapStats }) {
 
   return (
     <div className="space-y-3">
+      {sourceToggle}
       <div className="grid grid-cols-2 gap-px">
         <Tile label="USA Overall" value={`${pct(overall.usaWins, overall.totalRounds)}%`} hint={`${overall.usaWins}/${overall.totalRounds}`} />
         <Tile label="CSA Overall" value={`${pct(overall.csaWins, overall.totalRounds)}%`} hint={`${overall.csaWins}/${overall.totalRounds}`} />

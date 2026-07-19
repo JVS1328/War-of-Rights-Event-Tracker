@@ -3,7 +3,8 @@ import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
 import { avgTicketCost } from './labels';
-import { mapAttacker } from './mapCatalog';
+import { mapAttacker, canonicalMapName } from './mapCatalog';
+import { averageMorale } from './morale';
 
 export interface FormationCounts {
   in_form: number;
@@ -597,6 +598,132 @@ export function computeMapBreakdown(scoreboards: Scoreboard[]): MapStatRow[] {
   });
   rows.sort((a, b) => b.rounds - a.rounds);
   return rows;
+}
+
+const zeroForm = (): FormationCounts => ({ in_form: 0, skirm: 0, oob: 0 });
+
+/**
+ * Map win/loss/casualty stats derived purely from imported scoreboards,
+ * projected into the same `{ overall, byMap }` shape the tracker's map view
+ * uses so the Maps tab can render either source through one component.
+ *
+ * Unlike the tracker's map stats — which only cover rounds bound to a week —
+ * this counts EVERY imported scoreboard, assigned or not. For a scoreboard that
+ * is bound to a week the two sources agree; unbound scoreboards show up here but
+ * not in the tracker. Attacker/defender come from the map catalog (null for
+ * Conquest/Contention, which are excluded from that split but still count toward
+ * win % and casualties); casualty formation makeup and morale come straight from
+ * each scoreboard's meta.
+ */
+export function computeScoreboardMapStats(scoreboards: Scoreboard[]): TrackerMapStats {
+  interface Acc {
+    plays: number;
+    usaWins: number;
+    csaWins: number;
+    draws: number;
+    usaCas: number;
+    csaCas: number;
+    usaForm: FormationCounts;
+    csaForm: FormationCounts;
+    usaMorale: (string | null)[];
+    csaMorale: (string | null)[];
+  }
+  const acc = new Map<string, Acc>();
+  for (const sb of scoreboards) {
+    const map = canonicalMapName(sb.meta.map) || sb.meta.map || 'Unknown';
+    let a = acc.get(map);
+    if (!a) {
+      a = {
+        plays: 0, usaWins: 0, csaWins: 0, draws: 0, usaCas: 0, csaCas: 0,
+        usaForm: zeroForm(), csaForm: zeroForm(), usaMorale: [], csaMorale: [],
+      };
+      acc.set(map, a);
+    }
+    a.plays += 1;
+    if (sb.meta.winner === 'USA') a.usaWins += 1;
+    else if (sb.meta.winner === 'CSA') a.csaWins += 1;
+    else a.draws += 1;
+    const uc = sb.meta.casualties.USA;
+    const cc = sb.meta.casualties.CSA;
+    a.usaCas += uc.total;
+    a.csaCas += cc.total;
+    a.usaForm.in_form += uc.inForm; a.usaForm.skirm += uc.skirm; a.usaForm.oob += uc.oob;
+    a.csaForm.in_form += cc.inForm; a.csaForm.skirm += cc.skirm; a.csaForm.oob += cc.oob;
+    a.usaMorale.push(sb.meta.moraleUsa);
+    a.csaMorale.push(sb.meta.moraleCsa);
+  }
+
+  const addForm = (t: FormationCounts, s: FormationCounts) => {
+    t.in_form += s.in_form; t.skirm += s.skirm; t.oob += s.oob;
+  };
+  const avgForm = (f: FormationCounts, n: number): FormationCounts =>
+    n > 0
+      ? { in_form: Math.round(f.in_form / n), skirm: Math.round(f.skirm / n), oob: Math.round(f.oob / n) }
+      : zeroForm();
+
+  const overall = {
+    totalRounds: 0, usaWins: 0, csaWins: 0, draws: 0,
+    attackerWins: 0, defenderWins: 0, attackerRounds: 0,
+    usaCasualties: 0, csaCasualties: 0, totalCasualties: 0,
+    usaFormation: zeroForm(), csaFormation: zeroForm(), formationTotal: zeroForm(),
+    hasFormation: false,
+  };
+  const byMap: Record<string, TrackerMapEntry> = {};
+
+  for (const [map, a] of acc) {
+    const attacker = mapAttacker(map); // 'USA' | 'CSA' | null (Conquest/Contention)
+    const isUsaAttack = attacker === 'USA';
+    const totalCas = a.usaCas + a.csaCas;
+    const formTotal: FormationCounts = {
+      in_form: a.usaForm.in_form + a.csaForm.in_form,
+      skirm: a.usaForm.skirm + a.csaForm.skirm,
+      oob: a.usaForm.oob + a.csaForm.oob,
+    };
+    const hasFormation = formTotal.in_form + formTotal.skirm + formTotal.oob > 0;
+    const avgMoraleUsa = averageMorale(a.usaMorale);
+    const avgMoraleCsa = averageMorale(a.csaMorale);
+
+    byMap[map] = {
+      plays: a.plays,
+      usaWins: a.usaWins,
+      csaWins: a.csaWins,
+      draws: a.draws,
+      totalCasualties: totalCas,
+      usaCasualties: a.usaCas,
+      csaCasualties: a.csaCas,
+      avgLossesUsa: a.plays > 0 ? Math.round(a.usaCas / a.plays) : 0,
+      avgLossesCsa: a.plays > 0 ? Math.round(a.csaCas / a.plays) : 0,
+      avgFormationUsa: avgForm(a.usaForm, a.plays),
+      avgFormationCsa: avgForm(a.csaForm, a.plays),
+      hasFormation,
+      attackerWins: attacker === null ? 0 : isUsaAttack ? a.usaWins : a.csaWins,
+      defenderWins: attacker === null ? 0 : isUsaAttack ? a.csaWins : a.usaWins,
+      hasAttacker: attacker !== null,
+      avgMoraleUsa,
+      avgMoraleCsa,
+      hasMorale: !!(avgMoraleUsa || avgMoraleCsa),
+    };
+
+    overall.totalRounds += a.plays;
+    overall.usaWins += a.usaWins;
+    overall.csaWins += a.csaWins;
+    overall.draws += a.draws;
+    overall.usaCasualties += a.usaCas;
+    overall.csaCasualties += a.csaCas;
+    overall.totalCasualties += totalCas;
+    addForm(overall.usaFormation, a.usaForm);
+    addForm(overall.csaFormation, a.csaForm);
+    addForm(overall.formationTotal, formTotal);
+    if (attacker !== null) {
+      overall.attackerRounds += a.plays;
+      overall.attackerWins += isUsaAttack ? a.usaWins : a.csaWins;
+      overall.defenderWins += isUsaAttack ? a.csaWins : a.usaWins;
+    }
+  }
+  overall.hasFormation =
+    overall.formationTotal.in_form + overall.formationTotal.skirm + overall.formationTotal.oob > 0;
+
+  return { overall, byMap };
 }
 
 // ── Player detail ────────────────────────────────────────────────────────────
