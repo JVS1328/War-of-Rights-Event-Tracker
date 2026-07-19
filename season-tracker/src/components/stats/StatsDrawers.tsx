@@ -89,6 +89,20 @@ export function PlayerDrawer({
             </div>
           </div>
 
+          <div>
+            <div
+              className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)] cursor-help"
+              title="Kills bucketed by the formation each victim died in"
+            >
+              Kills by stance
+            </div>
+            <div className="grid grid-cols-3 gap-px">
+              <Cell label={FORMATION_LABEL.in_form} value={detail.killsInForm} />
+              <Cell label={FORMATION_LABEL.skirm} value={detail.killsSkirm} />
+              <Cell label={FORMATION_LABEL.oob} value={detail.killsOob} />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <CauseTable title="Killed with" data={detail.killsByCause} />
             <CauseTable title="Died to" data={detail.deathsByCause} />

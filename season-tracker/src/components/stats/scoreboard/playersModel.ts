@@ -75,6 +75,62 @@ export function killStanceOf(p: ScoreboardPlayer, idx: KillStanceIndex): KillSta
   return idx.byName.get(p.name.trim().toLowerCase()) ?? EMPTY_STANCE;
 }
 
+/** cause → count for one player's round (killed-with weapons or died-to causes). */
+export type CauseCounts = Record<string, number>;
+const EMPTY_CAUSES: CauseCounts = {};
+
+export interface CauseIndex {
+  /** killer → weapons they got kills with, this round. */
+  killedWithBySteam: Map<string, CauseCounts>;
+  killedWithByName: Map<string, CauseCounts>;
+  /** victim → causes they died to, this round (includes environment deaths). */
+  diedToBySteam: Map<string, CauseCounts>;
+  diedToByName: Map<string, CauseCounts>;
+}
+
+/** Tally the round's killfeed into per-player cause breakdowns: what each killer
+ *  killed with, and what each victim died to. Steam id is authoritative with a
+ *  name-only fallback for steamless players, mirroring the kill-stance index.
+ *  "Died to" keeps killer-less environment deaths; "killed with" needs a killer. */
+export function buildCauseIndex(kills: Kill[]): CauseIndex {
+  const killedWithBySteam = new Map<string, CauseCounts>();
+  const killedWithByName = new Map<string, CauseCounts>();
+  const diedToBySteam = new Map<string, CauseCounts>();
+  const diedToByName = new Map<string, CauseCounts>();
+  const bump = (m: Map<string, CauseCounts>, key: string, cause: string) => {
+    let c = m.get(key);
+    if (!c) {
+      c = {};
+      m.set(key, c);
+    }
+    c[cause] = (c[cause] ?? 0) + 1;
+  };
+  for (const k of kills) {
+    const cause = k.cause || 'unknown';
+    if (k.killer) {
+      if (k.killerSteamId) bump(killedWithBySteam, k.killerSteamId, cause);
+      else bump(killedWithByName, k.killer.trim().toLowerCase(), cause);
+    }
+    if (k.victim) {
+      if (k.victimSteamId) bump(diedToBySteam, k.victimSteamId, cause);
+      else bump(diedToByName, k.victim.trim().toLowerCase(), cause);
+    }
+  }
+  return { killedWithBySteam, killedWithByName, diedToBySteam, diedToByName };
+}
+
+/** A player's "killed with" weapon breakdown for the round (empty when none). */
+export function killedWithOf(p: ScoreboardPlayer, idx: CauseIndex): CauseCounts {
+  if (p.steamId) return idx.killedWithBySteam.get(p.steamId) ?? EMPTY_CAUSES;
+  return idx.killedWithByName.get(p.name.trim().toLowerCase()) ?? EMPTY_CAUSES;
+}
+
+/** A player's "died to" cause breakdown for the round (empty when none). */
+export function diedToOf(p: ScoreboardPlayer, idx: CauseIndex): CauseCounts {
+  if (p.steamId) return idx.diedToBySteam.get(p.steamId) ?? EMPTY_CAUSES;
+  return idx.diedToByName.get(p.name.trim().toLowerCase()) ?? EMPTY_CAUSES;
+}
+
 export function comparePlayers(a: ScoreboardPlayer, b: ScoreboardPlayer, by: PlayerSort): number {
   if (by === 'unit' || by === 'name') return a.name.localeCompare(b.name);
   if (by === 'kills') return b.kills - a.kills;

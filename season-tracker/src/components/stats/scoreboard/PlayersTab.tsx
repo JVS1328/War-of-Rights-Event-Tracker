@@ -11,12 +11,17 @@ import { extractRegimentTag, UNTAGGED } from '../../../stats/regimentMatcher';
 import {
   type PlayerSort,
   type KillStance,
+  type CauseIndex,
+  type CauseCounts,
   type UnitAgg,
   type RegimentGroupModel,
   type RegimentResolver,
   buildRosterIndex,
   buildKillStanceIndex,
+  buildCauseIndex,
   killStanceOf,
+  killedWithOf,
+  diedToOf,
   comparePlayers,
   groupByRegiment,
   sumKD,
@@ -77,6 +82,9 @@ export function PlayersTab({
 
   const killIndex = useMemo(() => buildKillStanceIndex(sb.kills), [sb.kills]);
   const killStance = (p: ScoreboardPlayer): KillStance => killStanceOf(p, killIndex);
+
+  // Per-player "killed with" / "died to" cause breakdowns for this round.
+  const causeIndex = useMemo(() => buildCauseIndex(sb.kills), [sb.kills]);
 
   const searchTrimmed = search.trim().toLowerCase();
   // Full teams — search now filters per-group (keeping the unit layout) rather
@@ -142,6 +150,7 @@ export function PlayersTab({
               lookup={lookup}
               resolve={resolve}
               killStance={killStance}
+              causeIndex={causeIndex}
               sortBy={sortBy}
               showUnitGroups={showUnitGroups}
               search={search}
@@ -163,6 +172,7 @@ function TeamBlock({
   lookup,
   resolve,
   killStance,
+  causeIndex,
   sortBy,
   showUnitGroups,
   search,
@@ -176,6 +186,7 @@ function TeamBlock({
   lookup: (p: ScoreboardPlayer) => RosterEntry | undefined;
   resolve: RegimentResolver;
   killStance: (p: ScoreboardPlayer) => KillStance;
+  causeIndex: CauseIndex;
   sortBy: PlayerSort;
   showUnitGroups: boolean;
   search: string;
@@ -230,6 +241,7 @@ function TeamBlock({
                 isOfficer={isOfficer}
                 lookup={lookup}
                 killStance={killStance}
+                causeIndex={causeIndex}
                 onOpenPlayer={onOpenPlayer}
               />
             );
@@ -241,6 +253,7 @@ function TeamBlock({
           isOfficer={isOfficer}
           lookup={lookup}
           killStance={killStance}
+          causeIndex={causeIndex}
           onOpenPlayer={onOpenPlayer}
         />
       )}
@@ -274,6 +287,7 @@ function RegimentGroup({
   isOfficer,
   lookup,
   killStance,
+  causeIndex,
   onOpenPlayer,
 }: {
   group: RegimentGroupModel;
@@ -284,6 +298,7 @@ function RegimentGroup({
   isOfficer: (name: string) => boolean;
   lookup: (p: ScoreboardPlayer) => RosterEntry | undefined;
   killStance: (p: ScoreboardPlayer) => KillStance;
+  causeIndex: CauseIndex;
   onOpenPlayer: (key: string) => void;
 }) {
   const { regiment, players } = group;
@@ -330,7 +345,7 @@ function RegimentGroup({
             </>
           )}
           <span>
-            <span className="text-[color:var(--color-text-2)]">P </span>
+            <span className="text-[color:var(--color-text-2)]">Players </span>
             <span className="text-[color:var(--color-text-1)]">{players.length}</span>
           </span>
         </span>
@@ -341,6 +356,7 @@ function RegimentGroup({
           isOfficer={isOfficer}
           lookup={lookup}
           killStance={killStance}
+          causeIndex={causeIndex}
           onOpenPlayer={onOpenPlayer}
         />
       )}
@@ -354,6 +370,7 @@ function PlayerCardList({
   isOfficer,
   lookup,
   killStance,
+  causeIndex,
   onOpenPlayer,
   indent = false,
 }: {
@@ -361,6 +378,7 @@ function PlayerCardList({
   isOfficer: (name: string) => boolean;
   lookup: (p: ScoreboardPlayer) => RosterEntry | undefined;
   killStance: (p: ScoreboardPlayer) => KillStance;
+  causeIndex: CauseIndex;
   onOpenPlayer: (key: string) => void;
   indent?: boolean;
 }) {
@@ -370,6 +388,8 @@ function PlayerCardList({
         const r = lookup(p);
         const role = [r?.rank, r?.className].filter(Boolean).join(' ').trim();
         const ks = killStance(p);
+        const killedWith = sortedCauses(killedWithOf(p, causeIndex));
+        const diedTo = sortedCauses(diedToOf(p, causeIndex));
         return (
           <li
             key={playerKey(p)}
@@ -421,9 +441,50 @@ function PlayerCardList({
               <span className="text-[color:var(--color-text-1)]">{p.deathsOob}</span>
               <span> ool</span>
             </div>
+            <div className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] mt-0.5">
+              <span>k: </span>
+              <span className="text-[color:var(--color-text-1)]">{ks.inForm}</span>
+              <span> form · </span>
+              <span className="text-[color:var(--color-text-1)]">{ks.skirm}</span>
+              <span> skirm · </span>
+              <span className="text-[color:var(--color-text-1)]">{ks.oob}</span>
+              <span> ool</span>
+            </div>
+            {killedWith.length > 0 && (
+              <div className="text-2xs font-mono text-[color:var(--color-text-2)] mt-0.5">
+                <span className="uppercase tracking-wider">killed with </span>
+                <CauseInline data={killedWith} />
+              </div>
+            )}
+            {diedTo.length > 0 && (
+              <div className="text-2xs font-mono text-[color:var(--color-text-2)] mt-0.5">
+                <span className="uppercase tracking-wider">died to </span>
+                <CauseInline data={diedTo} />
+              </div>
+            )}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** cause → count entries, most common first. */
+function sortedCauses(counts: CauseCounts): [string, number][] {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+}
+
+/** Compact inline "Rifle ×3 · Bayonet" cause list for a player card. */
+function CauseInline({ data }: { data: [string, number][] }) {
+  return (
+    <span>
+      {data.map(([cause, n], i) => (
+        <span key={cause}>
+          {i > 0 && <span className="text-[color:var(--color-text-2)]"> · </span>}
+          <span className="capitalize text-[color:var(--color-text-1)]">{cause}</span>
+          {n > 1 && <span className="tabular-nums text-[color:var(--color-text-2)]"> ×{n}</span>}
+        </span>
+      ))}
+    </span>
   );
 }
