@@ -23,6 +23,33 @@ export const AVG_TD_LABEL = 'Avg ticket cost per death (1·In Formation + 3·Ski
 /** Tooltip for ×Tk — tickets you drained from the enemy per kill. */
 export const AVG_TK_LABEL = 'Avg ticket value per kill (1·In Formation + 3·Skirmish + 5·Out of Line) ÷ kills — weighted by the formation each victim died in';
 
+/** Tooltip for kill rate (KR) — offensive output normalized by unit size. */
+export const KILL_RATE_LABEL =
+  'Kill rate: kills ÷ players fielded — average kills per player, a size-normalized measure of a unit\'s offensive output (higher is better)';
+
+/** Tooltip for loss rate (LR) — casualties normalized by unit size. */
+export const LOSS_RATE_LABEL =
+  'Loss rate: casualties ÷ players fielded — average losses per player, a size-normalized measure of how hard a unit was hit (lower is better)';
+
+/**
+ * Per-player rate for kill rate / loss rate: a count (kills or casualties)
+ * divided by the players who produced it. Returns null when there were no
+ * players, so the caller renders "—".
+ *
+ * For a single round `players` is that round's head count. Aggregated across
+ * rounds `players` is the total player-rounds fielded (sum of per-round head
+ * counts), so the pooled rate stays a per-round-per-player average that reads
+ * on the same scale as any one round's value.
+ */
+export function perPlayerRate(count: number, players: number): number | null {
+  return players > 0 ? count / players : null;
+}
+
+/** Format a kill/loss rate to two decimals, or "—" when null. */
+export function formatRate(rate: number | null): string {
+  return rate == null ? '—' : rate.toFixed(2);
+}
+
 /**
  * Average ticket cost across in-form / skirmish / out-of-line counts. Returns
  * null when there are none (caller renders "—"). Used for both ×Td (deaths)

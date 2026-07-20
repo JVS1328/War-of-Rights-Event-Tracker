@@ -80,20 +80,25 @@ describe('accumulateTokenSnaps (across rounds/scoreboards)', () => {
 
 describe('deriveTokenPlayerCounts', () => {
   const regBreakdown = [
-    { regiment: '51STNY', players: 12, avgPlayers: 10.5 },
-    { regiment: 'USA1', players: 8, avgPlayers: 7.0 },
-    { regiment: '20THGA', players: 15, avgPlayers: 14.0 },
+    { regiment: '51STNY', players: 12, avgPlayers: 10.5, rounds: 4 }, // 42 player-rounds
+    { regiment: 'USA1', players: 8, avgPlayers: 7.0, rounds: 3 }, // 21 player-rounds
+    { regiment: '20THGA', players: 15, avgPlayers: 14.0, rounds: 5 }, // 70 player-rounds
   ];
 
-  it('sums unique players and avg players across assigned regiments', () => {
+  it('sums unique players, avg players, and player-rounds across assigned regiments', () => {
     const counts = deriveTokenPlayerCounts(regBreakdown, { '1stUS': ['51STNY', 'USA1'], Rebels: ['20THGA'] });
-    expect(counts['1stUS']).toEqual({ uniquePlayers: 20, avgPlayers: 17.5 });
-    expect(counts.Rebels).toEqual({ uniquePlayers: 15, avgPlayers: 14.0 });
+    expect(counts['1stUS']).toEqual({ uniquePlayers: 20, avgPlayers: 17.5, playerRounds: 63 });
+    expect(counts.Rebels).toEqual({ uniquePlayers: 15, avgPlayers: 14.0, playerRounds: 70 });
   });
 
   it('returns zero for tokens with no matching regiments', () => {
     const counts = deriveTokenPlayerCounts(regBreakdown, { Ghost: ['NOPE'] });
-    expect(counts.Ghost).toEqual({ uniquePlayers: 0, avgPlayers: 0 });
+    expect(counts.Ghost).toEqual({ uniquePlayers: 0, avgPlayers: 0, playerRounds: 0 });
+  });
+
+  it('treats a missing round count as zero player-rounds', () => {
+    const counts = deriveTokenPlayerCounts([{ regiment: 'X', players: 3, avgPlayers: 3 }], { T: ['X'] });
+    expect(counts.T).toEqual({ uniquePlayers: 3, avgPlayers: 3, playerRounds: 0 });
   });
 });
 

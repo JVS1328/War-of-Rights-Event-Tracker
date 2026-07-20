@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { Pill } from '../../ui';
 import type { Scoreboard, ScoreboardPlayer, RosterEntry, Team } from '../../../stats/types';
-import { avgTicketCost, AVG_TD_LABEL, AVG_TK_LABEL } from '../../../stats/labels';
+import { avgTicketCost, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from '../../../stats/labels';
 import { extractRegimentTag, UNTAGGED } from '../../../stats/regimentMatcher';
 import {
   type PlayerSort,
@@ -304,6 +304,9 @@ function RegimentGroup({
   const { regiment, players } = group;
   // Stats always roll up the whole regiment, even when search narrows the list.
   const agg = sumKD(players, killStance);
+  // Size-normalized rates for this unit's round: kills / casualties per player.
+  const killRate = perPlayerRate(agg.kills, players.length);
+  const lossRate = perPlayerRate(agg.deaths, players.length);
   // Untagged players aren't a real unit — skip the k/d rollup.
   const showStats = regiment != null;
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -347,6 +350,14 @@ function RegimentGroup({
               <span>
                 <span className="text-[color:var(--color-text-2)]">k/d </span>
                 <span className="text-[color:var(--color-text-0)]">{fmtKd(agg.kills, agg.deaths)}</span>
+              </span>
+              <span title={KILL_RATE_LABEL} className="cursor-help">
+                <span className="text-[color:var(--color-text-2)]">kr </span>
+                <span className="text-[color:var(--color-text-0)]">{formatRate(killRate)}</span>
+              </span>
+              <span title={LOSS_RATE_LABEL} className="cursor-help">
+                <span className="text-[color:var(--color-text-2)]">lr </span>
+                <span className="text-[color:var(--color-text-0)]">{formatRate(lossRate)}</span>
               </span>
               <AvgT agg={agg} />
             </>
