@@ -2,7 +2,7 @@ import type { RosterEntry, Scoreboard, ScoreboardPlayer, Team, TeamCasualties } 
 import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
-import { avgTicketCost } from './labels';
+import { avgTicketCost, perPlayerRate } from './labels';
 import { mapAttacker, canonicalMapName } from './mapCatalog';
 import { averageMorale } from './morale';
 
@@ -734,6 +734,16 @@ export interface PlayerRoundRow {
   map: string;
   area: string | null;
   team: Team;
+  /** Regiment the player was rostered in this round (raw roster tag), or null. */
+  regiment: string | null;
+  /** Company within the regiment this round, or null. */
+  company: string | null;
+  /** In-game class this round (e.g. Rifleman, Skirmisher), or null. */
+  className: string | null;
+  /** In-game rank this round (e.g. Pvt, Sgt), or null. */
+  rank: string | null;
+  /** True when this round was played on a battery (artillery). */
+  battery: boolean;
   kills: number;
   deaths: number;
   deathsInForm: number;
@@ -816,7 +826,8 @@ export function computePlayerDetail(
   for (const sb of scoreboards) {
     const p = sb.players.find((x) => (x.steamId ?? x.name) === key);
     if (!p) continue;
-    const batteryRound = isBattery(findRoster(sb, p.steamId, p.name, p.team));
+    const rosterEntry = findRoster(sb, p.steamId, p.name, p.team);
+    const batteryRound = isBattery(rosterEntry);
     if (type === 'inf' && batteryRound) continue;
     if (type === 'arty' && !batteryRound) continue;
 
@@ -858,6 +869,11 @@ export function computePlayerDetail(
       map: sb.meta.map,
       area: sb.meta.area,
       team: p.team,
+      regiment: rosterEntry?.regiment ?? null,
+      company: rosterEntry?.company ?? null,
+      className: rosterEntry?.className ?? null,
+      rank: rosterEntry?.rank ?? null,
+      battery: batteryRound,
       kills: p.kills,
       deaths: p.deaths,
       deathsInForm: p.deathsInForm,
@@ -900,6 +916,10 @@ export interface RegimentRoundRow {
   casualtiesByFormation: FormationCounts;
   avgTd: number | null;
   avgTk: number | null;
+  /** Kills ÷ players fielded this round (size-normalized offense); null if none. */
+  killRate: number | null;
+  /** Casualties ÷ players fielded this round (size-normalized losses); null if none. */
+  lossRate: number | null;
 }
 
 export interface RegimentStatRow {
@@ -916,6 +936,16 @@ export interface RegimentStatRow {
   killsByFormation: FormationCounts;
   avgTd: number | null;
   avgTk: number | null;
+  /**
+   * Kills ÷ total players fielded (sum of per-round head counts) — the pooled
+   * per-round-per-player offensive rate across all rounds; null when unfielded.
+   */
+  killRate: number | null;
+  /**
+   * Casualties ÷ total players fielded — the pooled per-round-per-player loss
+   * rate across all rounds; null when unfielded.
+   */
+  lossRate: number | null;
   /** Deaths the regiment suffered, bucketed by weapon/cause (victim resolves here). */
   casualtiesByCause: Record<string, number>;
   /** Kills the regiment inflicted, bucketed by weapon/cause (killer resolves here). */
@@ -951,6 +981,8 @@ export function computeRegimentBreakdown(
         killsByFormation: { in_form: 0, skirm: 0, oob: 0 },
         avgTd: null,
         avgTk: null,
+        killRate: null,
+        lossRate: null,
         casualtiesByCause: {},
         killsByCause: {},
         topPlayers: [],
@@ -1025,6 +1057,8 @@ export function computeRegimentBreakdown(
           casualtiesByFormation: { in_form: 0, skirm: 0, oob: 0 },
           avgTd: null,
           avgTk: null,
+          killRate: null,
+          lossRate: null,
         };
         r._perRound.set(sb.sourceFilename, rr);
       }
@@ -1071,6 +1105,10 @@ export function computeRegimentBreakdown(
       r.casualtiesByFormation.oob,
     );
     r.avgTk = avgTicketCost(r.killsByFormation.in_form, r.killsByFormation.skirm, r.killsByFormation.oob);
+    // Size-normalized rates: kills / casualties over total players fielded
+    // (player-rounds), so a big unit and a small one compare on equal footing.
+    r.killRate = perPlayerRate(r.kills, fielded);
+    r.lossRate = perPlayerRate(r.deaths, fielded);
     r.perRound = [...r._perRound.values()]
       .map((rr) => {
         const kf = (rr as RegimentRoundRow & { _kf?: FormationCounts })._kf ?? { in_form: 0, skirm: 0, oob: 0 };
@@ -1080,6 +1118,8 @@ export function computeRegimentBreakdown(
           rr.casualtiesByFormation.oob,
         );
         rr.avgTk = avgTicketCost(kf.in_form, kf.skirm, kf.oob);
+        rr.killRate = perPlayerRate(rr.kills, rr.players);
+        rr.lossRate = perPlayerRate(rr.deaths, rr.players);
         return rr;
       })
       .sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''));
@@ -1123,6 +1163,8 @@ export function computeCombatTotals(scoreboards: Scoreboard[]): CombatTotals {
 export interface ContextStatSlice {
   rounds: number;
   players: number;
+  /** Players fielded across this slice's rounds (player-rounds), the rate denominator. */
+  fielded: number;
   kills: number;
   deaths: number;
   kd: number;
@@ -1130,6 +1172,10 @@ export interface ContextStatSlice {
   killsByFormation: FormationCounts;
   avgTd: number | null;
   avgTk: number | null;
+  /** Kills ÷ players fielded — size-normalized offense for this slice; null if none. */
+  killRate: number | null;
+  /** Casualties ÷ players fielded — size-normalized losses for this slice; null if none. */
+  lossRate: number | null;
   casualtiesByCause: Record<string, number>;
   killsByCause: Record<string, number>;
 }
@@ -1145,6 +1191,7 @@ function emptyContextSlice(): ContextStatSlice {
   return {
     rounds: 0,
     players: 0,
+    fielded: 0,
     kills: 0,
     deaths: 0,
     kd: 0,
@@ -1152,6 +1199,8 @@ function emptyContextSlice(): ContextStatSlice {
     killsByFormation: { in_form: 0, skirm: 0, oob: 0 },
     avgTd: null,
     avgTk: null,
+    killRate: null,
+    lossRate: null,
     casualtiesByCause: {},
     killsByCause: {},
   };
@@ -1168,6 +1217,8 @@ function emptyRegimentContext(): RegimentContextStats {
 
 function addToSlice(slice: ContextStatSlice, kills: number, deaths: number,
   dIF: number, dSk: number, dOob: number, kf: FormationCounts) {
+  // One call per player-round in this slice — the loss/kill-rate denominator.
+  slice.fielded += 1;
   slice.kills += kills;
   slice.deaths += deaths;
   slice.casualtiesByFormation.in_form += dIF;
@@ -1196,6 +1247,8 @@ function finalizeSlice(slice: ContextStatSlice, rounds: Set<string>, players: Se
     slice.killsByFormation.skirm,
     slice.killsByFormation.oob,
   );
+  slice.killRate = perPlayerRate(slice.kills, slice.fielded);
+  slice.lossRate = perPlayerRate(slice.deaths, slice.fielded);
 }
 
 /**

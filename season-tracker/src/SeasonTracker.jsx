@@ -19,7 +19,7 @@ import { isStatsBundle, OVERALL_SCOPE, effectiveAliasMap, effectiveScopedMap, al
 import { computeRegimentBreakdown, computeRegimentContextStats } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
 import { deriveTokenSnaps, accumulateTokenSnaps, accumulateTokenSnapsScoped, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps, normalizeScopedTokenRegiments, effectiveTokenRegiments, unionTokenRegiments } from './stats/unitStats';
-import { FORMATION_SHORT, formatAvgT, AVG_TD_LABEL, AVG_TK_LABEL } from './stats/labels';
+import { FORMATION_SHORT, formatAvgT, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from './stats/labels';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -2469,6 +2469,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
         <td className="text-green-400/70 text-center py-1 px-2">{snap.kills}</td>
         <td className="text-red-400/70 text-center py-1 px-2">{snap.deaths}</td>
         <td className="text-indigo-400/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
+        {/* KR/LR need a player-count denominator the context snaps don't carry — left blank, like Players/Avg-Rd above. */}
+        <td className="text-center py-1 px-2" />
+        <td className="text-center py-1 px-2" />
         <td className="text-text-secondary text-center py-1 px-2">
           {snap.deathsForm.in_form}/{snap.deathsForm.skirm}/{snap.deathsForm.oob}
         </td>
@@ -2486,18 +2489,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const ctxSnaps = contextStats ? deriveTokenContextSnaps(contextStats, mapping) : null;
     const rows = Object.entries(snaps)
       .filter(([, s]) => s.kills || s.deaths)
-      .map(([unit, s]) => ({
-        unit,
-        kills: s.kills,
-        deaths: s.deaths,
-        kd: s.deaths > 0 ? s.kills / s.deaths : s.kills,
-        form: s.deathsForm,
-        td: unitSnapAvgTd(s),
-        tk: unitSnapAvgTk(s),
-        uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
-        avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
-        ctx: ctxSnaps?.[unit] ?? null,
-      }))
+      .map(([unit, s]) => {
+        const playerRounds = playerCounts[unit]?.playerRounds ?? 0;
+        return {
+          unit,
+          kills: s.kills,
+          deaths: s.deaths,
+          kd: s.deaths > 0 ? s.kills / s.deaths : s.kills,
+          // Size-normalized: kills / casualties over total players fielded.
+          killRate: perPlayerRate(s.kills, playerRounds),
+          lossRate: perPlayerRate(s.deaths, playerRounds),
+          form: s.deathsForm,
+          td: unitSnapAvgTd(s),
+          tk: unitSnapAvgTk(s),
+          uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
+          avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
+          ctx: ctxSnaps?.[unit] ?? null,
+        };
+      })
       .sort((a, b) => b.kills - a.kills);
     if (rows.length === 0) {
       return (
@@ -2517,6 +2526,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <th className="text-center py-2 px-2">K</th>
               <th className="text-center py-2 px-2">D</th>
               <th className="text-center py-2 px-2">K/D</th>
+              <th className="text-center py-2 px-2 cursor-help" title={KILL_RATE_LABEL}>KR</th>
+              <th className="text-center py-2 px-2 cursor-help" title={LOSS_RATE_LABEL}>LR</th>
               <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
               <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
               <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
@@ -2538,10 +2549,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {r.unit}
                     </td>
                     <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{r.avgPlayers.toFixed(1)}</td>
+                    <td className="text-cyan-400 text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
                     <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
                     <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
                     <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
+                    <td className="text-green-400/80 text-center py-2 px-2">{formatRate(r.killRate)}</td>
+                    <td className="text-red-400/80 text-center py-2 px-2">{formatRate(r.lossRate)}</td>
                     <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
@@ -7610,7 +7623,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 return (
                                   <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
                                     <td className="py-2 px-2">
-                                      {row.unit} ({row.avgPlayers.toFixed(1)})
+                                      {row.unit} ({Math.round(row.avgPlayers)})
                                     </td>
                                     <td className="text-indigo-400 text-center py-2 px-2 font-semibold">
                                       {row.adjustedTiiScore.toFixed(3)}

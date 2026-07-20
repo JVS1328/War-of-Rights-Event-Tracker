@@ -16,7 +16,7 @@ import {
 } from '../../stats/statsEngine';
 import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
-import { formatAvgT, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
@@ -47,6 +47,8 @@ const whenOf = (r: string | null) => (r ? `${r.slice(0, 10)} ${r.slice(11, 16)}`
 const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
+const KrHead = <span className="cursor-help" title={KILL_RATE_LABEL}>KR</span>;
+const LrHead = <span className="cursor-help" title={LOSS_RATE_LABEL}>LR</span>;
 
 interface StatsAreaProps {
   eventId: string;
@@ -545,17 +547,19 @@ function BreakdownGroup({
   );
 }
 
-type RegSort = 'name' | 'players' | 'avgPlayers' | 'kills' | 'deaths' | 'kd' | 'avgTk' | 'avgTd';
+type RegSort = 'name' | 'players' | 'avgPlayers' | 'kills' | 'deaths' | 'kd' | 'killRate' | 'lossRate' | 'avgTk' | 'avgTd';
 
-const REG_SORTS: { key: RegSort; label: string }[] = [
+const REG_SORTS: { key: RegSort; label: string; title?: string }[] = [
   { key: 'name', label: 'name' },
   { key: 'players', label: 'players' },
   { key: 'avgPlayers', label: 'avg/rd' },
   { key: 'kills', label: 'kills' },
   { key: 'deaths', label: 'deaths' },
   { key: 'kd', label: 'k/d' },
-  { key: 'avgTk', label: '×Tk' },
-  { key: 'avgTd', label: '×Td' },
+  { key: 'killRate', label: 'KR', title: KILL_RATE_LABEL },
+  { key: 'lossRate', label: 'LR', title: LOSS_RATE_LABEL },
+  { key: 'avgTk', label: '×Tk', title: AVG_TK_LABEL },
+  { key: 'avgTd', label: '×Td', title: AVG_TD_LABEL },
 ];
 
 /** Sort key → comparable value. Null ticket averages sort last (as -1). */
@@ -573,6 +577,10 @@ function regSortValue(r: RegimentStatRow, k: RegSort): number | string {
       return r.deaths;
     case 'kd':
       return r.kd;
+    case 'killRate':
+      return r.killRate ?? -1;
+    case 'lossRate':
+      return r.lossRate ?? -1;
     case 'avgTk':
       return r.avgTk ?? -1;
     case 'avgTd':
@@ -805,6 +813,7 @@ function RegimentsTab({
           <button
             key={s.key}
             onClick={() => onSort(s.key)}
+            title={s.title}
             className={
               sortKey === s.key
                 ? 'text-[color:var(--color-accent)]'
@@ -891,6 +900,8 @@ function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStat
       right={
         <span className="font-mono text-xs text-[color:var(--color-text-2)]">
           {slice.rounds}rd · {slice.players}p · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)}
+          {' · '}<span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(slice.killRate)}</span>
+          {' · '}<span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
           {' · '}<span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
           {' · '}<span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
         </span>
@@ -951,9 +962,13 @@ function RegimentPanel({
         right={
           <>
             <span title="Total unique players · average players fielded per round">
-              {`${reg.players}p · ${reg.avgPlayers.toFixed(1)}/rd`}
+              {`${reg.players}p · ${Math.round(reg.avgPlayers)}/rd`}
             </span>
             {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · K/D ${reg.kd.toFixed(2)} · `}
+            <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(reg.killRate)}</span>
+            {' · '}
+            <span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(reg.lossRate)}</span>
+            {' · '}
             <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
             {' · '}
             <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
@@ -1012,6 +1027,8 @@ function RegimentPanel({
                 <th className="px-2 py-1 text-right">K</th>
                 <th className="px-2 py-1 text-right">D</th>
                 <th className="px-2 py-1 text-right">K/D</th>
+                <th className="px-2 py-1 text-right">{KrHead}</th>
+                <th className="px-2 py-1 text-right">{LrHead}</th>
                 <th className="px-2 py-1 text-right">{TdHead}</th>
                 <th className="px-2 py-1 text-right">{TkHead}</th>
               </tr>
@@ -1032,6 +1049,8 @@ function RegimentPanel({
                   <td className="px-2 py-1 text-right tabular-nums">{rr.kills}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{rr.deaths}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{kdStr(rr.kills, rr.deaths)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums">{formatRate(rr.killRate)}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(rr.lossRate)}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(rr.avgTd)}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(rr.avgTk)}</td>
                 </tr>

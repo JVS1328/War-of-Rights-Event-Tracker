@@ -189,28 +189,34 @@ export function unitSnapAvgTk(snap: UnitSnap): number | null {
 }
 
 /**
- * Derive unique-player and average-players-per-round counts for each token
- * directly from a regiment breakdown. The breakdown must come from a single
- * `computeRegimentBreakdown` call covering the desired scope so that
- * `players` reflects true unique counts.
+ * Derive per-token player counts from a regiment breakdown: unique players,
+ * average players per round, and total players fielded (player-rounds). The
+ * breakdown must come from a single `computeRegimentBreakdown` call covering the
+ * desired scope so that `players` reflects true unique counts.
+ *
+ * `playerRounds` (Σ avgPlayers·rounds across the token's regiments) is the
+ * denominator for a token's size-normalized kill/loss rate, so a token that maps
+ * to a single regiment reports the same rate that regiment shows on its own.
  */
 export function deriveTokenPlayerCounts(
-  breakdown: readonly { regiment: string; players: number; avgPlayers: number }[],
+  breakdown: readonly { regiment: string; players: number; avgPlayers: number; rounds?: number }[],
   tokenRegiments: Record<string, string[]>,
-): Record<string, { uniquePlayers: number; avgPlayers: number }> {
+): Record<string, { uniquePlayers: number; avgPlayers: number; playerRounds: number }> {
   const byReg = new Map(breakdown.map((r) => [r.regiment, r]));
-  const out: Record<string, { uniquePlayers: number; avgPlayers: number }> = {};
+  const out: Record<string, { uniquePlayers: number; avgPlayers: number; playerRounds: number }> = {};
   for (const [token, regs] of Object.entries(tokenRegiments)) {
     let uniquePlayers = 0;
     let avgPlayers = 0;
+    let playerRounds = 0;
     for (const reg of regs) {
       const r = byReg.get(reg);
       if (r) {
         uniquePlayers += r.players;
         avgPlayers += r.avgPlayers;
+        playerRounds += r.avgPlayers * (r.rounds ?? 0);
       }
     }
-    out[token] = { uniquePlayers, avgPlayers };
+    out[token] = { uniquePlayers, avgPlayers, playerRounds };
   }
   return out;
 }

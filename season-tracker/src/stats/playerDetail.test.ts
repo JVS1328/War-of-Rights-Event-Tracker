@@ -81,6 +81,59 @@ const aliasBoards = [
   parseScoreboard(A3, 'scoreboard_20260101_140000.csv'),
 ];
 
+// A round that carries a roster section, so per-round role fields populate.
+const WITH_ROSTER = `map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[51stNY]Joe,2,3,1,3.00,1,0,0,76561198000000001
+
+team,regiment,company,name,class,rank,steam_id
+CSA,51stNY,A,[51stNY]Joe,Rifleman,Sgt,76561198000000001
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+16:10:00,[51stNY]Joe,76561198000000001,2,[20thGA]Han,76561198000000002,1,in_form,Minie,0,4
+`;
+
+describe('computePlayerDetail — per-round role', () => {
+  it('captures in-game role (regiment/company/rank/class) per round from the roster', () => {
+    const sbs = [parseScoreboard(WITH_ROSTER, 'scoreboard_20260101_120000.csv')];
+    const d = computePlayerDetail(sbs, '76561198000000001', {})!;
+    const r = d.perRound[0];
+    expect(r.regiment).toBe('51stNY');
+    expect(r.company).toBe('A');
+    expect(r.className).toBe('Rifleman');
+    expect(r.rank).toBe('Sgt');
+    expect(r.battery).toBe(false);
+  });
+
+  it('flags a battery (artillery) round from the roster regiment', () => {
+    const arty = `map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[Bty]Gun,2,1,0,1.00,0,0,0,76561198000000050
+
+team,regiment,company,name,class,rank,steam_id
+CSA,1st Battery,A,[Bty]Gun,Cannoneer,Cpl,76561198000000050
+`;
+    const d = computePlayerDetail([parseScoreboard(arty, 'scoreboard_20260101_120000.csv')], '76561198000000050', {})!;
+    expect(d.perRound[0].battery).toBe(true);
+    expect(d.isArtillery).toBe(true);
+  });
+
+  it('leaves per-round role fields null when the player has no roster entry', () => {
+    const d = computePlayerDetail(boards, '76561198000000001', {})!;
+    const r = d.perRound[0];
+    expect(r.regiment).toBeNull();
+    expect(r.rank).toBeNull();
+    expect(r.className).toBeNull();
+    expect(r.battery).toBe(false);
+  });
+});
+
 describe('computePlayerDetail — aliases', () => {
   it('uses the newest name as primary and lists prior names most-recent first', () => {
     const d = computePlayerDetail(aliasBoards, '76561198000000010', {})!;
