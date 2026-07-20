@@ -51,6 +51,23 @@ describe('computePlayerDetail', () => {
   it('returns null for an unknown player', () => {
     expect(computePlayerDetail(boards, 'nobody', {})).toBeNull();
   });
+
+  it('breaks each round down by cause (killed with / died to)', () => {
+    // Joe: DrillCamp → Minie + Melee kills; Antietam → one Minie kill; never a victim.
+    const joe = computePlayerDetail(boards, '76561198000000001', {})!;
+    const drill = joe.perRound.find((r) => r.map === 'DrillCamp')!;
+    const antietam = joe.perRound.find((r) => r.map === 'Antietam')!;
+    expect(drill.killsByCause).toEqual({ Minie: 1, Melee: 1 });
+    expect(drill.deathsByCause).toEqual({});
+    expect(antietam.killsByCause).toEqual({ Minie: 1 });
+    expect(antietam.deathsByCause).toEqual({});
+
+    // Han only appears in DrillCamp, where he died to a Minie and a Melee.
+    const han = computePlayerDetail(boards, '76561198000000002', {})!;
+    const hanDrill = han.perRound.find((r) => r.map === 'DrillCamp')!;
+    expect(hanDrill.deathsByCause).toEqual({ Minie: 1, Melee: 1 });
+    expect(hanDrill.killsByCause).toEqual({});
+  });
 });
 
 // Same steam id, three different in-game names across three rounds.

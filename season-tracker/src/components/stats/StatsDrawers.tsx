@@ -2,16 +2,42 @@ import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow } from '../../stats/statsEngine';
 import { Cell, CauseTable, kdStr, whenOf, teamTone } from './drawerPrimitives';
-import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { formatAvgT, formatCompany, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 
 /** Compose an in-game identity/role line for a round: unit · rank · class. */
 function roundRoleLine(r: PlayerRoundRow): string {
   const parts: string[] = [];
-  if (r.regiment) parts.push(r.company ? `${r.regiment} · Co. ${r.company}` : r.regiment);
+  if (r.regiment) parts.push(r.company ? `${r.regiment} · Co. ${formatCompany(r.company)}` : r.regiment);
   if (r.rank) parts.push(r.rank);
   if (r.className) parts.push(r.className);
   if (r.battery) parts.push('Artillery');
   return parts.join(' · ');
+}
+
+/**
+ * Compact inline "cause → count" line for a single round (killed with / died to),
+ * styled to match the card's formation breakdown. Rendered with spans instead of
+ * the tabular {@link CauseTable} because the card is a <button>, which may not
+ * contain a <table>. Falls back to an em dash when the killfeed has no rows.
+ */
+function RoundCauseLine({ label, data }: { label: string; data: Record<string, number> }) {
+  const rows = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  return (
+    <div>
+      <span className="uppercase tracking-wider">{label} </span>
+      {rows.length === 0 ? (
+        <span className="text-[color:var(--color-text-2)]">—</span>
+      ) : (
+        rows.map(([cause, count], i) => (
+          <span key={cause}>
+            {i > 0 ? ' · ' : ''}
+            <span className="capitalize text-[color:var(--color-text-1)]">{cause}</span>{' '}
+            <span className="text-[color:var(--color-text-1)]">{count}</span>
+          </span>
+        ))
+      )}
+    </div>
+  );
 }
 
 /** Rich per-round card: in-game role + the player's full stats for that round. */
@@ -56,6 +82,10 @@ function RecentRoundCard({ r, onOpen }: { r: PlayerRoundRow; onOpen: () => void 
           <span className="text-[color:var(--color-text-1)]">{r.killsSkirm}</span> {FORMATION_SHORT.skirm} ·{' '}
           <span className="text-[color:var(--color-text-1)]">{r.killsOob}</span> {FORMATION_SHORT.oob}
         </div>
+      </div>
+      <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 text-xs font-mono tabular-nums text-[color:var(--color-text-2)]">
+        <RoundCauseLine label="killed with" data={r.killsByCause} />
+        <RoundCauseLine label="died to" data={r.deathsByCause} />
       </div>
     </button>
   );

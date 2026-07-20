@@ -754,6 +754,10 @@ export interface PlayerRoundRow {
   killsOob: number;
   avgTd: number | null;
   avgTk: number | null;
+  /** Kills this round bucketed by weapon/cause (killfeed) — what the player killed with. */
+  killsByCause: Record<string, number>;
+  /** Deaths this round bucketed by weapon/cause (killfeed) — what the player died to. */
+  deathsByCause: Record<string, number>;
 }
 
 export interface PlayerDetail {
@@ -844,19 +848,25 @@ export function computePlayerDetail(
     detail.deathsSkirm += p.deathsSkirm;
     detail.deathsOob += p.deathsOob;
 
-    // This round's killfeed for the player (causes + kill formations).
+    // This round's killfeed for the player (causes + kill formations). Causes are
+    // tallied both into the running totals and into this round's own buckets so a
+    // per-round "killed with / died to" breakdown is available on each round row.
     let kIf = 0;
     let kSk = 0;
     let kOob = 0;
+    const roundKillsByCause: Record<string, number> = {};
+    const roundDeathsByCause: Record<string, number> = {};
     for (const kill of sb.kills) {
       if (isSamePlayer(key, kill.killerSteamId, kill.killer)) {
         detail.killsByCause[kill.cause] = (detail.killsByCause[kill.cause] ?? 0) + 1;
+        roundKillsByCause[kill.cause] = (roundKillsByCause[kill.cause] ?? 0) + 1;
         if (kill.victimFormation === 'in_form') kIf += 1;
         else if (kill.victimFormation === 'skirm') kSk += 1;
         else if (kill.victimFormation === 'oob') kOob += 1;
       }
       if (isSamePlayer(key, kill.victimSteamId, kill.victim)) {
         detail.deathsByCause[kill.cause] = (detail.deathsByCause[kill.cause] ?? 0) + 1;
+        roundDeathsByCause[kill.cause] = (roundDeathsByCause[kill.cause] ?? 0) + 1;
       }
     }
     detail.killsInForm += kIf;
@@ -884,6 +894,8 @@ export function computePlayerDetail(
       killsOob: kOob,
       avgTd: avgTicketCost(p.deathsInForm, p.deathsSkirm, p.deathsOob),
       avgTk: avgTicketCost(kIf, kSk, kOob),
+      killsByCause: roundKillsByCause,
+      deathsByCause: roundDeathsByCause,
     });
   }
 
