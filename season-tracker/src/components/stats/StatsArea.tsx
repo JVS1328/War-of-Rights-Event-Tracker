@@ -962,7 +962,7 @@ function RegimentPanel({
         right={
           <>
             <span title="Total unique players · average players fielded per round">
-              {`${reg.players}p · ${reg.avgPlayers.toFixed(1)}/rd`}
+              {`${reg.players}p · ${Math.round(reg.avgPlayers)}/rd`}
             </span>
             {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · K/D ${reg.kd.toFixed(2)} · `}
             <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(reg.killRate)}</span>

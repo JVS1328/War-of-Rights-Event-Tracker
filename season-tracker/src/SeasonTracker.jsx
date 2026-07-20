@@ -2549,7 +2549,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {r.unit}
                     </td>
                     <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{r.avgPlayers.toFixed(1)}</td>
+                    <td className="text-cyan-400 text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
                     <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
                     <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
                     <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
@@ -7623,7 +7623,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 return (
                                   <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
                                     <td className="py-2 px-2">
-                                      {row.unit} ({row.avgPlayers.toFixed(1)})
+                                      {row.unit} ({Math.round(row.avgPlayers)})
                                     </td>
                                     <td className="text-indigo-400 text-center py-2 px-2 font-semibold">
                                       {row.adjustedTiiScore.toFixed(3)}
