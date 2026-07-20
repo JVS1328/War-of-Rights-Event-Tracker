@@ -47,8 +47,8 @@ const whenOf = (r: string | null) => (r ? `${r.slice(0, 10)} ${r.slice(11, 16)}`
 const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
-const KrHead = <span title={KILL_RATE_LABEL}>KR</span>;
-const LrHead = <span title={LOSS_RATE_LABEL}>LR</span>;
+const KrHead = <span className="cursor-help" title={KILL_RATE_LABEL}>KR</span>;
+const LrHead = <span className="cursor-help" title={LOSS_RATE_LABEL}>LR</span>;
 
 interface StatsAreaProps {
   eventId: string;
@@ -549,17 +549,17 @@ function BreakdownGroup({
 
 type RegSort = 'name' | 'players' | 'avgPlayers' | 'kills' | 'deaths' | 'kd' | 'killRate' | 'lossRate' | 'avgTk' | 'avgTd';
 
-const REG_SORTS: { key: RegSort; label: string }[] = [
+const REG_SORTS: { key: RegSort; label: string; title?: string }[] = [
   { key: 'name', label: 'name' },
   { key: 'players', label: 'players' },
   { key: 'avgPlayers', label: 'avg/rd' },
   { key: 'kills', label: 'kills' },
   { key: 'deaths', label: 'deaths' },
   { key: 'kd', label: 'k/d' },
-  { key: 'killRate', label: 'KR' },
-  { key: 'lossRate', label: 'LR' },
-  { key: 'avgTk', label: '×Tk' },
-  { key: 'avgTd', label: '×Td' },
+  { key: 'killRate', label: 'KR', title: KILL_RATE_LABEL },
+  { key: 'lossRate', label: 'LR', title: LOSS_RATE_LABEL },
+  { key: 'avgTk', label: '×Tk', title: AVG_TK_LABEL },
+  { key: 'avgTd', label: '×Td', title: AVG_TD_LABEL },
 ];
 
 /** Sort key → comparable value. Null ticket averages sort last (as -1). */
@@ -813,6 +813,7 @@ function RegimentsTab({
           <button
             key={s.key}
             onClick={() => onSort(s.key)}
+            title={s.title}
             className={
               sortKey === s.key
                 ? 'text-[color:var(--color-accent)]'
@@ -899,8 +900,8 @@ function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStat
       right={
         <span className="font-mono text-xs text-[color:var(--color-text-2)]">
           {slice.rounds}rd · {slice.players}p · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)}
-          {' · '}<span title={KILL_RATE_LABEL}>KR {formatRate(slice.killRate)}</span>
-          {' · '}<span title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
+          {' · '}<span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(slice.killRate)}</span>
+          {' · '}<span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
           {' · '}<span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
           {' · '}<span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
         </span>
@@ -964,9 +965,9 @@ function RegimentPanel({
               {`${reg.players}p · ${reg.avgPlayers.toFixed(1)}/rd`}
             </span>
             {` · ${reg.rounds}rd · ${reg.kills}K/${reg.deaths}D · K/D ${reg.kd.toFixed(2)} · `}
-            <span title={KILL_RATE_LABEL}>KR {formatRate(reg.killRate)}</span>
+            <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(reg.killRate)}</span>
             {' · '}
-            <span title={LOSS_RATE_LABEL}>LR {formatRate(reg.lossRate)}</span>
+            <span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(reg.lossRate)}</span>
             {' · '}
             <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
             {' · '}

@@ -2526,8 +2526,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <th className="text-center py-2 px-2">K</th>
               <th className="text-center py-2 px-2">D</th>
               <th className="text-center py-2 px-2">K/D</th>
-              <th className="text-center py-2 px-2" title={KILL_RATE_LABEL}>KR</th>
-              <th className="text-center py-2 px-2" title={LOSS_RATE_LABEL}>LR</th>
+              <th className="text-center py-2 px-2 cursor-help" title={KILL_RATE_LABEL}>KR</th>
+              <th className="text-center py-2 px-2 cursor-help" title={LOSS_RATE_LABEL}>LR</th>
               <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
               <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
               <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
