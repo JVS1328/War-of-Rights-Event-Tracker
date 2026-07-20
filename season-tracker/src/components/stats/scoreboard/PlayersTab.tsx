@@ -2,7 +2,7 @@
 // drawer's player view: sort + search, USA/CSA team blocks, regiment→company
 // unit grouping with per-unit k/d + ×Td/×Tk + formation deaths, stacked player
 // cards with ★ officer markers. Falls back to a flat list when no roster.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { Pill } from '../../ui';
 import type { Scoreboard, ScoreboardPlayer, RosterEntry, Team } from '../../../stats/types';
@@ -261,20 +261,36 @@ function TeamBlock({
   );
 }
 
-/** ×Td / ×Tk on company + regiment headers. */
+/**
+ * One metric in a unit header, stacked: label on top, value below. Keeps every
+ * column in the summary aligned the same way (metric above, value below) so the
+ * header reads as a clean grid instead of wrapping mid-value.
+ */
+function HeaderStat({ label, value, title }: { label: string; value: ReactNode; title?: string }) {
+  return (
+    <span className={`flex flex-col items-start leading-tight ${title ? 'cursor-help' : ''}`} title={title}>
+      <span className="text-[color:var(--color-text-2)]">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+/** ×Td / ×Tk on company + regiment headers, stacked (label above value). */
 function AvgT({ agg }: { agg: UnitAgg }) {
   const td = avgTicketCost(agg.inForm, agg.skirm, agg.oob);
   const tk = avgTicketCost(agg.killInForm, agg.killSkirm, agg.killOob);
   return (
     <>
-      <span title={AVG_TD_LABEL} className="cursor-help">
-        <span className="text-[color:var(--color-text-2)]">×Td </span>
-        <span className="text-[color:var(--color-text-0)]">{formatTicket(td)}</span>
-      </span>
-      <span title={AVG_TK_LABEL} className="cursor-help ml-2">
-        <span className="text-[color:var(--color-text-2)]">×Tk </span>
-        <span className="text-[color:var(--color-text-0)]">{formatTicket(tk)}</span>
-      </span>
+      <HeaderStat
+        label="×Td"
+        title={AVG_TD_LABEL}
+        value={<span className="text-[color:var(--color-text-0)]">{formatTicket(td)}</span>}
+      />
+      <HeaderStat
+        label="×Tk"
+        title={AVG_TK_LABEL}
+        value={<span className="text-[color:var(--color-text-0)]">{formatTicket(tk)}</span>}
+      />
     </>
   );
 }
@@ -316,56 +332,68 @@ function RegimentGroup({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full px-3 py-1 bg-[color:var(--color-bg-1)] text-xs uppercase tracking-wider font-mono flex justify-between items-center gap-3 flex-wrap text-left hover:bg-[color:var(--color-bg-2)]"
+        className="w-full px-3 py-1 bg-[color:var(--color-bg-1)] text-xs uppercase tracking-wider font-mono flex justify-between items-start gap-3 flex-wrap text-left hover:bg-[color:var(--color-bg-2)]"
       >
-        <span className="flex items-center gap-1 text-[color:var(--color-text-0)]">
+        <span className="flex items-center gap-1 text-[color:var(--color-text-0)] pt-px">
           <Chevron size={11} className="shrink-0 text-[color:var(--color-text-2)]" />
           {regiment ?? 'Untagged'}
         </span>
-        <span className="flex items-center gap-3 text-[color:var(--color-text-2)] tabular-nums">
+        <span className="flex items-start gap-x-4 gap-y-1 flex-wrap text-[color:var(--color-text-2)] tabular-nums">
           {showStats && (
             <>
-              <span title="kills: total [in formation / skirmish / out of line]">
-                <span className="text-[color:var(--color-text-2)]">k </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.kills}</span>
-                <span className="text-[color:var(--color-text-2)]"> [</span>
-                <span className="text-[color:var(--color-text-1)]">{agg.killInForm}</span>
-                <span className="text-[color:var(--color-text-2)]"> / </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.killSkirm}</span>
-                <span className="text-[color:var(--color-text-2)]"> / </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.killOob}</span>
-                <span className="text-[color:var(--color-text-2)]">]</span>
-              </span>
-              <span title="deaths: total [in formation / skirmish / out of line]">
-                <span className="text-[color:var(--color-text-2)]">d </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.deaths}</span>
-                <span className="text-[color:var(--color-text-2)]"> [</span>
-                <span className="text-[color:var(--color-text-1)]">{agg.inForm}</span>
-                <span className="text-[color:var(--color-text-2)]"> / </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.skirm}</span>
-                <span className="text-[color:var(--color-text-2)]"> / </span>
-                <span className="text-[color:var(--color-text-1)]">{agg.oob}</span>
-                <span className="text-[color:var(--color-text-2)]">]</span>
-              </span>
-              <span>
-                <span className="text-[color:var(--color-text-2)]">k/d </span>
-                <span className="text-[color:var(--color-text-0)]">{fmtKd(agg.kills, agg.deaths)}</span>
-              </span>
-              <span title={KILL_RATE_LABEL} className="cursor-help">
-                <span className="text-[color:var(--color-text-2)]">kr </span>
-                <span className="text-[color:var(--color-text-0)]">{formatRate(killRate)}</span>
-              </span>
-              <span title={LOSS_RATE_LABEL} className="cursor-help">
-                <span className="text-[color:var(--color-text-2)]">lr </span>
-                <span className="text-[color:var(--color-text-0)]">{formatRate(lossRate)}</span>
-              </span>
+              <HeaderStat
+                label="Kills"
+                title="kills: total [in formation / skirmish / out of line]"
+                value={
+                  <>
+                    <span className="text-[color:var(--color-text-1)]">{agg.kills}</span>
+                    <span className="text-[color:var(--color-text-2)]"> [</span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.killInForm}</span>
+                    <span className="text-[color:var(--color-text-2)]"> / </span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.killSkirm}</span>
+                    <span className="text-[color:var(--color-text-2)]"> / </span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.killOob}</span>
+                    <span className="text-[color:var(--color-text-2)]">]</span>
+                  </>
+                }
+              />
+              <HeaderStat
+                label="Deaths"
+                title="deaths: total [in formation / skirmish / out of line]"
+                value={
+                  <>
+                    <span className="text-[color:var(--color-text-1)]">{agg.deaths}</span>
+                    <span className="text-[color:var(--color-text-2)]"> [</span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.inForm}</span>
+                    <span className="text-[color:var(--color-text-2)]"> / </span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.skirm}</span>
+                    <span className="text-[color:var(--color-text-2)]"> / </span>
+                    <span className="text-[color:var(--color-text-1)]">{agg.oob}</span>
+                    <span className="text-[color:var(--color-text-2)]">]</span>
+                  </>
+                }
+              />
+              <HeaderStat
+                label="k/d"
+                value={<span className="text-[color:var(--color-text-0)]">{fmtKd(agg.kills, agg.deaths)}</span>}
+              />
+              <HeaderStat
+                label="kr"
+                title={KILL_RATE_LABEL}
+                value={<span className="text-[color:var(--color-text-0)]">{formatRate(killRate)}</span>}
+              />
+              <HeaderStat
+                label="lr"
+                title={LOSS_RATE_LABEL}
+                value={<span className="text-[color:var(--color-text-0)]">{formatRate(lossRate)}</span>}
+              />
               <AvgT agg={agg} />
             </>
           )}
-          <span>
-            <span className="text-[color:var(--color-text-2)]">Players </span>
-            <span className="text-[color:var(--color-text-1)]">{players.length}</span>
-          </span>
+          <HeaderStat
+            label="Players"
+            value={<span className="text-[color:var(--color-text-1)]">{players.length}</span>}
+          />
         </span>
       </button>
       {open && (

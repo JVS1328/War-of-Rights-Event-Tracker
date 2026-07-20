@@ -65,3 +65,14 @@ export function avgTicketCost(inForm: number, skirm: number, oob: number): numbe
 export function formatAvgT(avg: number | null): string {
   return avg == null ? '—' : `×${avg.toFixed(1)}`;
 }
+
+/**
+ * Trim a trailing "Company" word off a roster company label so "A Company" reads
+ * as "A" where the surrounding UI already supplies the "Co." prefix. Bare labels
+ * ("A", "1st") pass through unchanged, and a value that is only "Company" falls
+ * back to itself rather than collapsing to an empty string.
+ */
+export function formatCompany(company: string): string {
+  const trimmed = company.replace(/\s*\bcompany\s*$/i, '').trim();
+  return trimmed || company;
+}
