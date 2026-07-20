@@ -734,6 +734,16 @@ export interface PlayerRoundRow {
   map: string;
   area: string | null;
   team: Team;
+  /** Regiment the player was rostered in this round (raw roster tag), or null. */
+  regiment: string | null;
+  /** Company within the regiment this round, or null. */
+  company: string | null;
+  /** In-game class this round (e.g. Rifleman, Skirmisher), or null. */
+  className: string | null;
+  /** In-game rank this round (e.g. Pvt, Sgt), or null. */
+  rank: string | null;
+  /** True when this round was played on a battery (artillery). */
+  battery: boolean;
   kills: number;
   deaths: number;
   deathsInForm: number;
@@ -816,7 +826,8 @@ export function computePlayerDetail(
   for (const sb of scoreboards) {
     const p = sb.players.find((x) => (x.steamId ?? x.name) === key);
     if (!p) continue;
-    const batteryRound = isBattery(findRoster(sb, p.steamId, p.name, p.team));
+    const rosterEntry = findRoster(sb, p.steamId, p.name, p.team);
+    const batteryRound = isBattery(rosterEntry);
     if (type === 'inf' && batteryRound) continue;
     if (type === 'arty' && !batteryRound) continue;
 
@@ -858,6 +869,11 @@ export function computePlayerDetail(
       map: sb.meta.map,
       area: sb.meta.area,
       team: p.team,
+      regiment: rosterEntry?.regiment ?? null,
+      company: rosterEntry?.company ?? null,
+      className: rosterEntry?.className ?? null,
+      rank: rosterEntry?.rank ?? null,
+      battery: batteryRound,
       kills: p.kills,
       deaths: p.deaths,
       deathsInForm: p.deathsInForm,

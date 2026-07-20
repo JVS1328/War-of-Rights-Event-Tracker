@@ -1,8 +1,65 @@
 import { ExternalLink } from 'lucide-react';
-import { Drawer, EmptyHint } from '../ui';
-import type { PlayerDetail } from '../../stats/statsEngine';
-import { Cell, CauseTable, kdStr, whenOf } from './drawerPrimitives';
+import { Drawer, EmptyHint, Pill } from '../ui';
+import type { PlayerDetail, PlayerRoundRow } from '../../stats/statsEngine';
+import { Cell, CauseTable, kdStr, whenOf, teamTone } from './drawerPrimitives';
 import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+
+/** Compose an in-game identity/role line for a round: unit · rank · class. */
+function roundRoleLine(r: PlayerRoundRow): string {
+  const parts: string[] = [];
+  if (r.regiment) parts.push(r.company ? `${r.regiment} · Co. ${r.company}` : r.regiment);
+  if (r.rank) parts.push(r.rank);
+  if (r.className) parts.push(r.className);
+  if (r.battery) parts.push('Artillery');
+  return parts.join(' · ');
+}
+
+/** Rich per-round card: in-game role + the player's full stats for that round. */
+function RecentRoundCard({ r, onOpen }: { r: PlayerRoundRow; onOpen: () => void }) {
+  const role = roundRoleLine(r);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full text-left border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-2 hover:bg-[color:var(--color-bg-3)] focus:outline-none focus:border-[color:var(--color-accent)]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm text-[color:var(--color-text-0)]">
+            {r.map}
+            {r.area ? <span className="text-[color:var(--color-text-2)]"> · {r.area}</span> : ''}
+          </div>
+          <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{whenOf(r.recordedAt)}</div>
+        </div>
+        <Pill tone={teamTone(r.team)}>{r.team}</Pill>
+      </div>
+      <div className="mt-1 text-xs text-[color:var(--color-text-1)]">
+        {role || <span className="text-[color:var(--color-text-2)]">no roster info</span>}
+      </div>
+      <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-px">
+        <Cell label="Kills" value={r.kills} />
+        <Cell label="Deaths" value={r.deaths} />
+        <Cell label="K/D" value={kdStr(r.kills, r.deaths)} />
+        <Cell label="×Td" value={formatAvgT(r.avgTd)} title={AVG_TD_LABEL} />
+        <Cell label="×Tk" value={formatAvgT(r.avgTk)} title={AVG_TK_LABEL} />
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs font-mono tabular-nums text-[color:var(--color-text-2)]">
+        <div>
+          <span className="uppercase tracking-wider">deaths </span>
+          <span className="text-[color:var(--color-text-1)]">{r.deathsInForm}</span> {FORMATION_SHORT.in_form} ·{' '}
+          <span className="text-[color:var(--color-text-1)]">{r.deathsSkirm}</span> {FORMATION_SHORT.skirm} ·{' '}
+          <span className="text-[color:var(--color-text-1)]">{r.deathsOob}</span> {FORMATION_SHORT.oob}
+        </div>
+        <div>
+          <span className="uppercase tracking-wider">kills </span>
+          <span className="text-[color:var(--color-text-1)]">{r.killsInForm}</span> {FORMATION_SHORT.in_form} ·{' '}
+          <span className="text-[color:var(--color-text-1)]">{r.killsSkirm}</span> {FORMATION_SHORT.skirm} ·{' '}
+          <span className="text-[color:var(--color-text-1)]">{r.killsOob}</span> {FORMATION_SHORT.oob}
+        </div>
+      </div>
+    </button>
+  );
+}
 
 // The round (scoreboard) drawer now lives in its own tabbed module; re-exported
 // here so existing imports (`./StatsDrawers`) keep working.
@@ -107,6 +164,20 @@ export function PlayerDrawer({
             <CauseTable title="Killed with" data={detail.killsByCause} />
             <CauseTable title="Died to" data={detail.deathsByCause} />
           </div>
+
+          {detail.perRound.length > 0 && (
+            <div>
+              <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Most recent rounds</div>
+              <div className="space-y-2">
+                {[...detail.perRound]
+                  .sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''))
+                  .slice(0, 2)
+                  .map((r) => (
+                    <RecentRoundCard key={r.sourceFilename} r={r} onOpen={() => onOpenRound(r.sourceFilename)} />
+                  ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
