@@ -6,6 +6,7 @@ import {
   CheckCircle2, FileText, Sun, Moon, MoreVertical
 } from 'lucide-react';
 import StatsArea from './components/stats/StatsArea';
+import { TicketPct } from './components/stats/drawerPrimitives';
 import { ThemeControls } from './components/ThemeControls';
 import { averageMorale, MORALE_STATES } from './stats/morale';
 import {
@@ -16,10 +17,10 @@ import {
 } from './utils/shareSeason';
 import { statsRepo } from './stats/repo';
 import { isStatsBundle, OVERALL_SCOPE, effectiveAliasMap, effectiveScopedMap, aliasMapBySource, scopedMapBySource } from './stats/statsBundle';
-import { computeRegimentBreakdown, computeRegimentContextStats } from './stats/statsEngine';
+import { computeRegimentBreakdown, computeRegimentContextStats, computeTokenTicketShares } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
 import { deriveTokenSnaps, accumulateTokenSnaps, accumulateTokenSnapsScoped, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps, normalizeScopedTokenRegiments, effectiveTokenRegiments, unionTokenRegiments } from './stats/unitStats';
-import { FORMATION_SHORT, formatAvgT, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from './stats/labels';
+import { FORMATION_SHORT, formatAvgT, formatPct, rosterShareTitle, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from './stats/labels';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -2520,6 +2521,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
     return computeRegimentContextStats(sbs.map(s => s.scoreboard), overallAssign, engineOpts);
   };
+  // Per-token average per-round ticket-damage shares (TDI/TDR%), rolled up under
+  // the same token→regiments mapping the stats table uses in each view.
+  const tokenTicketSharesEventTotals = useMemo(
+    () => computeTokenTicketShares(sbStored.map(s => s.scoreboard), overallAssign, tokenRegimentsUnion, engineOpts),
+    [sbStored, overallAssign, tokenRegimentsUnion, engineOpts],
+  );
+  const tokenTicketSharesAsOfWeek = (maxWeekIdx) => {
+    const ids = new Set(weeks.slice(0, (maxWeekIdx ?? weeks.length - 1) + 1).map(w => String(w.id)));
+    const sbs = sbStored.filter(s => s.binding?.weekId && ids.has(String(s.binding.weekId)));
+    return computeTokenTicketShares(sbs.map(s => s.scoreboard), overallAssign, tokenRegiments, engineOpts);
+  };
 
   const toggleExpandedUnit = (unit) => {
     setExpandedUnits(prev => {
@@ -2549,6 +2561,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
         </td>
         <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTd(snap))}</td>
         <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTk(snap))}</td>
+        {/* TDI/TDR% need per-round team totals the context snaps don't carry — left blank. */}
+        <td className="text-center py-1 px-2" />
+        <td className="text-center py-1 px-2" />
       </tr>
     );
   };
@@ -2556,7 +2571,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Render the derived per-unit stats table (K/D, formation makeup, ×Td/×Tk, player counts).
   // `mapping` is the token→regiments map for player-count/context derivation:
   // the active season's for as-of-week, the cross-season union for event totals.
-  const renderUnitStatsTable = (snaps, regBreakdown, contextStats, mapping = tokenRegiments) => {
+  const renderUnitStatsTable = (snaps, regBreakdown, contextStats, mapping = tokenRegiments, ticketShares = {}) => {
     const playerCounts = regBreakdown ? deriveTokenPlayerCounts(regBreakdown, mapping) : {};
     const ctxSnaps = contextStats ? deriveTokenContextSnaps(contextStats, mapping) : null;
     const rows = Object.entries(snaps)
@@ -2574,6 +2589,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
           form: s.deathsForm,
           td: unitSnapAvgTd(s),
           tk: unitSnapAvgTk(s),
+          // Avg per-round share of the team's ticket damage inflicted / received,
+          // with the size-adjusted efficiency + roster split shown beside each.
+          tdInf: ticketShares[unit]?.avgPctInflicted ?? null,
+          tdRec: ticketShares[unit]?.avgPctReceived ?? null,
+          tdInfEff: ticketShares[unit]?.avgEffInflicted ?? null,
+          tdRecEff: ticketShares[unit]?.avgEffReceived ?? null,
+          rosterTitle: ticketShares[unit]
+            ? rosterShareTitle(ticketShares[unit].avgUnitPlayers, ticketShares[unit].avgTeamPlayers, true)
+            : undefined,
           uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
           avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
           ctx: ctxSnaps?.[unit] ?? null,
@@ -2603,6 +2627,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
               <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
               <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
+              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI%</th>
+              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR%</th>
             </tr>
           </thead>
           <tbody>
@@ -2630,6 +2656,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
+                    <td className="text-green-400/80 text-center py-2 px-2"><TicketPct share={r.tdInf} eff={r.tdInfEff} effTitle={r.rosterTitle} /></td>
+                    <td className="text-red-400/80 text-center py-2 px-2"><TicketPct share={r.tdRec} eff={r.tdRecEff} effTitle={r.rosterTitle} /></td>
                   </tr>
                   {isOpen && r.ctx && (
                     <>
@@ -7563,7 +7591,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="mt-2">
                             <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion)}
+                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
                           </div>
                         </div>
 
@@ -7681,7 +7709,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </h4>
                       {(() => {
                         const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx));
+                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
                       })()}
                     </div>
                   </div>

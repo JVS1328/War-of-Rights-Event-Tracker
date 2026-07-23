@@ -131,6 +131,13 @@ export function diedToOf(p: ScoreboardPlayer, idx: CauseIndex): CauseCounts {
   return idx.diedToByName.get(p.name.trim().toLowerCase()) ?? EMPTY_CAUSES;
 }
 
+/** Sum several `cause → count` maps into one (unit-level killed-with / died-to). */
+export function sumCauses(counts: CauseCounts[]): CauseCounts {
+  const out: CauseCounts = {};
+  for (const c of counts) for (const [cause, n] of Object.entries(c)) out[cause] = (out[cause] ?? 0) + n;
+  return out;
+}
+
 export function comparePlayers(a: ScoreboardPlayer, b: ScoreboardPlayer, by: PlayerSort): number {
   if (by === 'unit' || by === 'name') return a.name.localeCompare(b.name);
   if (by === 'kills') return b.kills - a.kills;
@@ -176,10 +183,11 @@ export function groupByRegiment(
     .map(([key, ps]) => ({ regiment: label.get(key) ?? null, players: ps }));
 }
 
-/** Does a player satisfy the drawer's search box? Matches on the player's name
- *  or their resolved regiment label, case-insensitively. A blank query matches
- *  everyone — so searching a regiment surfaces its whole group with stats, while
- *  a name query narrows to that player. */
+/** Does a player satisfy the drawer's search box? Matches on the player's name,
+ *  their steam id, or their resolved regiment label, case-insensitively. A blank
+ *  query matches everyone — so searching a regiment surfaces its whole group with
+ *  stats, a name query narrows to that player, and a steam id finds one player
+ *  even across name changes. */
 export function playerMatches(
   p: ScoreboardPlayer,
   search: string,
@@ -188,6 +196,7 @@ export function playerMatches(
   const q = search.trim().toLowerCase();
   if (!q) return true;
   if (p.name.toLowerCase().includes(q)) return true;
+  if (p.steamId && p.steamId.toLowerCase().includes(q)) return true;
   const reg = resolve(p.steamId, p.name);
   return reg != null && reg.toLowerCase().includes(q);
 }

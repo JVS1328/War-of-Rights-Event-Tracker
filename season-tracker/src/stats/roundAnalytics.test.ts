@@ -4,26 +4,40 @@ import {
   topKillRates,
   topIndividualKills,
   topIndividualDeaths,
+  topTicketInflicted,
+  topTicketReceived,
   firstAndLastDeath,
   computeNemeses,
 } from './roundAnalytics';
-import type { Scoreboard, ScoreboardPlayer, Kill, ScoreboardMeta, Team } from './types';
+import type { Scoreboard, ScoreboardPlayer, Kill, ScoreboardMeta, Team, Formation } from './types';
 
-function mkPlayer(name: string, team: Team, kills: number, deaths: number): ScoreboardPlayer {
+function mkPlayer(
+  name: string,
+  team: Team,
+  kills: number,
+  deaths: number,
+  form: { inForm?: number; skirm?: number; oob?: number } = {},
+): ScoreboardPlayer {
   return {
     name,
     team,
     kills,
     deaths,
     kd: deaths > 0 ? kills / deaths : kills,
-    deathsInForm: 0,
-    deathsSkirm: 0,
-    deathsOob: 0,
+    deathsInForm: form.inForm ?? 0,
+    deathsSkirm: form.skirm ?? 0,
+    deathsOob: form.oob ?? 0,
     steamId: name,
   };
 }
 
-function mkKill(killer: string | null, victim: string, ts: string, cause = 'minie'): Kill {
+function mkKill(
+  killer: string | null,
+  victim: string,
+  ts: string,
+  cause = 'minie',
+  victimFormation: Formation | null = null,
+): Kill {
   return {
     tsInRound: ts,
     killer,
@@ -32,7 +46,7 @@ function mkKill(killer: string | null, victim: string, ts: string, cause = 'mini
     victim,
     victimSteamId: victim,
     victimTeam: null,
-    victimFormation: null,
+    victimFormation,
     cause,
     cat: 0,
     sub: 0,
@@ -108,6 +122,37 @@ describe('roundAnalytics', () => {
     const deaths = topIndividualDeaths(mkScoreboard(players), 10);
     expect(deaths[0]).toMatchObject({ name: '2ndVA | Dave', value: 8 });
     expect(deaths.every((r) => r.value > 0)).toBe(true);
+  });
+
+  it('ranks ticket damage inflicted by ×Tk weight of each victim formation', () => {
+    // Alice: 1 IF (1) + 1 OoL (5) = 6; Bob: 2 Skirm (3+3) = 6 but fewer... make distinct.
+    const roster = [
+      mkPlayer('1stTX | Alice', 'USA', 2, 0),
+      mkPlayer('1stTX | Bob', 'USA', 2, 0),
+      mkPlayer('2ndVA | Carol', 'CSA', 0, 0),
+    ];
+    const kills = [
+      mkKill('1stTX | Alice', '2ndVA | Carol', '00:01:00', 'minie', 'in_form'), // 1
+      mkKill('1stTX | Alice', '2ndVA | Carol', '00:02:00', 'minie', 'oob'), // 5
+      mkKill('1stTX | Bob', '2ndVA | Carol', '00:03:00', 'melee', 'skirm'), // 3
+    ];
+    const rows = topTicketInflicted(mkScoreboard(roster, kills));
+    expect(rows.map((r) => r.name)).toEqual(['1stTX | Alice', '1stTX | Bob']);
+    expect(rows[0]).toMatchObject({ value: 6, regiment: '1STTX', key: '1stTX | Alice' });
+    expect(rows[1].value).toBe(3);
+  });
+
+  it('ranks ticket damage received by ×Td weight of each death stance', () => {
+    const roster = [
+      mkPlayer('A', 'USA', 0, 3, { inForm: 1, skirm: 1, oob: 1 }), // 1+3+5 = 9
+      mkPlayer('B', 'USA', 0, 2, { inForm: 2, skirm: 0, oob: 0 }), // 2
+      mkPlayer('C', 'CSA', 0, 0), // no deaths → excluded
+    ];
+    const rows = topTicketReceived(mkScoreboard(roster));
+    expect(rows.map((r) => r.name)).toEqual(['A', 'B']);
+    expect(rows[0].value).toBe(9);
+    expect(rows[1].value).toBe(2);
+    expect(rows.every((r) => r.value > 0)).toBe(true);
   });
 
   it('finds first and last death by timestamp', () => {

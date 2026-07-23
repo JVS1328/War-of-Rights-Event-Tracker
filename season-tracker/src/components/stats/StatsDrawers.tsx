@@ -1,8 +1,84 @@
+import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow } from '../../stats/statsEngine';
 import { Cell, CauseTable, kdStr, whenOf, teamTone } from './drawerPrimitives';
 import { formatAvgT, formatCompany, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+
+/** Rounds most-recent first (undated rounds sort last). */
+function byRecentFirst(rounds: PlayerRoundRow[]): PlayerRoundRow[] {
+  return [...rounds].sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''));
+}
+
+/** Compact ‹ 1/N › pager shared by the player drawer's paginated sections. */
+function Pager({
+  page,
+  pageCount,
+  offset,
+  shown,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  offset: number;
+  shown: number;
+  total: number;
+  onPage: (p: number) => void;
+}) {
+  if (pageCount <= 1) return null;
+  const btn =
+    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div className="mt-1.5 flex items-center justify-between text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+      <span className="tabular-nums">
+        {offset + 1}–{offset + shown} of {total}
+      </span>
+      <span className="flex items-center gap-1">
+        <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} className={btn} aria-label="Previous page">
+          ‹
+        </button>
+        <span className="px-1 tabular-nums">
+          {page + 1}/{pageCount}
+        </span>
+        <button
+          onClick={() => onPage(Math.min(pageCount - 1, page + 1))}
+          disabled={page >= pageCount - 1}
+          className={btn}
+          aria-label="Next page"
+        >
+          ›
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** "Rounds played": every round the player fielded, as rich cards, 4 per page. */
+function RoundsPlayedSection({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOpenRound: (filename: string) => void }) {
+  const PAGE = 4;
+  const [page, setPage] = useState(0);
+  const ordered = useMemo(() => byRecentFirst(rounds), [rounds]);
+  if (ordered.length === 0) return null;
+  const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE));
+  const current = Math.min(page, pageCount - 1);
+  const offset = current * PAGE;
+  const pageRows = ordered.slice(offset, offset + PAGE);
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Rounds played</div>
+        <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)] tabular-nums">{ordered.length} total</div>
+      </div>
+      <div className="space-y-2">
+        {pageRows.map((r) => (
+          <RecentRoundCard key={r.sourceFilename} r={r} onOpen={() => onOpenRound(r.sourceFilename)} />
+        ))}
+      </div>
+      <Pager page={current} pageCount={pageCount} offset={offset} shown={pageRows.length} total={ordered.length} onPage={setPage} />
+    </div>
+  );
+}
 
 /** Compose an in-game identity/role line for a round: unit · rank · class. */
 function roundRoleLine(r: PlayerRoundRow): string {
@@ -88,6 +164,62 @@ function RecentRoundCard({ r, onOpen }: { r: PlayerRoundRow; onOpen: () => void 
         <RoundCauseLine label="died to" data={r.deathsByCause} />
       </div>
     </button>
+  );
+}
+
+/** Compact per-round table (every round, dense), paginated. */
+function PerRoundTable({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOpenRound: (filename: string) => void }) {
+  const PAGE = 12;
+  const [page, setPage] = useState(0);
+  const ordered = useMemo(() => byRecentFirst(rounds), [rounds]);
+  const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE));
+  const current = Math.min(page, pageCount - 1);
+  const offset = current * PAGE;
+  const pageRows = ordered.slice(offset, offset + PAGE);
+  return (
+    <div>
+      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[color:var(--color-border)] text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+            <th className="px-2 py-0.5 text-left">When</th>
+            <th className="px-2 py-0.5 text-left">Map · Area</th>
+            <th className="px-2 py-0.5 text-right">K</th>
+            <th className="px-2 py-0.5 text-right">D</th>
+            <th className="px-2 py-0.5 text-right">K/D</th>
+            <th className="px-2 py-0.5 text-right" title="In Formation / Skirmish / Out of Line deaths">
+              {FORMATION_SHORT.in_form}/{FORMATION_SHORT.skirm}/{FORMATION_SHORT.oob}
+            </th>
+            <th className="px-2 py-0.5 text-right" title={AVG_TD_LABEL}>×Td</th>
+            <th className="px-2 py-0.5 text-right" title={AVG_TK_LABEL}>×Tk</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageRows.map((r, i) => (
+            <tr
+              key={`${r.sourceFilename}-${offset + i}`}
+              onClick={() => onOpenRound(r.sourceFilename)}
+              className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
+            >
+              <td className="px-2 py-0.5 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(r.recordedAt)}</td>
+              <td className="px-2 py-0.5 text-[color:var(--color-text-1)]">
+                {r.map}
+                {r.area ? ` · ${r.area}` : ''}
+              </td>
+              <td className="px-2 py-0.5 text-right tabular-nums">{r.kills}</td>
+              <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{r.deaths}</td>
+              <td className="px-2 py-0.5 text-right tabular-nums">{kdStr(r.kills, r.deaths)}</td>
+              <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">
+                {r.deathsInForm}/{r.deathsSkirm}/{r.deathsOob}
+              </td>
+              <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTd)}</td>
+              <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTk)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <Pager page={current} pageCount={pageCount} offset={offset} shown={pageRows.length} total={ordered.length} onPage={setPage} />
+    </div>
   );
 }
 
@@ -196,61 +328,12 @@ export function PlayerDrawer({
           </div>
 
           {detail.perRound.length > 0 && (
-            <div>
-              <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Most recent rounds</div>
-              <div className="space-y-2">
-                {[...detail.perRound]
-                  .sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''))
-                  .slice(0, 2)
-                  .map((r) => (
-                    <RecentRoundCard key={r.sourceFilename} r={r} onOpen={() => onOpenRound(r.sourceFilename)} />
-                  ))}
-              </div>
-            </div>
+            <RoundsPlayedSection key={`rp-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
           )}
 
-          <div>
-            <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[color:var(--color-border)] text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                  <th className="px-2 py-0.5 text-left">When</th>
-                  <th className="px-2 py-0.5 text-left">Map · Area</th>
-                  <th className="px-2 py-0.5 text-right">K</th>
-                  <th className="px-2 py-0.5 text-right">D</th>
-                  <th className="px-2 py-0.5 text-right">K/D</th>
-                  <th className="px-2 py-0.5 text-right" title="In Formation / Skirmish / Out of Line deaths">
-                    {FORMATION_SHORT.in_form}/{FORMATION_SHORT.skirm}/{FORMATION_SHORT.oob}
-                  </th>
-                  <th className="px-2 py-0.5 text-right" title={AVG_TD_LABEL}>×Td</th>
-                  <th className="px-2 py-0.5 text-right" title={AVG_TK_LABEL}>×Tk</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...detail.perRound].sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? '')).map((r, i) => (
-                  <tr
-                    key={i}
-                    onClick={() => onOpenRound(r.sourceFilename)}
-                    className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-                  >
-                    <td className="px-2 py-0.5 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(r.recordedAt)}</td>
-                    <td className="px-2 py-0.5 text-[color:var(--color-text-1)]">
-                      {r.map}
-                      {r.area ? ` · ${r.area}` : ''}
-                    </td>
-                    <td className="px-2 py-0.5 text-right tabular-nums">{r.kills}</td>
-                    <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{r.deaths}</td>
-                    <td className="px-2 py-0.5 text-right tabular-nums">{kdStr(r.kills, r.deaths)}</td>
-                    <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">
-                      {r.deathsInForm}/{r.deathsSkirm}/{r.deathsOob}
-                    </td>
-                    <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTd)}</td>
-                    <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTk)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {detail.perRound.length > 0 && (
+            <PerRoundTable key={`pr-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
+          )}
         </div>
       )}
     </Drawer>
