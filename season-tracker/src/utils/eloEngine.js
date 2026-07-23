@@ -263,6 +263,7 @@ export const accumulateMapHistoryFromSeasons = (seasons) => {
   for (const season of seasons || []) {
     for (const week of season.weeks || []) {
       if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
+      if (week.isFunRound) continue; // exhibition — excluded from map/Elo history
       foldRoundIntoMapHistory(mapHistory, week, 1);
       foldRoundIntoMapHistory(mapHistory, week, 2);
     }
@@ -283,6 +284,7 @@ export const accumulatePriorEventsMapHistory = (events, upToIdx) => {
     for (const season of event.seasons || []) {
       for (const week of season.weeks || []) {
         if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
+        if (week.isFunRound) continue; // exhibition — excluded from map/Elo history
         foldRoundIntoMapHistory(mapHistory, week, 1);
         foldRoundIntoMapHistory(mapHistory, week, 2);
       }
@@ -332,6 +334,8 @@ export const replayEvent = (event, { untilOrderKey, seedMapHistory } = {}) => {
     for (let wIdx = 0; wIdx < weeks.length; wIdx++) {
       const week = weeks[wIdx];
       if ((week.teamA || []).length === 0 || (week.teamB || []).length === 0) continue;
+      // Fun rounds are exhibition — excluded from Elo and map/unit history.
+      if (week.isFunRound) continue;
 
       const r1Winner = week.round1Winner;
       const r2Winner = week.round2Winner;
