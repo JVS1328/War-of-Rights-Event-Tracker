@@ -5,8 +5,22 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { Pill } from '../../ui';
+import { TicketPct } from '../drawerPrimitives';
 import type { Scoreboard, ScoreboardPlayer, RosterEntry, Team } from '../../../stats/types';
-import { avgTicketCost, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from '../../../stats/labels';
+import {
+  avgTicketCost,
+  ticketDamage,
+  ticketEfficiency,
+  rosterShareTitle,
+  perPlayerRate,
+  formatRate,
+  AVG_TD_LABEL,
+  AVG_TK_LABEL,
+  KILL_RATE_LABEL,
+  LOSS_RATE_LABEL,
+  TICKET_INFLICTED_LABEL,
+  TICKET_RECEIVED_LABEL,
+} from '../../../stats/labels';
 import { extractRegimentTag, UNTAGGED } from '../../../stats/regimentMatcher';
 import {
   type PlayerSort,
@@ -22,6 +36,7 @@ import {
   killStanceOf,
   killedWithOf,
   diedToOf,
+  sumCauses,
   comparePlayers,
   groupByRegiment,
   sumKD,
@@ -127,7 +142,7 @@ export function PlayersTab({
         ))}
         <input
           type="text"
-          placeholder="search player…"
+          placeholder="name / steam id / unit…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="ml-3 bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-sm font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)] normal-case tracking-normal w-32"
@@ -202,6 +217,11 @@ function TeamBlock({
     [rows, search, resolve],
   );
   const searching = search.trim().length > 0;
+  // Team-wide ticket damage (whole team, unaffected by search) — the denominator
+  // for each unit's share of the team's ticket damage inflicted / received.
+  const teamAgg = useMemo(() => sumKD(rows, killStance), [rows, killStance]);
+  const teamInflicted = ticketDamage(teamAgg.killInForm, teamAgg.killSkirm, teamAgg.killOob);
+  const teamReceived = ticketDamage(teamAgg.inForm, teamAgg.skirm, teamAgg.oob);
   if (rows.length === 0) return null;
   if (searching && visible.length === 0) return null;
 
@@ -242,6 +262,9 @@ function TeamBlock({
                 lookup={lookup}
                 killStance={killStance}
                 causeIndex={causeIndex}
+                teamInflicted={teamInflicted}
+                teamReceived={teamReceived}
+                teamPlayers={rows.length}
                 onOpenPlayer={onOpenPlayer}
               />
             );
@@ -304,6 +327,9 @@ function RegimentGroup({
   lookup,
   killStance,
   causeIndex,
+  teamInflicted,
+  teamReceived,
+  teamPlayers,
   onOpenPlayer,
 }: {
   group: RegimentGroupModel;
@@ -315,6 +341,11 @@ function RegimentGroup({
   lookup: (p: ScoreboardPlayer) => RosterEntry | undefined;
   killStance: (p: ScoreboardPlayer) => KillStance;
   causeIndex: CauseIndex;
+  /** Team-wide ticket damage inflicted/received and head count — the share &
+   *  efficiency denominators. */
+  teamInflicted: number;
+  teamReceived: number;
+  teamPlayers: number;
   onOpenPlayer: (key: string) => void;
 }) {
   const { regiment, players } = group;
@@ -323,6 +354,18 @@ function RegimentGroup({
   // Size-normalized rates for this unit's round: kills / casualties per player.
   const killRate = perPlayerRate(agg.kills, players.length);
   const lossRate = perPlayerRate(agg.deaths, players.length);
+  // This unit's share of the team's ticket damage this round, plus the
+  // size-adjusted efficiency (share ÷ roster share) shown beside it.
+  const unitInflicted = ticketDamage(agg.killInForm, agg.killSkirm, agg.killOob);
+  const unitReceived = ticketDamage(agg.inForm, agg.skirm, agg.oob);
+  const pctInflicted = teamInflicted > 0 ? unitInflicted / teamInflicted : null;
+  const pctReceived = teamReceived > 0 ? unitReceived / teamReceived : null;
+  const effInflicted = ticketEfficiency(unitInflicted, players.length, teamInflicted, teamPlayers);
+  const effReceived = ticketEfficiency(unitReceived, players.length, teamReceived, teamPlayers);
+  const rosterTitle = rosterShareTitle(players.length, teamPlayers);
+  // Unit-level "killed with" / "died to" — every member's killfeed rolled up.
+  const unitKilledWith = sortedCauses(sumCauses(players.map((p) => killedWithOf(p, causeIndex))));
+  const unitDiedTo = sortedCauses(sumCauses(players.map((p) => diedToOf(p, causeIndex))));
   // Untagged players aren't a real unit — skip the k/d rollup.
   const showStats = regiment != null;
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -388,6 +431,24 @@ function RegimentGroup({
                 value={<span className="text-[color:var(--color-text-0)]">{formatRate(lossRate)}</span>}
               />
               <AvgT agg={agg} />
+              <HeaderStat
+                label="TDI"
+                title={TICKET_INFLICTED_LABEL}
+                value={
+                  <span className="text-[color:var(--color-text-0)]">
+                    <TicketPct share={pctInflicted} eff={effInflicted} effTitle={rosterTitle} />
+                  </span>
+                }
+              />
+              <HeaderStat
+                label="TDR"
+                title={TICKET_RECEIVED_LABEL}
+                value={
+                  <span className="text-[color:var(--color-text-0)]">
+                    <TicketPct share={pctReceived} eff={effReceived} effTitle={rosterTitle} />
+                  </span>
+                }
+              />
             </>
           )}
           <HeaderStat
@@ -397,14 +458,28 @@ function RegimentGroup({
         </span>
       </button>
       {open && (
-        <PlayerCardList
-          rows={visiblePlayers.slice().sort((a, b) => a.name.localeCompare(b.name))}
-          isOfficer={isOfficer}
-          lookup={lookup}
-          killStance={killStance}
-          causeIndex={causeIndex}
-          onOpenPlayer={onOpenPlayer}
-        />
+        <>
+          {showStats && (unitKilledWith.length > 0 || unitDiedTo.length > 0) && (
+            <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-3 py-1.5 text-2xs font-mono text-[color:var(--color-text-2)] space-y-0.5">
+              <div>
+                <span className="uppercase tracking-wider">unit killed with </span>
+                {unitKilledWith.length > 0 ? <CauseInline data={unitKilledWith} /> : <span>—</span>}
+              </div>
+              <div>
+                <span className="uppercase tracking-wider">unit died to </span>
+                {unitDiedTo.length > 0 ? <CauseInline data={unitDiedTo} /> : <span>—</span>}
+              </div>
+            </div>
+          )}
+          <PlayerCardList
+            rows={visiblePlayers.slice().sort((a, b) => a.name.localeCompare(b.name))}
+            isOfficer={isOfficer}
+            lookup={lookup}
+            killStance={killStance}
+            causeIndex={causeIndex}
+            onOpenPlayer={onOpenPlayer}
+          />
+        </>
       )}
     </div>
   );

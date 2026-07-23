@@ -39,6 +39,7 @@ export function DataTable<T>({
   renderExpanded,
   emptyHint = 'No data',
   className = '',
+  pageSize,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -52,10 +53,13 @@ export function DataTable<T>({
   renderExpanded?: (row: T) => ReactNode;
   emptyHint?: ReactNode;
   className?: string;
+  /** When set, only this many rows show per page with a pager beneath the table. */
+  pageSize?: number;
 }) {
   const [sortKey, setSortKey] = useState<string | undefined>(initialSortKey);
   const [sortDir, setSortDir] = useState<SortDir>(initialSortDir);
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const sortedColumn = columns.find((c) => c.key === sortKey);
@@ -78,8 +82,15 @@ export function DataTable<T>({
     });
   }, [filtered, sortedColumn, sortDir]);
 
+  // Pagination (opt-in). `page` is clamped for display so a shrinking result set
+  // never strands the view on an empty page; handlers reset it to the first page.
+  const pageCount = pageSize ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageRows = pageSize ? sorted.slice(currentPage * pageSize, currentPage * pageSize + pageSize) : sorted;
+
   const onHeaderClick = (col: Column<T>) => {
     if (!col.sortable || !col.sortValue) return;
+    setPage(0);
     if (sortKey === col.key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -104,7 +115,10 @@ export function DataTable<T>({
           <Search size={12} className="text-[color:var(--color-text-2)]" />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(0);
+            }}
             placeholder={searchPlaceholder}
             className="w-full bg-transparent text-sm font-mono text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] outline-none"
           />
@@ -139,7 +153,7 @@ export function DataTable<T>({
               </td>
             </tr>
           )}
-          {sorted.map((row) => {
+          {pageRows.map((row) => {
             const key = getRowKey(row);
             const isExpanded = expanded.has(key);
             return (
@@ -173,6 +187,34 @@ export function DataTable<T>({
           })}
         </tbody>
       </table>
+      {pageSize && pageCount > 1 && (
+        <div className="flex items-center justify-between border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+          <span className="tabular-nums">
+            {currentPage * pageSize + 1}–{currentPage * pageSize + pageRows.length} of {sorted.length}
+          </span>
+          <span className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(0, Math.min(p, pageCount - 1) - 1))}
+              disabled={currentPage === 0}
+              aria-label="Previous page"
+              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ‹
+            </button>
+            <span className="px-1 tabular-nums">
+              {currentPage + 1}/{pageCount}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount - 1, Math.min(p, pageCount - 1) + 1))}
+              disabled={currentPage >= pageCount - 1}
+              aria-label="Next page"
+              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ›
+            </button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

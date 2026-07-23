@@ -14,9 +14,12 @@ import {
   topKillRates,
   topIndividualKills,
   topIndividualDeaths,
+  topTicketInflicted,
+  topTicketReceived,
   firstAndLastDeath,
   computeNemeses,
 } from '../../../stats/roundAnalytics';
+import { TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL } from '../../../stats/labels';
 import type {
   UnitRateRow,
   IndividualStatRow,
@@ -49,7 +52,7 @@ function PagedSection<T>({
   pageSize = PAGE_SIZE,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   rows: T[];
   searchText: (r: T) => string;
   searchPlaceholder?: string;
@@ -313,6 +316,8 @@ export function AnalyticsTab({
       killRates: topKillRates(sb, { minPlayers: 2 }),
       topKills: topIndividualKills(sb),
       topDeaths: topIndividualDeaths(sb),
+      ticketInflicted: topTicketInflicted(sb),
+      ticketReceived: topTicketReceived(sb),
       nemeses: computeNemeses(sb, { minKills: 2 }),
       firstDeath: first,
       lastDeath: last,
@@ -322,6 +327,8 @@ export function AnalyticsTab({
   const hasAny =
     analytics.topKills.length > 0 ||
     analytics.topDeaths.length > 0 ||
+    analytics.ticketInflicted.length > 0 ||
+    analytics.ticketReceived.length > 0 ||
     analytics.lossRates.length > 0 ||
     analytics.killRates.length > 0 ||
     analytics.nemeses.length > 0 ||
@@ -338,6 +345,27 @@ export function AnalyticsTab({
             {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="ok" onOpenPlayer={onOpenPlayer} />}
           </PagedSection>
           <PagedSection title="Top deaths" rows={analytics.topDeaths} searchText={individualSearch} searchPlaceholder="player…">
+            {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="danger" onOpenPlayer={onOpenPlayer} />}
+          </PagedSection>
+        </div>
+      )}
+
+      {(analytics.ticketInflicted.length > 0 || analytics.ticketReceived.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <PagedSection
+            title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted</span>}
+            rows={analytics.ticketInflicted}
+            searchText={individualSearch}
+            searchPlaceholder="player…"
+          >
+            {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="ok" onOpenPlayer={onOpenPlayer} />}
+          </PagedSection>
+          <PagedSection
+            title={<span className="cursor-help" title={TICKET_RECEIVED_LABEL}>Ticket damage received</span>}
+            rows={analytics.ticketReceived}
+            searchText={individualSearch}
+            searchPlaceholder="player…"
+          >
             {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="danger" onOpenPlayer={onOpenPlayer} />}
           </PagedSection>
         </div>

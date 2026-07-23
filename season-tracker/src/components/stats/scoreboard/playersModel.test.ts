@@ -6,6 +6,7 @@ import {
   buildCauseIndex,
   killedWithOf,
   diedToOf,
+  sumCauses,
   groupByRegiment,
   sumKD,
   comparePlayers,
@@ -167,5 +168,26 @@ describe('playersModel — search matching', () => {
   it('does not match untagged players on a regiment query', () => {
     expect(playerMatches(charlie, '71st', resolve)).toBe(false);
     expect(playerMatches(charlie, 'charlie', resolve)).toBe(true);
+  });
+
+  it('matches on steam id', () => {
+    expect(playerMatches(alpha, 's1', resolve)).toBe(true);
+    expect(playerMatches(alpha, 's2', resolve)).toBe(false);
+    // Steamless players have nothing to match on the id query.
+    expect(playerMatches(charlie, 's1', resolve)).toBe(false);
+  });
+});
+
+describe('sumCauses', () => {
+  it('merges several cause→count maps, summing shared keys', () => {
+    expect(sumCauses([{ Minie: 2, Melee: 1 }, { Minie: 3, Canister: 1 }, {}])).toEqual({
+      Minie: 5,
+      Melee: 1,
+      Canister: 1,
+    });
+  });
+
+  it('returns an empty object for no input', () => {
+    expect(sumCauses([])).toEqual({});
   });
 });

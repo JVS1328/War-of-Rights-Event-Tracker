@@ -2,7 +2,7 @@ import type { RosterEntry, Scoreboard, ScoreboardPlayer, Team, TeamCasualties } 
 import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
-import { avgTicketCost, perPlayerRate } from './labels';
+import { avgTicketCost, perPlayerRate, ticketDamage, pctShare, ticketEfficiency } from './labels';
 import { mapAttacker, canonicalMapName } from './mapCatalog';
 import { averageMorale } from './morale';
 
@@ -926,6 +926,12 @@ export interface RegimentRoundRow {
   kills: number;
   deaths: number;
   casualtiesByFormation: FormationCounts;
+  /** Kills this round bucketed by victim formation (drives per-round ×Tk). */
+  killsByFormation: FormationCounts;
+  /** Deaths the unit suffered this round, bucketed by weapon/cause (died to). */
+  casualtiesByCause: Record<string, number>;
+  /** Kills the unit inflicted this round, bucketed by weapon/cause (killed with). */
+  killsByCause: Record<string, number>;
   avgTd: number | null;
   avgTk: number | null;
   /** Kills ÷ players fielded this round (size-normalized offense); null if none. */
@@ -1067,6 +1073,9 @@ export function computeRegimentBreakdown(
           kills: 0,
           deaths: 0,
           casualtiesByFormation: { in_form: 0, skirm: 0, oob: 0 },
+          killsByFormation: { in_form: 0, skirm: 0, oob: 0 },
+          casualtiesByCause: {},
+          killsByCause: {},
           avgTd: null,
           avgTk: null,
           killRate: null,
@@ -1081,24 +1090,25 @@ export function computeRegimentBreakdown(
       rr.casualtiesByFormation.skirm += p.deathsSkirm;
       rr.casualtiesByFormation.oob += p.deathsOob;
       const kf = killFormInRound(sb, p.steamId ?? p.name);
-      // Accumulate kill-formation into the round row via a transient tally.
-      (rr as RegimentRoundRow & { _kf?: FormationCounts })._kf ??= { in_form: 0, skirm: 0, oob: 0 };
-      const tally = (rr as RegimentRoundRow & { _kf: FormationCounts })._kf;
-      tally.in_form += kf.in_form;
-      tally.skirm += kf.skirm;
-      tally.oob += kf.oob;
+      rr.killsByFormation.in_form += kf.in_form;
+      rr.killsByFormation.skirm += kf.skirm;
+      rr.killsByFormation.oob += kf.oob;
     }
     for (const kill of sb.kills) {
       const cause = kill.cause || 'Unknown';
-      // Suffered: the victim's regiment took this casualty.
+      // Suffered: the victim's regiment took this casualty (aggregate + this round).
       const victimReg = resolveRow(sb, kill.victimSteamId, kill.victim, assignments, options);
       const vr = ensure(victimReg);
       vr.casualtiesByCause[cause] = (vr.casualtiesByCause[cause] ?? 0) + 1;
+      const vrr = vr._perRound.get(sb.sourceFilename);
+      if (vrr) vrr.casualtiesByCause[cause] = (vrr.casualtiesByCause[cause] ?? 0) + 1;
       // Inflicted: the killer's regiment dealt this kill (skip environment deaths).
       if (kill.killer) {
         const killerReg = resolveRow(sb, kill.killerSteamId, kill.killer, assignments, options);
         const kr = ensure(killerReg);
         kr.killsByCause[cause] = (kr.killsByCause[cause] ?? 0) + 1;
+        const krr = kr._perRound.get(sb.sourceFilename);
+        if (krr) krr.killsByCause[cause] = (krr.killsByCause[cause] ?? 0) + 1;
       }
     }
   }
@@ -1123,13 +1133,12 @@ export function computeRegimentBreakdown(
     r.lossRate = perPlayerRate(r.deaths, fielded);
     r.perRound = [...r._perRound.values()]
       .map((rr) => {
-        const kf = (rr as RegimentRoundRow & { _kf?: FormationCounts })._kf ?? { in_form: 0, skirm: 0, oob: 0 };
         rr.avgTd = avgTicketCost(
           rr.casualtiesByFormation.in_form,
           rr.casualtiesByFormation.skirm,
           rr.casualtiesByFormation.oob,
         );
-        rr.avgTk = avgTicketCost(kf.in_form, kf.skirm, kf.oob);
+        rr.avgTk = avgTicketCost(rr.killsByFormation.in_form, rr.killsByFormation.skirm, rr.killsByFormation.oob);
         rr.killRate = perPlayerRate(rr.kills, rr.players);
         rr.lossRate = perPlayerRate(rr.deaths, rr.players);
         return rr;
@@ -1142,6 +1151,182 @@ export function computeRegimentBreakdown(
   const fielded = rows.filter((r) => r.players > 0);
   fielded.sort((a, b) => b.kills - a.kills);
   return fielded;
+}
+
+// ── Ticket-damage shares (per-round-averaged) ───────────────────────────────
+
+/**
+ * A unit's ticket-damage contribution, expressed as its share of its team's
+ * ticket damage each round and averaged across the rounds it played. Ticket
+ * damage inflicted is ×Tk-weighted kills (tickets drained from the enemy);
+ * received is ×Td-weighted deaths (tickets it cost its own team). Averaging the
+ * per-round shares — rather than pooling totals — keeps a unit's typical
+ * per-round contribution from being dominated by its highest-population nights.
+ */
+export interface TicketShare {
+  /** Mean per-round share of its team's ticket damage inflicted (sums to 100% across the team); null if it never dealt any. */
+  avgPctInflicted: number | null;
+  /** Mean per-round share of its team's ticket damage received; null if it never took any. */
+  avgPctReceived: number | null;
+  /** Mean per-round size-adjusted inflicted efficiency (share / roster share; 1.0 = pulling its weight); null if none. */
+  avgEffInflicted: number | null;
+  /** Mean per-round size-adjusted received efficiency (1.0 = its fair share of losses); null if none. */
+  avgEffReceived: number | null;
+  /** Mean per-round unit head count, for the efficiency hover. */
+  avgUnitPlayers: number;
+  /** Mean per-round team head count, for the efficiency hover. */
+  avgTeamPlayers: number;
+  /** Per-round (keyed by sourceFilename) figures, for round-level display. */
+  perRound: Record<string, TicketRoundShare>;
+}
+
+/** One round's ticket figures for a unit: its share of the team's ticket damage,
+ *  the size-adjusted efficiency beside it, and the roster split it's built from. */
+export interface TicketRoundShare {
+  pctInflicted: number | null;
+  pctReceived: number | null;
+  effInflicted: number | null;
+  effReceived: number | null;
+  unitPlayers: number;
+  teamPlayers: number;
+}
+
+/**
+ * Core: average per-round ticket-damage shares for arbitrary entities. For each
+ * round it tallies every player's ticket damage into per-team totals and into
+ * each entity the player belongs to (via `entitiesOf` — one regiment, or the
+ * token(s) that claim it), then records each entity's share of its team's total.
+ * The denominators are the full team (all players, tagged or not), so an entity's
+ * share reads as "of everything the team did, this unit accounted for X%".
+ */
+function computeTicketShares(
+  scoreboards: Scoreboard[],
+  entitiesOf: (sb: Scoreboard, p: ScoreboardPlayer) => string[],
+): Record<string, TicketShare> {
+  interface Acc {
+    sumPctInf: number;
+    sumEffInf: number;
+    cntInf: number;
+    sumPctRec: number;
+    sumEffRec: number;
+    cntRec: number;
+    sumUnitPlayers: number;
+    sumTeamPlayers: number;
+    cntRounds: number;
+    perRound: Record<string, TicketRoundShare>;
+  }
+  const acc = new Map<string, Acc>();
+  const ensureAcc = (e: string): Acc => {
+    let a = acc.get(e);
+    if (!a) {
+      a = { sumPctInf: 0, sumEffInf: 0, cntInf: 0, sumPctRec: 0, sumEffRec: 0, cntRec: 0, sumUnitPlayers: 0, sumTeamPlayers: 0, cntRounds: 0, perRound: {} };
+      acc.set(e, a);
+    }
+    return a;
+  };
+  for (const sb of scoreboards) {
+    const groups = new Map<string, { team: Team; entity: string; inflicted: number; received: number; players: number }>();
+    const teamInf: Record<Team, number> = { USA: 0, CSA: 0 };
+    const teamRec: Record<Team, number> = { USA: 0, CSA: 0 };
+    const teamPlayers: Record<Team, number> = { USA: 0, CSA: 0 };
+    for (const p of sb.players) {
+      const kf = killFormInRound(sb, p.steamId ?? p.name);
+      const inflicted = ticketDamage(kf.in_form, kf.skirm, kf.oob);
+      const received = ticketDamage(p.deathsInForm, p.deathsSkirm, p.deathsOob);
+      teamInf[p.team] += inflicted;
+      teamRec[p.team] += received;
+      teamPlayers[p.team] += 1;
+      for (const entity of entitiesOf(sb, p)) {
+        const gk = `${p.team} ${entity}`;
+        let g = groups.get(gk);
+        if (!g) {
+          g = { team: p.team, entity, inflicted: 0, received: 0, players: 0 };
+          groups.set(gk, g);
+        }
+        g.inflicted += inflicted;
+        g.received += received;
+        g.players += 1;
+      }
+    }
+    for (const g of groups.values()) {
+      const a = ensureAcc(g.entity);
+      const tPlayers = teamPlayers[g.team];
+      const pctInf = pctShare(g.inflicted, teamInf[g.team]);
+      const pctRec = pctShare(g.received, teamRec[g.team]);
+      const effInf = ticketEfficiency(g.inflicted, g.players, teamInf[g.team], tPlayers);
+      const effRec = ticketEfficiency(g.received, g.players, teamRec[g.team], tPlayers);
+      a.perRound[sb.sourceFilename] = {
+        pctInflicted: pctInf,
+        pctReceived: pctRec,
+        effInflicted: effInf,
+        effReceived: effRec,
+        unitPlayers: g.players,
+        teamPlayers: tPlayers,
+      };
+      a.sumUnitPlayers += g.players;
+      a.sumTeamPlayers += tPlayers;
+      a.cntRounds += 1;
+      if (pctInf != null) {
+        a.sumPctInf += pctInf;
+        a.sumEffInf += effInf ?? 0;
+        a.cntInf += 1;
+      }
+      if (pctRec != null) {
+        a.sumPctRec += pctRec;
+        a.sumEffRec += effRec ?? 0;
+        a.cntRec += 1;
+      }
+    }
+  }
+  const out: Record<string, TicketShare> = {};
+  for (const [entity, a] of acc) {
+    out[entity] = {
+      avgPctInflicted: a.cntInf > 0 ? a.sumPctInf / a.cntInf : null,
+      avgPctReceived: a.cntRec > 0 ? a.sumPctRec / a.cntRec : null,
+      avgEffInflicted: a.cntInf > 0 ? a.sumEffInf / a.cntInf : null,
+      avgEffReceived: a.cntRec > 0 ? a.sumEffRec / a.cntRec : null,
+      avgUnitPlayers: a.cntRounds > 0 ? a.sumUnitPlayers / a.cntRounds : 0,
+      avgTeamPlayers: a.cntRounds > 0 ? a.sumTeamPlayers / a.cntRounds : 0,
+      perRound: a.perRound,
+    };
+  }
+  return out;
+}
+
+/** Per-regiment average per-round ticket-damage shares (Regiments tab). */
+export function computeRegimentTicketShares(
+  scoreboards: Scoreboard[],
+  assignments: RegimentAssignmentMap,
+  options: EngineOptions = {},
+): Record<string, TicketShare> {
+  return computeTicketShares(scoreboards, (sb, p) => [
+    resolveRow(sb, p.steamId, p.name, assignments, options),
+  ]);
+}
+
+/**
+ * Per-token average per-round ticket-damage shares (main tracker's per-unit
+ * table). A player's resolved regiment is mapped to every token that claims it,
+ * so a token's share sums the ticket damage of all its regiments.
+ */
+export function computeTokenTicketShares(
+  scoreboards: Scoreboard[],
+  assignments: RegimentAssignmentMap,
+  tokenRegiments: Record<string, string[]>,
+  options: EngineOptions = {},
+): Record<string, TicketShare> {
+  const reverse = new Map<string, string[]>();
+  for (const [token, regs] of Object.entries(tokenRegiments)) {
+    for (const reg of regs) {
+      const arr = reverse.get(reg);
+      if (arr) arr.push(token);
+      else reverse.set(reg, [token]);
+    }
+  }
+  return computeTicketShares(
+    scoreboards,
+    (sb, p) => reverse.get(resolveRow(sb, p.steamId, p.name, assignments, options)) ?? [],
+  );
 }
 
 // ── Combat totals (meta-level weapons & casualties) ─────────────────────────

@@ -3,8 +3,35 @@
 // duplicate the same cell / cause-table / formatting primitives.
 import type { ReactNode } from 'react';
 import type { Team } from '../../stats/types';
+import { formatPct } from '../../stats/labels';
 
 export const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
+
+/**
+ * A ticket-damage figure: the headline share (of the team's ticket damage) with
+ * the size-adjusted efficiency dimmed beside it. Hovering the efficiency shows
+ * the roster split it's derived from (passed as `effTitle`). Used everywhere
+ * TDI/TDR appears so the two read consistently.
+ */
+export function TicketPct({
+  share,
+  eff,
+  effTitle,
+}: {
+  share: number | null;
+  eff: number | null;
+  effTitle?: string;
+}) {
+  return (
+    <span className="whitespace-nowrap tabular-nums">
+      {formatPct(share)}
+      <span className="text-[color:var(--color-text-2)]"> · </span>
+      <span className={`opacity-70 ${effTitle ? 'cursor-help' : ''}`} title={effTitle}>
+        {formatPct(eff)}
+      </span>
+    </span>
+  );
+}
 
 /** `YYYY-MM-DD HH:MM` from an ISO string, or `—` when null. */
 export const whenOf = (r: string | null) => (r ? `${r.slice(0, 10)} ${r.slice(11, 16)}` : '—');

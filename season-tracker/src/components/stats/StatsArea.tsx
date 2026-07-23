@@ -7,6 +7,7 @@ import {
   computePlayerLeaderboard,
   computeRegimentBreakdown,
   computeRegimentContextStats,
+  computeRegimentTicketShares,
   computeCombatTotals,
   computeRounds,
   computeOverview,
@@ -14,9 +15,9 @@ import {
   computeScoreboardMapStats,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
-import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL } from '../../stats/labels';
+import { formatAvgT, formatRate, rosterShareTitle, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
@@ -24,6 +25,7 @@ import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
 import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, scopedMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
+import { TicketPct } from './drawerPrimitives';
 
 export interface WeekRef {
   id: string;
@@ -49,6 +51,47 @@ const TdHead = <span title={AVG_TD_LABEL}>×Td</span>;
 const TkHead = <span title={AVG_TK_LABEL}>×Tk</span>;
 const KrHead = <span className="cursor-help" title={KILL_RATE_LABEL}>KR</span>;
 const LrHead = <span className="cursor-help" title={LOSS_RATE_LABEL}>LR</span>;
+
+/** Compact ‹ 1/N › pager bar shared by the Rounds and Import lists. */
+function Pager({
+  page,
+  pageCount,
+  onPage,
+  offset,
+  shown,
+  total,
+  noun = 'items',
+}: {
+  page: number;
+  pageCount: number;
+  onPage: (p: number) => void;
+  offset: number;
+  shown: number;
+  total: number;
+  noun?: string;
+}) {
+  if (pageCount <= 1) return null;
+  const btn =
+    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+      <span className="tabular-nums">
+        {offset + 1}–{offset + shown} of {total} {noun}
+      </span>
+      <span className="flex items-center gap-1">
+        <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} aria-label="Previous page" className={btn}>
+          ‹
+        </button>
+        <span className="px-1 tabular-nums">
+          {page + 1}/{pageCount}
+        </span>
+        <button onClick={() => onPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1} aria-label="Next page" className={btn}>
+          ›
+        </button>
+      </span>
+    </div>
+  );
+}
 
 interface StatsAreaProps {
   eventId: string;
@@ -188,6 +231,10 @@ export function StatsPanel({
   );
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentContext = useMemo(() => computeRegimentContextStats(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
+  const regimentTicketShares = useMemo(
+    () => computeRegimentTicketShares(sbs, overallAssignments, opts),
+    [sbs, overallAssignments, opts],
+  );
   const combat = useMemo(() => computeCombatTotals(sbs), [sbs]);
   // Map stats derived from the imported scoreboards (every round, bound or not),
   // as an alternative to the tracker's week-bound map stats in the Maps tab.
@@ -317,8 +364,9 @@ export function StatsPanel({
                 rows={players}
                 getRowKey={(p) => p.key}
                 initialSortKey="kills"
-                searchValue={(p) => `${p.name} ${p.regiment}`}
-                searchPlaceholder="Search players or regiments…"
+                pageSize={25}
+                searchValue={(p) => `${p.name} ${p.regiment} ${p.steamId ?? ''}`}
+                searchPlaceholder="Search players, regiments, or steam id…"
                 columns={playerColumns(goToRegiment, openPlayer)}
               />
             )}
@@ -330,6 +378,7 @@ export function StatsPanel({
         <RegimentsTab
           regiments={regiments}
           regimentContext={regimentContext}
+          ticketShares={regimentTicketShares}
           stats={stats}
           openPlayer={openPlayer}
           openRound={openRound}
@@ -547,7 +596,19 @@ function BreakdownGroup({
   );
 }
 
-type RegSort = 'name' | 'players' | 'avgPlayers' | 'kills' | 'deaths' | 'kd' | 'killRate' | 'lossRate' | 'avgTk' | 'avgTd';
+type RegSort =
+  | 'name'
+  | 'players'
+  | 'avgPlayers'
+  | 'kills'
+  | 'deaths'
+  | 'kd'
+  | 'killRate'
+  | 'lossRate'
+  | 'avgTk'
+  | 'avgTd'
+  | 'tdInf'
+  | 'tdRec';
 
 const REG_SORTS: { key: RegSort; label: string; title?: string }[] = [
   { key: 'name', label: 'name' },
@@ -560,9 +621,15 @@ const REG_SORTS: { key: RegSort; label: string; title?: string }[] = [
   { key: 'lossRate', label: 'LR', title: LOSS_RATE_LABEL },
   { key: 'avgTk', label: '×Tk', title: AVG_TK_LABEL },
   { key: 'avgTd', label: '×Td', title: AVG_TD_LABEL },
+  { key: 'tdInf', label: 'TDI%', title: AVG_TICKET_INFLICTED_LABEL },
+  { key: 'tdRec', label: 'TDR%', title: AVG_TICKET_RECEIVED_LABEL },
 ];
 
-/** Sort key → comparable value. Null ticket averages sort last (as -1). */
+/**
+ * Sort key → comparable value. Null ticket averages sort last (as -1). The
+ * ticket-share keys (tdInf/tdRec) live in a side map, so they're resolved by the
+ * caller and fall through here as -1.
+ */
 function regSortValue(r: RegimentStatRow, k: RegSort): number | string {
   switch (k) {
     case 'name':
@@ -585,6 +652,9 @@ function regSortValue(r: RegimentStatRow, k: RegSort): number | string {
       return r.avgTk ?? -1;
     case 'avgTd':
       return r.avgTd ?? -1;
+    case 'tdInf':
+    case 'tdRec':
+      return -1;
   }
 }
 
@@ -603,6 +673,7 @@ interface RegEdit {
 function RegimentsTab({
   regiments,
   regimentContext,
+  ticketShares,
   stats,
   openPlayer,
   openRound,
@@ -614,6 +685,8 @@ function RegimentsTab({
 }: {
   regiments: RegimentStatRow[];
   regimentContext: Record<string, RegimentContextStats>;
+  /** Per-regiment average per-round ticket-damage shares, keyed by label. */
+  ticketShares: Record<string, TicketShare>;
   stats: ReturnType<typeof useStats>;
   openPlayer: (key: string) => void;
   openRound: (filename: string) => void;
@@ -637,7 +710,11 @@ function RegimentsTab({
 
   const [sortKey, setSortKey] = useState<RegSort>('kills');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const PAGE = 10;
   const onSort = (k: RegSort) => {
+    setPage(0);
     if (k === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(k);
@@ -646,18 +723,39 @@ function RegimentsTab({
     }
   };
   const sortedRegiments = useMemo(() => {
+    // Ticket-share sorts read from the side map; null shares sort last (as -1).
+    const shareVal = (r: RegimentStatRow, k: 'tdInf' | 'tdRec'): number => {
+      const s = ticketShares[r.regiment];
+      return (k === 'tdInf' ? s?.avgPctInflicted : s?.avgPctReceived) ?? -1;
+    };
     const arr = [...regiments];
     arr.sort((a, b) => {
-      const av = regSortValue(a, sortKey);
-      const bv = regSortValue(b, sortKey);
-      const cmp =
-        typeof av === 'string' || typeof bv === 'string'
-          ? String(av).localeCompare(String(bv))
-          : av - bv;
+      let cmp: number;
+      if (sortKey === 'tdInf' || sortKey === 'tdRec') {
+        cmp = shareVal(a, sortKey) - shareVal(b, sortKey);
+      } else {
+        const av = regSortValue(a, sortKey);
+        const bv = regSortValue(b, sortKey);
+        cmp = typeof av === 'string' || typeof bv === 'string' ? String(av).localeCompare(String(bv)) : av - bv;
+      }
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return arr;
-  }, [regiments, sortKey, sortDir]);
+  }, [regiments, sortKey, sortDir, ticketShares]);
+  // Search filters the panel list by regiment label or any of its players
+  // (name or steam id); pagination keeps a long roster of units browsable.
+  const filteredRegiments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return sortedRegiments;
+    return sortedRegiments.filter(
+      (r) =>
+        r.regiment.toLowerCase().includes(q) ||
+        r.topPlayers.some((p) => p.name.toLowerCase().includes(q) || (p.steamId ?? '').toLowerCase().includes(q)),
+    );
+  }, [sortedRegiments, search]);
+  const regPageCount = Math.max(1, Math.ceil(filteredRegiments.length / PAGE));
+  const regPage = Math.min(page, regPageCount - 1);
+  const pageRegiments = filteredRegiments.slice(regPage * PAGE, regPage * PAGE + PAGE);
 
   const pendingCount = Object.keys(pending).length;
   // Active renames/merges to show: the current scope's own entries, plus (in a
@@ -806,7 +904,7 @@ function RegimentsTab({
         </div>
       )}
 
-      {/* Sort the regiment panels by any column. */}
+      {/* Sort the regiment panels by any column, and search the roster. */}
       <div className="flex flex-wrap items-center gap-3 font-mono text-xs uppercase tracking-wider">
         <span className="text-[color:var(--color-text-2)]">Sort</span>
         {REG_SORTS.map((s) => (
@@ -824,20 +922,65 @@ function RegimentsTab({
             {sortKey === s.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
           </button>
         ))}
+        <input
+          type="text"
+          placeholder="search regiment / player / id…"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
+          className="ml-auto w-56 max-w-full bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-2 py-1 font-mono text-xs text-[color:var(--color-text-0)] normal-case tracking-normal focus:outline-none focus:border-[color:var(--color-accent)]"
+        />
       </div>
 
-      {sortedRegiments.map((r) => (
-        <RegimentPanel
-          key={r.regiment}
-          reg={r}
-          contextStats={regimentContext[r.regiment]}
-          openPlayer={openPlayer}
-          openRound={openRound}
-          edit={edit}
-          focusActive={focusRegiment === r.regiment}
-          focusNonce={focusNonce}
-        />
-      ))}
+      {filteredRegiments.length === 0 ? (
+        <EmptyHint>No regiments match "{search.trim()}"</EmptyHint>
+      ) : (
+        pageRegiments.map((r) => (
+          <RegimentPanel
+            key={r.regiment}
+            reg={r}
+            contextStats={regimentContext[r.regiment]}
+            ticketShare={ticketShares[r.regiment]}
+            openPlayer={openPlayer}
+            openRound={openRound}
+            edit={edit}
+            focusActive={focusRegiment === r.regiment}
+            focusNonce={focusNonce}
+          />
+        ))
+      )}
+
+      {/* Panel-list pager (search + sort narrow first). */}
+      {regPageCount > 1 && (
+        <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+          <span className="tabular-nums">
+            {regPage * PAGE + 1}–{regPage * PAGE + pageRegiments.length} of {filteredRegiments.length} regiments
+          </span>
+          <span className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(Math.max(0, regPage - 1))}
+              disabled={regPage === 0}
+              aria-label="Previous page"
+              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ‹
+            </button>
+            <span className="px-1 tabular-nums">
+              {regPage + 1}/{regPageCount}
+            </span>
+            <button
+              onClick={() => setPage(Math.min(regPageCount - 1, regPage + 1))}
+              disabled={regPage >= regPageCount - 1}
+              aria-label="Next page"
+              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ›
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Sticky action bar */}
       {editMode && (pendingCount > 0 || selected.size > 0) && (
@@ -915,9 +1058,50 @@ function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStat
   );
 }
 
+/** One round's expanded breakdown inside a regiment's Round-by-round table:
+ *  that round's ticket metrics plus casualties suffered/inflicted (formation +
+ *  cause), mirroring the whole-regiment panel but scoped to the single round. */
+function RegimentRoundBreakdown({
+  rr,
+  share,
+  formOf,
+  byCause,
+  onOpenRound,
+}: {
+  rr: RegimentRoundRow;
+  share?: TicketRoundShare;
+  formOf: (f: FormationCounts) => [string, number][];
+  byCause: (m: Record<string, number>) => [string, number][];
+  onOpenRound: () => void;
+}) {
+  const rosterTitle = share ? rosterShareTitle(share.unitPlayers, share.teamPlayers) : undefined;
+  return (
+    <div className="space-y-2 font-mono">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--color-text-2)]">
+        <span className="cursor-help" title={TICKET_INFLICTED_LABEL}>
+          TDI <TicketPct share={share?.pctInflicted ?? null} eff={share?.effInflicted ?? null} effTitle={rosterTitle} />
+        </span>
+        <span className="cursor-help" title={TICKET_RECEIVED_LABEL}>
+          TDR <TicketPct share={share?.pctReceived ?? null} eff={share?.effReceived ?? null} effTitle={rosterTitle} />
+        </span>
+        <span title={AVG_TD_LABEL}>×Td {formatAvgT(rr.avgTd)}</span>
+        <span title={AVG_TK_LABEL}>×Tk {formatAvgT(rr.avgTk)}</span>
+        <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(rr.killRate)}</span>
+        <span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(rr.lossRate)}</span>
+        <button onClick={onOpenRound} className="ml-auto text-[color:var(--color-accent)] hover:underline">
+          Open round drawer »
+        </button>
+      </div>
+      <BreakdownGroup heading="Casualties suffered" form={formOf(rr.casualtiesByFormation)} cause={byCause(rr.casualtiesByCause)} />
+      <BreakdownGroup heading="Casualties inflicted" form={formOf(rr.killsByFormation)} cause={byCause(rr.killsByCause)} />
+    </div>
+  );
+}
+
 function RegimentPanel({
   reg,
   contextStats,
+  ticketShare,
   openPlayer,
   openRound,
   edit,
@@ -926,6 +1110,7 @@ function RegimentPanel({
 }: {
   reg: RegimentStatRow;
   contextStats?: RegimentContextStats;
+  ticketShare?: TicketShare;
   openPlayer: (key: string) => void;
   openRound: (filename: string) => void;
   edit: RegEdit;
@@ -949,6 +1134,8 @@ function RegimentPanel({
   const inflictedForm = formOf(reg.killsByFormation);
   const inflictedCause = byCause(reg.killsByCause);
   const isUntagged = reg.regiment === UNTAGGED;
+  // Roster split behind the cumulative efficiency figures (per-round averages).
+  const avgRosterTitle = ticketShare ? rosterShareTitle(ticketShare.avgUnitPlayers, ticketShare.avgTeamPlayers, true) : undefined;
   const mergeTargets = edit.allRegiments.filter((l) => l !== reg.regiment && l !== UNTAGGED);
 
   return (
@@ -972,6 +1159,14 @@ function RegimentPanel({
             <span title={AVG_TD_LABEL}>×Td {formatAvgT(reg.avgTd)}</span>
             {' · '}
             <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
+            {' · '}
+            <span className="cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>
+              TDI <TicketPct share={ticketShare?.avgPctInflicted ?? null} eff={ticketShare?.avgEffInflicted ?? null} effTitle={avgRosterTitle} />
+            </span>
+            {' · '}
+            <span className="cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>
+              TDR <TicketPct share={ticketShare?.avgPctReceived ?? null} eff={ticketShare?.avgEffReceived ?? null} effTitle={avgRosterTitle} />
+            </span>
           </>
         }
       >
@@ -1017,46 +1212,35 @@ function RegimentPanel({
         )}
 
         <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Round-by-round</div>
-          <table className="w-full font-mono text-sm">
-            <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                <th className="px-2 py-1 text-left">When</th>
-                <th className="px-2 py-1 text-left">Map · Area</th>
-                <th className="px-2 py-1 text-right">Players</th>
-                <th className="px-2 py-1 text-right">K</th>
-                <th className="px-2 py-1 text-right">D</th>
-                <th className="px-2 py-1 text-right">K/D</th>
-                <th className="px-2 py-1 text-right">{KrHead}</th>
-                <th className="px-2 py-1 text-right">{LrHead}</th>
-                <th className="px-2 py-1 text-right">{TdHead}</th>
-                <th className="px-2 py-1 text-right">{TkHead}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reg.perRound.map((rr) => (
-                <tr
-                  key={rr.sourceFilename}
-                  onClick={() => openRound(rr.sourceFilename)}
-                  className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-                >
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(rr.recordedAt)}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-1)]">
-                    {rr.map}
-                    {rr.area ? ` · ${rr.area}` : ''}
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{rr.players}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{rr.kills}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{rr.deaths}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{kdStr(rr.kills, rr.deaths)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatRate(rr.killRate)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(rr.lossRate)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(rr.avgTd)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(rr.avgTk)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">
+            Round-by-round <span className="text-[color:var(--color-text-2)] normal-case">— row to expand this round's breakdown</span>
+          </div>
+          <DataTable<RegimentRoundRow>
+            rows={reg.perRound}
+            getRowKey={(rr) => rr.sourceFilename}
+            pageSize={8}
+            renderExpanded={(rr) => (
+              <RegimentRoundBreakdown
+                rr={rr}
+                share={ticketShare?.perRound[rr.sourceFilename]}
+                formOf={formOf}
+                byCause={byCause}
+                onOpenRound={() => openRound(rr.sourceFilename)}
+              />
+            )}
+            columns={[
+              { key: 'when', header: 'When', sortable: true, sortValue: (rr) => rr.recordedAt ?? '', render: (rr) => <span className="whitespace-nowrap text-[color:var(--color-text-2)]">{whenOf(rr.recordedAt)}</span> },
+              { key: 'map', header: 'Map · Area', render: (rr) => <span className="text-[color:var(--color-text-1)]">{rr.map}{rr.area ? ` · ${rr.area}` : ''}</span> },
+              { key: 'players', header: 'Players', align: 'right', sortable: true, sortValue: (rr) => rr.players, render: (rr) => <span className="text-[color:var(--color-text-2)]">{rr.players}</span> },
+              { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (rr) => rr.kills, render: (rr) => rr.kills },
+              { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (rr) => rr.deaths, render: (rr) => rr.deaths },
+              { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (rr) => (rr.deaths > 0 ? rr.kills / rr.deaths : rr.kills), render: (rr) => kdStr(rr.kills, rr.deaths) },
+              { key: 'kr', header: KrHead, align: 'right', sortable: true, sortValue: (rr) => rr.killRate ?? -1, render: (rr) => formatRate(rr.killRate) },
+              { key: 'lr', header: LrHead, align: 'right', sortable: true, sortValue: (rr) => rr.lossRate ?? -1, render: (rr) => <span className="text-[color:var(--color-text-2)]">{formatRate(rr.lossRate)}</span> },
+              { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (rr) => rr.avgTd ?? -1, render: (rr) => formatAvgT(rr.avgTd) },
+              { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (rr) => rr.avgTk ?? -1, render: (rr) => formatAvgT(rr.avgTk) },
+            ]}
+          />
         </div>
 
         <div>
@@ -1068,6 +1252,9 @@ function RegimentPanel({
               rows={reg.topPlayers}
               getRowKey={(p) => p.key}
               initialSortKey="kills"
+              pageSize={10}
+              searchValue={(p) => `${p.name} ${p.steamId ?? ''}`}
+              searchPlaceholder="Search players or steam id…"
               columns={[
                 {
                   key: 'name',
@@ -1167,6 +1354,17 @@ function EditablePlayers({
 // ── Rounds ───────────────────────────────────────────────────────────────────
 
 function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (f: string) => void }) {
+  const [page, setPage] = useState(0);
+  const PAGE = 8;
+  const byDate = useMemo(() => {
+    const m = new Map<string, RoundSummary[]>();
+    for (const r of rounds) {
+      const d = dateOf(r.recordedAt);
+      if (!m.has(d)) m.set(d, []);
+      m.get(d)!.push(r);
+    }
+    return [...m.entries()];
+  }, [rounds]);
   if (rounds.length === 0) {
     return (
       <Panel title="Rounds">
@@ -1174,15 +1372,13 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
       </Panel>
     );
   }
-  const byDate = new Map<string, RoundSummary[]>();
-  for (const r of rounds) {
-    const d = dateOf(r.recordedAt);
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d)!.push(r);
-  }
+  const pageCount = Math.max(1, Math.ceil(byDate.length / PAGE));
+  const current = Math.min(page, pageCount - 1);
+  const offset = current * PAGE;
+  const pageDates = byDate.slice(offset, offset + PAGE);
   return (
     <div className="space-y-3">
-      {[...byDate.entries()].map(([date, list]) => (
+      {pageDates.map(([date, list]) => (
         <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`}>
           <table className="w-full border-collapse font-mono text-sm">
             <thead>
@@ -1216,6 +1412,7 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
           </table>
         </Panel>
       ))}
+      <Pager page={current} pageCount={pageCount} onPage={setPage} offset={offset} shown={pageDates.length} total={byDate.length} noun="dates" />
     </div>
   );
 }
@@ -1507,6 +1704,16 @@ function ImportTab({
   onPickFiles: (files: FileList | null) => void;
   onOpenScoreboard: (id: string) => void;
 }) {
+  const [page, setPage] = useState(0);
+  const PAGE = 15;
+  const sortedStored = useMemo(
+    () => stats.stored.slice().sort((a, b) => (b.scoreboard.recordedAt ?? '').localeCompare(a.scoreboard.recordedAt ?? '')),
+    [stats.stored],
+  );
+  const importPageCount = Math.max(1, Math.ceil(sortedStored.length / PAGE));
+  const importPage = Math.min(page, importPageCount - 1);
+  const importOffset = importPage * PAGE;
+  const importItems = sortedStored.slice(importOffset, importOffset + PAGE);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <Panel title="Import Scoreboards">
@@ -1542,11 +1749,9 @@ function ImportTab({
         {stats.stored.length === 0 ? (
           <EmptyHint>No scoreboards imported yet</EmptyHint>
         ) : (
-          <div className="divide-y divide-[color:var(--color-border)]">
-            {stats.stored
-              .slice()
-              .sort((a, b) => (b.scoreboard.recordedAt ?? '').localeCompare(a.scoreboard.recordedAt ?? ''))
-              .map((s) => (
+          <>
+            <div className="divide-y divide-[color:var(--color-border)]">
+              {importItems.map((s) => (
                 <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
                   <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
                     <span className="text-[color:var(--color-text-2)] w-48 shrink-0">
@@ -1564,7 +1769,17 @@ function ImportTab({
                   </button>
                 </div>
               ))}
-          </div>
+            </div>
+            <Pager
+              page={importPage}
+              pageCount={importPageCount}
+              onPage={setPage}
+              offset={importOffset}
+              shown={importItems.length}
+              total={sortedStored.length}
+              noun="scoreboards"
+            />
+          </>
         )}
       </Panel>
     </div>
