@@ -8,6 +8,8 @@ A React-based web application for tracking regiment performance across a War of 
 - **Unit/Regiment Tracking**: Add and organize participating units
 - **Team Rosters**: Assign units to teams for each week
 - **Point System**: Configurable point system for wins, losses, and bonuses
+- **Team Balancer**: Weighted balancing of units across the two sides, with an optional skill-based post-season weight for playoffs
+- **Round Types**: Regular, Single Round Leads, Playoffs, and Fun Round (exhibition — no points, no map cooldown, no Elo)
 - **Standings**: Real-time standings based on performance
 - **Data Persistence**: Automatic saving to browser localStorage
 - **Import/Export**: Save and load season data as JSON files
@@ -58,6 +60,9 @@ Configure the point system in Settings:
 - **Loss Assist Points**: Points for non-lead units on losing team
 - **2-0 Bonus Lead**: Bonus points for lead unit on 2-0 sweep
 - **2-0 Bonus Assist**: Bonus points for assist units on 2-0 sweep
+- **Balance Points**: Points for units moved to rebalance a round, awarded Per Night, Per Round, or Per Round (Loss Only) — the last awards only when the balanced unit ends up on the losing side
+
+Point System settings — like the balancer weights and round types — are stored independently per season, so each season can be tuned on its own.
 
 ### Data Management
 

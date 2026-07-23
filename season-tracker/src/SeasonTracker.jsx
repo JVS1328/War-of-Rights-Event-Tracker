@@ -374,6 +374,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       leadB: null,
       isPlayoffs: false,
       isSingleRoundLeads: false,
+      isFunRound: false,
       leadA_r1: null,
       leadB_r1: null,
       leadA_r2: null,
@@ -411,6 +412,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const start = Math.max(0, weekIndex - mapCooldown);
     for (let i = start; i < weekIndex; i++) {
       const w = weeks[i];
+      // Fun rounds are exhibition — their map picks don't go on cooldown.
+      if (w.isFunRound) continue;
       if (w.round1Map) cooldownMaps.add(w.round1Map);
       if (w.round2Map) cooldownMaps.add(w.round2Map);
     }
@@ -486,6 +489,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
     weeksToProcess.forEach(week => {
       if (!week.round1Winner && !week.round2Winner) return;
+      // Fun rounds are exhibition: no points and no win/loss record.
+      if (week.isFunRound) return;
 
       const isPlayoffs = week.isPlayoffs || false;
       const isSingleRoundLeads = week.isSingleRoundLeads || false;
@@ -603,16 +608,31 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
     });
 
-    // Apply balance points (skip playoff weeks — no points are awarded during playoffs)
+    // Apply balance points (skip playoff weeks — no points are awarded during
+    // playoffs — and fun rounds, which are exhibition).
     if (pointSystem.balancePoints) {
       weeksToProcess.forEach(week => {
-        if (week.isPlayoffs) return;
+        if (week.isPlayoffs || week.isFunRound) return;
         const r1Swaps = week.roundSwaps?.r1 || [];
         const r2Swaps = week.roundSwaps?.r2 || [];
 
         if (pointSystem.balancePointsStyle === 'perRound') {
           r1Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
           r2Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
+        } else if (pointSystem.balancePointsStyle === 'perRoundLoss') {
+          // Per round, but only for a balanced unit that ended up on the
+          // losing side of that round ("balance and lose → get the point").
+          [1, 2].forEach(roundNum => {
+            const winner = week[`round${roundNum}Winner`];
+            if (!winner) return;
+            const swaps = roundNum === 1 ? r1Swaps : r2Swaps;
+            if (swaps.length === 0) return;
+            const effective = getEffectiveTeams(week, roundNum);
+            const losers = new Set(winner === 'A' ? effective.teamB : effective.teamA);
+            swaps.forEach(unit => {
+              if (stats[unit] && losers.has(unit)) stats[unit].points += pointSystem.balancePoints;
+            });
+          });
         } else {
           // perNight: each unit gets balance points at most once per week
           const balanced = new Set([...r1Swaps, ...r2Swaps]);
@@ -1360,6 +1380,40 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setCoordPasteText('');
   };
 
+  // Units to even across the two sides for skill-based post-season balancing.
+  // Returns a Set of unit names, or null when the metric shouldn't apply
+  // (weight off, playoffs disabled, or no bracket yet). Per the passed
+  // proposal: in the semi-finals the sides are evened by units that made the
+  // playoffs; in the championship, by units that made the semi-finals. Which
+  // tier applies is read from bracket progression — once the semi-final round
+  // is decided, the next post-season match is the championship.
+  const getPostSeasonSkillUnits = (weekIdx) => {
+    if (!(balancerSettings.postSeasonSkillWeight > 0)) return null;
+    const bracket = generatePlayoffBracket(weekIdx);
+    if (!bracket || !bracket.rounds || bracket.rounds.length === 0) return null;
+
+    const rounds = bracket.rounds;
+    const semiRound = rounds.length >= 2 ? rounds[rounds.length - 2] : null;
+    const semisDecided = !!semiRound
+      && semiRound.matchups.length > 0
+      && semiRound.matchups.every(m => m.winner);
+
+    if (semiRound && semisDecided) {
+      // Championship: even out the units that reached the semi-finals.
+      const semifinalists = new Set();
+      semiRound.matchups.forEach(m => {
+        if (m.team1?.unit) semifinalists.add(m.team1.unit);
+        if (m.team2?.unit) semifinalists.add(m.team2.unit);
+      });
+      if (semifinalists.size > 0) return semifinalists;
+    }
+
+    // Semi-finals (or any earlier post-season round): even out the units that
+    // made the playoffs.
+    const qualified = new Set(bracket.teams.map(t => t.unit).filter(Boolean));
+    return qualified.size > 0 ? qualified : null;
+  };
+
   const runBalancer = () => {
     if (!selectedWeek) return;
 
@@ -1381,6 +1435,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
       // Get teammate history
       const { teammate } = computeStats();
 
+      // Skill-based post-season balancing: the set of playoff-pedigree units to
+      // even across the two sides (null outside playoffs or when weight is 0).
+      const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+      const postSeasonSkillUnits = getPostSeasonSkillUnits(weekIdx);
+
       // Run the balancing algorithm
       const result = balanceTeams(
         available,
@@ -1388,7 +1447,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
         balancerOpposingPairs,
         maxDiff,
         teammate,
-        divisions
+        divisions,
+        postSeasonSkillUnits
       );
 
       if (result) {
@@ -1416,7 +1476,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
   };
 
-  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = []) => {
+  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = [], postSeasonSkillUnits = null) => {
     // Validate and prepare unit data
     const unitData = {};
     try {
@@ -1542,6 +1602,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
         }
       }
 
+      // Skill-based post-season balancing: minimize the difference in the count
+      // of playoff-pedigree units between the two sides (see getPostSeasonSkillUnits).
+      let postSeasonSkillDiff = 0;
+      if (postSeasonSkillUnits) {
+        let qA = 0, qB = 0;
+        for (const u of teamAArray) if (postSeasonSkillUnits.has(u)) qA++;
+        for (const u of teamBArray) if (postSeasonSkillUnits.has(u)) qB++;
+        postSeasonSkillDiff = Math.abs(qA - qB);
+      }
+
       let gap = 0;
       if (maxA < minB) gap = minB - maxA;
       else if (maxB < minA) gap = minA - maxB;
@@ -1549,12 +1619,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
       return {
         stats: [minA, maxA, minB, maxB],
         isValid: gap <= maxPlayerDiff && avgDiff <= maxPlayerDiff,
-        raw: { teammateScore, avgDiff, regimentCountDiff, rangeSimilarity, divisionOppositionScore }
+        raw: { teammateScore, avgDiff, regimentCountDiff, rangeSimilarity, divisionOppositionScore, postSeasonSkillDiff }
       };
     };
 
     // Pass 1: Iterate all partitions to find min/max of each metric (for normalization)
-    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'rangeSimilarity', 'divisionOppositionScore'];
+    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'rangeSimilarity', 'divisionOppositionScore', 'postSeasonSkillDiff'];
     const metricMin = {};
     const metricMax = {};
     for (const key of metricKeys) { metricMin[key] = Infinity; metricMax[key] = -Infinity; }
@@ -1575,7 +1645,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
       avgDiff: balancerSettings.avgDiffWeight,
       regimentCountDiff: balancerSettings.regimentCountWeight,
       rangeSimilarity: balancerSettings.rangeSimilarityWeight,
-      divisionOppositionScore: balancerSettings.divisionOppositionWeight
+      divisionOppositionScore: balancerSettings.divisionOppositionWeight,
+      postSeasonSkillDiff: balancerSettings.postSeasonSkillWeight || 0
     };
 
     // Pass 2: Normalize, score, and find top N partitions
@@ -1983,6 +2054,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               leadB: week.lead_B || null,
               isPlayoffs: week.playoffs || false,
               isSingleRoundLeads: week.single_round_leads || false,
+              isFunRound: week.fun_round || false,
               leadA_r1: week.lead_A_r1 || null,
               leadB_r1: week.lead_B_r1 || null,
               leadA_r2: week.lead_A_r2 || null,
@@ -4862,6 +4934,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   >
                     <option value="perNight">Per Night</option>
                     <option value="perRound">Per Round</option>
+                    <option value="perRoundLoss">Per Round (Loss Only)</option>
                   </select>
                 </div>
                 )}
@@ -5116,6 +5189,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       />
                     </div>
                   )}
+                  {playoffConfig.enabled && (
+                    <div>
+                      <label className="block text-sm text-text-secondary mb-1">Post-Season Skill Weight</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={balancerSettings.postSeasonSkillWeight ?? 0}
+                        onChange={(e) => setBalancerSettings({ ...balancerSettings, postSeasonSkillWeight: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4">
                   <label className="block text-sm text-text-secondary mb-1">Balance Options to Show</label>
@@ -5138,6 +5223,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <li><strong>Range Similarity:</strong> Ensures both teams have similar min-to-max spread (e.g., both 45-55 rather than one 45-50 and one 30-60)</li>
                     {divisions.length > 0 && (
                       <li><strong>Division Opposition:</strong> Prioritizes placing same-division units on opposing teams</li>
+                    )}
+                    {playoffConfig.enabled && (
+                      <li><strong>Post-Season Skill:</strong> During playoffs, evens playoff-pedigree units across both sides — units that made the playoffs in the semi-finals, and units that made the semi-finals in the championship (0 = off)</li>
                     )}
                   </ul>
                 </div>
@@ -5943,7 +6031,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     checked={selectedWeek.isPlayoffs || false}
                     onChange={(e) => updateWeek(selectedWeek.id, {
                       isPlayoffs: e.target.checked,
-                      ...(e.target.checked && { isSingleRoundLeads: false })
+                      ...(e.target.checked && { isSingleRoundLeads: false, isFunRound: false })
                     })}
                     className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                   />
@@ -5960,12 +6048,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     checked={selectedWeek.isSingleRoundLeads || false}
                     onChange={(e) => updateWeek(selectedWeek.id, {
                       isSingleRoundLeads: e.target.checked,
-                      ...(e.target.checked && { isPlayoffs: false })
+                      ...(e.target.checked && { isPlayoffs: false, isFunRound: false })
                     })}
                     className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
                   />
                   <Star className="w-4 h-4" />
                   <span className="font-semibold">Single Round Leads</span>
+                </label>
+              </div>
+
+              {/* Fun Round Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedWeek.isFunRound || false}
+                    onChange={(e) => updateWeek(selectedWeek.id, {
+                      isFunRound: e.target.checked,
+                      ...(e.target.checked && { isPlayoffs: false, isSingleRoundLeads: false })
+                    })}
+                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <Swords className="w-4 h-4" />
+                  <span className="font-semibold">Fun Round</span>
+                  <span className="text-xs text-text-secondary font-normal">— no points, no map cooldown, no Elo</span>
                 </label>
               </div>
 

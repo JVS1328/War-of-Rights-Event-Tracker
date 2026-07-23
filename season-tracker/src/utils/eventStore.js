@@ -58,6 +58,10 @@ export const makeDefaultBalancerSettings = () => ({
   regimentCountWeight: 0.75,
   rangeSimilarityWeight: 0.50,
   divisionOppositionWeight: 0,
+  // Skill-based post-season balancing (per the passed proposal): evens out
+  // playoff-pedigree units across both sides during playoff weeks. Defaults to
+  // 0 (off) so it never affects regular-season balancing; tune per-season.
+  postSeasonSkillWeight: 0,
   balanceOptionCount: 3,
 });
 
