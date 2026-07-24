@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow } from '../../stats/statsEngine';
-import { Cell, CauseTable, kdStr, whenOf, teamTone } from './drawerPrimitives';
-import { formatAvgT, formatCompany, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { Cell, CauseTable, kdStr, whenOf, teamTone, roleLine } from './drawerPrimitives';
+import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 
 /** Rounds most-recent first (undated rounds sort last). */
 function byRecentFirst(rounds: PlayerRoundRow[]): PlayerRoundRow[] {
@@ -80,16 +80,6 @@ function RoundsPlayedSection({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]
   );
 }
 
-/** Compose an in-game identity/role line for a round: unit · rank · class. */
-function roundRoleLine(r: PlayerRoundRow): string {
-  const parts: string[] = [];
-  if (r.regiment) parts.push(r.company ? `${r.regiment} · Co. ${formatCompany(r.company)}` : r.regiment);
-  if (r.rank) parts.push(r.rank);
-  if (r.className) parts.push(r.className);
-  if (r.battery) parts.push('Artillery');
-  return parts.join(' · ');
-}
-
 /**
  * Compact inline "cause → count" line for a single round (killed with / died to),
  * styled to match the card's formation breakdown. Rendered with spans instead of
@@ -118,7 +108,7 @@ function RoundCauseLine({ label, data }: { label: string; data: Record<string, n
 
 /** Rich per-round card: in-game role + the player's full stats for that round. */
 function RecentRoundCard({ r, onOpen }: { r: PlayerRoundRow; onOpen: () => void }) {
-  const role = roundRoleLine(r);
+  const role = roleLine(r);
   return (
     <button
       type="button"
