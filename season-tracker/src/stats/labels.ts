@@ -120,17 +120,31 @@ export function ticketEfficiency(
 }
 
 /**
- * Hover text for the inline efficiency figure: the roster split it's built from
- * ("46 of 152 players — 30% of the team") plus what the efficiency means. Pass
- * `avg` for cumulative views, where the counts are per-round averages (rounded).
+ * Hover text for the inline efficiency figure. States the efficiency as a `×`
+ * ratio and a percent, explains it (share ÷ roster share, 100% = pulling its
+ * weight), notes which direction is good — higher for damage inflicted, lower
+ * for damage received — and shows the roster split it's built from ("46 of 152
+ * players — 30% of the team"). Pass `avg` for cumulative views, where the counts
+ * are per-round averages (rounded).
  */
-export function rosterShareTitle(unitPlayers: number, teamPlayers: number, avg = false): string {
+export function efficiencyTitle(
+  eff: number | null,
+  unitPlayers: number,
+  teamPlayers: number,
+  kind: 'inflicted' | 'received',
+  avg = false,
+): string {
   const share = pctShare(unitPlayers, teamPlayers);
   const u = avg ? Math.round(unitPlayers) : unitPlayers;
   const t = avg ? Math.round(teamPlayers) : teamPlayers;
   const lead = avg ? 'avg ' : '';
   const per = avg ? ' per round' : '';
-  return `${lead}${u} of ${t} players${per} — ${formatPct(share)} of the team · efficiency = ticket-damage share ÷ this roster share (100% = pulling its weight)`;
+  const ratio = eff == null ? '—' : `${eff.toFixed(2)}×`;
+  const better =
+    kind === 'inflicted'
+      ? 'higher is better — more enemy tickets drained than its size would predict'
+      : "lower is better — fewer of the team's tickets lost than its size would predict";
+  return `Efficiency ${ratio} (${formatPct(eff)}) = this unit's ticket-damage share ÷ its roster share. 100% = pulling exactly its weight; ${better}. Roster: ${lead}${u} of ${t} players${per} (${formatPct(share)} of the team).`;
 }
 
 /** Format a 0–1 fraction as a whole-number percent ("42%"), or "—" when null. */

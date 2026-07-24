@@ -1176,8 +1176,29 @@ export interface TicketShare {
   avgUnitPlayers: number;
   /** Mean per-round team head count, for the efficiency hover. */
   avgTeamPlayers: number;
+  /** Ticket share restricted to rounds this unit played as USA. */
+  asUSA: TicketContextShare;
+  /** Ticket share restricted to rounds this unit played as CSA. */
+  asCSA: TicketContextShare;
+  /** Ticket share restricted to rounds this unit's team attacked. */
+  asAttacker: TicketContextShare;
+  /** Ticket share restricted to rounds this unit's team defended. */
+  asDefender: TicketContextShare;
   /** Per-round (keyed by sourceFilename) figures, for round-level display. */
   perRound: Record<string, TicketRoundShare>;
+}
+
+/** A unit's average ticket share within one context slice (faction or role) —
+ *  the same figures as {@link TicketShare} minus the per-round detail. `rounds`
+ *  is how many rounds the unit spent in this context (0 = it never did). */
+export interface TicketContextShare {
+  avgPctInflicted: number | null;
+  avgPctReceived: number | null;
+  avgEffInflicted: number | null;
+  avgEffReceived: number | null;
+  avgUnitPlayers: number;
+  avgTeamPlayers: number;
+  rounds: number;
 }
 
 /** One round's ticket figures for a unit: its share of the team's ticket damage,
@@ -1189,6 +1210,61 @@ export interface TicketRoundShare {
   effReceived: number | null;
   unitPlayers: number;
   teamPlayers: number;
+}
+
+/** A running share/efficiency accumulator — one per entity plus one per context
+ *  bucket (faction/role), so every scope averages the same per-round figures. */
+interface ShareAcc {
+  sumPctInf: number;
+  sumEffInf: number;
+  cntInf: number;
+  sumPctRec: number;
+  sumEffRec: number;
+  cntRec: number;
+  sumUnitPlayers: number;
+  sumTeamPlayers: number;
+  cntRounds: number;
+}
+
+function emptyShareAcc(): ShareAcc {
+  return { sumPctInf: 0, sumEffInf: 0, cntInf: 0, sumPctRec: 0, sumEffRec: 0, cntRec: 0, sumUnitPlayers: 0, sumTeamPlayers: 0, cntRounds: 0 };
+}
+
+/** Fold one round's share + efficiency for an entity into an accumulator. */
+function bumpShare(
+  a: ShareAcc,
+  pctInf: number | null,
+  effInf: number | null,
+  pctRec: number | null,
+  effRec: number | null,
+  unitPlayers: number,
+  teamPlayers: number,
+): void {
+  a.sumUnitPlayers += unitPlayers;
+  a.sumTeamPlayers += teamPlayers;
+  a.cntRounds += 1;
+  if (pctInf != null) {
+    a.sumPctInf += pctInf;
+    a.sumEffInf += effInf ?? 0;
+    a.cntInf += 1;
+  }
+  if (pctRec != null) {
+    a.sumPctRec += pctRec;
+    a.sumEffRec += effRec ?? 0;
+    a.cntRec += 1;
+  }
+}
+
+function finalizeShare(a: ShareAcc): TicketContextShare {
+  return {
+    avgPctInflicted: a.cntInf > 0 ? a.sumPctInf / a.cntInf : null,
+    avgPctReceived: a.cntRec > 0 ? a.sumPctRec / a.cntRec : null,
+    avgEffInflicted: a.cntInf > 0 ? a.sumEffInf / a.cntInf : null,
+    avgEffReceived: a.cntRec > 0 ? a.sumEffRec / a.cntRec : null,
+    avgUnitPlayers: a.cntRounds > 0 ? a.sumUnitPlayers / a.cntRounds : 0,
+    avgTeamPlayers: a.cntRounds > 0 ? a.sumTeamPlayers / a.cntRounds : 0,
+    rounds: a.cntRounds,
+  };
 }
 
 /**
@@ -1204,27 +1280,31 @@ function computeTicketShares(
   entitiesOf: (sb: Scoreboard, p: ScoreboardPlayer) => string[],
 ): Record<string, TicketShare> {
   interface Acc {
-    sumPctInf: number;
-    sumEffInf: number;
-    cntInf: number;
-    sumPctRec: number;
-    sumEffRec: number;
-    cntRec: number;
-    sumUnitPlayers: number;
-    sumTeamPlayers: number;
-    cntRounds: number;
+    overall: ShareAcc;
+    asUSA: ShareAcc;
+    asCSA: ShareAcc;
+    asAttacker: ShareAcc;
+    asDefender: ShareAcc;
     perRound: Record<string, TicketRoundShare>;
   }
   const acc = new Map<string, Acc>();
   const ensureAcc = (e: string): Acc => {
     let a = acc.get(e);
     if (!a) {
-      a = { sumPctInf: 0, sumEffInf: 0, cntInf: 0, sumPctRec: 0, sumEffRec: 0, cntRec: 0, sumUnitPlayers: 0, sumTeamPlayers: 0, cntRounds: 0, perRound: {} };
+      a = {
+        overall: emptyShareAcc(),
+        asUSA: emptyShareAcc(),
+        asCSA: emptyShareAcc(),
+        asAttacker: emptyShareAcc(),
+        asDefender: emptyShareAcc(),
+        perRound: {},
+      };
       acc.set(e, a);
     }
     return a;
   };
   for (const sb of scoreboards) {
+    const atk = mapAttacker(sb.meta.area ?? sb.meta.map);
     const groups = new Map<string, { team: Team; entity: string; inflicted: number; received: number; players: number }>();
     const teamInf: Record<Team, number> = { USA: 0, CSA: 0 };
     const teamRec: Record<Team, number> = { USA: 0, CSA: 0 };
@@ -1263,30 +1343,27 @@ function computeTicketShares(
         unitPlayers: g.players,
         teamPlayers: tPlayers,
       };
-      a.sumUnitPlayers += g.players;
-      a.sumTeamPlayers += tPlayers;
-      a.cntRounds += 1;
-      if (pctInf != null) {
-        a.sumPctInf += pctInf;
-        a.sumEffInf += effInf ?? 0;
-        a.cntInf += 1;
-      }
-      if (pctRec != null) {
-        a.sumPctRec += pctRec;
-        a.sumEffRec += effRec ?? 0;
-        a.cntRec += 1;
-      }
+      // Overall + the round's faction bucket, plus the role bucket when the map
+      // has a defined attacker.
+      bumpShare(a.overall, pctInf, effInf, pctRec, effRec, g.players, tPlayers);
+      bumpShare(g.team === 'USA' ? a.asUSA : a.asCSA, pctInf, effInf, pctRec, effRec, g.players, tPlayers);
+      if (atk) bumpShare(g.team === atk ? a.asAttacker : a.asDefender, pctInf, effInf, pctRec, effRec, g.players, tPlayers);
     }
   }
   const out: Record<string, TicketShare> = {};
   for (const [entity, a] of acc) {
+    const o = finalizeShare(a.overall);
     out[entity] = {
-      avgPctInflicted: a.cntInf > 0 ? a.sumPctInf / a.cntInf : null,
-      avgPctReceived: a.cntRec > 0 ? a.sumPctRec / a.cntRec : null,
-      avgEffInflicted: a.cntInf > 0 ? a.sumEffInf / a.cntInf : null,
-      avgEffReceived: a.cntRec > 0 ? a.sumEffRec / a.cntRec : null,
-      avgUnitPlayers: a.cntRounds > 0 ? a.sumUnitPlayers / a.cntRounds : 0,
-      avgTeamPlayers: a.cntRounds > 0 ? a.sumTeamPlayers / a.cntRounds : 0,
+      avgPctInflicted: o.avgPctInflicted,
+      avgPctReceived: o.avgPctReceived,
+      avgEffInflicted: o.avgEffInflicted,
+      avgEffReceived: o.avgEffReceived,
+      avgUnitPlayers: o.avgUnitPlayers,
+      avgTeamPlayers: o.avgTeamPlayers,
+      asUSA: finalizeShare(a.asUSA),
+      asCSA: finalizeShare(a.asCSA),
+      asAttacker: finalizeShare(a.asAttacker),
+      asDefender: finalizeShare(a.asDefender),
       perRound: a.perRound,
     };
   }

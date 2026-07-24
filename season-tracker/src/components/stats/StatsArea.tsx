@@ -15,9 +15,9 @@ import {
   computeScoreboardMapStats,
   resolveFor,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare } from '../../stats/statsEngine';
+import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare, TicketContextShare } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
-import { formatAvgT, formatRate, rosterShareTitle, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
+import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
@@ -1026,7 +1026,7 @@ function RegimentsTab({
 }
 
 /** Compact stat summary for one context slice. */
-function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStatSlice }) {
+function ContextSlicePanel({ label, slice, ticket }: { label: string; slice: ContextStatSlice; ticket?: TicketContextShare }) {
   if (slice.rounds === 0) return null;
   const formOf = (f: FormationCounts): [string, number][] => [
     [FORMATION_LABEL.in_form, f.in_form],
@@ -1035,6 +1035,7 @@ function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStat
   ];
   const byCause = (m: Record<string, number>): [string, number][] =>
     Object.entries(m).sort((a, b) => b[1] - a[1]);
+  const showTicket = ticket != null && ticket.rounds > 0;
   return (
     <Panel
       title={label}
@@ -1047,6 +1048,12 @@ function ContextSlicePanel({ label, slice }: { label: string; slice: ContextStat
           {' · '}<span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
           {' · '}<span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
           {' · '}<span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
+          {showTicket && (
+            <>
+              {' · '}<span className="cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI <TicketPct share={ticket.avgPctInflicted} eff={ticket.avgEffInflicted} shareTitle={AVG_TICKET_INFLICTED_LABEL} unitPlayers={ticket.avgUnitPlayers} teamPlayers={ticket.avgTeamPlayers} kind="inflicted" avg /></span>
+              {' · '}<span className="cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR <TicketPct share={ticket.avgPctReceived} eff={ticket.avgEffReceived} shareTitle={AVG_TICKET_RECEIVED_LABEL} unitPlayers={ticket.avgUnitPlayers} teamPlayers={ticket.avgTeamPlayers} kind="received" avg /></span>
+            </>
+          )}
         </span>
       }
     >
@@ -1074,15 +1081,16 @@ function RegimentRoundBreakdown({
   byCause: (m: Record<string, number>) => [string, number][];
   onOpenRound: () => void;
 }) {
-  const rosterTitle = share ? rosterShareTitle(share.unitPlayers, share.teamPlayers) : undefined;
+  const unitPlayers = share?.unitPlayers ?? 0;
+  const teamPlayers = share?.teamPlayers ?? 0;
   return (
     <div className="space-y-2 font-mono">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--color-text-2)]">
         <span className="cursor-help" title={TICKET_INFLICTED_LABEL}>
-          TDI <TicketPct share={share?.pctInflicted ?? null} eff={share?.effInflicted ?? null} effTitle={rosterTitle} />
+          TDI <TicketPct share={share?.pctInflicted ?? null} eff={share?.effInflicted ?? null} shareTitle={TICKET_INFLICTED_LABEL} unitPlayers={unitPlayers} teamPlayers={teamPlayers} kind="inflicted" />
         </span>
         <span className="cursor-help" title={TICKET_RECEIVED_LABEL}>
-          TDR <TicketPct share={share?.pctReceived ?? null} eff={share?.effReceived ?? null} effTitle={rosterTitle} />
+          TDR <TicketPct share={share?.pctReceived ?? null} eff={share?.effReceived ?? null} shareTitle={TICKET_RECEIVED_LABEL} unitPlayers={unitPlayers} teamPlayers={teamPlayers} kind="received" />
         </span>
         <span title={AVG_TD_LABEL}>×Td {formatAvgT(rr.avgTd)}</span>
         <span title={AVG_TK_LABEL}>×Tk {formatAvgT(rr.avgTk)}</span>
@@ -1134,8 +1142,6 @@ function RegimentPanel({
   const inflictedForm = formOf(reg.killsByFormation);
   const inflictedCause = byCause(reg.killsByCause);
   const isUntagged = reg.regiment === UNTAGGED;
-  // Roster split behind the cumulative efficiency figures (per-round averages).
-  const avgRosterTitle = ticketShare ? rosterShareTitle(ticketShare.avgUnitPlayers, ticketShare.avgTeamPlayers, true) : undefined;
   const mergeTargets = edit.allRegiments.filter((l) => l !== reg.regiment && l !== UNTAGGED);
 
   return (
@@ -1161,11 +1167,11 @@ function RegimentPanel({
             <span title={AVG_TK_LABEL}>×Tk {formatAvgT(reg.avgTk)}</span>
             {' · '}
             <span className="cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>
-              TDI <TicketPct share={ticketShare?.avgPctInflicted ?? null} eff={ticketShare?.avgEffInflicted ?? null} effTitle={avgRosterTitle} />
+              TDI <TicketPct share={ticketShare?.avgPctInflicted ?? null} eff={ticketShare?.avgEffInflicted ?? null} shareTitle={AVG_TICKET_INFLICTED_LABEL} unitPlayers={ticketShare?.avgUnitPlayers ?? 0} teamPlayers={ticketShare?.avgTeamPlayers ?? 0} kind="inflicted" avg />
             </span>
             {' · '}
             <span className="cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>
-              TDR <TicketPct share={ticketShare?.avgPctReceived ?? null} eff={ticketShare?.avgEffReceived ?? null} effTitle={avgRosterTitle} />
+              TDR <TicketPct share={ticketShare?.avgPctReceived ?? null} eff={ticketShare?.avgEffReceived ?? null} shareTitle={AVG_TICKET_RECEIVED_LABEL} unitPlayers={ticketShare?.avgUnitPlayers ?? 0} teamPlayers={ticketShare?.avgTeamPlayers ?? 0} kind="received" avg />
             </span>
           </>
         }
@@ -1204,10 +1210,10 @@ function RegimentPanel({
         {contextStats && (
           <div className="space-y-1">
             <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mt-2 mb-1">Breakdown by faction & role</div>
-            <ContextSlicePanel label="As USA" slice={contextStats.asUSA} />
-            <ContextSlicePanel label="As CSA" slice={contextStats.asCSA} />
-            <ContextSlicePanel label="As Attacker" slice={contextStats.asAttacker} />
-            <ContextSlicePanel label="As Defender" slice={contextStats.asDefender} />
+            <ContextSlicePanel label="As USA" slice={contextStats.asUSA} ticket={ticketShare?.asUSA} />
+            <ContextSlicePanel label="As CSA" slice={contextStats.asCSA} ticket={ticketShare?.asCSA} />
+            <ContextSlicePanel label="As Attacker" slice={contextStats.asAttacker} ticket={ticketShare?.asAttacker} />
+            <ContextSlicePanel label="As Defender" slice={contextStats.asDefender} ticket={ticketShare?.asDefender} />
           </div>
         )}
 
@@ -1218,6 +1224,7 @@ function RegimentPanel({
           <DataTable<RegimentRoundRow>
             rows={reg.perRound}
             getRowKey={(rr) => rr.sourceFilename}
+            className="overflow-x-auto"
             pageSize={8}
             renderExpanded={(rr) => (
               <RegimentRoundBreakdown
@@ -1239,6 +1246,28 @@ function RegimentPanel({
               { key: 'lr', header: LrHead, align: 'right', sortable: true, sortValue: (rr) => rr.lossRate ?? -1, render: (rr) => <span className="text-[color:var(--color-text-2)]">{formatRate(rr.lossRate)}</span> },
               { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (rr) => rr.avgTd ?? -1, render: (rr) => formatAvgT(rr.avgTd) },
               { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (rr) => rr.avgTk ?? -1, render: (rr) => formatAvgT(rr.avgTk) },
+              {
+                key: 'tdi',
+                header: <span title={TICKET_INFLICTED_LABEL}>TDI</span>,
+                align: 'right',
+                sortable: true,
+                sortValue: (rr) => ticketShare?.perRound[rr.sourceFilename]?.pctInflicted ?? -1,
+                render: (rr) => {
+                  const s = ticketShare?.perRound[rr.sourceFilename];
+                  return <TicketPct share={s?.pctInflicted ?? null} eff={s?.effInflicted ?? null} shareTitle={TICKET_INFLICTED_LABEL} unitPlayers={s?.unitPlayers ?? 0} teamPlayers={s?.teamPlayers ?? 0} kind="inflicted" />;
+                },
+              },
+              {
+                key: 'tdr',
+                header: <span title={TICKET_RECEIVED_LABEL}>TDR</span>,
+                align: 'right',
+                sortable: true,
+                sortValue: (rr) => ticketShare?.perRound[rr.sourceFilename]?.pctReceived ?? -1,
+                render: (rr) => {
+                  const s = ticketShare?.perRound[rr.sourceFilename];
+                  return <TicketPct share={s?.pctReceived ?? null} eff={s?.effReceived ?? null} shareTitle={TICKET_RECEIVED_LABEL} unitPlayers={s?.unitPlayers ?? 0} teamPlayers={s?.teamPlayers ?? 0} kind="received" />;
+                },
+              },
             ]}
           />
         </div>

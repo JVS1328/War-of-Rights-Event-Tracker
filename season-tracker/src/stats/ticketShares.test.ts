@@ -153,6 +153,17 @@ describe('computeRegimentTicketShares', () => {
     expect(shares.ALPHA.perRound['r1.csv'].teamPlayers).toBe(3);
     expect(shares.ALPHA.perRound['r2.csv'].effInflicted).toBeCloseTo(2, 5);
   });
+
+  it('splits shares by faction context (asUSA/asCSA)', () => {
+    // ALPHA played USA both rounds → asUSA mirrors overall, asCSA is empty.
+    expect(shares.ALPHA.asUSA.rounds).toBe(2);
+    expect(shares.ALPHA.asCSA.rounds).toBe(0);
+    expect(shares.ALPHA.asUSA.avgPctInflicted).toBeCloseTo(shares.ALPHA.avgPctInflicted ?? -1, 5);
+    expect(shares.ALPHA.asUSA.avgEffReceived).toBeCloseTo(shares.ALPHA.avgEffReceived ?? -1, 5);
+    // GAMMA played CSA both rounds → asCSA mirrors overall, asUSA is empty.
+    expect(shares.GAMMA.asCSA.rounds).toBe(2);
+    expect(shares.GAMMA.asUSA.rounds).toBe(0);
+  });
 });
 
 describe('computeTokenTicketShares', () => {

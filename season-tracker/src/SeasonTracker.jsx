@@ -20,7 +20,7 @@ import { isStatsBundle, OVERALL_SCOPE, effectiveAliasMap, effectiveScopedMap, al
 import { computeRegimentBreakdown, computeRegimentContextStats, computeTokenTicketShares } from './stats/statsEngine';
 import { parseRegimentList } from './stats/regimentMatcher';
 import { deriveTokenSnaps, accumulateTokenSnaps, accumulateTokenSnapsScoped, unitSnapAvgTd, unitSnapAvgTk, deriveTokenPlayerCounts, deriveTokenContextSnaps, normalizeScopedTokenRegiments, effectiveTokenRegiments, unionTokenRegiments } from './stats/unitStats';
-import { FORMATION_SHORT, formatAvgT, formatPct, rosterShareTitle, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from './stats/labels';
+import { FORMATION_SHORT, formatAvgT, formatPct, perPlayerRate, formatRate, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from './stats/labels';
 import {
   migrateToV2,
   migrateLegacyFlatToV2,
@@ -2595,9 +2595,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
           tdRec: ticketShares[unit]?.avgPctReceived ?? null,
           tdInfEff: ticketShares[unit]?.avgEffInflicted ?? null,
           tdRecEff: ticketShares[unit]?.avgEffReceived ?? null,
-          rosterTitle: ticketShares[unit]
-            ? rosterShareTitle(ticketShares[unit].avgUnitPlayers, ticketShares[unit].avgTeamPlayers, true)
-            : undefined,
+          tdUnitPlayers: ticketShares[unit]?.avgUnitPlayers ?? 0,
+          tdTeamPlayers: ticketShares[unit]?.avgTeamPlayers ?? 0,
           uniquePlayers: playerCounts[unit]?.uniquePlayers ?? 0,
           avgPlayers: playerCounts[unit]?.avgPlayers ?? 0,
           ctx: ctxSnaps?.[unit] ?? null,
@@ -2656,8 +2655,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
-                    <td className="text-green-400/80 text-center py-2 px-2"><TicketPct share={r.tdInf} eff={r.tdInfEff} effTitle={r.rosterTitle} /></td>
-                    <td className="text-red-400/80 text-center py-2 px-2"><TicketPct share={r.tdRec} eff={r.tdRecEff} effTitle={r.rosterTitle} /></td>
+                    <td className="text-green-400/80 text-center py-2 px-2"><TicketPct share={r.tdInf} eff={r.tdInfEff} shareTitle={AVG_TICKET_INFLICTED_LABEL} unitPlayers={r.tdUnitPlayers} teamPlayers={r.tdTeamPlayers} kind="inflicted" avg /></td>
+                    <td className="text-red-400/80 text-center py-2 px-2"><TicketPct share={r.tdRec} eff={r.tdRecEff} shareTitle={AVG_TICKET_RECEIVED_LABEL} unitPlayers={r.tdUnitPlayers} teamPlayers={r.tdTeamPlayers} kind="received" avg /></td>
                   </tr>
                   {isOpen && r.ctx && (
                     <>
