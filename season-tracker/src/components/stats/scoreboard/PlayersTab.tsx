@@ -11,7 +11,6 @@ import {
   avgTicketCost,
   ticketDamage,
   ticketEfficiency,
-  rosterShareTitle,
   perPlayerRate,
   formatRate,
   AVG_TD_LABEL,
@@ -362,7 +361,6 @@ function RegimentGroup({
   const pctReceived = teamReceived > 0 ? unitReceived / teamReceived : null;
   const effInflicted = ticketEfficiency(unitInflicted, players.length, teamInflicted, teamPlayers);
   const effReceived = ticketEfficiency(unitReceived, players.length, teamReceived, teamPlayers);
-  const rosterTitle = rosterShareTitle(players.length, teamPlayers);
   // Unit-level "killed with" / "died to" — every member's killfeed rolled up.
   const unitKilledWith = sortedCauses(sumCauses(players.map((p) => killedWithOf(p, causeIndex))));
   const unitDiedTo = sortedCauses(sumCauses(players.map((p) => diedToOf(p, causeIndex))));
@@ -436,7 +434,14 @@ function RegimentGroup({
                 title={TICKET_INFLICTED_LABEL}
                 value={
                   <span className="text-[color:var(--color-text-0)]">
-                    <TicketPct share={pctInflicted} eff={effInflicted} effTitle={rosterTitle} />
+                    <TicketPct
+                      share={pctInflicted}
+                      eff={effInflicted}
+                      shareTitle={TICKET_INFLICTED_LABEL}
+                      unitPlayers={players.length}
+                      teamPlayers={teamPlayers}
+                      kind="inflicted"
+                    />
                   </span>
                 }
               />
@@ -445,7 +450,14 @@ function RegimentGroup({
                 title={TICKET_RECEIVED_LABEL}
                 value={
                   <span className="text-[color:var(--color-text-0)]">
-                    <TicketPct share={pctReceived} eff={effReceived} effTitle={rosterTitle} />
+                    <TicketPct
+                      share={pctReceived}
+                      eff={effReceived}
+                      shareTitle={TICKET_RECEIVED_LABEL}
+                      unitPlayers={players.length}
+                      teamPlayers={teamPlayers}
+                      kind="received"
+                    />
                   </span>
                 }
               />

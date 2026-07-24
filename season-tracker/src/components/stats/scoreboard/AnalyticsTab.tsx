@@ -16,13 +16,17 @@ import {
   topIndividualDeaths,
   topTicketInflicted,
   topTicketReceived,
+  topRegimentTicketInflicted,
+  topRegimentTicketReceived,
   firstAndLastDeath,
   computeNemeses,
 } from '../../../stats/roundAnalytics';
 import { TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL } from '../../../stats/labels';
+import { TicketPct } from '../drawerPrimitives';
 import type {
   UnitRateRow,
   IndividualStatRow,
+  TicketStatRow,
   DeathEventRow,
   NemesisRow,
 } from '../../../stats/roundAnalytics';
@@ -33,6 +37,7 @@ const PAGE_SIZE = 8;
 // Stable search-text accessors (module-level so PagedSection's filter memo
 // isn't invalidated every render).
 const individualSearch = (r: IndividualStatRow) => `${r.name} ${r.regiment ?? ''}`;
+const ticketSearch = (r: TicketStatRow) => `${r.name} ${r.regiment ?? ''}`;
 const rateSearch = (r: UnitRateRow) => r.regiment;
 const nemesisSearch = (r: NemesisRow) => `${r.killer} ${r.victim}`;
 
@@ -189,6 +194,55 @@ function IndividualRows({
   );
 }
 
+/** Ranked ticket-damage rows showing each entry's share of the team + efficiency
+ *  (via {@link TicketPct}). Player rows open the player drawer; regiment rows,
+ *  whose name IS the regiment, are display-only. */
+function TicketRows({
+  rows,
+  offset,
+  kind,
+  onOpenPlayer,
+}: {
+  rows: TicketStatRow[];
+  offset: number;
+  kind: 'inflicted' | 'received';
+  /** Provided for player rows (clickable); omitted for regiment rows. */
+  onOpenPlayer?: (key: string) => void;
+}) {
+  const shareTitle = kind === 'inflicted' ? TICKET_INFLICTED_LABEL : TICKET_RECEIVED_LABEL;
+  return (
+    <table className="w-full text-sm">
+      <tbody>
+        {rows.map((r, i) => (
+          <tr
+            key={`${r.key}-${offset + i}`}
+            onClick={onOpenPlayer ? () => onOpenPlayer(r.key) : undefined}
+            className={`border-b border-[color:var(--color-border)] ${onOpenPlayer ? 'cursor-pointer hover:bg-[color:var(--color-bg-3)]' : ''}`}
+          >
+            <td className="w-6 px-1 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{offset + i + 1}</td>
+            <td className="px-1 py-0.5">
+              <div className="truncate text-[color:var(--color-text-0)]">{r.name}</div>
+              {r.regiment && r.regiment !== r.name && (
+                <div className="truncate text-2xs text-[color:var(--color-text-2)]">{r.regiment}</div>
+              )}
+            </td>
+            <td className="px-1 py-0.5 text-right text-[color:var(--color-text-0)]">
+              <TicketPct
+                share={r.share}
+                eff={r.eff}
+                shareTitle={shareTitle}
+                unitPlayers={r.unitPlayers}
+                teamPlayers={r.teamPlayers}
+                kind={kind}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function RateRows({
   rows,
   offset,
@@ -316,8 +370,10 @@ export function AnalyticsTab({
       killRates: topKillRates(sb, { minPlayers: 2 }),
       topKills: topIndividualKills(sb),
       topDeaths: topIndividualDeaths(sb),
-      ticketInflicted: topTicketInflicted(sb),
-      ticketReceived: topTicketReceived(sb),
+      ticketInflictedPlayers: topTicketInflicted(sb),
+      ticketReceivedPlayers: topTicketReceived(sb),
+      ticketInflictedRegiments: topRegimentTicketInflicted(sb),
+      ticketReceivedRegiments: topRegimentTicketReceived(sb),
       nemeses: computeNemeses(sb, { minKills: 2 }),
       firstDeath: first,
       lastDeath: last,
@@ -327,8 +383,10 @@ export function AnalyticsTab({
   const hasAny =
     analytics.topKills.length > 0 ||
     analytics.topDeaths.length > 0 ||
-    analytics.ticketInflicted.length > 0 ||
-    analytics.ticketReceived.length > 0 ||
+    analytics.ticketInflictedPlayers.length > 0 ||
+    analytics.ticketReceivedPlayers.length > 0 ||
+    analytics.ticketInflictedRegiments.length > 0 ||
+    analytics.ticketReceivedRegiments.length > 0 ||
     analytics.lossRates.length > 0 ||
     analytics.killRates.length > 0 ||
     analytics.nemeses.length > 0 ||
@@ -350,23 +408,44 @@ export function AnalyticsTab({
         </div>
       )}
 
-      {(analytics.ticketInflicted.length > 0 || analytics.ticketReceived.length > 0) && (
+      {(analytics.ticketInflictedPlayers.length > 0 || analytics.ticketReceivedPlayers.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <PagedSection
-            title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted</span>}
-            rows={analytics.ticketInflicted}
-            searchText={individualSearch}
+            title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted · players</span>}
+            rows={analytics.ticketInflictedPlayers}
+            searchText={ticketSearch}
             searchPlaceholder="player…"
           >
-            {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="ok" onOpenPlayer={onOpenPlayer} />}
+            {(pageRows, offset) => <TicketRows rows={pageRows} offset={offset} kind="inflicted" onOpenPlayer={onOpenPlayer} />}
           </PagedSection>
           <PagedSection
-            title={<span className="cursor-help" title={TICKET_RECEIVED_LABEL}>Ticket damage received</span>}
-            rows={analytics.ticketReceived}
-            searchText={individualSearch}
+            title={<span className="cursor-help" title={TICKET_RECEIVED_LABEL}>Ticket damage received · players</span>}
+            rows={analytics.ticketReceivedPlayers}
+            searchText={ticketSearch}
             searchPlaceholder="player…"
           >
-            {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="danger" onOpenPlayer={onOpenPlayer} />}
+            {(pageRows, offset) => <TicketRows rows={pageRows} offset={offset} kind="received" onOpenPlayer={onOpenPlayer} />}
+          </PagedSection>
+        </div>
+      )}
+
+      {(analytics.ticketInflictedRegiments.length > 0 || analytics.ticketReceivedRegiments.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <PagedSection
+            title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted · regiments</span>}
+            rows={analytics.ticketInflictedRegiments}
+            searchText={ticketSearch}
+            searchPlaceholder="regiment…"
+          >
+            {(pageRows, offset) => <TicketRows rows={pageRows} offset={offset} kind="inflicted" />}
+          </PagedSection>
+          <PagedSection
+            title={<span className="cursor-help" title={TICKET_RECEIVED_LABEL}>Ticket damage received · regiments</span>}
+            rows={analytics.ticketReceivedRegiments}
+            searchText={ticketSearch}
+            searchPlaceholder="regiment…"
+          >
+            {(pageRows, offset) => <TicketRows rows={pageRows} offset={offset} kind="received" />}
           </PagedSection>
         </div>
       )}

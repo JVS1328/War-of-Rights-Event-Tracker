@@ -6,6 +6,7 @@ import {
   topIndividualDeaths,
   topTicketInflicted,
   topTicketReceived,
+  topRegimentTicketInflicted,
   firstAndLastDeath,
   computeNemeses,
 } from './roundAnalytics';
@@ -138,8 +139,11 @@ describe('roundAnalytics', () => {
     ];
     const rows = topTicketInflicted(mkScoreboard(roster, kills));
     expect(rows.map((r) => r.name)).toEqual(['1stTX | Alice', '1stTX | Bob']);
-    expect(rows[0]).toMatchObject({ value: 6, regiment: '1STTX', key: '1stTX | Alice' });
-    expect(rows[1].value).toBe(3);
+    expect(rows[0]).toMatchObject({ damage: 6, regiment: '1STTX', key: '1stTX | Alice' });
+    expect(rows[1].damage).toBe(3);
+    // Share of the team's ticket damage (6 + 3 = 9 for USA) + per-player efficiency.
+    expect(rows[0].share).toBeCloseTo(6 / 9, 5);
+    expect(rows[0].eff).toBeCloseTo(6 / 1 / (9 / 2), 5); // (6/1)/(9/2)
   });
 
   it('ranks ticket damage received by ×Td weight of each death stance', () => {
@@ -150,9 +154,26 @@ describe('roundAnalytics', () => {
     ];
     const rows = topTicketReceived(mkScoreboard(roster));
     expect(rows.map((r) => r.name)).toEqual(['A', 'B']);
-    expect(rows[0].value).toBe(9);
-    expect(rows[1].value).toBe(2);
-    expect(rows.every((r) => r.value > 0)).toBe(true);
+    expect(rows[0].damage).toBe(9);
+    expect(rows[1].damage).toBe(2);
+    expect(rows.every((r) => r.damage > 0)).toBe(true);
+    expect(rows[0].share).toBeCloseTo(9 / 11, 5); // team USA received 9 + 2
+  });
+
+  it('groups ticket damage into regiments for the regiment-level lists', () => {
+    const roster = [
+      mkPlayer('1stTX | Alice', 'USA', 2, 0),
+      mkPlayer('1stTX | Bob', 'USA', 2, 0),
+      mkPlayer('2ndVA | Carol', 'CSA', 0, 0),
+    ];
+    const kills = [
+      mkKill('1stTX | Alice', '2ndVA | Carol', '00:01:00', 'minie', 'in_form'), // 1
+      mkKill('1stTX | Bob', '2ndVA | Carol', '00:02:00', 'melee', 'oob'), // 5
+    ];
+    const rows = topRegimentTicketInflicted(mkScoreboard(roster, kills));
+    expect(rows).toHaveLength(1); // only 1stTX dealt damage
+    expect(rows[0]).toMatchObject({ name: '1STTX', regiment: '1STTX', damage: 6, unitPlayers: 2 });
+    expect(rows[0].share).toBeCloseTo(1, 5); // 1stTX is USA's only inflicter
   });
 
   it('finds first and last death by timestamp', () => {
