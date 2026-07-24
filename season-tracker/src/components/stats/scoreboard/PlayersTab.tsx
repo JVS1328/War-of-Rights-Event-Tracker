@@ -5,7 +5,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { Pill } from '../../ui';
-import { TicketPct } from '../drawerPrimitives';
+import { TicketPct, roleLine } from '../drawerPrimitives';
 import type { Scoreboard, ScoreboardPlayer, RosterEntry, Team } from '../../../stats/types';
 import {
   avgTicketCost,
@@ -519,7 +519,15 @@ function PlayerCardList({
     <ul>
       {rows.map((p) => {
         const r = lookup(p);
-        const role = [r?.rank, r?.className].filter(Boolean).join(' ').trim();
+        // Full in-game identity (Regiment · Co. X · Rank · Class), matching the
+        // player profile's round cards.
+        const role = roleLine({
+          regiment: r?.regiment,
+          company: r?.company,
+          rank: r?.rank,
+          className: r?.className,
+          battery: r ? /batter/i.test(r.regiment ?? '') : false,
+        });
         const ks = killStance(p);
         const killedWith = sortedCauses(killedWithOf(p, causeIndex));
         const diedTo = sortedCauses(diedToOf(p, causeIndex));

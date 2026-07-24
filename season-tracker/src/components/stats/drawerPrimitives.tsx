@@ -3,9 +3,30 @@
 // duplicate the same cell / cause-table / formatting primitives.
 import type { ReactNode } from 'react';
 import type { Team } from '../../stats/types';
-import { formatPct, efficiencyTitle } from '../../stats/labels';
+import { formatPct, formatCompany, efficiencyTitle } from '../../stats/labels';
 
 export const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
+
+/**
+ * Compose a player's in-game identity line — `Regiment · Co. X · Rank · Class`
+ * (· Artillery when on a battery) — from whatever pieces are known, skipping
+ * missing ones. Shared by the player profile's round cards and the round
+ * drawer's player cards so both read the same.
+ */
+export function roleLine(parts: {
+  regiment?: string | null;
+  company?: string | null;
+  rank?: string | null;
+  className?: string | null;
+  battery?: boolean;
+}): string {
+  const out: string[] = [];
+  if (parts.regiment) out.push(parts.company ? `${parts.regiment} · Co. ${formatCompany(parts.company)}` : parts.regiment);
+  if (parts.rank) out.push(parts.rank);
+  if (parts.className) out.push(parts.className);
+  if (parts.battery) out.push('Artillery');
+  return out.join(' · ');
+}
 
 /**
  * A ticket-damage figure: the headline share (of the team's ticket damage) with
