@@ -166,6 +166,35 @@ describe('computeRegimentTicketShares', () => {
   });
 });
 
+describe('computeRegimentTicketShares — cross-team round (stray player)', () => {
+  // SPLIT fields 2 players as USA and 1 stray as CSA in the same round. The stray
+  // must not overwrite the round's perRound entry or double-count the average.
+  const SPLIT = mkScoreboard(
+    'split.csv',
+    [
+      mkPlayer('[SPLIT]A', 'USA', { inForm: 1 }), // received 1
+      mkPlayer('[SPLIT]B', 'USA', { skirm: 1 }), // received 3
+      mkPlayer('[SPLIT]C', 'CSA'), // stray — no kills, no deaths
+      mkPlayer('[ENEMY]E', 'CSA', { inForm: 1 }), // received 1, killed by A
+    ],
+    [mkKill('[SPLIT]A', '[ENEMY]E', 'in_form')], // SPLIT (USA) inflicts 1
+  );
+  const shares = computeRegimentTicketShares([SPLIT], {});
+
+  it('represents the unit by its dominant (USA) side, not the stray', () => {
+    const pr = shares.SPLIT.perRound['split.csv'];
+    expect(pr.unitPlayers).toBe(2); // the 2 USA players, not the 1 CSA stray
+    expect(pr.teamPlayers).toBe(2); // USA head count
+    expect(pr.pctReceived).toBeCloseTo(1, 5); // USA group's share, not the stray's 0
+  });
+
+  it('counts the round once (dominant group), not twice', () => {
+    expect(shares.SPLIT.avgUnitPlayers).toBe(2); // (bug would average 2 and 1 → 1.5)
+    expect(shares.SPLIT.asUSA.rounds).toBe(1);
+    expect(shares.SPLIT.asCSA.rounds).toBe(0); // stray dropped, not bucketed as CSA
+  });
+});
+
 describe('computeTokenTicketShares', () => {
   it('rolls regiments up under their token, summing per-team share', () => {
     // A token owning both USA regiments captures the whole USA team each round.

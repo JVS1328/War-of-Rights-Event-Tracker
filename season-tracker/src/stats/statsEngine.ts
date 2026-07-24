@@ -1328,7 +1328,23 @@ function computeTicketShares(
         g.players += 1;
       }
     }
+    // A unit plays one side per round; a stray cross-team player would otherwise
+    // create a second (team, entity) group that overwrites the round's perRound
+    // entry and double-counts the average. Collapse each entity to its dominant
+    // group — most players, then most ticket damage — so it's represented once
+    // per round by its real side.
+    const dominant = new Map<string, { team: Team; entity: string; inflicted: number; received: number; players: number }>();
     for (const g of groups.values()) {
+      const cur = dominant.get(g.entity);
+      if (
+        !cur ||
+        g.players > cur.players ||
+        (g.players === cur.players && g.inflicted + g.received > cur.inflicted + cur.received)
+      ) {
+        dominant.set(g.entity, g);
+      }
+    }
+    for (const g of dominant.values()) {
       const a = ensureAcc(g.entity);
       const tPlayers = teamPlayers[g.team];
       const pctInf = pctShare(g.inflicted, teamInf[g.team]);
