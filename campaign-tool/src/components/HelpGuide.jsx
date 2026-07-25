@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target, Flag, Train, Waves, Shield, Package, Coins } from 'lucide-react';
+import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target, Flag, Train, Waves, Shield, Package, Coins, Users } from 'lucide-react';
 
 const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
   const isGrand = campaignStyle === 'grand';
@@ -17,6 +17,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
     howToPlay: false,
     spSystem: false,
     battles: false,
+    commanders: false,
     abilities: false,
     victory: false,
     tips: false,
@@ -395,6 +396,44 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 <p className="text-amber-400 font-semibold mb-2">Map Cooldowns</p>
                 <p>After a map is played, it goes on cooldown for 2 turns. This prevents the same battlefield
                 from being used repeatedly and encourages variety.</p>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="commanders" title="Rolling for Commanders" icon={Users}>
+            <p className="mb-3">
+              Regiments added in Settings form a commander pool for each side. You can roll for
+              who leads a battle from two places, and both share the same pool:
+            </p>
+
+            <div className="space-y-3">
+              <div className="bg-slate-700 p-3 rounded-lg">
+                <p className="text-amber-400 font-semibold mb-2">On the campaign map</p>
+                <p>
+                  The <span className="text-white font-semibold">Battle Commanders</span> panel next to
+                  the map rolls USA and CSA ahead of time — handy for deciding who commands the first
+                  map of the turn before anyone picks a target. Rolling immediately takes that regiment
+                  out of the pool, and "Set Up Battle" opens the recorder with both sides filled in.
+                </p>
+              </div>
+
+              <div className="bg-slate-700 p-3 rounded-lg">
+                <p className="text-amber-400 font-semibold mb-2">In the Battle Recorder</p>
+                <p>
+                  The same spinner appears while recording a battle. Anyone rolled on the map is
+                  already selected; "Change" returns that regiment to the pool so you can spin or
+                  pick again.
+                </p>
+              </div>
+
+              <div className="bg-slate-700 p-3 rounded-lg">
+                <p className="text-amber-400 font-semibold mb-2">Pool rotation</p>
+                <p>
+                  A regiment stays out of the pool until every other regiment on its side has had a
+                  turn, then the pool refills — minus whoever commanded last, so nobody leads two
+                  battles running. Editing the regiment roster in Settings resets both pools and
+                  clears any pending roll.
+                </p>
               </div>
             </div>
           </Section>

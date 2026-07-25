@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RotateCw, User, Check, X } from 'lucide-react';
+import { getAvailableCommanders } from '../utils/campaignLogic';
 
 /**
  * CommanderSpinner - Animated roulette for selecting battle commanders
@@ -20,19 +21,10 @@ const CommanderSpinner = ({
   const [displayName, setDisplayName] = useState({ USA: null, CSA: null });
   const spinIntervalRef = useRef({ USA: null, CSA: null });
 
-  // Get available regiments for each side
-  const getAvailableRegiments = (side) => {
-    const pool = commanderPool?.[side] || [];
-    const sideRegiments = regiments?.[side] || [];
-
-    // If pool is empty, all regiments are available (reset)
-    if (pool.length === 0) {
-      return sideRegiments;
-    }
-
-    // Otherwise, only regiments in the pool are available
-    return sideRegiments.filter(r => pool.includes(r.id));
-  };
+  // Get available regiments for each side. An empty pool means every
+  // regiment is back in the running.
+  const getAvailableRegiments = (side) =>
+    getAvailableCommanders(regiments?.[side], commanderPool?.[side]);
 
   const spin = (side) => {
     const available = getAvailableRegiments(side);
@@ -104,10 +96,10 @@ const CommanderSpinner = ({
 
     return (
       <div className={`${bgColor} rounded-lg p-4 border ${borderColor}`}>
-        <div className="flex justify-between items-center mb-3">
-          <div className={`font-semibold ${textColor} text-sm`}>{side} Commander</div>
-          <div className="text-xs text-slate-500">
-            {poolSize === 0 ? sideRegiments.length : poolSize}/{sideRegiments.length} available
+        <div className="flex justify-between items-baseline gap-2 mb-3">
+          <div className={`font-semibold ${textColor} text-sm leading-tight`}>{side} Commander</div>
+          <div className="text-xs text-slate-500 whitespace-nowrap">
+            {poolSize === 0 ? sideRegiments.length : poolSize}/{sideRegiments.length} left
           </div>
         </div>
 

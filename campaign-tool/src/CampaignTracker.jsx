@@ -20,6 +20,7 @@ import GrandBattleResolveModal from './components/GrandBattleResolveModal';
 import GarrisonModal from './components/GarrisonModal';
 import ReplenishModal from './components/ReplenishModal';
 import LSRetreatModal from './components/LSRetreatModal';
+import CommanderRollPanel from './components/CommanderRollPanel';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -54,7 +55,12 @@ import {
   loadEasternTheatrePreset as gcLoadEasternTheatrePreset,
 } from './utils/grandCampaignLogic';
 import { createDefaultCampaign, createEasternTheatreCampaign, CAMPAIGN_TEMPLATES } from './data/defaultCampaign';
-import { processBattleResult, processTransitioningTerritories, applyCommanderPoolUpdate } from './utils/campaignLogic';
+import {
+  processBattleResult,
+  processTransitioningTerritories,
+  applyCommanderPoolUpdate,
+  reserveCommander,
+} from './utils/campaignLogic';
 import { checkVictoryConditions } from './utils/victoryConditions';
 import { advanceTurn as advanceCampaignDate, isCampaignOver } from './utils/dateSystem';
 import { calculateCPGeneration } from './utils/cpSystem';
@@ -195,6 +201,15 @@ const CampaignTracker = () => {
     setShowBattleRecorder(false);
     setEditingBattle(null);
     setBattleRecorderInitialTerritory(null);
+  };
+
+  /**
+   * Roll / pick / clear the commander who will lead a side in the next
+   * battle. Reserving pulls the regiment out of that side's pool right away
+   * and pre-selects it in the Battle Recorder; clearing puts it back.
+   */
+  const handleReserveCommander = (side, regiment) => {
+    setCampaign(c => (c ? reserveCommander(c, side, regiment) : c));
   };
 
   const handleEditBattle = (battle) => {
@@ -460,6 +475,10 @@ const CampaignTracker = () => {
         USA: regiments.USA.map(r => r.id),
         CSA: regiments.CSA.map(r => r.id)
       };
+
+      // The roster changed, so any pre-rolled commander is void (its regiment
+      // is back in the refreshed pool above).
+      updatedCampaign.pendingCommanders = { USA: null, CSA: null };
     }
 
     setCampaign(updatedCampaign);
@@ -1090,10 +1109,21 @@ const CampaignTracker = () => {
               </>
             )}
             {!isGC && (
-              <CampaignStats
-                campaign={campaign}
-                onUpdateCampaign={setCampaign}
-              />
+              <>
+                <CommanderRollPanel
+                  campaign={campaign}
+                  onReserveCommander={handleReserveCommander}
+                  onRecordBattle={() => {
+                    setEditingBattle(null);
+                    setBattleRecorderInitialTerritory(selectedTerritory?.id || null);
+                    setShowBattleRecorder(true);
+                  }}
+                />
+                <CampaignStats
+                  campaign={campaign}
+                  onUpdateCampaign={setCampaign}
+                />
+              </>
             )}
           </div>
         </div>
@@ -1163,6 +1193,7 @@ const CampaignTracker = () => {
             onClose={() => { setShowBattleRecorder(false); setEditingBattle(null); setBattleRecorderInitialTerritory(null); }}
             editingBattle={editingBattle}
             initialTerritoryId={battleRecorderInitialTerritory}
+            onReserveCommander={handleReserveCommander}
           />
         )}
 

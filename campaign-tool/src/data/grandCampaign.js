@@ -258,6 +258,7 @@ export const createGrandCampaign = () => {
     // Regiments live here (1:1 with tokens in GC).
     regiments: { USA: [], CSA: [] },
     commanderPool: { USA: [], CSA: [] },
+    pendingCommanders: { USA: null, CSA: null },
     regimentStats: {},
 
     // Grand Campaign specific state

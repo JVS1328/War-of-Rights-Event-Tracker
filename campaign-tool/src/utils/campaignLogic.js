@@ -334,8 +334,81 @@ export const processBattleResult = (campaign, battle) => {
 };
 
 /**
+ * Regiments a side may still be drawn from.
+ * An empty pool is the "everyone is available" state used by fresh campaigns.
+ *
+ * @param {Array} regiments - One side's regiments ([{ id, name }])
+ * @param {Array} pool - One side's commander pool (regiment IDs)
+ * @returns {Array} Regiments still eligible to command
+ */
+export const getAvailableCommanders = (regiments, pool) => {
+  const all = regiments || [];
+  const ids = pool || [];
+  if (ids.length === 0) return all;
+  return all.filter(r => ids.includes(r.id));
+};
+
+/**
+ * Reserve (or clear) the commander who will lead a side in its next battle.
+ *
+ * Reserving withdraws the regiment from the pool right away — a commander
+ * rolled on the campaign map is off the board even before the battle is
+ * recorded. Any previously reserved regiment goes back into the pool so
+ * re-rolling never loses a name.
+ *
+ * @param {Object} campaign - Current campaign state
+ * @param {'USA'|'CSA'} side - Side to reserve for
+ * @param {Object|null} regiment - Regiment ({ id, name }) or null to clear
+ * @returns {Object} Updated campaign state
+ */
+export const reserveCommander = (campaign, side, regiment) => {
+  const regiments = campaign.regiments?.[side] || [];
+  const pool = [...(campaign.commanderPool?.[side] || [])];
+  const previous = campaign.pendingCommanders?.[side] || null;
+
+  // Release the previously reserved regiment back into the pool.
+  if (
+    previous &&
+    previous.id !== regiment?.id &&
+    !pool.includes(previous.id) &&
+    regiments.some(r => r.id === previous.id)
+  ) {
+    pool.push(previous.id);
+  }
+
+  let nextPool = pool;
+  if (regiment) {
+    nextPool = pool.filter(id => id !== regiment.id);
+
+    // Everyone has had a turn — refill for the next round, holding back the
+    // regiment just drawn so it can't command twice running.
+    if (nextPool.length === 0 && regiments.length > 0) {
+      const refill = regiments.map(r => r.id).filter(id => id !== regiment.id);
+      nextPool = refill.length > 0 ? refill : regiments.map(r => r.id);
+    }
+  }
+
+  return {
+    ...campaign,
+    commanderPool: {
+      ...(campaign.commanderPool || { USA: [], CSA: [] }),
+      [side]: nextPool
+    },
+    pendingCommanders: {
+      ...(campaign.pendingCommanders || { USA: null, CSA: null }),
+      [side]: regiment ? { id: regiment.id, name: regiment.name } : null
+    }
+  };
+};
+
+/**
  * Remove selected commanders from the pool and refresh the pool if empty.
  * Called for both pending and completed battles.
+ *
+ * Commanders rolled ahead of time on the campaign map are already out of the
+ * pool, so recording their battle only releases the reservation. A battle
+ * fought by someone *other* than the reserved commander puts the reserved
+ * regiment back into rotation.
  *
  * @param {Object} campaign - Current campaign state
  * @param {Object} battle - Battle data (only battle.commanders is used)
@@ -344,25 +417,21 @@ export const processBattleResult = (campaign, battle) => {
 export const applyCommanderPoolUpdate = (campaign, battle) => {
   if (!battle.commanders) return campaign;
 
-  const updated = {
-    ...campaign,
-    commanderPool: { ...(campaign.commanderPool || { USA: [], CSA: [] }) }
-  };
+  let updated = campaign;
 
   ['USA', 'CSA'].forEach(side => {
     const commander = battle.commanders[side];
     if (!commander) return;
-
-    const pool = updated.commanderPool[side] || [];
-    updated.commanderPool[side] = pool.filter(id => id !== commander.id);
-
-    const regiments = updated.regiments?.[side] || [];
-    if (updated.commanderPool[side].length === 0 && regiments.length > 0) {
-      updated.commanderPool[side] = regiments.map(r => r.id);
-    }
+    updated = reserveCommander(updated, side, commander);
   });
 
-  return updated;
+  // The reservations were consumed by this battle.
+  const pending = { ...(updated.pendingCommanders || { USA: null, CSA: null }) };
+  ['USA', 'CSA'].forEach(side => {
+    if (battle.commanders[side]) pending[side] = null;
+  });
+
+  return { ...updated, pendingCommanders: pending };
 };
 
 export const canAttackTerritory = (campaign, territoryId, attacker) => {

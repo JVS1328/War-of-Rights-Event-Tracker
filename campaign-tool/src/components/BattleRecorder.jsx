@@ -24,7 +24,7 @@ import {
 import { isTerritorySupplied } from '../utils/supplyLines';
 import CommanderSpinner from './CommanderSpinner';
 
-const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId }) => {
+const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBattle, onClose, campaign, editingBattle, initialTerritoryId, onReserveCommander }) => {
   const isEditMode = !!editingBattle;
 
   const [selectedMap, setSelectedMap] = useState(editingBattle?.mapName || '');
@@ -46,8 +46,21 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
       : null
   );
 
-  // Commander selection state
-  const [selectedCommanders, setSelectedCommanders] = useState(editingBattle?.commanders || { USA: null, CSA: null });
+  // Commander selection state. New battles inherit whoever was rolled on the
+  // campaign map (they're already reserved out of the pool).
+  const [inheritedCommanders] = useState(() => {
+    const pending = campaign?.pendingCommanders || { USA: null, CSA: null };
+    return isEditMode
+      ? { USA: null, CSA: null }
+      : { USA: pending.USA || null, CSA: pending.CSA || null };
+  });
+  const [selectedCommanders, setSelectedCommanders] = useState(
+    editingBattle?.commanders || { ...inheritedCommanders }
+  );
+  // Sides still showing the commander that was rolled on the map.
+  const preRolledSides = ['USA', 'CSA'].filter(
+    side => inheritedCommanders[side] && selectedCommanders[side]?.id === inheritedCommanders[side].id
+  );
 
   // Team ability state
   const [abilityActive, setAbilityActive] = useState(editingBattle?.abilityUsed ? true : false);
@@ -399,6 +412,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
   // Handle commander selection from spinner
   const handleCommanderSelect = (side, regiment) => {
     setSelectedCommanders(prev => ({ ...prev, [side]: regiment }));
+
+    // Keep the campaign-level reservation in step so the pool shown here and
+    // on the campaign map agree. Editing an old battle must not disturb it.
+    if (!isEditMode && onReserveCommander) {
+      onReserveCommander(side, regiment);
+    }
   };
 
   const handleSubmit = () => {
@@ -1072,6 +1091,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 <div className="text-xs text-slate-400 mb-3">
                   Spin to randomly select the commanding regiment for each side
                 </div>
+                {preRolledSides.length > 0 && (
+                  <div className="text-xs text-green-400 mb-3 flex items-center gap-2">
+                    <Dice6 className="w-3 h-3" />
+                    Pre-selected from the campaign map roll ({preRolledSides.join(' & ')}). Hit
+                    "Change" to put a regiment back in the pool and pick again.
+                  </div>
+                )}
                 <CommanderSpinner
                   regiments={campaign.regiments}
                   commanderPool={campaign.commanderPool}
