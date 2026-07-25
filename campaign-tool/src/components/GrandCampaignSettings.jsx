@@ -124,22 +124,22 @@ const GrandCampaignSettings = ({ gcSettings, onChange }) => {
   };
 
   return (
-    <div className="bg-slate-700 rounded-lg p-4">
-      <h3 className="text-lg font-semibold text-amber-300 mb-3">Grand Campaign Settings</h3>
+    <div className="bg-ink-800 rounded-lg p-4">
+      <h3 className="text-lg font-semibold text-brass-300 mb-3">Grand Campaign Settings</h3>
       <div className="space-y-4">
         {FIELD_GROUPS.map(group => (
           <div key={group.title}>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">{group.title}</div>
+            <div className="text-xs font-semibold text-mist-400 uppercase tracking-wide mb-2">{group.title}</div>
             <div className="grid grid-cols-2 gap-2">
               {group.fields.map(f => (
                 <label key={f.key} className="block">
-                  <div className="text-[11px] text-slate-300 mb-1">{f.label}</div>
+                  <div className="text-[11px] text-mist-300 mb-1">{f.label}</div>
                   <input
                     type={f.type}
                     step={f.step || '1'}
                     value={s[f.key]}
                     onChange={e => set(f.key, e.target.value)}
-                    className="w-full bg-slate-800 text-white px-2 py-1 rounded text-sm border border-slate-600 focus:border-amber-500 outline-none"
+                    className="w-full bg-ink-850 text-white px-2 py-1 rounded text-sm border border-ink-700 focus:border-brass-400 outline-none"
                   />
                 </label>
               ))}
@@ -149,20 +149,20 @@ const GrandCampaignSettings = ({ gcSettings, onChange }) => {
 
         {/* Winter months — comma-separated list */}
         <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Winter Months</div>
+          <div className="text-xs font-semibold text-mist-400 uppercase tracking-wide mb-2">Winter Months</div>
           <label className="block">
-            <div className="text-[11px] text-slate-300 mb-1">Comma-separated month numbers 1–12 (defaults 12,1,2)</div>
+            <div className="text-[11px] text-mist-300 mb-1">Comma-separated month numbers 1–12 (defaults 12,1,2)</div>
             <input
               type="text"
               value={(s.winterMonths || []).join(',')}
               onChange={e => setWinterMonths(e.target.value)}
-              className="w-full bg-slate-800 text-white px-2 py-1 rounded text-sm border border-slate-600 focus:border-amber-500 outline-none"
+              className="w-full bg-ink-850 text-white px-2 py-1 rounded text-sm border border-ink-700 focus:border-brass-400 outline-none"
             />
           </label>
         </div>
       </div>
 
-      <div className="mt-3 text-[10px] text-slate-500 italic">
+      <div className="mt-3 text-[10px] text-mist-500 italic">
         All values are persisted in campaign.grandCampaign.settings. Existing live state (pools, tokens, map features) is not reset by settings changes — only future actions use the new values.
       </div>
     </div>

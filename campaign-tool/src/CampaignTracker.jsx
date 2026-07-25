@@ -21,6 +21,7 @@ import GarrisonModal from './components/GarrisonModal';
 import ReplenishModal from './components/ReplenishModal';
 import LSRetreatModal from './components/LSRetreatModal';
 import CommanderRollPanel from './components/CommanderRollPanel';
+import { ScoreBoard } from './components/ui/Primitives';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -857,8 +858,8 @@ const CampaignTracker = () => {
 
   if (!campaign) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 flex items-center justify-center">
-        <div className="text-amber-400 text-xl">Loading campaign...</div>
+      <div className="app-shell grid place-items-center">
+        <div className="text-mist-400 text-sm">Loading campaign…</div>
       </div>
     );
   }
@@ -878,93 +879,85 @@ const CampaignTracker = () => {
     defenseNeutral: campaign.settings?.baseDefenseCostNeutral ?? 50,
   } : null;
 
+  const battlesFought = campaign.battles.filter(b => b.status !== 'pending' && b.winner).length;
+  const battlesPending = campaign.battles.filter(b => b.status === 'pending' || !b.winner).length;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Map className="w-8 h-8 text-amber-400" />
-              <div>
-                <h1 className="text-3xl font-bold text-amber-400">
-                  {campaign.name}
-                </h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  Turn {campaign.currentTurn} • {campaign.battles.filter(b => b.status !== 'pending' && b.winner).length} battles fought
-                  {campaign.battles.some(b => b.status === 'pending' || !b.winner) && (
-                    <span className="text-amber-400"> • {campaign.battles.filter(b => b.status === 'pending' || !b.winner).length} pending</span>
-                  )}
-                </p>
+    <div className="app-shell">
+      {/* ── App bar ─────────────────────────────────────────────────── */}
+      <header className="app-bar sticky top-0 z-30">
+        <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
+              <Map className="w-5 h-5 text-brass-300" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-mist-100 truncate leading-tight">{campaign.name}</h1>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-mist-500">
+                <span className="text-mist-400">Turn {campaign.currentTurn}</span>
+                {campaign.campaignDate?.displayString && (
+                  <>
+                    <span className="text-ink-600">·</span>
+                    <span>{campaign.campaignDate.displayString}</span>
+                  </>
+                )}
+                <span className="text-ink-600">·</span>
+                <span>{battlesFought} {battlesFought === 1 ? 'battle' : 'battles'}</span>
+                {battlesPending > 0 && (
+                  <span className="ui-badge ui-badge-warn">{battlesPending} pending</span>
+                )}
+                {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={editCampaignMap}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="Edit Campaign Map"
-              >
-                <Edit className="w-4 h-4" />
-                Edit Map
-              </button>
-              <button
-                onClick={newCampaign}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="New Campaign"
-              >
-                <Plus className="w-4 h-4" />
-                New
-              </button>
-              <button
-                onClick={shareCampaignMap}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="Share Campaign Map"
-              >
-                <Share2 className="w-4 h-4" />
-                Share
-              </button>
-              <button
-                onClick={exportCampaign}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="Export Campaign"
-              >
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              <label className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition cursor-pointer">
-                <Upload className="w-4 h-4" />
-                Import
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={importCampaign}
-                  className="hidden"
-                />
-              </label>
-              <button
-                onClick={() => setShowSettings(true)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="Settings"
-              >
-                <Settings className="w-4 h-4" />
-                Settings
-              </button>
-              <button
-                onClick={() => setShowHelpGuide(true)}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg flex items-center gap-2 transition"
-                title="Help Guide"
-              >
-                <HelpCircle className="w-4 h-4" />
-                Guide
-              </button>
-            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {!isGC && (
+              <>
+                <button onClick={() => setShowBattleRecorder(true)} className="ui-btn ui-btn-primary">
+                  <Swords className="w-4 h-4" />
+                  Record Battle
+                </button>
+                <button onClick={advanceTurn} className="ui-btn ui-btn-ghost" title="Advance to the next turn">
+                  <SkipForward className="w-4 h-4" />
+                  <span className="hidden sm:inline">Advance Turn</span>
+                </button>
+              </>
+            )}
+
+            <div className="w-px h-6 bg-ink-700 mx-1" />
+
+            <button onClick={shareCampaignMap} className="ui-btn ui-btn-quiet ui-btn-icon" title="Copy share link" aria-label="Share campaign map">
+              <Share2 className="w-4 h-4" />
+            </button>
+            <button onClick={exportCampaign} className="ui-btn ui-btn-quiet ui-btn-icon" title="Export campaign JSON" aria-label="Export campaign">
+              <Download className="w-4 h-4" />
+            </button>
+            <label className="ui-btn ui-btn-quiet ui-btn-icon cursor-pointer" title="Import campaign JSON">
+              <Upload className="w-4 h-4" />
+              <input type="file" accept=".json" onChange={importCampaign} className="hidden" />
+            </label>
+            <button onClick={editCampaignMap} className="ui-btn ui-btn-quiet ui-btn-icon" title="Edit campaign map" aria-label="Edit campaign map">
+              <Edit className="w-4 h-4" />
+            </button>
+            <button onClick={newCampaign} className="ui-btn ui-btn-quiet ui-btn-icon" title="New campaign" aria-label="New campaign">
+              <Plus className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowSettings(true)} className="ui-btn ui-btn-quiet ui-btn-icon" title="Settings" aria-label="Settings">
+              <Settings className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowHelpGuide(true)} className="ui-btn ui-btn-quiet ui-btn-icon" title="Guide" aria-label="Guide">
+              <HelpCircle className="w-4 h-4" />
+            </button>
           </div>
         </div>
+      </header>
 
+      <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5">
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-5 items-start">
           {/* Map View - Takes 2 columns */}
-          <div className="lg:col-span-2">
+          <div className="xl:col-span-2 space-y-5">
             <MapView
               territories={campaign.territories}
               selectedTerritory={selectedTerritory}
@@ -1038,13 +1031,20 @@ const CampaignTracker = () => {
                 return null;
               })()}
             />
+
+            <BattleHistory
+              battles={campaign.battles}
+              territories={campaign.territories}
+              onEditBattle={handleEditBattle}
+              campaign={campaign}
+            />
           </div>
 
           {/* Right Sidebar — swaps based on mode:
               - Standard campaign: CampaignStats
               - Grand Campaign (default): TokenPanel (+ "Edit Map Features" button)
               - Grand Campaign (features-edit mode): MapFeaturesPanel */}
-          <div className="space-y-6">
+          <div className="space-y-4">
             {isGC && featureEditMode && (
               <MapFeaturesPanel
                 campaign={campaign}
@@ -1069,13 +1069,13 @@ const CampaignTracker = () => {
                 {gcPhase === 'setup-coinflip' && gcTokens.length > 0 && (
                   <button
                     onClick={handleOpenSetupWizard}
-                    className="w-full px-3 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-bold animate-pulse"
+                    className="ui-btn ui-btn-primary ui-btn-block animate-pulse"
                   >
                     Begin Setup — Coin Flip & Placement
                   </button>
                 )}
                 {gcPhase === 'setup-placement' && (
-                  <div className="px-3 py-2 bg-amber-900/50 border border-amber-600 text-amber-200 rounded-lg text-xs">
+                  <div className="ui-card px-3 py-2 border-brass-500/40 text-brass-300 text-xs">
                     Setup in progress — follow the floating panel to place tokens.
                   </div>
                 )}
@@ -1096,7 +1096,7 @@ const CampaignTracker = () => {
                 )}
                 <button
                   onClick={enterFeatureEditMode}
-                  className="w-full px-3 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold"
+                  className="ui-btn ui-btn-ghost ui-btn-block"
                 >
                   Edit Map Features (cities / forts / rails / rivers)
                 </button>
@@ -1134,57 +1134,21 @@ const CampaignTracker = () => {
 
         {/* Regiment Leaderboard - Shows if regiments are configured */}
         {(campaign.regiments?.USA?.length > 0 || campaign.regiments?.CSA?.length > 0) && (
-          <div className="mb-6">
+          <div className="mb-5">
             <RegimentStats campaign={campaign} />
           </div>
         )}
 
-        {/* Bottom Section — in Grand Campaign the territory list + manual
-            'Campaign Actions' (Record Battle / Advance Turn) are hidden;
+        {/* Bottom Section — in Grand Campaign the territory list is hidden;
             the month advances automatically on bag rollover and battles are
             initiated from the token turn tracker. */}
-        <div className={isGC ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 lg:grid-cols-2 gap-6'}>
-          {!isGC && (
-            <div>
-              <TerritoryList
-                territories={campaign.territories}
-                onTerritorySelect={handleTerritoryClick}
-                spSettings={spSettings}
-              />
-            </div>
-          )}
-
-          <div className="space-y-6">
-            {!isGC && (
-              <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-                <h3 className="text-xl font-bold text-amber-400 mb-4">Campaign Actions</h3>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setShowBattleRecorder(true)}
-                    className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    <Swords className="w-5 h-5" />
-                    Record Battle
-                  </button>
-                  <button
-                    onClick={advanceTurn}
-                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2"
-                  >
-                    <SkipForward className="w-5 h-5" />
-                    Advance Turn
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <BattleHistory
-              battles={campaign.battles}
-              territories={campaign.territories}
-              onEditBattle={handleEditBattle}
-              campaign={campaign}
-            />
-          </div>
-        </div>
+        {!isGC && (
+          <TerritoryList
+            territories={campaign.territories}
+            onTerritorySelect={handleTerritoryClick}
+            spSettings={spSettings}
+          />
+        )}
 
         {/* Battle Recorder Modal */}
         {showBattleRecorder && (
@@ -1283,15 +1247,15 @@ const CampaignTracker = () => {
           const maxInches = lsRetreatPicking.maxMP * campaign.grandCampaign.settings.marchInchesPerMP;
           const maxMiles = gcInchesToMiles(maxInches, campaign.grandCampaign.settings);
           return (
-            <div className="fixed top-24 right-6 z-40 bg-slate-900/95 border-2 border-orange-500 rounded-lg shadow-xl p-3 w-72">
-              <div className="text-sm font-bold text-orange-300 mb-1">LS Retreat — pick a spot</div>
-              <div className="text-xs text-slate-300">
-                Click within <span className="text-white font-semibold">{maxMiles} miles</span> of {token.name}.
+            <div className="fixed top-24 right-6 z-40 ui-card border-orange-500/60 p-3 w-72">
+              <div className="ui-eyebrow text-orange-300 mb-1">LS Retreat — pick a spot</div>
+              <div className="text-xs text-mist-300">
+                Click within <span className="text-mist-100 font-semibold">{maxMiles} miles</span> of {token.name}.
                 Out-of-range hovers show in red.
               </div>
               <button
                 onClick={() => setLSRetreatPicking(null)}
-                className="mt-2 w-full bg-slate-700 hover:bg-slate-600 text-white rounded py-1 text-xs"
+                className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-block mt-2"
               >
                 Cancel (hold position)
               </button>
@@ -1358,104 +1322,83 @@ const CampaignTracker = () => {
 
         {/* Campaign Template Selector Modal */}
         {showTemplateSelector && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-lg w-full p-6">
-              <h2 className="text-2xl font-bold text-amber-400 mb-4">Select Campaign Template</h2>
-              <p className="text-slate-400 mb-6">Choose a map template for your new campaign:</p>
-              <div className="space-y-3">
+          <div className="ui-modal-backdrop" onClick={() => setShowTemplateSelector(false)}>
+            <div className="ui-modal max-w-lg" onClick={(e) => e.stopPropagation()}>
+              <div className="ui-modal-head">
+                <div>
+                  <div className="ui-modal-title">
+                    <Map className="w-5 h-5" />
+                    New Campaign
+                  </div>
+                  <div className="ui-hint mt-0.5">Choose a map template to start from.</div>
+                </div>
+              </div>
+              <div className="ui-modal-body ui-scroll space-y-2">
                 {Object.entries(CAMPAIGN_TEMPLATES).map(([key, template]) => (
                   <button
                     key={key}
                     onClick={() => handleTemplateSelect(key)}
-                    className="w-full p-4 bg-slate-700 hover:bg-slate-600 rounded-lg text-left transition border border-slate-600 hover:border-amber-500"
+                    className="ui-listitem w-full text-left p-4 hover:border-brass-400/50 transition"
                   >
-                    <div className="font-semibold text-white">{template.name}</div>
-                    <div className="text-sm text-slate-400 mt-1">{template.description}</div>
+                    <div className="font-semibold text-mist-100">{template.name}</div>
+                    <div className="text-xs text-mist-400 mt-1 leading-relaxed">{template.description}</div>
                   </button>
                 ))}
               </div>
-              <button
-                onClick={() => setShowTemplateSelector(false)}
-                className="w-full mt-4 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition"
-              >
-                Cancel
-              </button>
+              <div className="ui-modal-foot">
+                <button onClick={() => setShowTemplateSelector(false)} className="ui-btn ui-btn-ghost ui-btn-block">
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* Victory Modal */}
         {showVictory && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg shadow-2xl border-2 border-amber-500 max-w-2xl w-full p-8">
-              <div className="text-center">
-                <Trophy className="w-24 h-24 text-amber-400 mx-auto mb-6" />
-                <h2 className="text-4xl font-bold text-amber-400 mb-4">
-                  Campaign Victory!
-                </h2>
-                <div className="text-2xl font-bold mb-2">
-                  <span className={showVictory.winner === 'USA' ? 'text-blue-400' : 'text-red-400'}>
+          <div className="ui-modal-backdrop">
+            <div className="ui-modal max-w-xl">
+              <div className="ui-modal-body ui-scroll text-center py-10">
+                <div className="w-20 h-20 rounded-2xl bg-brass-900 border border-brass-500/40 grid place-items-center mx-auto mb-6">
+                  <Trophy className="w-10 h-10 text-brass-300" />
+                </div>
+                <div className="ui-eyebrow mb-2">Campaign Victory</div>
+                <h2 className="text-3xl font-bold mb-2">
+                  <span className={showVictory.winner === 'USA' ? 'text-union-400' : 'text-rebel-400'}>
                     {showVictory.winner}
                   </span>
-                  <span className="text-white"> Wins!</span>
-                </div>
-                <div className="text-lg text-slate-300 mb-6">
-                  Victory Type: <span className="text-amber-400 font-semibold">{showVictory.type}</span>
-                </div>
-                <div className="text-slate-400 mb-8">
-                  {showVictory.description}
+                  <span className="text-mist-100"> wins</span>
+                </h2>
+                <p className="text-sm text-mist-400 max-w-md mx-auto">{showVictory.description}</p>
+                <div className="mt-2 text-xs text-mist-500">
+                  Victory type: <span className="text-brass-300 font-semibold">{showVictory.type}</span>
                 </div>
 
-                {/* Final Stats */}
-                <div className="bg-slate-700 rounded-lg p-6 mb-6">
-                  <h3 className="text-xl font-bold text-amber-400 mb-4">Final Campaign Stats</h3>
-                  <div className="grid grid-cols-2 gap-6 text-left">
-                    <div>
-                      <div className="text-sm text-slate-400 mb-2">Victory Points</div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-blue-400">USA:</span>
-                          <span className="text-white font-bold">{campaign.victoryPointsUSA}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-red-400">CSA:</span>
-                          <span className="text-white font-bold">{campaign.victoryPointsCSA}</span>
-                        </div>
-                      </div>
+                <div className="ui-inset mt-6 p-5 text-left">
+                  <div className="ui-eyebrow mb-3">Final Standing</div>
+                  <ScoreBoard usaVP={campaign.victoryPointsUSA} csaVP={campaign.victoryPointsCSA} />
+                  <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-ink-700">
+                    <div className="ui-row">
+                      <span className="ui-row-label">Turns</span>
+                      <span className="ui-row-value">{campaign.currentTurn}</span>
                     </div>
-                    <div>
-                      <div className="text-sm text-slate-400 mb-2">Campaign Info</div>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Turns:</span>
-                          <span className="text-white font-semibold">{campaign.currentTurn}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Battles:</span>
-                          <span className="text-white font-semibold">{campaign.battles.length}</span>
-                        </div>
-                      </div>
+                    <div className="ui-row">
+                      <span className="ui-row-label">Battles</span>
+                      <span className="ui-row-value">{campaign.battles.length}</span>
                     </div>
                   </div>
                 </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowVictory(null)}
-                    className="flex-1 px-6 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-semibold transition"
-                  >
-                    Continue Viewing
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowVictory(null);
-                      newCampaign();
-                    }}
-                    className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition"
-                  >
-                    New Campaign
-                  </button>
-                </div>
+              </div>
+              <div className="ui-modal-foot">
+                <button onClick={() => setShowVictory(null)} className="ui-btn ui-btn-ghost flex-1">
+                  Continue Viewing
+                </button>
+                <button
+                  onClick={() => { setShowVictory(null); newCampaign(); }}
+                  className="ui-btn ui-btn-primary flex-1"
+                >
+                  New Campaign
+                </button>
               </div>
             </div>
           </div>

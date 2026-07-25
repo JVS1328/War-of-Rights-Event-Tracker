@@ -484,38 +484,36 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
   };
 
   const getWinnerColor = (side) => {
-    return side === 'USA' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700';
+    return side === 'USA' ? 'bg-union-500 hover:bg-union-500' : 'bg-rebel-500 hover:bg-rebel-500';
   };
 
   return (
-    <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-              {isEditMode ? <Edit3 className="w-6 h-6" /> : <Swords className="w-6 h-6" />}
-              {isEditMode ? `Edit Battle - Turn ${editingBattle.turn}` : `Record Battle - Turn ${currentTurn}`}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-slate-700 rounded-lg transition"
-            >
-              <X className="w-5 h-5 text-slate-400" />
-            </button>
+    <div className="ui-modal-backdrop" onClick={onClose}>
+      <div className="ui-modal max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="ui-modal-head">
+          <div className="ui-modal-title">
+            {isEditMode ? <Edit3 className="w-5 h-5" /> : <Swords className="w-5 h-5" />}
+            {isEditMode ? 'Edit Battle' : 'Record Battle'}
+            <span className="ui-badge ui-badge-neutral ml-1">
+              Turn {isEditMode ? editingBattle.turn : currentTurn}
+            </span>
           </div>
-
+          <button onClick={onClose} className="ui-btn ui-btn-quiet ui-btn-icon" aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="ui-modal-body ui-scroll">
           {/* Form */}
           <div className="space-y-4">
             {/* Territory Selection */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
-                Territory <span className="text-red-400">*</span>
+              <label className="ui-label">
+                Territory <span className="text-rebel-400">*</span>
               </label>
               <select
                 value={selectedTerritory}
                 onChange={(e) => setSelectedTerritory(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                className="ui-field"
               >
                 <option value="">Select territory...</option>
                 {territories.map(territory => (
@@ -528,7 +526,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Territory Info Display */}
             {selectedTerritory && (
-              <div className="bg-slate-700 rounded p-3">
+              <div className="ui-inset p-3">
                 {(() => {
                   const territory = territories.find(t => t.id === selectedTerritory);
                   const adjacentIds = territory.adjacentTerritories || [];
@@ -539,18 +537,18 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
                   return (
                     <>
-                      <div className="text-sm text-slate-400 mb-1">Selected Territory:</div>
+                      <div className="text-sm text-mist-400 mb-1">Selected Territory:</div>
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-white font-semibold">{territory.name}</span>
                         <div className="flex items-center gap-3">
-                          <span className="text-slate-400 text-sm">
+                          <span className="text-mist-400 text-sm">
                             Owner: <span className={`font-semibold ${
-                              territory.owner === 'USA' ? 'text-blue-400' :
-                              territory.owner === 'CSA' ? 'text-red-400' :
-                              'text-slate-400'
+                              territory.owner === 'USA' ? 'text-union-400' :
+                              territory.owner === 'CSA' ? 'text-rebel-400' :
+                              'text-mist-400'
                             }`}>{territory.owner}</span>
                           </span>
-                          <span className="text-amber-400 text-sm">
+                          <span className="text-brass-400 text-sm">
                             ({allTerritoryMaps.length} maps)
                           </span>
                           <span className="text-green-400 font-semibold text-sm">
@@ -564,15 +562,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         <div className={`text-xs px-2 py-1 rounded inline-block mb-2 ${
                           isSupplied
                             ? 'bg-green-900/50 text-green-400 border border-green-700'
-                            : 'bg-red-900/50 text-red-400 border border-red-700'
+                            : 'bg-rebel-900/50 text-rebel-400 border border-rebel-500'
                         }`}>
                           {isSupplied ? '✓ Supplied' : '⚠ ENCIRCLED (2x defense cost)'}
                         </div>
                       )}
 
                       {/* Adjacent Territories */}
-                      <div className="mt-2 pt-2 border-t border-slate-600">
-                        <div className="text-xs text-slate-400 mb-1">
+                      <div className="mt-2 pt-2 border-t border-ink-700">
+                        <div className="text-xs text-mist-400 mb-1">
                           Adjacent Territories ({adjacentIds.length} defined, {adjacentTerritoryObjects.length} found):
                         </div>
                         {adjacentTerritoryObjects.length > 0 ? (
@@ -582,10 +580,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                                 key={adj.id}
                                 className={`text-xs px-2 py-0.5 rounded ${
                                   adj.owner === 'USA'
-                                    ? 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                                    ? 'bg-union-900/50 text-union-400 border border-union-500'
                                     : adj.owner === 'CSA'
-                                    ? 'bg-red-900/50 text-red-300 border border-red-700'
-                                    : 'bg-slate-600 text-slate-300 border border-slate-500'
+                                    ? 'bg-rebel-900/50 text-rebel-400 border border-rebel-500'
+                                    : 'bg-ink-700 text-mist-300 border border-ink-600'
                                 }`}
                               >
                                 {adj.name} ({adj.owner})
@@ -593,7 +591,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             ))}
                           </div>
                         ) : (
-                          <div className="text-xs text-slate-500 italic">
+                          <div className="text-xs text-mist-500 italic">
                             {adjacentIds.length > 0
                               ? `IDs not found in territories: ${adjacentIds.join(', ')}`
                               : 'No adjacencies defined for this territory'}
@@ -608,7 +606,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Attacker Selection */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+              <label className="ui-label">
                 Attacker
               </label>
               <div className="flex gap-3">
@@ -616,8 +614,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   onClick={() => setAttacker('USA')}
                   className={`flex-1 px-4 py-2 rounded font-semibold transition ${
                     attacker === 'USA'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      ? 'bg-union-500 text-white'
+                      : 'bg-ink-800 text-mist-300 hover:bg-ink-700'
                   }`}
                 >
                   USA
@@ -626,8 +624,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   onClick={() => setAttacker('CSA')}
                   className={`flex-1 px-4 py-2 rounded font-semibold transition ${
                     attacker === 'CSA'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      ? 'bg-rebel-500 text-white'
+                      : 'bg-ink-800 text-mist-300 hover:bg-ink-700'
                   }`}
                 >
                   CSA
@@ -636,13 +634,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
             </div>
 
             {/* Team Ability */}
-            <div className="bg-slate-700 rounded-lg p-4">
+            <div className="ui-inset p-4">
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <div className="text-sm font-semibold text-amber-400 mb-1">
+                  <div className="text-sm font-semibold text-brass-400 mb-1">
                     {abilities[attacker]?.name}
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-mist-400">
                     {attacker === 'USA'
                       ? 'Failed attacks keep territory neutral, wins triple CSA SP loss'
                       : 'Reduces attack SP loss by 50%'}
@@ -660,12 +658,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 disabled={abilities[attacker]?.cooldown > 0}
                 className={`w-full px-4 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
                   abilities[attacker]?.cooldown > 0
-                    ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
+                    ? 'bg-ink-700 cursor-not-allowed opacity-50 text-mist-400'
                     : abilityActive
                     ? attacker === 'USA'
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-slate-600 hover:bg-slate-500 text-white'
+                      ? 'bg-union-500 hover:bg-union-500 text-white'
+                      : 'bg-rebel-500 hover:bg-rebel-500 text-white'
+                    : 'bg-ink-700 hover:bg-ink-600 text-white'
                 }`}
               >
                 {abilityActive ? '✓ Ability Active' : 'Use Ability'}
@@ -686,9 +684,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
               const totalWeight = Object.values(weights).reduce((s, w) => s + w, 0);
 
               return (
-                <div className="bg-slate-700 rounded-lg p-4">
+                <div className="ui-inset p-4">
                   <div className="flex justify-between items-center mb-3">
-                    <label className="text-sm text-slate-300 font-semibold">
+                    <label className="text-sm text-mist-300 font-semibold">
                       Terrain Type
                     </label>
                     <div className="flex gap-2">
@@ -697,8 +695,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         disabled={terrainSpinning}
                         className={`flex items-center gap-2 px-3 py-1.5 text-white rounded text-sm font-semibold transition ${
                           terrainSpinning
-                            ? 'bg-slate-600 cursor-not-allowed opacity-50'
-                            : 'bg-amber-600 hover:bg-amber-500'
+                            ? 'bg-ink-700 cursor-not-allowed opacity-50'
+                            : 'bg-brass-500 hover:bg-brass-400'
                         }`}
                       >
                         {terrainSpinning ? (
@@ -712,7 +710,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         <select
                           value={terrainRollResult?.terrainType || ''}
                           onChange={(e) => handleTerrainManualSelect(e.target.value)}
-                          className="px-2 py-1.5 rounded bg-slate-600 border border-slate-500 text-white text-sm cursor-pointer hover:bg-slate-500 transition"
+                          className="px-2 py-1.5 rounded bg-ink-700 border border-ink-600 text-white text-sm cursor-pointer hover:bg-ink-600 transition"
                         >
                           <option value="" disabled>Pick</option>
                           {Object.keys(weights).map(type => (
@@ -729,8 +727,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                       <div
                         key={type}
                         style={{ flex: weight }}
-                        className={`flex items-center justify-center text-xs font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
-                          terrainRollResult?.terrainType === type ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                        className={`flex items-center justify-center text-xs font-medium text-mist-300 bg-ink-700 border-r border-ink-600 last:border-r-0 ${
+                          terrainRollResult?.terrainType === type ? 'bg-ink-600 ring-1 ring-brass-400 z-10' : ''
                         } ${terrainRollResult && terrainRollResult.terrainType !== type ? 'opacity-40' : ''}`}
                       >
                         {type} {weight}/{totalWeight}
@@ -739,12 +737,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   </div>
 
                   {/* Spinner Display */}
-                  <div className={`bg-slate-800 rounded-lg p-4 min-h-[56px] flex items-center justify-center border-2 transition-colors ${
-                    terrainSpinning ? 'border-amber-500' : terrainRollResult ? 'border-slate-500' : 'border-slate-600'
+                  <div className={`bg-ink-850 rounded-lg p-4 min-h-[56px] flex items-center justify-center border-2 transition-colors ${
+                    terrainSpinning ? 'border-brass-400' : terrainRollResult ? 'border-ink-600' : 'border-ink-700'
                   }`}>
                     {terrainSpinning ? (
                       <div className="flex items-center gap-3">
-                        <RotateCw className="w-5 h-5 text-slate-400 animate-spin" />
+                        <RotateCw className="w-5 h-5 text-mist-400 animate-spin" />
                         <span className="text-white font-bold text-lg animate-pulse">
                           {terrainDisplayName || '...'}
                         </span>
@@ -754,12 +752,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         <span className="text-white font-bold text-lg">
                           {terrainRollResult.terrainType}
                         </span>
-                        <span className="text-xs text-slate-400 ml-3">
+                        <span className="text-xs text-mist-400 ml-3">
                           ({availableMaps.length} maps available)
                         </span>
                       </div>
                     ) : (
-                      <span className="text-slate-400 text-sm">
+                      <span className="text-mist-400 text-sm">
                         Roll to determine the terrain type for this battle
                       </span>
                     )}
@@ -770,23 +768,23 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Map Selection */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
-                Map <span className="text-red-400">*</span>
+              <label className="ui-label">
+                Map <span className="text-rebel-400">*</span>
               </label>
 
               {/* Pick/Ban UI - shown when 2+ maps in pool */}
               {selectedTerritory && pickBanMaps.length >= 2 && (
-                <div className="bg-slate-700 rounded-lg p-4">
+                <div className="ui-inset p-4">
                   {/* Pick/Ban Header */}
                   <div className="flex justify-between items-center mb-3">
-                    <div className="text-sm font-semibold text-amber-400">
+                    <div className="text-sm font-semibold text-brass-400">
                       Map Pick/Ban ({pickBanMaps.length} maps)
                     </div>
                     {pickBanActive && (
                       <div className={`text-xs px-2 py-1 rounded border ${
                         getBanningTeam() === 'USA'
-                          ? 'bg-blue-900/50 text-blue-300 border-blue-700'
-                          : 'bg-red-900/50 text-red-300 border-red-700'
+                          ? 'bg-union-900/50 text-union-400 border-union-500'
+                          : 'bg-rebel-900/50 text-rebel-400 border-rebel-500'
                       }`}>
                         {getBanningTeam()} bans ({bannedMaps.length + 1}/{pickBanMaps.length - 1})
                       </div>
@@ -800,7 +798,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
                   {/* Pick/Ban Instructions */}
                   {pickBanActive && (
-                    <div className="text-xs text-slate-400 mb-3">
+                    <div className="text-xs text-mist-400 mb-3">
                       {defender} (Defender) bans first. Click a map to ban it.
                     </div>
                   )}
@@ -824,16 +822,16 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             isSelected
                               ? 'bg-green-600 text-white cursor-default'
                               : isBanned
-                              ? 'bg-slate-800 text-slate-500 cursor-not-allowed line-through'
-                              : 'bg-slate-600 text-white hover:bg-slate-500'
+                              ? 'bg-ink-850 text-mist-500 cursor-not-allowed line-through'
+                              : 'bg-ink-700 text-white hover:bg-ink-600'
                           }`}
                         >
                           <span>{mapName}</span>
                           {isBanned && (
                             <span className={`text-xs px-2 py-0.5 rounded ${
                               bannedBy === 'USA'
-                                ? 'bg-blue-900/50 text-blue-400'
-                                : 'bg-red-900/50 text-red-400'
+                                ? 'bg-union-900/50 text-union-400'
+                                : 'bg-rebel-900/50 text-rebel-400'
                             }`}>
                               Banned by {bannedBy}
                             </span>
@@ -841,10 +839,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           {isSelected && (
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs bg-green-700 px-2 py-0.5 rounded">Playing</span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-union-900/60 text-union-400' : 'bg-rebel-900/60 text-rebel-400'}`}>
                                 {attacker} ATK
                               </span>
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-union-900/60 text-union-400' : 'bg-rebel-900/60 text-rebel-400'}`}>
                                 {defender} DEF
                               </span>
                             </div>
@@ -863,9 +861,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           className={`flex-1 h-1 rounded ${
                             i < bannedMaps.length
                               ? (i % 2 === 0
-                                ? (defender === 'USA' ? 'bg-blue-500' : 'bg-red-500')
-                                : (attacker === 'USA' ? 'bg-blue-500' : 'bg-red-500'))
-                              : 'bg-slate-600'
+                                ? (defender === 'USA' ? 'bg-union-500' : 'bg-rebel-500')
+                                : (attacker === 'USA' ? 'bg-union-500' : 'bg-rebel-500'))
+                              : 'bg-ink-700'
                           }`}
                         />
                       ))}
@@ -879,7 +877,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 <select
                   value={selectedMap}
                   onChange={(e) => setSelectedMap(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                  className="ui-field"
                 >
                   <option value="">Select map... ({availableMaps.length} available)</option>
                   {availableMaps.map(map => (
@@ -890,9 +888,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
               {/* Auto-selected single map indicator */}
               {selectedTerritory && pickBanMaps.length === 0 && selectedMap && (
-                <div className="bg-slate-700 rounded-lg p-4">
+                <div className="ui-inset p-4">
                   <div className="flex justify-between items-center">
-                    <div className="text-sm font-semibold text-amber-400">Map</div>
+                    <div className="text-sm font-semibold text-brass-400">Map</div>
                     <div className="text-xs bg-green-900/50 text-green-300 px-2 py-1 rounded border border-green-700">
                       Auto-Selected
                     </div>
@@ -900,15 +898,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   <div className="mt-2 px-3 py-2 bg-green-600 text-white rounded text-sm font-medium flex justify-between items-center">
                     <span>{selectedMap}</span>
                     <div className="flex gap-1.5">
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${attacker === 'USA' ? 'bg-union-900/60 text-union-400' : 'bg-rebel-900/60 text-rebel-400'}`}>
                         {attacker} ATK
                       </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-blue-900/60 text-blue-300' : 'bg-red-900/60 text-red-300'}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${defender === 'USA' ? 'bg-union-900/60 text-union-400' : 'bg-rebel-900/60 text-rebel-400'}`}>
                         {defender} DEF
                       </span>
                     </div>
                   </div>
-                  <div className="mt-2 text-xs text-slate-400">
+                  <div className="mt-2 text-xs text-mist-400">
                     Only 1 map available for this territory
                   </div>
                 </div>
@@ -917,7 +915,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
               {!selectedTerritory && (
                 <select
                   disabled
-                  className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 opacity-50 cursor-not-allowed"
+                  className="w-full px-3 py-2 bg-ink-800 text-white rounded border border-ink-700 opacity-50 cursor-not-allowed"
                 >
                   <option>Select a territory first...</option>
                 </select>
@@ -925,15 +923,15 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
               {/* Map cooldown information - Campaign-wide */}
               {selectedTerritory && cooldownMaps.size > 0 && (
-                <div className="mt-2 p-3 bg-slate-700/50 rounded border border-slate-600">
-                  <div className="text-xs text-amber-400 font-semibold mb-2">
+                <div className="mt-2 p-3 bg-ink-800/50 rounded border border-ink-700">
+                  <div className="text-xs text-brass-400 font-semibold mb-2">
                     Maps on Cooldown - Campaign-Wide ({cooldownMaps.size})
                   </div>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {Array.from(cooldownMaps.entries())
                       .sort((a, b) => b[1] - a[1])
                       .map(([mapName, turn]) => (
-                        <div key={mapName} className="text-xs text-slate-400 flex justify-between items-center">
+                        <div key={mapName} className="text-xs text-mist-400 flex justify-between items-center">
                           <span className="truncate">{mapName}</span>
                           <span className="text-orange-400 ml-2 whitespace-nowrap">
                             {getMapCooldownMessage(mapName, cooldownMaps, currentTurn, campaign?.settings?.mapCooldownTurns ?? 2)}
@@ -946,18 +944,18 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
             </div>
 
             {/* Battle Conditions - Separate Weather & Time Rolls */}
-            <div className="bg-slate-700 rounded-lg p-4">
-              <label className="text-sm text-slate-300 font-semibold block mb-3">
+            <div className="ui-inset p-4">
+              <label className="text-sm text-mist-300 font-semibold block mb-3">
                 Battle Conditions
               </label>
               <div className="grid grid-cols-2 gap-3">
                 {/* Weather Roll */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-slate-400 font-semibold">Weather</span>
+                    <span className="text-xs text-mist-400 font-semibold">Weather</span>
                     <button
                       onClick={() => setWeatherResult(rollWeatherCondition(campaign?.settings?.weatherWeights))}
-                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                      className="flex items-center gap-1 px-2 py-1 bg-brass-500 hover:bg-brass-400 text-white rounded text-xs font-semibold transition"
                     >
                       <Dice6 className="w-3 h-3" />
                       {weatherResult ? 'Re-roll' : 'Roll'}
@@ -973,8 +971,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           <div
                             key={id}
                             style={{ flex: weight }}
-                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
-                              weatherResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            className={`flex items-center justify-center text-[9px] font-medium text-mist-300 bg-ink-700 border-r border-ink-600 last:border-r-0 ${
+                              weatherResult?.condition?.id === id ? 'bg-ink-600 ring-1 ring-brass-400 z-10' : ''
                             } ${weatherResult && weatherResult.condition?.id !== id ? 'opacity-40' : ''}`}
                           >
                             {Math.round(weight / total * 100)}%
@@ -988,14 +986,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                       weatherResult.condition.id === 'clear'
                         ? 'bg-yellow-900/30 border-yellow-700'
                         : weatherResult.condition.id === 'rain'
-                        ? 'bg-blue-900/30 border-blue-700'
+                        ? 'bg-union-900/30 border-union-500'
                         : 'bg-purple-900/30 border-purple-700'
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
                         {weatherResult.condition.id === 'clear' ? (
                           <Sun className="w-4 h-4 text-yellow-400" />
                         ) : weatherResult.condition.id === 'rain' ? (
-                          <Cloud className="w-4 h-4 text-blue-400" />
+                          <Cloud className="w-4 h-4 text-union-400" />
                         ) : (
                           <CloudRain className="w-4 h-4 text-purple-400" />
                         )}
@@ -1003,12 +1001,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           {weatherResult.condition.name}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-mist-400">
                         {weatherResult.condition.description}
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                    <div className="p-3 rounded border border-ink-700 text-center text-mist-500 text-xs">
                       Roll to determine weather
                     </div>
                   )}
@@ -1017,10 +1015,10 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 {/* Time of Day Roll */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-slate-400 font-semibold">Time of Day</span>
+                    <span className="text-xs text-mist-400 font-semibold">Time of Day</span>
                     <button
                       onClick={() => setTimeResult(rollTimeCondition(campaign?.settings?.timeWeights))}
-                      className="flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                      className="flex items-center gap-1 px-2 py-1 bg-brass-500 hover:bg-brass-400 text-white rounded text-xs font-semibold transition"
                     >
                       <Dice6 className="w-3 h-3" />
                       {timeResult ? 'Re-roll' : 'Roll'}
@@ -1036,8 +1034,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                           <div
                             key={id}
                             style={{ flex: weight }}
-                            className={`flex items-center justify-center text-[9px] font-medium text-slate-200 bg-slate-600 border-r border-slate-500 last:border-r-0 ${
-                              timeResult?.condition?.id === id ? 'bg-slate-500 ring-1 ring-amber-400 z-10' : ''
+                            className={`flex items-center justify-center text-[9px] font-medium text-mist-300 bg-ink-700 border-r border-ink-600 last:border-r-0 ${
+                              timeResult?.condition?.id === id ? 'bg-ink-600 ring-1 ring-brass-400 z-10' : ''
                             } ${timeResult && timeResult.condition?.id !== id ? 'opacity-40' : ''}`}
                           >
                             {Math.round(weight / total * 100)}%
@@ -1051,27 +1049,27 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                       timeResult.condition.id === 'dawn'
                         ? 'bg-orange-900/30 border-orange-700'
                         : timeResult.condition.id === 'standard'
-                        ? 'bg-slate-600/50 border-slate-500'
+                        ? 'bg-ink-700/50 border-ink-600'
                         : timeResult.condition.id === 'dusk'
-                        ? 'bg-amber-900/30 border-amber-700'
+                        ? 'bg-brass-900/30 border-brass-500'
                         : 'bg-indigo-900/30 border-indigo-700'
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
                         <Moon className={`w-4 h-4 ${
                           timeResult.condition.id === 'night'
                             ? 'text-indigo-400'
-                            : 'text-amber-400'
+                            : 'text-brass-400'
                         }`} />
                         <span className="font-semibold text-white text-sm">
                           {timeResult.condition.name}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-mist-400">
                         {timeResult.condition.description}
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded border border-slate-600 text-center text-slate-500 text-xs">
+                    <div className="p-3 rounded border border-ink-700 text-center text-mist-500 text-xs">
                       Roll to determine time of day
                     </div>
                   )}
@@ -1081,14 +1079,14 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Commander Selection */}
             {(campaign?.regiments?.USA?.length > 0 || campaign?.regiments?.CSA?.length > 0) && (
-              <div className="bg-slate-700 rounded-lg p-4">
+              <div className="ui-inset p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Users className="w-5 h-5 text-amber-400" />
-                  <label className="text-sm text-slate-300 font-semibold">
+                  <Users className="w-5 h-5 text-brass-400" />
+                  <label className="text-sm text-mist-300 font-semibold">
                     Battle Commanders
                   </label>
                 </div>
-                <div className="text-xs text-slate-400 mb-3">
+                <div className="text-xs text-mist-400 mb-3">
                   Spin to randomly select the commanding regiment for each side
                 </div>
                 {preRolledSides.length > 0 && (
@@ -1110,7 +1108,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Winner Selection */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+              <label className="ui-label">
                 Winner
               </label>
               <div className="flex gap-3">
@@ -1118,8 +1116,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   onClick={() => setWinner('USA')}
                   className={`flex-1 px-4 py-2 rounded font-semibold transition ${
                     winner === 'USA'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      ? 'bg-union-500 text-white'
+                      : 'bg-ink-800 text-mist-300 hover:bg-ink-700'
                   }`}
                 >
                   USA Victory
@@ -1128,8 +1126,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   onClick={() => setWinner('CSA')}
                   className={`flex-1 px-4 py-2 rounded font-semibold transition ${
                     winner === 'CSA'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      ? 'bg-rebel-500 text-white'
+                      : 'bg-ink-800 text-mist-300 hover:bg-ink-700'
                   }`}
                 >
                   CSA Victory
@@ -1138,13 +1136,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
               {winner && (
                 <button
                   onClick={() => setWinner('')}
-                  className="mt-2 text-xs text-slate-400 hover:text-slate-300 transition"
+                  className="mt-2 text-xs text-mist-400 hover:text-mist-300 transition"
                 >
                   Clear winner (save as pending)
                 </button>
               )}
               {!winner && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-amber-400">
+                <div className="mt-2 flex items-center gap-2 text-xs text-brass-400">
                   <Clock className="w-3 h-3" />
                   No winner selected - battle will be saved as pending
                 </div>
@@ -1153,29 +1151,29 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Casualties */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+              <label className="ui-label">
                 Casualties (Optional)
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-blue-400 mb-1">USA Casualties</label>
+                  <label className="block text-xs text-union-400 mb-1">USA Casualties</label>
                   <input
                     type="number"
                     min="0"
                     value={casualties.USA}
                     onChange={(e) => setCasualties({ ...casualties, USA: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="ui-field"
                     placeholder="0"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-red-400 mb-1">CSA Casualties</label>
+                  <label className="block text-xs text-rebel-400 mb-1">CSA Casualties</label>
                   <input
                     type="number"
                     min="0"
                     value={casualties.CSA}
                     onChange={(e) => setCasualties({ ...casualties, CSA: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                    className="ui-field"
                     placeholder="0"
                   />
                 </div>
@@ -1184,8 +1182,8 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* SP Cost Display */}
             {campaign?.cpSystemEnabled && selectedTerritory && (
-              <div className="bg-slate-700 rounded-lg p-4">
-                <div className="text-sm font-semibold text-amber-400 mb-3 flex items-center justify-between">
+              <div className="ui-inset p-4">
+                <div className="text-sm font-semibold text-brass-400 mb-3 flex items-center justify-between">
                   <span>Supply Point Costs</span>
                   {isManualCPMode && (
                     <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-1 rounded border border-purple-700">
@@ -1197,27 +1195,27 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 <div className="space-y-3">
                   {/* Current SP Pools */}
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="bg-slate-800 rounded p-2">
-                      <div className="text-slate-400 text-xs mb-1">USA SP Pool</div>
-                      <div className="text-blue-400 font-bold text-lg">{campaign.combatPowerUSA || 0}</div>
+                    <div className="bg-ink-850 rounded p-2">
+                      <div className="text-mist-400 text-xs mb-1">USA SP Pool</div>
+                      <div className="text-union-400 font-bold text-lg">{campaign.combatPowerUSA || 0}</div>
                     </div>
-                    <div className="bg-slate-800 rounded p-2">
-                      <div className="text-slate-400 text-xs mb-1">CSA SP Pool</div>
-                      <div className="text-red-400 font-bold text-lg">{campaign.combatPowerCSA || 0}</div>
+                    <div className="bg-ink-850 rounded p-2">
+                      <div className="text-mist-400 text-xs mb-1">CSA SP Pool</div>
+                      <div className="text-rebel-400 font-bold text-lg">{campaign.combatPowerCSA || 0}</div>
                     </div>
                   </div>
                   
-                  <div className="border-t border-slate-600"></div>
+                  <div className="border-t border-ink-700"></div>
                   
                   {/* Battle SP Costs - Manual Mode */}
                   {isManualCPMode && (
                     <div className="space-y-3">
-                      <div className="text-xs text-slate-400 mb-2">
+                      <div className="text-xs text-mist-400 mb-2">
                         Enter SP loss for each side:
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs text-amber-400 mb-1 font-semibold">
+                          <label className="block text-xs text-brass-400 mb-1 font-semibold">
                             {attacker} (Attacker) SP Loss
                           </label>
                           <input
@@ -1225,12 +1223,12 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             min="0"
                             value={manualCPLoss.attacker}
                             onChange={(e) => setManualCPLoss({ ...manualCPLoss, attacker: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            className="w-full px-3 py-2 bg-ink-850 text-white rounded border border-ink-700 focus:border-brass-400 outline-none"
                             placeholder="0"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-amber-400 mb-1 font-semibold">
+                          <label className="block text-xs text-brass-400 mb-1 font-semibold">
                             {(() => {
                               const territory = territories.find(t => t.id === selectedTerritory);
                               return attacker === 'USA' ?
@@ -1243,7 +1241,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             min="0"
                             value={manualCPLoss.defender}
                             onChange={(e) => setManualCPLoss({ ...manualCPLoss, defender: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-800 text-white rounded border border-slate-600 focus:border-amber-500 outline-none"
+                            className="w-full px-3 py-2 bg-ink-850 text-white rounded border border-ink-700 focus:border-brass-400 outline-none"
                             placeholder="0"
                           />
                         </div>
@@ -1254,18 +1252,18 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                   {/* Battle SP Costs - Auto Mode */}
                   {!isManualCPMode && (
                     <div className="space-y-2 text-sm">
-                      <div className="bg-slate-800 rounded p-3">
+                      <div className="bg-ink-850 rounded p-3">
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-slate-300 font-semibold">
+                          <span className="text-mist-300 font-semibold">
                             {attacker} (Attacker)
                           </span>
                           <span className={`font-bold text-lg ${
-                            attacker === 'USA' ? 'text-blue-400' : 'text-red-400'
+                            attacker === 'USA' ? 'text-union-400' : 'text-rebel-400'
                           }`}>
                             -{estimatedCPCost.attacker} SP
                           </span>
                         </div>
-                        <div className="text-xs text-slate-400 mb-1">
+                        <div className="text-xs text-mist-400 mb-1">
                           {(() => {
                             const territory = territories.find(t => t.id === selectedTerritory);
                             const isNeutral = territory?.owner === 'NEUTRAL';
@@ -1277,13 +1275,13 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                             return `Base: ${baseCP} × ${vpMultiplier} (VP mult) × (your casualties ÷ total casualties)`;
                           })()}
                         </div>
-                        <div className="text-xs text-amber-400">
+                        <div className="text-xs text-brass-400">
                           Max: {maxCPCost.attacker} SP • Attacking {(() => {
                             const territory = territories.find(t => t.id === selectedTerritory);
                             return territory?.owner === 'NEUTRAL' ? 'neutral' : 'enemy';
                           })()} territory
                         </div>
-                        <div className="text-xs text-slate-500 mt-1 italic">
+                        <div className="text-xs text-mist-500 mt-1 italic">
                           Attackers pay more SP - the aggressor's burden
                         </div>
                       </div>
@@ -1302,24 +1300,24 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                         const vpMultiplier = getVPMultiplier(territory?.pointValue || territory?.victoryPoints || 10, vpBase);
                         
                         return (
-                          <div className="bg-slate-800 rounded p-3">
+                          <div className="bg-ink-850 rounded p-3">
                             <div className="flex justify-between items-center mb-1">
-                              <span className="text-slate-300 font-semibold">
+                              <span className="text-mist-300 font-semibold">
                                 {defender} (Defender)
                               </span>
                               <span className={`font-bold text-lg ${
-                                defender === 'USA' ? 'text-blue-400' : 'text-red-400'
+                                defender === 'USA' ? 'text-union-400' : 'text-rebel-400'
                               }`}>
                                 -{estimatedCPCost.defender} SP
                               </span>
                             </div>
-                            <div className="text-xs text-slate-400 mb-1">
+                            <div className="text-xs text-mist-400 mb-1">
                               Base: {baseCP} × {vpMultiplier} (VP mult) × (your casualties ÷ total casualties)
                             </div>
-                            <div className="text-xs text-amber-400">
+                            <div className="text-xs text-brass-400">
                               Max: {maxCPCost.defender} SP • Defending {isFriendly ? 'friendly' : 'neutral'} territory
                             </div>
-                            <div className="text-xs text-slate-500 mt-1 italic">
+                            <div className="text-xs text-mist-500 mt-1 italic">
                               {isFriendly
                                 ? 'Lower cost defending your own territory'
                                 : 'Higher cost defending neutral ground - no home advantage'}
@@ -1333,11 +1331,11 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
                 {/* Blocking Error - Attack Impossible */}
                 {cpBlockingError && (
-                  <div className="mt-3 p-3 bg-red-900/50 border-2 border-red-500 rounded flex items-start gap-2">
-                    <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="mt-3 p-3 bg-rebel-900/50 border-2 border-rebel-500 rounded flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-rebel-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <div className="text-red-300 font-bold text-sm mb-1">ATTACK BLOCKED</div>
-                      <span className="text-red-300 text-sm">{cpBlockingError}</span>
+                      <div className="text-rebel-400 font-bold text-sm mb-1">ATTACK BLOCKED</div>
+                      <span className="text-rebel-400 text-sm">{cpBlockingError}</span>
                     </div>
                   </div>
                 )}
@@ -1354,32 +1352,30 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
 
             {/* Notes */}
             <div>
-              <label className="block text-sm text-slate-300 mb-2 font-semibold">
+              <label className="ui-label">
                 Notes (Optional)
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 text-white rounded border border-slate-600 focus:border-amber-500 outline-none resize-none"
+                className="ui-field resize-none"
                 rows="3"
                 placeholder="Add any additional notes about this battle..."
               />
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3 mt-6">
+        </div>
+
+        {/* Action Buttons */}
+        <div className="ui-modal-foot">
             <button
               onClick={handleSubmit}
               disabled={winner && campaign?.cpSystemEnabled && cpBlockingError}
-              className={`flex-1 px-4 py-3 text-white rounded-lg font-semibold transition flex items-center justify-center gap-2 ${
+              className={`ui-btn flex-1 ${
                 winner && campaign?.cpSystemEnabled && cpBlockingError
-                  ? 'bg-slate-600 cursor-not-allowed opacity-50'
-                  : !winner
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : campaign?.cpSystemEnabled && cpWarning
-                  ? 'bg-orange-600 hover:bg-orange-700'
-                  : 'bg-green-600 hover:bg-green-700'
+                  ? 'ui-btn-danger'
+                  : 'ui-btn-primary'
               }`}
             >
               {!winner ? (
@@ -1403,13 +1399,9 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 </>
               )}
             </button>
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-3 bg-slate-600 hover:bg-slate-500 text-white rounded-lg font-semibold transition"
-            >
+            <button onClick={onClose} className="ui-btn ui-btn-ghost flex-1">
               Cancel
             </button>
-          </div>
         </div>
       </div>
     </div>

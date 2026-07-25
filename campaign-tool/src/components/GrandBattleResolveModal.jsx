@@ -53,72 +53,72 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
   };
 
   const tokenLine = (t, label, color) => (
-    <div className="text-xs text-slate-300">
-      <span className="text-slate-400">{label}:</span>{' '}
+    <div className="text-xs text-mist-300">
+      <span className="text-mist-400">{label}:</span>{' '}
       <span className={`font-semibold ${color}`}>{t.name}</span>
-      <span className="text-slate-500">
+      <span className="text-mist-500">
         {' · '}MP {t.manpower} · Fat {t.fatigue}
       </span>
     </div>
   );
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 border-2 border-amber-500 rounded-lg p-5 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div className="ui-modal-backdrop">
+      <div className="ui-modal border-brass-400/50 p-5 max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <h3 className="ui-title">
             <Trophy className="w-5 h-5" /> Resolve Battle — {battle.mapName}
           </h3>
-          <button onClick={onCancel} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={onCancel} className="text-mist-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="bg-slate-900 rounded p-3 mb-3 space-y-1">
-          {tokenLine(attacker, 'Attacker', 'text-red-400')}
-          {attackerSupport && tokenLine(attackerSupport, 'Attacker supp.', 'text-red-400')}
-          {tokenLine(defender, 'Defender', 'text-blue-400')}
-          {defenderSupport && tokenLine(defenderSupport, 'Defender supp.', 'text-blue-400')}
+        <div className="bg-ink-900 rounded p-3 mb-3 space-y-1">
+          {tokenLine(attacker, 'Attacker', 'text-rebel-400')}
+          {attackerSupport && tokenLine(attackerSupport, 'Attacker supp.', 'text-rebel-400')}
+          {tokenLine(defender, 'Defender', 'text-union-400')}
+          {defenderSupport && tokenLine(defenderSupport, 'Defender supp.', 'text-union-400')}
           {winter && <div className="text-[11px] text-cyan-300 mt-1">Winter month — attacker casualties +{gc.settings.winterAttackerCasPct}%</div>}
         </div>
 
         {/* Raw casualties */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
-            <label className="text-xs text-slate-300">Attacker raw casualties (WoR)</label>
+            <label className="text-xs text-mist-300">Attacker raw casualties (WoR)</label>
             <input
               type="number"
               min="0"
               value={attackerRaw}
               onChange={e => setAttackerRaw(e.target.value)}
-              className="w-full bg-slate-900 text-white px-2 py-1.5 rounded text-sm mt-1"
+              className="w-full bg-ink-900 text-white px-2 py-1.5 rounded text-sm mt-1"
             />
-            <label className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+            <label className="flex items-center gap-1 text-[10px] text-mist-400 mt-1">
               <input type="checkbox" checked={attackerOnTrainRiver} onChange={e => setAttackerOnTrainRiver(e.target.checked)} />
               Attacker on train/river (+{gc.settings.trainRiverCasPct}%)
             </label>
-            <div className="text-[11px] text-amber-300 mt-1">
+            <div className="text-[11px] text-brass-300 mt-1">
               Modified: <span className="font-bold">{attackerTotal}</span>
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-300">Defender raw casualties (WoR)</label>
+            <label className="text-xs text-mist-300">Defender raw casualties (WoR)</label>
             <input
               type="number"
               min="0"
               value={defenderRaw}
               onChange={e => setDefenderRaw(e.target.value)}
-              className="w-full bg-slate-900 text-white px-2 py-1.5 rounded text-sm mt-1"
+              className="w-full bg-ink-900 text-white px-2 py-1.5 rounded text-sm mt-1"
             />
-            <label className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+            <label className="flex items-center gap-1 text-[10px] text-mist-400 mt-1">
               <input type="checkbox" checked={defenderOnTrainRiver} onChange={e => setDefenderOnTrainRiver(e.target.checked)} />
               Defender on train/river (+{gc.settings.trainRiverCasPct}%)
             </label>
-            <div className="text-[11px] text-amber-300 mt-1">
+            <div className="text-[11px] text-brass-300 mt-1">
               Modified: <span className="font-bold">{defenderTotal}</span>
             </div>
           </div>
         </div>
 
-        <div className="text-[10px] text-slate-500 mb-3">
+        <div className="text-[10px] text-mist-500 mb-3">
           Fatigue on attacker (+{attacker.fatigue * gc.settings.fatigueCasPct}%) and defender (+{defender.fatigue * gc.settings.fatigueCasPct}%) applied automatically.
           Supporters absorb 40% of their side's total.
         </div>
@@ -126,7 +126,7 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
         {/* Conquest indicator — so players remember whether the sides were
             swapped on the WoR board. */}
         {battle.isConquest && (
-          <div className="mb-3 bg-amber-900/40 border border-amber-600 rounded p-2 text-[11px] text-amber-200">
+          <div className="mb-3 bg-brass-900/40 border border-brass-500 rounded p-2 text-[11px] text-brass-300">
             <span className="font-bold">Conquest map.</span>{' '}
             {battle.sidesSwapped
               ? 'Coin flip: TAILS — sides were swapped (USA plays CSA and vice versa on the WoR side).'
@@ -140,7 +140,7 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
             The underlying value we send to resolveGCBattle is still the
             side string, derived from the clicked token's side. */}
         <div className="mb-3">
-          <div className="text-xs font-semibold text-slate-300 mb-1">Outcome</div>
+          <div className="text-xs font-semibold text-mist-300 mb-1">Outcome</div>
           <div className={`grid ${battle.isConquest ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
             {[
               { token: attacker, label: 'Attacker wins' },
@@ -153,17 +153,17 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
                   onClick={() => setWinner(side)}
                   className={`p-2 rounded border-2 text-sm font-semibold flex flex-col items-center gap-0.5 ${
                     winner === side
-                      ? side === 'USA' ? 'bg-blue-700 border-blue-300 text-white' : 'bg-red-700 border-red-300 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+                      ? side === 'USA' ? 'bg-union-500 border-union-400 text-white' : 'bg-rebel-500 border-rebel-400 text-white'
+                      : 'bg-ink-800 border-ink-700 text-mist-300 hover:bg-ink-700'
                   }`}
                 >
                   <span className="truncate max-w-full">
                     {token.name}
-                    <span className={`text-[10px] font-bold ml-1 ${side === 'USA' ? 'text-blue-300' : 'text-red-300'}`}>
+                    <span className={`text-[10px] font-bold ml-1 ${side === 'USA' ? 'text-union-400' : 'text-rebel-400'}`}>
                       ({side})
                     </span>
                   </span>
-                  <span className="text-[10px] text-slate-300/80 font-normal">{label}</span>
+                  <span className="text-[10px] text-mist-300/80 font-normal">{label}</span>
                 </button>
               );
             })}
@@ -172,23 +172,23 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
                 onClick={() => setWinner('DRAW')}
                 className={`p-2 rounded border-2 text-sm font-semibold flex flex-col items-center gap-0.5 ${
                   winner === 'DRAW'
-                    ? 'bg-amber-600 border-amber-300 text-white'
-                    : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+                    ? 'bg-brass-500 border-brass-300 text-white'
+                    : 'bg-ink-800 border-ink-700 text-mist-300 hover:bg-ink-700'
                 }`}
               >
                 <span>Draw</span>
-                <span className="text-[10px] text-slate-300/80 font-normal">split payout, both retreat</span>
+                <span className="text-[10px] text-mist-300/80 font-normal">split payout, both retreat</span>
               </button>
             )}
           </div>
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onCancel} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm">Cancel</button>
+          <button onClick={onCancel} className="flex-1 bg-ink-800 hover:bg-ink-700 text-white rounded py-2 text-sm">Cancel</button>
           <button
             onClick={commit}
             disabled={!canResolve}
-            className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded py-2 text-sm font-semibold"
+            className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-ink-800 disabled:text-mist-500 text-white rounded py-2 text-sm font-semibold"
           >
             Resolve Battle
           </button>

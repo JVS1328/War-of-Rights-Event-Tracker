@@ -1,10 +1,21 @@
 import { useState } from 'react';
-import { Map, Trophy, Calendar, Zap, MapPin, ChevronDown, ChevronRight, Star, ExternalLink, Skull, DollarSign, Users, Swords } from 'lucide-react';
+import {
+  Map, Trophy, Calendar, MapPin, ChevronDown, ChevronRight, Star, ExternalLink,
+  Skull, DollarSign, Users, Swords, Eye, Map as MapIcon
+} from 'lucide-react';
 import MapView from './MapView';
 import RegimentStats from './RegimentStats';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
 import { GRAND_CAMPAIGN_DEFAULTS } from '../data/grandCampaign';
+import { Card, CardHead, CardBody, Badge, Row, ScoreBoard, SIDE_TEXT } from './ui/Primitives';
+
+const FILTERS = [
+  { key: 'ALL', label: 'All' },
+  { key: 'USA', label: 'USA' },
+  { key: 'CSA', label: 'CSA' },
+  { key: 'NEUTRAL', label: 'Neutral' },
+];
 
 const SharedMapView = ({ shareData }) => {
   const [selectedTerritory, setSelectedTerritory] = useState(null);
@@ -26,11 +37,9 @@ const SharedMapView = ({ shareData }) => {
     .filter(t => shareData.instantVP || !t.transitionState?.isTransitioning)
     .reduce((sum, t) => sum + (t.victoryPoints || 0), 0);
 
-  // Territory list filtering & sorting
-  const filteredTerritories = territories.filter(t => {
-    if (filterOwner === 'ALL') return true;
-    return t.owner === filterOwner;
-  });
+  const filteredTerritories = territories.filter(t =>
+    filterOwner === 'ALL' ? true : t.owner === filterOwner
+  );
 
   const sortedTerritories = [...filteredTerritories].sort((a, b) => {
     if (a.owner !== b.owner) {
@@ -48,59 +57,58 @@ const SharedMapView = ({ shareData }) => {
     setExpandedTerritory(expandedTerritory === territoryId ? null : territoryId);
   };
 
-  const getOwnerColor = (owner) => {
-    if (owner === 'USA') return 'text-blue-400';
-    if (owner === 'CSA') return 'text-red-400';
-    return 'text-slate-400';
-  };
-
-  const getOwnerBg = (owner) => {
-    if (owner === 'USA') return 'bg-blue-600';
-    if (owner === 'CSA') return 'bg-red-600';
-    return 'bg-slate-600';
-  };
+  const owned = (side) => territories.filter(t => t.owner === side).length;
+  const territoryTotal = territories.length || 1;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Map className="w-8 h-8 text-amber-400" />
-              <div>
-                <h1 className="text-3xl font-bold text-amber-400">
-                  {shareData.name}
-                </h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  Turn {shareData.turn}
-                  {shareData.date && ` \u2022 ${shareData.date}`}
-                  {' \u2022 '}{shareData.battleCount} battles fought
-                  {shareData.pendingCount > 0 && (
-                    <span className="text-amber-400"> {'\u2022'} {shareData.pendingCount} pending</span>
-                  )}
-                </p>
+    <div className="app-shell">
+      {/* ── App bar ─────────────────────────────────────────────────── */}
+      <header className="app-bar sticky top-0 z-30">
+        <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
+              <Map className="w-5 h-5 text-brass-300" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-mist-100 truncate leading-tight">{shareData.name}</h1>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-mist-500 flex-wrap">
+                <span className="text-mist-400">Turn {shareData.turn}</span>
+                {shareData.date && (
+                  <>
+                    <span className="text-ink-600">·</span>
+                    <span>{shareData.date}</span>
+                  </>
+                )}
+                <span className="text-ink-600">·</span>
+                <span>{shareData.battleCount} {shareData.battleCount === 1 ? 'battle' : 'battles'}</span>
+                {shareData.pendingCount > 0 && (
+                  <span className="ui-badge ui-badge-warn">{shareData.pendingCount} pending</span>
+                )}
+                {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded-lg text-sm border border-slate-600">
-                Read-Only View
-              </span>
-              <a
-                href={window.location.origin + window.location.pathname}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg flex items-center gap-2 transition text-sm"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open Tracker
-              </a>
-            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="ui-badge ui-badge-neutral py-1.5 px-2.5">
+              <Eye className="w-3.5 h-3.5" />
+              Read-only
+            </span>
+            <a
+              href={window.location.origin + window.location.pathname}
+              className="ui-btn ui-btn-ghost"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open Tracker
+            </a>
           </div>
         </div>
+      </header>
 
-        {/* Map + Stats Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Map - 2 columns */}
-          <div className="lg:col-span-2">
+      <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5">
+        {/* Map + stats */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-5 items-start">
+          <div className="xl:col-span-2">
             <MapView
               territories={territories}
               selectedTerritory={selectedTerritory}
@@ -112,339 +120,267 @@ const SharedMapView = ({ shareData }) => {
               tokens={gc?.tokens || null}
               mapFeatures={gc?.mapFeatures || null}
               influenceThreshold={influenceThreshold}
+              readOnly
             />
           </div>
 
-          {/* Stats sidebar */}
-          <div className="space-y-6">
-            {/* Grand Campaign — pools, VP (capital captures / token wipes), and token counts.
-                Territory VP is flavor-only in GC mode and shown below for context. */}
+          <div className="space-y-4">
+            {/* Grand Campaign — pools, VP (capital captures / token wipes), token counts. */}
             {isGC && (() => {
-              const aliveUSA = gc.tokens.filter(t => t.side === 'USA' && t.status !== 'wiped').length;
-              const aliveCSA = gc.tokens.filter(t => t.side === 'CSA' && t.status !== 'wiped').length;
-              const wipedUSA = gc.tokens.filter(t => t.side === 'USA' && t.status === 'wiped').length;
-              const wipedCSA = gc.tokens.filter(t => t.side === 'CSA' && t.status === 'wiped').length;
+              const alive = (side) => gc.tokens.filter(t => t.side === side && t.status !== 'wiped').length;
+              const wiped = (side) => gc.tokens.filter(t => t.side === side && t.status === 'wiped').length;
               return (
-                <div className="bg-slate-800 rounded-lg border border-amber-700/50 p-6">
-                  <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2 mb-1">
-                    <Swords className="w-5 h-5" />
-                    Grand Campaign
-                  </h3>
-                  <div className="text-[11px] uppercase tracking-wide text-amber-500/70 mb-4">
-                    First to 10 VP — capital captures & token wipes
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-slate-900/50 rounded p-3 border border-blue-900/40">
-                      <div className="text-blue-400 text-xs font-semibold mb-1">USA</div>
-                      <div className="text-white text-2xl font-bold">{gc.vpUSA} <span className="text-sm font-normal text-slate-400">VP</span></div>
+                <Card className="border-brass-500/30">
+                  <CardHead icon={Swords} title="Grand Campaign" meta="first to 10 VP" />
+                  <CardBody className="space-y-4">
+                    <ScoreBoard usaVP={gc.vpUSA} csaVP={gc.vpCSA} />
+                    <div className="space-y-2 pt-3 border-t border-ink-700">
+                      {['USA', 'CSA'].map(side => (
+                        <Row
+                          key={`treasury-${side}`}
+                          label={
+                            <span className="flex items-center gap-1.5">
+                              <DollarSign className="w-3.5 h-3.5" />
+                              <span className={SIDE_TEXT[side]}>{side}</span> Treasury
+                            </span>
+                          }
+                          value={`$${gc.pools[side].treasury.toLocaleString()}`}
+                        />
+                      ))}
+                      {['USA', 'CSA'].map(side => (
+                        <Row
+                          key={`manpower-${side}`}
+                          label={
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5" />
+                              <span className={SIDE_TEXT[side]}>{side}</span> Manpower
+                            </span>
+                          }
+                          value={gc.pools[side].manpower.toLocaleString()}
+                        />
+                      ))}
+                      {['USA', 'CSA'].map(side => (
+                        <Row
+                          key={`tokens-${side}`}
+                          label={<><span className={SIDE_TEXT[side]}>{side}</span> Tokens</>}
+                          value={
+                            <>
+                              {alive(side)}
+                              {wiped(side) > 0 && (
+                                <span className="text-mist-500 text-xs font-normal ml-1">
+                                  +{wiped(side)} wiped
+                                </span>
+                              )}
+                            </>
+                          }
+                        />
+                      ))}
                     </div>
-                    <div className="bg-slate-900/50 rounded p-3 border border-red-900/40">
-                      <div className="text-red-400 text-xs font-semibold mb-1">CSA</div>
-                      <div className="text-white text-2xl font-bold">{gc.vpCSA} <span className="text-sm font-normal text-slate-400">VP</span></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> USA Treasury</span>
-                      <span className="text-white font-semibold">${gc.pools.USA.treasury.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> CSA Treasury</span>
-                      <span className="text-white font-semibold">${gc.pools.CSA.treasury.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> USA Manpower</span>
-                      <span className="text-white font-semibold">{gc.pools.USA.manpower.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> CSA Manpower</span>
-                      <span className="text-white font-semibold">{gc.pools.CSA.manpower.toLocaleString()}</span>
-                    </div>
-                    <div className="pt-2 mt-2 border-t border-slate-700 flex justify-between items-center">
-                      <span className="text-blue-400">USA Tokens:</span>
-                      <span className="text-white font-semibold">
-                        {aliveUSA}{wipedUSA > 0 && <span className="text-slate-500 text-xs ml-1">(+{wipedUSA} wiped)</span>}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-red-400">CSA Tokens:</span>
-                      <span className="text-white font-semibold">
-                        {aliveCSA}{wipedCSA > 0 && <span className="text-slate-500 text-xs ml-1">(+{wipedCSA} wiped)</span>}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  </CardBody>
+                </Card>
               );
             })()}
 
-            {/* Victory Points */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-              <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2 mb-4">
-                <Trophy className="w-5 h-5" />
-                {isGC ? 'Territory VP (flavor)' : 'Victory Points'}
-              </h3>
+            {/* Victory points */}
+            <Card>
+              <CardHead
+                icon={Trophy}
+                title={isGC ? 'Territory VP' : 'Victory Points'}
+                meta={isGC ? 'flavor only' : null}
+              />
+              <CardBody>
+                <ScoreBoard
+                  usaVP={usaTerritoryVP}
+                  csaVP={csaTerritoryVP}
+                  usaSP={shareData.cpEnabled ? shareData.cpUSA : null}
+                  csaSP={shareData.cpEnabled ? shareData.cpCSA : null}
+                />
+              </CardBody>
+            </Card>
 
-              <div className="mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-blue-400 font-semibold">USA</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-white text-2xl font-bold">{usaTerritoryVP} VP</span>
-                    {shareData.cpEnabled && (
-                      <span className="text-blue-300 text-lg font-semibold flex items-center gap-1">
-                        <Zap className="w-4 h-4" />
-                        {shareData.cpUSA} SP
-                      </span>
-                    )}
-                  </div>
+            {/* Territory control */}
+            <Card>
+              <CardHead icon={MapIcon} title="Territory Control" meta={`${territories.length} total`} />
+              <CardBody className="space-y-3">
+                <div className="ui-meter">
+                  <div className="bg-union-500" style={{ width: `${(owned('USA') / territoryTotal) * 100}%` }} />
+                  <div className="bg-rebel-500" style={{ width: `${(owned('CSA') / territoryTotal) * 100}%` }} />
+                  <div className="bg-ink-500 flex-1" />
                 </div>
-              </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {['USA', 'CSA', 'NEUTRAL'].map(side => (
+                    <div key={side} className="ui-inset py-2">
+                      <div className={`text-[11px] font-bold tracking-widest ${SIDE_TEXT[side]}`}>{side}</div>
+                      <div className="text-xl font-bold text-mist-100 tabular">{owned(side)}</div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
 
-              <div>
-                <div className="flex justify-between items-center">
-                  <span className="text-red-400 font-semibold">CSA</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-white text-2xl font-bold">{csaTerritoryVP} VP</span>
-                    {shareData.cpEnabled && (
-                      <span className="text-red-300 text-lg font-semibold flex items-center gap-1">
-                        <Zap className="w-4 h-4" />
-                        {shareData.cpCSA} SP
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Campaign info */}
+            <Card>
+              <CardHead icon={Calendar} title="Campaign Info" />
+              <CardBody className="space-y-2.5">
+                <Row label="Turn" value={shareData.turn} />
+                {shareData.date && <Row label="Date" value={shareData.date} />}
+                <Row
+                  label="Battles fought"
+                  value={
+                    <>
+                      {shareData.battleCount}
+                      {shareData.pendingCount > 0 && (
+                        <span className="text-brass-300 font-normal text-xs ml-1.5">
+                          +{shareData.pendingCount} pending
+                        </span>
+                      )}
+                    </>
+                  }
+                />
 
-            {/* Campaign Info */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-              <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2 mb-4">
-                <Calendar className="w-5 h-5" />
-                Campaign Info
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Current Turn:</span>
-                  <span className="text-white font-semibold">{shareData.turn}</span>
-                </div>
-                {shareData.date && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Date:</span>
-                    <span className="text-white font-semibold">{shareData.date}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Battles Fought:</span>
-                  <span className="text-white font-semibold">
-                    {shareData.battleCount}
-                    {shareData.pendingCount > 0 && (
-                      <span className="text-amber-400 text-xs ml-1">
-                        (+{shareData.pendingCount} pending)
-                      </span>
-                    )}
-                  </span>
-                </div>
-
-                {/* Casualties */}
                 {shareData.casualties?.total > 0 && (
-                  <div className="pt-3 mt-3 border-t border-slate-700">
-                    <div className="text-sm text-slate-400 mb-2 font-semibold flex items-center gap-1">
+                  <div className="pt-3 mt-1 border-t border-ink-700 space-y-2.5">
+                    <div className="ui-eyebrow flex items-center gap-1.5">
                       <Skull className="w-3.5 h-3.5" />
-                      Campaign Casualties
+                      Casualties
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-blue-400">USA:</span>
-                        <span className="text-white font-semibold">{shareData.casualties.usa.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-red-400">CSA:</span>
-                        <span className="text-white font-semibold">{shareData.casualties.csa.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-300">Total:</span>
-                        <span className="text-white font-bold">{shareData.casualties.total.toLocaleString()}</span>
-                      </div>
-                    </div>
+                    <Row label={<span className={SIDE_TEXT.USA}>USA</span>} value={shareData.casualties.usa.toLocaleString()} />
+                    <Row label={<span className={SIDE_TEXT.CSA}>CSA</span>} value={shareData.casualties.csa.toLocaleString()} />
+                    <Row label="Total" value={shareData.casualties.total.toLocaleString()} />
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Territory Control */}
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-              <h3 className="text-xl font-bold text-amber-400 mb-4">
-                Territory Control
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-blue-400 font-semibold">USA Territories:</span>
-                  <span className="text-white font-bold">
-                    {territories.filter(t => t.owner === 'USA').length}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-red-400 font-semibold">CSA Territories:</span>
-                  <span className="text-white font-bold">
-                    {territories.filter(t => t.owner === 'CSA').length}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400 font-semibold">Neutral:</span>
-                  <span className="text-white font-bold">
-                    {territories.filter(t => t.owner === 'NEUTRAL').length}
-                  </span>
-                </div>
-              </div>
-            </div>
+              </CardBody>
+            </Card>
           </div>
         </div>
 
-        {/* Regiment Leaderboard (reuse existing component) */}
+        {/* Regiment leaderboard */}
         {shareData.regiments && (
-          <div className="mb-6">
-            <RegimentStats campaign={{ regiments: shareData.regiments, regimentStats: shareData.regimentStats || {} }} />
+          <div className="mb-5">
+            <RegimentStats
+              campaign={{ regiments: shareData.regiments, regimentStats: shareData.regimentStats || {} }}
+            />
           </div>
         )}
 
-        {/* Territory List */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-amber-400 flex items-center gap-2">
-              <MapPin className="w-5 h-5" />
-              Territories ({filteredTerritories.length})
-            </h3>
-
-            <div className="flex gap-1">
-              {['ALL', 'USA', 'CSA', 'NEUTRAL'].map(filter => (
-                <button
-                  key={filter}
-                  onClick={() => setFilterOwner(filter)}
-                  className={`px-3 py-1 rounded text-xs font-semibold transition ${
-                    filterOwner === filter
-                      ? filter === 'ALL' ? 'bg-amber-600 text-white'
-                        : filter === 'USA' ? 'bg-blue-600 text-white'
-                        : filter === 'CSA' ? 'bg-red-600 text-white'
-                        : 'bg-slate-500 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  {filter === 'ALL' ? 'All' : filter === 'NEUTRAL' ? 'Neutral' : filter}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto items-start">
-            {sortedTerritories.map(territory => {
-              const supplied = isTerritorySupplied(territory, territories);
-              const isNeutral = territory.owner === 'NEUTRAL';
-              const hasPending = pendingTerritoryIds.includes(territory.id);
-              const neighbors = territory.adjacentTerritories
-                .map(id => territories.find(t => t.id === id))
-                .filter(Boolean);
-
-              return (
-                <div key={territory.id} className="bg-slate-700 rounded-lg overflow-hidden">
-                  <div
-                    className="p-3 cursor-pointer hover:bg-slate-600 transition"
-                    onClick={() => {
-                      toggleExpand(territory.id);
-                      handleTerritoryClick(territory);
-                    }}
+        {/* Territory list */}
+        <Card>
+          <CardHead
+            icon={MapPin}
+            title="Territories"
+            meta={filteredTerritories.length}
+            actions={
+              <div className="ui-segment">
+                {FILTERS.map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilterOwner(f.key)}
+                    data-active={filterOwner === f.key}
+                    data-side={f.key}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1">
-                        {expandedTerritory === territory.id ? (
-                          <ChevronDown className="w-4 h-4 text-amber-400" />
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+          <CardBody className="!p-2">
+            <div className="ui-scroll max-h-[32rem] p-1 grid grid-cols-1 lg:grid-cols-2 gap-1.5 items-start">
+              {sortedTerritories.map(territory => {
+                const supplied = isTerritorySupplied(territory, territories);
+                const isNeutral = territory.owner === 'NEUTRAL';
+                const hasPending = pendingTerritoryIds.includes(territory.id);
+                const isOpen = expandedTerritory === territory.id;
+                const neighbors = territory.adjacentTerritories
+                  .map(id => territories.find(t => t.id === id))
+                  .filter(Boolean);
+
+                return (
+                  <div key={territory.id} className="ui-listitem" data-open={isOpen}>
+                    <div
+                      className="ui-listitem-head"
+                      onClick={() => {
+                        toggleExpand(territory.id);
+                        handleTerritoryClick(territory);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isOpen ? (
+                          <ChevronDown className="w-4 h-4 text-brass-400 shrink-0" />
                         ) : (
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
+                          <ChevronRight className="w-4 h-4 text-mist-500 shrink-0" />
                         )}
-                        <div className="flex items-center gap-2">
-                          {territory.isCapital && (
-                            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                          )}
-                          <span className="text-white font-semibold">{territory.name}</span>
-                        </div>
+                        {territory.isCapital && (
+                          <Star className="w-3.5 h-3.5 text-brass-400 fill-brass-400 shrink-0" />
+                        )}
+                        <span className="text-sm font-semibold text-mist-100 truncate">{territory.name}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {hasPending && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-600 text-white">
-                            BATTLE
-                          </span>
-                        )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {hasPending && <Badge tone="warn">Battle</Badge>}
                         {!isNeutral && !supplied && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-700 text-orange-200">
-                            ISOLATED
-                          </span>
+                          <Badge tone="warn" className="!text-orange-300 !border-orange-500/40 !bg-orange-950">
+                            Isolated
+                          </Badge>
                         )}
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${getOwnerBg(territory.owner)} text-white`}>
-                          {territory.owner}
-                        </span>
-                        <span className="text-green-400 font-bold text-sm">
-                          {territory.victoryPoints} VP
+                        <Badge tone={territory.owner}>{territory.owner}</Badge>
+                        <span className="text-sm font-bold text-mist-100 tabular">
+                          {territory.victoryPoints}
+                          <span className="text-[10px] text-mist-500 ml-0.5">VP</span>
                         </span>
                       </div>
                     </div>
-                  </div>
 
-                  {expandedTerritory === territory.id && (
-                    <div className="bg-slate-800 p-4 border-t border-slate-600">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Current Owner:</span>
-                          <span className={`font-semibold ${getOwnerColor(territory.owner)}`}>
-                            {territory.owner}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Victory Points:</span>
-                          <span className="text-green-400 font-semibold">{territory.victoryPoints}</span>
-                        </div>
+                    {isOpen && (
+                      <div className="ui-listitem-body space-y-2.5">
+                        <Row
+                          label="Current Owner"
+                          value={<span className={SIDE_TEXT[territory.owner]}>{territory.owner}</span>}
+                        />
+                        <Row label="Victory Points" value={territory.victoryPoints} />
                         {!isNeutral && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Supply Status:</span>
-                            <span className={`font-semibold ${supplied ? 'text-green-400' : 'text-orange-400'}`}>
-                              {supplied ? 'Supplied' : 'Isolated'}
-                            </span>
-                          </div>
+                          <Row
+                            label="Supply Status"
+                            value={
+                              <span className={supplied ? 'text-emerald-400' : 'text-orange-400'}>
+                                {supplied ? 'Supplied' : 'Isolated'}
+                              </span>
+                            }
+                          />
                         )}
                         {territory.isCapital && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Type:</span>
-                            <span className="text-amber-400 font-semibold flex items-center gap-1">
-                              <Star className="w-3 h-3 fill-amber-400" />
-                              Capital
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Transition state */}
-                        {territory.transitionState?.isTransitioning && (
-                          <div className="mt-2 pt-2 border-t border-slate-700">
-                            <div className="text-orange-400 font-semibold text-xs mb-1">Ownership Transfer In Progress</div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-400">Turns Remaining:</span>
-                              <span className="text-yellow-400 font-semibold">{territory.transitionState.turnsRemaining}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-slate-400">Previous Owner:</span>
-                              <span className={`font-semibold ${getOwnerColor(territory.transitionState.previousOwner)}`}>
-                                {territory.transitionState.previousOwner}
+                          <Row
+                            label="Type"
+                            value={
+                              <span className="flex items-center gap-1 text-brass-300">
+                                <Star className="w-3 h-3 fill-brass-300" />
+                                Capital
                               </span>
-                            </div>
+                            }
+                          />
+                        )}
+
+                        {territory.transitionState?.isTransitioning && (
+                          <div className="pt-2.5 border-t border-ink-700 space-y-2">
+                            <div className="ui-eyebrow text-orange-300">Ownership transfer in progress</div>
+                            <Row label="Turns remaining" value={territory.transitionState.turnsRemaining} />
+                            <Row
+                              label="Previous owner"
+                              value={
+                                <span className={SIDE_TEXT[territory.transitionState.previousOwner]}>
+                                  {territory.transitionState.previousOwner}
+                                </span>
+                              }
+                            />
                           </div>
                         )}
 
-                        {/* Pending battle */}
                         {hasPending && (
-                          <div className="mt-2 pt-2 border-t border-slate-700">
-                            <div className="text-amber-400 font-semibold text-xs">Battle Ongoing</div>
+                          <div className="pt-2.5 border-t border-ink-700">
+                            <div className="ui-eyebrow text-brass-300">Battle ongoing</div>
                           </div>
                         )}
 
-                        {/* SP Cost Info */}
+                        {/* SP cost info */}
                         {shareData.spSettings && (() => {
                           const sp = shareData.spSettings;
                           const vp = territory.victoryPoints || 1;
@@ -466,39 +402,29 @@ const SharedMapView = ({ shareData }) => {
                           );
 
                           return (
-                            <div className="mt-2 pt-2 border-t border-slate-700">
-                              <div className="text-amber-400 font-semibold text-xs mb-2">Max SP Loss</div>
-                              <div className="space-y-2">
-                                <div className="bg-slate-700 rounded p-2">
+                            <div className="pt-2.5 border-t border-ink-700">
+                              <div className="ui-eyebrow mb-1.5">Max SP Loss</div>
+                              <div className="space-y-1.5">
+                                <div className="ui-inset p-2">
                                   <div className="flex justify-between items-center text-xs">
-                                    <span className="text-slate-300">{attacker} (Attacker)</span>
-                                    <span className="text-orange-400 font-bold">-{attackerMax} SP</span>
+                                    <span className="text-mist-300">{attacker} (Attacker)</span>
+                                    <span className="text-orange-400 font-bold tabular">-{attackerMax} SP</span>
                                   </div>
-                                  <div className="text-[10px] text-slate-500 mt-1">
-                                    {attackBase} base x {vpMult} VP mult • Attacking {isNeutral ? 'neutral' : 'enemy'} territory
+                                  <div className="text-[10px] text-mist-500 mt-1">
+                                    {attackBase} base × {vpMult} VP mult • Attacking {isNeutral ? 'neutral' : 'enemy'} territory
                                   </div>
                                 </div>
-                                <div className="bg-slate-700 rounded p-2">
+                                <div className="ui-inset p-2">
                                   <div className="flex justify-between items-center text-xs">
-                                    <span className="text-slate-300">{defender} (Defender)</span>
-                                    <span className="text-orange-400 font-bold">-{defenderMax} SP</span>
+                                    <span className="text-mist-300">{defender} (Defender)</span>
+                                    <span className="text-orange-400 font-bold tabular">-{defenderMax} SP</span>
                                   </div>
-                                  <div className="text-[10px] text-slate-500 mt-1">
-                                    {defenseBase} base x {vpMult} VP mult{isIsolated ? ' x 2 (isolated)' : ''} • Defending {isNeutral ? 'neutral' : 'friendly'} territory
+                                  <div className="text-[10px] text-mist-500 mt-1">
+                                    {defenseBase} base × {vpMult} VP mult{isIsolated ? ' × 2 (isolated)' : ''} • Defending {isNeutral ? 'neutral' : 'friendly'} territory
                                   </div>
                                   {isIsolated && (
-                                    <div className="text-[10px] text-red-400 mt-0.5">
-                                      2x cost - territory is isolated from supply lines
-                                    </div>
-                                  )}
-                                  {!isNeutral && !isIsolated && (
-                                    <div className="text-[10px] text-slate-500 mt-0.5 italic">
-                                      Lower cost defending your own territory
-                                    </div>
-                                  )}
-                                  {isNeutral && (
-                                    <div className="text-[10px] text-slate-500 mt-0.5 italic">
-                                      Higher cost defending neutral ground - no home advantage
+                                    <div className="text-[10px] text-rebel-400 mt-0.5">
+                                      2× cost — territory is cut off from supply
                                     </div>
                                   )}
                                 </div>
@@ -507,34 +433,24 @@ const SharedMapView = ({ shareData }) => {
                           );
                         })()}
 
-                        {/* Neighbors */}
                         {neighbors.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-700">
-                            <div className="text-slate-400 text-xs mb-1">Neighbors:</div>
+                          <div className="pt-2.5 border-t border-ink-700">
+                            <div className="ui-eyebrow mb-1.5">Neighbors</div>
                             <div className="flex flex-wrap gap-1">
                               {neighbors.map(n => (
-                                <span
-                                  key={n.id}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                                    n.owner === 'USA' ? 'bg-blue-900 text-blue-300'
-                                    : n.owner === 'CSA' ? 'bg-red-900 text-red-300'
-                                    : 'bg-slate-600 text-slate-300'
-                                  }`}
-                                >
-                                  {n.name}
-                                </span>
+                                <Badge key={n.id} tone={n.owner}>{n.name}</Badge>
                               ))}
                             </div>
                           </div>
                         )}
                       </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardBody>
+        </Card>
       </div>
     </div>
   );

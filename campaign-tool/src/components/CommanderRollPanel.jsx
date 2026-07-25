@@ -1,5 +1,6 @@
 import { Dice6, Users, Swords } from 'lucide-react';
 import CommanderSpinner from './CommanderSpinner';
+import { Card, CardHead, CardBody, EmptyState } from './ui/Primitives';
 
 /**
  * CommanderRollPanel - Campaign-map side panel for rolling the commanders
@@ -18,60 +19,58 @@ const CommanderRollPanel = ({ campaign, onReserveCommander, onRecordBattle }) =>
   const rolledSides = ['USA', 'CSA'].filter(side => pending[side]);
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <Dice6 className="w-5 h-5 text-amber-400" />
-        <h3 className="text-xl font-bold text-amber-400">Battle Commanders</h3>
-      </div>
-      <p className="text-xs text-slate-400 mb-4">
-        Roll who commands the next battle of Turn {campaign.currentTurn}. The winner is
-        pulled from that side's pool and pre-selected in the Battle Recorder.
-      </p>
-
-      {!hasRegiments ? (
-        <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-4 text-center">
-          <Users className="w-6 h-6 text-slate-500 mx-auto mb-2" />
-          <div className="text-sm text-slate-400">No regiments configured</div>
-          <div className="text-xs text-slate-500 mt-1">
-            Add regiments for USA and CSA in Settings to roll for commanders.
-          </div>
-        </div>
-      ) : (
-        <>
-          <CommanderSpinner
-            regiments={regiments}
-            commanderPool={campaign.commanderPool}
-            benchedCommanders={campaign.benchedCommanders}
-            selectedCommanders={pending}
-            onSelect={onReserveCommander}
+    <Card>
+      <CardHead icon={Dice6} title="Battle Commanders" meta={`Turn ${campaign.currentTurn}`} />
+      <CardBody>
+        {!hasRegiments ? (
+          <EmptyState
+            icon={Users}
+            title="No regiments configured"
+            hint="Add USA and CSA regiments in Settings to roll for commanders."
           />
+        ) : (
+          <>
+            <p className="ui-hint mb-3">
+              Roll who leads the next battle. The winner leaves that side's pool and is
+              pre-selected in the Battle Recorder.
+            </p>
 
-          <div className="mt-4 space-y-2">
-            <div className="text-xs">
+            <CommanderSpinner
+              regiments={regiments}
+              commanderPool={campaign.commanderPool}
+              benchedCommanders={campaign.benchedCommanders}
+              selectedCommanders={pending}
+              onSelect={onReserveCommander}
+            />
+
+            <div className="mt-3 space-y-2">
               {rolledSides.length === 0 ? (
-                <span className="text-slate-500">Nobody rolled yet</span>
+                <div className="text-xs text-mist-500">Nobody rolled yet.</div>
               ) : (
-                <span className="text-green-400">
-                  {rolledSides.map(side => `${side}: ${pending[side].name}`).join('  •  ')}
+                <div className="text-xs text-mist-400">
+                  {rolledSides.map(side => (
+                    <span key={side} className="mr-2">
+                      <span className={side === 'USA' ? 'text-union-400' : 'text-rebel-400'}>{side}</span>
+                      <span className="text-mist-300"> {pending[side].name}</span>
+                    </span>
+                  ))}
                   {rolledSides.length === 1 && (
-                    <span className="text-slate-500"> — still need the other side</span>
+                    <span className="text-mist-500">— still need the other side</span>
                   )}
-                </span>
+                </div>
+              )}
+
+              {onRecordBattle && rolledSides.length > 0 && (
+                <button onClick={onRecordBattle} className="ui-btn ui-btn-primary ui-btn-block">
+                  <Swords className="w-4 h-4" />
+                  Set Up Battle
+                </button>
               )}
             </div>
-            {onRecordBattle && rolledSides.length > 0 && (
-              <button
-                onClick={onRecordBattle}
-                className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2"
-              >
-                <Swords className="w-4 h-4" />
-                Set Up Battle
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </CardBody>
+    </Card>
   );
 };
 

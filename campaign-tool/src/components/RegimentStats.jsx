@@ -1,13 +1,12 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Users, Trophy, Skull, Zap, Target } from 'lucide-react';
+import { ChevronDown, ChevronRight, Users, Trophy } from 'lucide-react';
+import { Card, CardHead, CardBody } from './ui/Primitives';
 
 /**
- * RegimentStats - Display regiment leaderboard with expandable battle history
+ * RegimentStats - Regiment leaderboard with expandable battle history
  *
- * Features:
- * - Collapsed by default, showing summary stats
- * - Expandable dropdown for each regiment showing battle history
- * - Tracks: W/L, casualties, SP lost, VP gained/lost
+ * Collapsed by default, showing W/L and casualties. Expanding a regiment
+ * reveals its aggregate stats and every battle it commanded.
  */
 const RegimentStats = ({ campaign }) => {
   const [expandedRegiments, setExpandedRegiments] = useState({});
@@ -16,144 +15,100 @@ const RegimentStats = ({ campaign }) => {
   const regimentStats = campaign?.regimentStats || {};
 
   const hasRegiments = regiments.USA.length > 0 || regiments.CSA.length > 0;
-
-  if (!hasRegiments) {
-    return null;
-  }
+  if (!hasRegiments) return null;
 
   const toggleRegiment = (regimentId) => {
-    setExpandedRegiments(prev => ({
-      ...prev,
-      [regimentId]: !prev[regimentId]
-    }));
+    setExpandedRegiments(prev => ({ ...prev, [regimentId]: !prev[regimentId] }));
   };
 
-  const getRegimentStats = (regimentId) => {
-    return regimentStats[regimentId] || {
-      wins: 0,
-      losses: 0,
-      casualties: 0,
-      spLost: 0,
-      vpGained: 0,
-      vpLost: 0,
-      battles: []
+  const getRegimentStats = (regimentId) =>
+    regimentStats[regimentId] || {
+      wins: 0, losses: 0, casualties: 0, spLost: 0, vpGained: 0, vpLost: 0, battles: []
     };
-  };
 
   const getWinRate = (stats) => {
     const total = stats.wins + stats.losses;
-    if (total === 0) return 0;
-    return Math.round((stats.wins / total) * 100);
+    return total === 0 ? 0 : Math.round((stats.wins / total) * 100);
   };
 
   const renderRegimentRow = (regiment, side) => {
     const stats = getRegimentStats(regiment.id);
     const isExpanded = expandedRegiments[regiment.id];
     const isUSA = side === 'USA';
-    const textColor = isUSA ? 'text-blue-400' : 'text-red-400';
-    const bgColor = isUSA ? 'bg-blue-900/20' : 'bg-red-900/20';
-    const borderColor = isUSA ? 'border-blue-700' : 'border-red-700';
+    const accent = isUSA ? 'text-union-400' : 'text-rebel-400';
     const winRate = getWinRate(stats);
+    const played = stats.wins + stats.losses;
 
     return (
-      <div key={regiment.id} className="mb-2">
-        {/* Regiment Summary Row */}
-        <button
-          onClick={() => toggleRegiment(regiment.id)}
-          className={`w-full ${bgColor} rounded-lg p-3 border ${borderColor} hover:opacity-90 transition text-left`}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-slate-400" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-slate-400" />
-              )}
-              <span className={`font-semibold ${textColor}`}>{regiment.name}</span>
-            </div>
-            <div className="flex items-center gap-4 text-xs">
-              {/* W-L Record */}
-              <div className="flex items-center gap-1">
-                <Trophy className="w-3 h-3 text-amber-400" />
-                <span className="text-green-400">{stats.wins}</span>
-                <span className="text-slate-500">-</span>
-                <span className="text-red-400">{stats.losses}</span>
-                <span className="text-slate-500 ml-1">({winRate}%)</span>
-              </div>
-              {/* Casualties */}
-              <div className="flex items-center gap-1 text-slate-400">
-                <Skull className="w-3 h-3" />
-                <span>{stats.casualties.toLocaleString()}</span>
-              </div>
-            </div>
+      <div key={regiment.id} className="ui-listitem" data-open={isExpanded}>
+        <button onClick={() => toggleRegiment(regiment.id)} className="ui-listitem-head">
+          <div className="flex items-center gap-2 min-w-0">
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-brass-400 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-mist-500 shrink-0" />
+            )}
+            <span className={`text-sm font-semibold ${accent} truncate`}>{regiment.name}</span>
+          </div>
+          <div className="flex items-center gap-3 shrink-0 tabular">
+            {played === 0 ? (
+              <span className="text-xs text-mist-500">No battles</span>
+            ) : (
+              <>
+                <span className="text-xs">
+                  <span className="text-emerald-400 font-semibold">{stats.wins}</span>
+                  <span className="text-mist-600 mx-0.5">–</span>
+                  <span className="text-rebel-400 font-semibold">{stats.losses}</span>
+                </span>
+                <span className="text-[11px] text-mist-500 w-9 text-right">{winRate}%</span>
+              </>
+            )}
           </div>
         </button>
 
-        {/* Expanded Battle History */}
         {isExpanded && (
-          <div className="mt-1 ml-4 bg-slate-800 rounded-lg border border-slate-600 overflow-hidden">
-            {/* Stats Summary */}
-            <div className="p-3 border-b border-slate-600">
-              <div className="grid grid-cols-4 gap-3 text-xs">
-                <div className="text-center">
-                  <div className="text-slate-400 mb-1">Casualties</div>
-                  <div className="text-white font-bold">{stats.casualties.toLocaleString()}</div>
+          <div className="ui-listitem-body !p-0">
+            <div className="grid grid-cols-4 gap-2 p-3 border-b border-ink-700 text-center">
+              {[
+                ['Casualties', stats.casualties.toLocaleString(), 'text-mist-100'],
+                ['SP Lost', stats.spLost, 'text-brass-300'],
+                ['VP Gained', `+${stats.vpGained}`, 'text-emerald-400'],
+                ['VP Lost', `-${stats.vpLost}`, 'text-rebel-400'],
+              ].map(([label, value, tone]) => (
+                <div key={label}>
+                  <div className="text-[10px] uppercase tracking-wider text-mist-500 mb-0.5">{label}</div>
+                  <div className={`text-sm font-bold tabular ${tone}`}>{value}</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-slate-400 mb-1">SP Lost</div>
-                  <div className="text-amber-400 font-bold">{stats.spLost}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-slate-400 mb-1">VP Gained</div>
-                  <div className="text-green-400 font-bold">+{stats.vpGained}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-slate-400 mb-1">VP Lost</div>
-                  <div className="text-red-400 font-bold">-{stats.vpLost}</div>
-                </div>
-              </div>
+              ))}
             </div>
 
-            {/* Battle History */}
-            <div className="max-h-48 overflow-y-auto">
+            <div className="ui-scroll max-h-48">
               {stats.battles.length === 0 ? (
-                <div className="p-3 text-center text-slate-500 text-xs italic">
-                  No battles commanded yet
-                </div>
+                <div className="p-3 text-center text-xs text-mist-500">No battles commanded yet</div>
               ) : (
-                <div className="divide-y divide-slate-700">
+                <div className="divide-y divide-ink-700">
                   {stats.battles.map((battle, idx) => (
-                    <div key={idx} className="p-2 hover:bg-slate-700/50 transition">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${battle.won ? 'bg-green-500' : 'bg-red-500'}`} />
-                          <span className="text-white text-xs font-medium">{battle.territoryName}</span>
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${
-                            battle.role === 'Attacker' ? 'bg-orange-900/50 text-orange-300' : 'bg-blue-900/50 text-blue-300'
+                    <div key={idx} className="p-2.5 hover:bg-ink-800/60 transition">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${battle.won ? 'bg-emerald-400' : 'bg-rebel-500'}`} />
+                          <span className="text-xs font-medium text-mist-100 truncate">{battle.territoryName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                            battle.role === 'Attacker'
+                              ? 'bg-orange-950 text-orange-300'
+                              : 'bg-union-900 text-union-400'
                           }`}>
                             {battle.role}
                           </span>
                         </div>
-                        <span className="text-slate-500 text-xs">Turn {battle.turn}</span>
+                        <span className="text-[11px] text-mist-500 shrink-0">Turn {battle.turn}</span>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 ml-4 text-xs text-slate-400">
+                      <div className="flex flex-wrap items-center gap-x-2.5 mt-1 ml-3.5 text-[11px] text-mist-500 tabular">
                         <span>{battle.mapName}</span>
-                        <span>|</span>
-                        <span className="text-red-400">{battle.casualties} cas.</span>
-                        <span>|</span>
-                        <span className="text-amber-400">-{battle.spLost} SP</span>
-                        {battle.vpGained > 0 && (
-                          <>
-                            <span>|</span>
-                            <span className="text-green-400">+{battle.vpGained} VP</span>
-                          </>
-                        )}
-                        {battle.vpLost > 0 && (
-                          <>
-                            <span>|</span>
-                            <span className="text-red-400">-{battle.vpLost} VP</span>
-                          </>
-                        )}
+                        <span className="text-rebel-400">{battle.casualties} cas.</span>
+                        <span className="text-brass-300">-{battle.spLost} SP</span>
+                        {battle.vpGained > 0 && <span className="text-emerald-400">+{battle.vpGained} VP</span>}
+                        {battle.vpLost > 0 && <span className="text-rebel-400">-{battle.vpLost} VP</span>}
                       </div>
                     </div>
                   ))}
@@ -167,40 +122,26 @@ const RegimentStats = ({ campaign }) => {
   };
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-      <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2 mb-4">
-        <Users className="w-5 h-5" />
-        Regiment Leaderboard
-      </h3>
-
-      <div className="grid grid-cols-2 gap-4">
-        {/* USA Regiments */}
-        <div>
-          <div className="text-blue-400 font-semibold text-sm mb-2 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            USA Regiments
+    <Card>
+      <CardHead icon={Trophy} title="Regiment Leaderboard" />
+      <CardBody className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+        {['USA', 'CSA'].map(side => (
+          <div key={side}>
+            <div className={`ui-eyebrow mb-2 flex items-center gap-1.5 ${side === 'USA' ? 'text-union-400' : 'text-rebel-400'}`}>
+              <Users className="w-3.5 h-3.5" />
+              {side} Regiments
+            </div>
+            {regiments[side].length === 0 ? (
+              <div className="text-xs text-mist-500">No regiments</div>
+            ) : (
+              <div className="space-y-1.5">
+                {regiments[side].map(regiment => renderRegimentRow(regiment, side))}
+              </div>
+            )}
           </div>
-          {regiments.USA.length === 0 ? (
-            <div className="text-slate-500 text-xs italic">No regiments</div>
-          ) : (
-            regiments.USA.map(regiment => renderRegimentRow(regiment, 'USA'))
-          )}
-        </div>
-
-        {/* CSA Regiments */}
-        <div>
-          <div className="text-red-400 font-semibold text-sm mb-2 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            CSA Regiments
-          </div>
-          {regiments.CSA.length === 0 ? (
-            <div className="text-slate-500 text-xs italic">No regiments</div>
-          ) : (
-            regiments.CSA.map(regiment => renderRegimentRow(regiment, 'CSA'))
-          )}
-        </div>
-      </div>
-    </div>
+        ))}
+      </CardBody>
+    </Card>
   );
 };
 

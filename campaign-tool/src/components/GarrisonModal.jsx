@@ -30,16 +30,16 @@ const GarrisonModal = ({ campaign, token, feature, onGarrison, onRecall, onCance
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 border-2 border-amber-500 rounded-lg p-5 max-w-sm w-full">
+    <div className="ui-modal-backdrop">
+      <div className="ui-modal border-brass-400/50 p-5 max-w-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <h3 className="ui-title">
             <Shield className="w-5 h-5" /> Garrison — {feature.name}
           </h3>
-          <button onClick={onCancel} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={onCancel} className="text-mist-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="bg-slate-900 rounded p-2 mb-3 text-xs text-slate-300">
+        <div className="bg-ink-900 rounded p-2 mb-3 text-xs text-mist-300">
           Current garrison: <span className="font-bold text-white">{currentGarrison}</span>
           {' / '}{maxGarrison}
           <br />
@@ -50,7 +50,7 @@ const GarrisonModal = ({ campaign, token, feature, onGarrison, onRecall, onCance
           <button
             onClick={() => setMode('detach')}
             className={`py-1.5 rounded text-sm font-semibold ${
-              mode === 'detach' ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-200'
+              mode === 'detach' ? 'bg-brass-500 text-white' : 'bg-ink-800 text-mist-300'
             }`}
           >
             Detach to garrison
@@ -58,7 +58,7 @@ const GarrisonModal = ({ campaign, token, feature, onGarrison, onRecall, onCance
           <button
             onClick={() => setMode('recall')}
             className={`py-1.5 rounded text-sm font-semibold ${
-              mode === 'recall' ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-200'
+              mode === 'recall' ? 'bg-brass-500 text-white' : 'bg-ink-800 text-mist-300'
             }`}
           >
             Recall from garrison
@@ -66,7 +66,7 @@ const GarrisonModal = ({ campaign, token, feature, onGarrison, onRecall, onCance
         </div>
 
         <div className="mb-3">
-          <label className="text-xs text-slate-300">
+          <label className="text-xs text-mist-300">
             Amount {mode === 'detach' ? `(max ${detachCap})` : `(max ${recallCap})`}
           </label>
           <input
@@ -74,20 +74,20 @@ const GarrisonModal = ({ campaign, token, feature, onGarrison, onRecall, onCance
             min="0"
             value={amount}
             onChange={e => setAmount(e.target.value)}
-            className="w-full bg-slate-900 text-white px-2 py-1.5 rounded text-sm mt-1"
+            className="w-full bg-ink-900 text-white px-2 py-1.5 rounded text-sm mt-1"
           />
         </div>
 
-        <div className="text-[10px] text-slate-500 mb-3 italic">
+        <div className="text-[10px] text-mist-500 mb-3 italic">
           This action ends the token's turn.
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onCancel} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm">Cancel</button>
+          <button onClick={onCancel} className="flex-1 bg-ink-800 hover:bg-ink-700 text-white rounded py-2 text-sm">Cancel</button>
           <button
             onClick={submit}
             disabled={!canSubmit}
-            className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded py-2 text-sm font-semibold"
+            className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-ink-800 disabled:text-mist-500 text-white rounded py-2 text-sm font-semibold"
           >
             Confirm
           </button>

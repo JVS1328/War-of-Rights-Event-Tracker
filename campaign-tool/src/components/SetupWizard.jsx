@@ -53,26 +53,26 @@ const SetupWizard = ({
     };
 
     return (
-      <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-        <div className="bg-slate-800 rounded-lg border-2 border-amber-500 p-6 max-w-md w-full">
+      <div className="ui-modal-backdrop">
+        <div className="ui-modal border-brass-500/50 p-6 max-w-md">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-brass-400 flex items-center gap-2">
               <Coins className="w-6 h-6" /> Grand Campaign — Coin Flip
             </h2>
-            <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            <button onClick={onClose} className="text-mist-400 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
-          <p className="text-sm text-slate-300 mb-4">
-            Heads = <span className="text-blue-400 font-semibold">USA</span>,
-            {' '}Tails = <span className="text-red-400 font-semibold">CSA</span>.
+          <p className="text-sm text-mist-300 mb-4">
+            Heads = <span className="text-union-400 font-semibold">USA</span>,
+            {' '}Tails = <span className="text-rebel-400 font-semibold">CSA</span>.
             {' '}The winning side draws and places first — then tokens alternate.
           </p>
 
-          <div className="bg-slate-900 rounded-lg p-6 flex flex-col items-center justify-center mb-4 min-h-[140px]">
+          <div className="bg-ink-900 rounded-lg p-6 flex flex-col items-center justify-center mb-4 min-h-[140px]">
             {flipping && (
-              <div className="w-20 h-20 rounded-full border-4 border-amber-400 border-t-transparent animate-spin" />
+              <div className="w-20 h-20 rounded-full border-4 border-brass-400 border-t-transparent animate-spin" />
             )}
             {!flipping && !flipResult && (
-              <div className="text-slate-400 text-sm">Click flip to begin.</div>
+              <div className="text-mist-400 text-sm">Click flip to begin.</div>
             )}
             {!flipping && flipResult && (
               <div className="text-center">
@@ -81,7 +81,7 @@ const SetupWizard = ({
                 }}>
                   {flipResult}
                 </div>
-                <div className="text-xs text-slate-400">wins the toss and drawsfirst</div>
+                <div className="text-xs text-mist-400">wins the toss and drawsfirst</div>
               </div>
             )}
           </div>
@@ -90,14 +90,14 @@ const SetupWizard = ({
             <button
               onClick={handleFlip}
               disabled={flipping || flipResult}
-              className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg py-2 font-semibold"
+              className="flex-1 bg-brass-500 hover:bg-brass-400 disabled:bg-ink-800 disabled:text-mist-500 text-white rounded-lg py-2 font-semibold"
             >
               {flipResult ? 'Flipped' : 'Flip'}
             </button>
             <button
               onClick={commit}
               disabled={!flipResult}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg py-2 font-semibold"
+              className="ui-btn ui-btn-primary flex-1"
             >
               Begin Placement
             </button>
@@ -112,42 +112,42 @@ const SetupWizard = ({
     const currentToken = gc.tokens.find(t => t.id === gc.currentTokenId);
     const remainingUSA = gc.bags.USA.length + (gc.activeSide === 'USA' && gc.currentTokenId ? 1 : 0);
     const remainingCSA = gc.bags.CSA.length + (gc.activeSide === 'CSA' && gc.currentTokenId ? 1 : 0);
-    const sideColor = gc.activeSide === 'USA' ? 'text-blue-400' : 'text-red-400';
+    const sideColor = gc.activeSide === 'USA' ? 'text-union-400' : 'text-rebel-400';
 
     return (
-      <div className="fixed top-24 right-6 z-40 bg-slate-900/95 border-2 border-amber-500 rounded-lg shadow-xl p-4 w-80 max-w-[90vw]">
+      <div className="fixed top-24 right-6 z-40 bg-ink-900/95 border-2 border-brass-400 rounded-lg shadow-xl p-4 w-80 max-w-[90vw]">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <h3 className="ui-title">
             <Flag className="w-5 h-5" /> Placement
           </h3>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span>USA left: <span className="text-blue-400 font-semibold">{remainingUSA}</span></span>
-            <span>CSA left: <span className="text-red-400 font-semibold">{remainingCSA}</span></span>
+          <div className="flex items-center gap-3 text-xs text-mist-400">
+            <span>USA left: <span className="text-union-400 font-semibold">{remainingUSA}</span></span>
+            <span>CSA left: <span className="text-rebel-400 font-semibold">{remainingCSA}</span></span>
           </div>
         </div>
 
         {currentToken ? (
-          <div className="bg-slate-800 rounded p-3 mb-2">
-            <div className="text-xs text-slate-400 mb-1">Now placing:</div>
+          <div className="bg-ink-850 rounded p-3 mb-2">
+            <div className="text-xs text-mist-400 mb-1">Now placing:</div>
             <div className={`text-lg font-bold ${sideColor}`}>{currentToken.name}</div>
-            <div className="text-[11px] text-slate-300 mt-1">
+            <div className="text-[11px] text-mist-300 mt-1">
               Click in any <span className={sideColor + ' font-semibold'}>{currentToken.side}</span>-controlled
               territory. Tokens cannot overlap.
             </div>
           </div>
         ) : (
-          <div className="bg-slate-800 rounded p-3 text-xs text-slate-400 italic">
+          <div className="bg-ink-850 rounded p-3 text-xs text-mist-400 italic">
             Awaiting next draw…
           </div>
         )}
 
         {lastPlacementError && (
-          <div className="bg-red-900/50 border border-red-600 rounded p-2 text-xs text-red-200 mt-2">
+          <div className="bg-rebel-900/50 border border-rebel-500 rounded p-2 text-xs text-red-200 mt-2">
             {lastPlacementError}
           </div>
         )}
 
-        <div className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-slate-700">
+        <div className="text-[10px] text-mist-500 mt-3 pt-2 border-t border-ink-800">
           Setup proceeds automatically after each valid placement.
         </div>
       </div>

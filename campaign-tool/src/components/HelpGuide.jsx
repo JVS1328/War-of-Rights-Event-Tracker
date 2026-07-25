@@ -33,23 +33,23 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
   if (!isOpen) return null;
 
   const Section = ({ id, title, icon: Icon, children }) => (
-    <div className="border border-slate-600 rounded-lg overflow-hidden mb-3">
+    <div className="ui-listitem mb-2" data-open={expandedSections[id]}>
       <button
         onClick={() => toggleSection(id)}
-        className="w-full flex items-center justify-between p-4 bg-slate-700 hover:bg-slate-600 transition"
+        className="ui-listitem-head px-4 py-3"
       >
         <div className="flex items-center gap-3">
-          <Icon className="w-5 h-5 text-amber-400" />
-          <span className="font-semibold text-white">{title}</span>
+          <Icon className="w-4 h-4 text-brass-400" />
+          <span className="font-semibold text-mist-100 text-sm">{title}</span>
         </div>
         {expandedSections[id] ? (
-          <ChevronDown className="w-5 h-5 text-slate-400" />
+          <ChevronDown className="w-5 h-5 text-mist-400" />
         ) : (
-          <ChevronRight className="w-5 h-5 text-slate-400" />
+          <ChevronRight className="w-5 h-5 text-mist-400" />
         )}
       </button>
       {expandedSections[id] && (
-        <div className="p-4 bg-slate-800 text-slate-300 text-sm leading-relaxed">
+        <div className="ui-listitem-body text-mist-300 text-sm leading-relaxed">
           {children}
         </div>
       )}
@@ -57,33 +57,28 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="ui-modal-backdrop">
+      <div className="ui-modal max-w-3xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-700">
-          <div className="flex items-center gap-3">
-            <HelpCircle className="w-8 h-8 text-amber-400" />
-            <div>
-              <h2 className="text-2xl font-bold text-amber-400">
-                {isGrand ? 'Grand Campaign Guide' : 'Campaign Tracker Guide'}
-              </h2>
-              <p className="text-slate-400 text-sm">
-                {isGrand
-                  ? 'Tabletop ruleset adaptation — tokens, movement, combat, victory'
-                  : 'For War of Rights Regiment Leaders'}
-              </p>
+        <div className="ui-modal-head">
+          <div>
+            <div className="ui-modal-title">
+              <HelpCircle className="w-5 h-5" />
+              {isGrand ? 'Grand Campaign Guide' : 'Campaign Tracker Guide'}
             </div>
+            <p className="ui-hint mt-0.5">
+              {isGrand
+                ? 'Tabletop ruleset adaptation — tokens, movement, combat, victory'
+                : 'For War of Rights regiment leaders'}
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-700 rounded-lg transition"
-          >
-            <X className="w-6 h-6 text-slate-400" />
+          <button onClick={onClose} className="ui-btn ui-btn-quiet ui-btn-icon" aria-label="Close">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="ui-modal-body ui-scroll flex-1">
           {isGrand && (
             <>
               <Section id="gcOverview" title="Grand Campaign — Overview" icon={Map}>
@@ -100,7 +95,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                   monthly per owned city. You'll see the live figures and per-month
                   adds in the sidebar TurnTracker.
                 </p>
-                <p className="text-slate-400 text-xs">
+                <p className="text-mist-400 text-xs">
                   Every number you see here — starting strength, pool sizes, movement
                   rates, casualty modifiers, VP to win — is tunable under Settings →
                   Grand Campaign.
@@ -168,7 +163,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                       disembark first" warning on the ruler.</li>
                   <li><strong>Disembark</strong> drops you where you stopped and ends the turn.</li>
                 </ul>
-                <p className="text-slate-400 text-xs">
+                <p className="text-mist-400 text-xs">
                   You cannot attack from a train or river — disembark first, then
                   attack next turn.
                 </p>
@@ -233,7 +228,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                       enemy capital (a city flagged as a capital). +2 VP + $750.</li>
                   <li><strong>Token wipe</strong> — reduce an enemy token below 100 manpower. +2 VP.</li>
                 </ul>
-                <p className="mt-3 text-slate-400 text-xs">
+                <p className="mt-3 text-mist-400 text-xs">
                   Capital-capture VP is re-awarded every time a capital flips sides,
                   so recapturing a lost capital pays out again.
                 </p>
@@ -242,7 +237,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
           )}
           <Section id="overview" title={isGrand ? 'Legacy Campaign Notes' : 'What is the Campaign Tracker?'} icon={Map}>
             <p className="mb-3">
-              The <strong className="text-amber-400">Campaign Tracker</strong> is a strategic meta-game layer for War of Rights events.
+              The <strong className="text-brass-400">Campaign Tracker</strong> is a strategic meta-game layer for War of Rights events.
               It allows regiment leaders to fight for control of territories across a campaign map, with each battle in War of Rights
               affecting the overall strategic situation.
             </p>
@@ -250,8 +245,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
               Think of it like a board game where the "battles" are resolved by actually playing War of Rights matches.
               Your regiment's performance in-game directly impacts whether you capture or hold territories on the campaign map.
             </p>
-            <div className="bg-slate-700 p-3 rounded-lg mt-3">
-              <p className="text-amber-400 font-semibold mb-2">Key Concepts:</p>
+            <div className="bg-ink-800 p-3 rounded-lg mt-3">
+              <p className="text-brass-400 font-semibold mb-2">Key Concepts:</p>
               <ul className="list-disc list-inside space-y-1">
                 <li><strong>Territories</strong> - Regions on the map worth Victory Points (VP)</li>
                 <li><strong>Supply Points (SP)</strong> - Your strategic resource for fighting battles</li>
@@ -264,22 +259,22 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
           <Section id="howToPlay" title="How to Play" icon={Target}>
             <div className="space-y-4">
               <div>
-                <p className="text-amber-400 font-semibold mb-2">1. Choose Your Target</p>
+                <p className="text-brass-400 font-semibold mb-2">1. Choose Your Target</p>
                 <p>Select a territory to attack. You can attack neutral territories or enemy-held territories.
                 Some campaigns require attacking adjacent territories only.</p>
               </div>
               <div>
-                <p className="text-amber-400 font-semibold mb-2">2. Play the Battle</p>
+                <p className="text-brass-400 font-semibold mb-2">2. Play the Battle</p>
                 <p>Organize your War of Rights match. The attacking side picks the map (from available options).
                 Play the match and record the results - who won and casualties on each side.</p>
               </div>
               <div>
-                <p className="text-amber-400 font-semibold mb-2">3. Record the Battle</p>
+                <p className="text-brass-400 font-semibold mb-2">3. Record the Battle</p>
                 <p>Use the "Record Battle" button to log the results. The tracker will calculate SP costs for both sides
                 based on the territory value, casualties, and outcome.</p>
               </div>
               <div>
-                <p className="text-amber-400 font-semibold mb-2">4. Advance the Turn</p>
+                <p className="text-brass-400 font-semibold mb-2">4. Advance the Turn</p>
                 <p>When ready to move to the next campaign phase, click "Advance Turn". This:</p>
                 <ul className="list-disc list-inside ml-4 mt-1">
                   <li>Moves the campaign date forward 2 months</li>
@@ -296,15 +291,15 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
             </p>
 
             <div className="space-y-3">
-              <div className="bg-blue-900 bg-opacity-30 p-3 rounded-lg border border-blue-700">
-                <p className="text-blue-400 font-semibold mb-2">📊 Understanding VP Multiplier</p>
+              <div className="bg-union-900 bg-opacity-30 p-3 rounded-lg border border-union-500">
+                <p className="text-union-400 font-semibold mb-2">📊 Understanding VP Multiplier</p>
                 <p className="mb-2">
                   The VP Multiplier dynamically scales SP costs based on territory value:
                 </p>
-                <div className="bg-slate-800 p-2 rounded mt-2 font-mono text-xs">
-                  <p className="text-amber-400 mb-1">Formula: VP Multiplier = Territory VP ÷ 5</p>
-                  <p className="text-slate-400 mb-2">This works for ANY VP value, not just 5/10/15:</p>
-                  <ul className="list-disc list-inside space-y-1 text-slate-300">
+                <div className="bg-ink-850 p-2 rounded mt-2 font-mono text-xs">
+                  <p className="text-brass-400 mb-1">Formula: VP Multiplier = Territory VP ÷ 5</p>
+                  <p className="text-mist-400 mb-2">This works for ANY VP value, not just 5/10/15:</p>
+                  <ul className="list-disc list-inside space-y-1 text-mist-300">
                     <li>5 VP = 1.0× multiplier</li>
                     <li>7 VP = 1.4× multiplier</li>
                     <li>10 VP = 2.0× multiplier</li>
@@ -319,13 +314,13 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">SP Costs (Attackers)</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">SP Costs (Attackers)</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li><strong>Attacking Neutral:</strong> Base 50 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                   <li><strong>Attacking Enemy:</strong> Base 75 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
-                <p className="text-slate-400 text-xs mt-2">
+                <p className="text-mist-400 text-xs mt-2">
                   VP Multiplier = Territory VP ÷ 5 (e.g., 10 VP = 2x multiplier)
                 </p>
                 <p className="text-green-400 text-xs mt-2 italic">
@@ -334,13 +329,13 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">SP Costs (Defenders)</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">SP Costs (Defenders)</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li><strong>Defending Friendly Territory:</strong> Base 25 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                   <li><strong>Defending Neutral Territory:</strong> Base 50 SP × VP multiplier × (your casualties ÷ total casualties)</li>
                 </ul>
-                <p className="text-slate-400 text-xs mt-2">
+                <p className="text-mist-400 text-xs mt-2">
                   Defender SP loss scales with their proportion of total casualties - the more you bleed, the more SP you lose.
                 </p>
                 <p className="text-green-400 text-xs mt-2 italic">
@@ -349,8 +344,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">Casualty Ratio Matters!</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">Casualty Ratio Matters!</p>
                 <p className="mb-2">
                   Both attackers and defenders pay SP based on the proportion of casualties they take:
                 </p>
@@ -364,8 +359,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">SP Generation</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">SP Generation</p>
                 <p>Each turn, you gain SP equal to the total VP of territories you control.
                 Holding valuable territories is crucial for sustaining your war effort!</p>
               </div>
@@ -375,7 +370,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
           <Section id="battles" title="Battle Outcomes" icon={Swords}>
             <div className="space-y-3">
               <div>
-                <p className="text-amber-400 font-semibold mb-2">If the Attacker Wins:</p>
+                <p className="text-brass-400 font-semibold mb-2">If the Attacker Wins:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>The territory changes ownership to the attacker</li>
                   <li>VP is transferred immediately (or gradually, depending on settings)</li>
@@ -384,7 +379,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
               </div>
 
               <div>
-                <p className="text-amber-400 font-semibold mb-2">If the Defender Wins:</p>
+                <p className="text-brass-400 font-semibold mb-2">If the Defender Wins:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>The territory remains with its current owner</li>
                   <li>If it was neutral: may flip to the defender (configurable)</li>
@@ -392,8 +387,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </ul>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">Map Cooldowns</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">Map Cooldowns</p>
                 <p>After a map is played, it goes on cooldown for 2 turns. This prevents the same battlefield
                 from being used repeatedly and encourages variety.</p>
               </div>
@@ -407,8 +402,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
             </p>
 
             <div className="space-y-3">
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">On the campaign map</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">On the campaign map</p>
                 <p>
                   The <span className="text-white font-semibold">Battle Commanders</span> panel next to
                   the map rolls USA and CSA ahead of time — handy for deciding who commands the first
@@ -417,8 +412,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">In the Battle Recorder</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">In the Battle Recorder</p>
                 <p>
                   The same spinner appears while recording a battle. Anyone rolled on the map is
                   already selected; "Change" returns that regiment to the pool so you can spin or
@@ -426,8 +421,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 </p>
               </div>
 
-              <div className="bg-slate-700 p-3 rounded-lg">
-                <p className="text-amber-400 font-semibold mb-2">Pool rotation</p>
+              <div className="ui-inset p-3">
+                <p className="text-brass-400 font-semibold mb-2">Pool rotation</p>
                 <p>
                   A regiment stays out of the pool until every other regiment on its side has had a
                   turn. The pool then refills with the whole roster, including whoever just led —
@@ -443,19 +438,19 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
             <p className="mb-3">Each side has a unique ability that can turn the tide of a campaign:</p>
 
             <div className="space-y-3">
-              <div className="bg-blue-900 bg-opacity-30 p-3 rounded-lg border border-blue-700">
-                <p className="text-blue-400 font-semibold mb-2">USA: Special Orders 191</p>
+              <div className="bg-union-900 bg-opacity-30 p-3 rounded-lg border border-union-500">
+                <p className="text-union-400 font-semibold mb-2">USA: Special Orders 191</p>
                 <p>When activated during an attack, if USA wins, the CSA defender loses <strong>3× their normal SP cost</strong>.
                 Represents capturing Confederate battle plans, as happened before Antietam.</p>
               </div>
 
-              <div className="bg-red-900 bg-opacity-30 p-3 rounded-lg border border-red-700">
-                <p className="text-red-400 font-semibold mb-2">CSA: Valley Supply Lines</p>
+              <div className="bg-rebel-900 bg-opacity-30 p-3 rounded-lg border border-rebel-500">
+                <p className="text-rebel-400 font-semibold mb-2">CSA: Valley Supply Lines</p>
                 <p>When activated during an attack, the CSA attacker pays <strong>only 50% of normal SP cost</strong>.
                 Represents efficient use of the Shenandoah Valley for logistics.</p>
               </div>
 
-              <p className="text-slate-400 text-sm mt-2">
+              <p className="text-mist-400 text-sm mt-2">
                 Abilities have a cooldown (default: 2 turns) after use. Use them wisely!
               </p>
             </div>
@@ -465,20 +460,20 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
             <p className="mb-3">The campaign can end in several ways:</p>
 
             <div className="space-y-3">
-              <div className="bg-amber-900 bg-opacity-30 p-3 rounded-lg border border-amber-700">
-                <p className="text-amber-400 font-semibold mb-2">1. SP Depletion (Immediate Victory)</p>
+              <div className="bg-brass-900 bg-opacity-30 p-3 rounded-lg border border-brass-500">
+                <p className="text-brass-400 font-semibold mb-2">1. SP Depletion (Immediate Victory)</p>
                 <p>If either side's SP drops to 0 or below, they immediately lose.
                 This represents their army's collapse from exhaustion and attrition.</p>
               </div>
 
-              <div className="bg-amber-900 bg-opacity-30 p-3 rounded-lg border border-amber-700">
-                <p className="text-amber-400 font-semibold mb-2">2. Total Control (Immediate Victory)</p>
+              <div className="bg-brass-900 bg-opacity-30 p-3 rounded-lg border border-brass-500">
+                <p className="text-brass-400 font-semibold mb-2">2. Total Control (Immediate Victory)</p>
                 <p>If one side controls ALL territories on the map, they win immediately.
                 Total conquest!</p>
               </div>
 
-              <div className="bg-amber-900 bg-opacity-30 p-3 rounded-lg border border-amber-700">
-                <p className="text-amber-400 font-semibold mb-2">3. Campaign End Date (December 1865)</p>
+              <div className="bg-brass-900 bg-opacity-30 p-3 rounded-lg border border-brass-500">
+                <p className="text-brass-400 font-semibold mb-2">3. Campaign End Date (December 1865)</p>
                 <p>If the campaign reaches its end date, the side with the most VP wins.
                 This represents the political/strategic situation at war's end.</p>
               </div>
@@ -488,27 +483,27 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
           <Section id="tips" title="Tips for Regiment Leaders" icon={Clock}>
             <ul className="space-y-2">
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>Manage SP carefully</strong> - Aggressive campaigns can deplete your SP quickly. Balance offense with defense.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>High-value territories matter</strong> - They give more VP and generate more SP per turn. Prioritize them.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>Casualties affect SP loss</strong> - Even if you win, taking heavy casualties costs you more SP. Fight smart!</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>Use abilities at key moments</strong> - Don't waste them on minor battles. Save them for critical campaigns.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>Export regularly</strong> - Use the Export button to save your campaign progress. Imports let you restore or share campaigns.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-400">•</span>
+                <span className="text-brass-400">•</span>
                 <span><strong>Edit Map for custom campaigns</strong> - Use the Map Editor to create custom territory layouts and VP values.</span>
               </li>
             </ul>
@@ -516,10 +511,10 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-700 bg-slate-900">
+        <div className="p-4 border-t border-ink-800 bg-ink-900">
           <button
             onClick={onClose}
-            className="w-full px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold transition"
+            className="w-full px-4 py-3 bg-brass-500 hover:bg-brass-500 text-white rounded-lg font-semibold transition"
           >
             Got It!
           </button>

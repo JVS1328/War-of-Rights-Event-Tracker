@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Swords, ChevronDown, ChevronRight, Trophy, Skull, Calendar, Clock, Edit3 } from 'lucide-react';
+import { Swords, ChevronDown, ChevronRight, Skull, Clock, Edit3 } from 'lucide-react';
+import { Card, CardHead, CardBody, Badge, Row, EmptyState, SIDE_TEXT } from './ui/Primitives';
 
 const BattleHistory = ({ battles, territories, onEditBattle, campaign = null }) => {
   const [expandedBattle, setExpandedBattle] = useState(null);
@@ -25,277 +26,196 @@ const BattleHistory = ({ battles, territories, onEditBattle, campaign = null }) 
     const pieces = [`${attackerName} vs ${defenderName}`];
     if (battle.attackerSupportId) pieces.push(`(+ ${tokenName(battle.attackerSupportId)})`);
     if (battle.defenderSupportId) pieces.push(`(+ ${tokenName(battle.defenderSupportId)})`);
-    const locationLabel = battle.locationLabel
-      || getTerritoryName(battle.territoryId)
-      || null;
+    const locationLabel = battle.locationLabel || getTerritoryName(battle.territoryId) || null;
     return { header: pieces.join(' '), location: locationLabel };
   };
 
-  const formatDate = (isoString) => {
-    return new Date(isoString).toLocaleDateString('en-US', {
+  const formatDate = (isoString) =>
+    new Date(isoString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
-
-  const getWinnerColor = (winner) => {
-    if (!winner) return 'text-amber-400';
-    return winner === 'USA' ? 'text-blue-400' : 'text-red-400';
-  };
-
-  const getWinnerBg = (winner) => {
-    if (!winner) return 'bg-amber-600';
-    return winner === 'USA' ? 'bg-blue-600' : 'bg-red-600';
-  };
 
   const isPending = (battle) => battle.status === 'pending' || !battle.winner;
 
   // Sort battles by turn (most recent first)
   const sortedBattles = [...battles].sort((a, b) => b.turn - a.turn);
 
-  if (battles.length === 0) {
-    return (
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-          <Swords className="w-6 h-6" />
-          Battle History
-        </h2>
-        <div className="bg-slate-900 rounded-lg p-8 flex items-center justify-center min-h-[200px]">
-          <p className="text-slate-500">
-            No battles recorded yet
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-      <h2 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
-        <Swords className="w-6 h-6" />
-        Battle History ({battles.length})
-      </h2>
-
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {sortedBattles.map((battle, index) => (
-          <div key={battle.id} className="bg-slate-700 rounded-lg overflow-hidden">
-            <div
-              className="p-4 cursor-pointer hover:bg-slate-600 transition"
-              onClick={() => toggleExpand(battle.id)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1">
-                  {expandedBattle === battle.id ? (
-                    <ChevronDown className="w-4 h-4 text-amber-400" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  )}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 text-sm">Turn {battle.turn}</span>
-                      <span className="text-white font-semibold">{battle.mapName}</span>
+    <Card>
+      <CardHead icon={Swords} title="Battle History" meta={battles.length || null} />
+      <CardBody className="!p-2">
+        {battles.length === 0 ? (
+          <EmptyState icon={Swords} title="No battles recorded yet" hint="Recorded battles and their outcomes will appear here." />
+        ) : (
+          <div className="ui-scroll max-h-[26rem] p-1 space-y-1.5">
+            {sortedBattles.map(battle => {
+              const isOpen = expandedBattle === battle.id;
+              const pending = isPending(battle);
+              return (
+                <div key={battle.id} className="ui-listitem" data-open={isOpen}>
+                  <div className="ui-listitem-head" onClick={() => toggleExpand(battle.id)}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isOpen ? (
+                        <ChevronDown className="w-4 h-4 text-brass-400 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-mist-500 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="ui-eyebrow shrink-0">T{battle.turn}</span>
+                          <span className="text-sm font-semibold text-mist-100 truncate">{battle.mapName}</span>
+                        </div>
+                        {(() => {
+                          if (battle.mode === 'grand') {
+                            const sub = getGrandBattleSubtitle(battle);
+                            if (!sub) return null;
+                            return (
+                              <div className="text-xs text-mist-400 mt-0.5 truncate">
+                                {sub.header}
+                                {sub.location && <span className="text-mist-500"> — {sub.location}</span>}
+                              </div>
+                            );
+                          }
+                          const name = getTerritoryName(battle.territoryId);
+                          return name ? <div className="text-xs text-mist-500 mt-0.5 truncate">{name}</div> : null;
+                        })()}
+                      </div>
                     </div>
-                    {(() => {
-                      if (battle.mode === 'grand') {
-                        const sub = getGrandBattleSubtitle(battle);
-                        if (!sub) return null;
-                        return (
-                          <div className="text-xs text-slate-300 mt-1">
-                            <span className="font-semibold">{sub.header}</span>
-                            {sub.location && <span className="text-slate-500"> — {sub.location}</span>}
-                          </div>
-                        );
-                      }
-                      const name = getTerritoryName(battle.territoryId);
-                      return name ? <div className="text-xs text-slate-400 mt-1">{name}</div> : null;
-                    })()}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {isPending(battle) ? (
-                    <span className="px-3 py-1 rounded text-sm font-bold bg-amber-600 text-white flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Pending
-                    </span>
-                  ) : (
-                    <>
-                      <span className={`px-3 py-1 rounded text-sm font-bold ${getWinnerBg(battle.winner)} text-white`}>
-                        {battle.winner} Victory
-                      </span>
-                      <span className="text-green-400 font-bold text-sm">
-                        +{battle.victoryPointsAwarded || 0} VP
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Expanded details */}
-            {expandedBattle === battle.id && (
-              <div className="bg-slate-800 p-4 border-t border-slate-600">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <div className="text-slate-400 mb-2">Battle Details</div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Turn:</span>
-                        <span className="text-white font-semibold">{battle.turn}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Date:</span>
-                        <span className="text-white font-semibold">{formatDate(battle.date)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Map:</span>
-                        <span className="text-white font-semibold">{battle.mapName}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Location:</span>
-                        <span className="text-white font-semibold text-right">
-                          {battle.mode === 'grand'
-                            ? (battle.locationLabel || getTerritoryName(battle.territoryId) || 'Unknown')
-                            : (getTerritoryName(battle.territoryId) || 'Unknown')}
-                        </span>
-                      </div>
-                      {battle.mode === 'grand' && battle.terrainType && (
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Terrain:</span>
-                          <span className="text-white font-semibold text-right">{battle.terrainType}</span>
-                        </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {pending ? (
+                        <Badge tone="warn">
+                          <Clock className="w-3 h-3" />
+                          Pending
+                        </Badge>
+                      ) : (
+                        <>
+                          <Badge tone={battle.winner}>{battle.winner} won</Badge>
+                          {battle.victoryPointsAwarded > 0 && (
+                            <span className="text-sm font-bold text-emerald-400 tabular">
+                              +{battle.victoryPointsAwarded}
+                              <span className="text-[10px] text-mist-500 ml-0.5">VP</span>
+                            </span>
+                          )}
+                        </>
                       )}
-                      {battle.mode === 'grand' && battle.weather?.name && (
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Weather:</span>
-                          <span className="text-white font-semibold text-right">{battle.weather.name}</span>
-                        </div>
-                      )}
-                      {battle.mode === 'grand' && battle.time?.name && (
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Time:</span>
-                          <span className="text-white font-semibold text-right">{battle.time.name}</span>
-                        </div>
-                      )}
-                      {battle.mode === 'grand' && campaign?.grandCampaign && (() => {
-                        const gc = campaign.grandCampaign;
-                        const t = (id) => gc.tokens.find(x => x.id === id)?.name || '—';
-                        return (
-                          <>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Attacker Token:</span>
-                              <span className="text-white font-semibold text-right">{t(battle.attackerTokenId)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-400">Defender Token:</span>
-                              <span className="text-white font-semibold text-right">{t(battle.defenderTokenId)}</span>
-                            </div>
-                            {battle.attackerSupportId && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Attacker Support:</span>
-                                <span className="text-white font-semibold text-right">{t(battle.attackerSupportId)}</span>
-                              </div>
-                            )}
-                            {battle.defenderSupportId && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Defender Support:</span>
-                                <span className="text-white font-semibold text-right">{t(battle.defenderSupportId)}</span>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
                     </div>
                   </div>
 
-                  <div>
-                    <div className="text-slate-400 mb-2">Outcome</div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Attacker:</span>
-                        <span className={`font-semibold ${getWinnerColor(battle.attacker)}`}>
-                          {battle.attacker}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Winner:</span>
-                        {isPending(battle) ? (
-                          <span className="font-semibold text-amber-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Pending
-                          </span>
-                        ) : (
-                          <span className={`font-semibold ${getWinnerColor(battle.winner)}`}>
-                            {battle.winner}
-                          </span>
+                  {isOpen && (
+                    <div className="ui-listitem-body">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+                        <Row label="Date" value={formatDate(battle.date)} />
+                        <Row
+                          label="Location"
+                          value={
+                            battle.mode === 'grand'
+                              ? (battle.locationLabel || getTerritoryName(battle.territoryId) || 'Unknown')
+                              : (getTerritoryName(battle.territoryId) || 'Unknown')
+                          }
+                        />
+                        <Row
+                          label="Attacker"
+                          value={<span className={SIDE_TEXT[battle.attacker]}>{battle.attacker}</span>}
+                        />
+                        <Row
+                          label="Winner"
+                          value={
+                            pending ? (
+                              <span className="text-brass-300 flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Pending
+                              </span>
+                            ) : (
+                              <span className={SIDE_TEXT[battle.winner]}>{battle.winner}</span>
+                            )
+                          }
+                        />
+                        {battle.mode === 'grand' && battle.terrainType && (
+                          <Row label="Terrain" value={battle.terrainType} />
                         )}
+                        {battle.mode === 'grand' && battle.weather?.name && (
+                          <Row label="Weather" value={battle.weather.name} />
+                        )}
+                        {battle.mode === 'grand' && battle.time?.name && (
+                          <Row label="Time" value={battle.time.name} />
+                        )}
+                        {battle.commanders?.USA && (
+                          <Row
+                            label="USA Commander"
+                            value={<span className="text-union-400">{battle.commanders.USA.name}</span>}
+                          />
+                        )}
+                        {battle.commanders?.CSA && (
+                          <Row
+                            label="CSA Commander"
+                            value={<span className="text-rebel-400">{battle.commanders.CSA.name}</span>}
+                          />
+                        )}
+                        {battle.mode === 'grand' && campaign?.grandCampaign && (() => {
+                          const gc = campaign.grandCampaign;
+                          const t = (id) => gc.tokens.find(x => x.id === id)?.name || '—';
+                          return (
+                            <>
+                              <Row label="Attacker Token" value={t(battle.attackerTokenId)} />
+                              <Row label="Defender Token" value={t(battle.defenderTokenId)} />
+                              {battle.attackerSupportId && (
+                                <Row label="Attacker Support" value={t(battle.attackerSupportId)} />
+                              )}
+                              {battle.defenderSupportId && (
+                                <Row label="Defender Support" value={t(battle.defenderSupportId)} />
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
-                      {!isPending(battle) && (
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">VP Awarded:</span>
-                          <span className="text-green-400 font-semibold">
-                            +{battle.victoryPointsAwarded || 0}
-                          </span>
+
+                      {/* Casualties */}
+                      {battle.casualties && (battle.casualties.USA > 0 || battle.casualties.CSA > 0) && (
+                        <div className="mt-3 pt-3 border-t border-ink-700">
+                          <div className="ui-eyebrow flex items-center gap-1.5 mb-2">
+                            <Skull className="w-3.5 h-3.5" />
+                            Casualties
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                            <Row label={<span className={SIDE_TEXT.USA}>USA</span>} value={battle.casualties.USA.toLocaleString()} />
+                            <Row label={<span className={SIDE_TEXT.CSA}>CSA</span>} value={battle.casualties.CSA.toLocaleString()} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {battle.notes && (
+                        <div className="mt-3 pt-3 border-t border-ink-700">
+                          <div className="ui-eyebrow mb-1.5">Notes</div>
+                          <p className="text-sm text-mist-300">{battle.notes}</p>
+                        </div>
+                      )}
+
+                      {onEditBattle && (
+                        <div className="mt-3 pt-3 border-t border-ink-700">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditBattle(battle);
+                            }}
+                            className={`ui-btn ui-btn-block ui-btn-sm ${pending ? 'ui-btn-primary' : 'ui-btn-ghost'}`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            {pending ? 'Complete Battle' : 'Edit Battle'}
+                          </button>
                         </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
-
-                {/* Casualties */}
-                {battle.casualties && (battle.casualties.USA > 0 || battle.casualties.CSA > 0) && (
-                  <div className="mt-4 pt-4 border-t border-slate-700">
-                    <div className="text-slate-400 mb-2 flex items-center gap-2">
-                      <Skull className="w-4 h-4" />
-                      Casualties
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-blue-400">USA:</span>
-                        <span className="text-white font-semibold">{battle.casualties.USA}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-red-400">CSA:</span>
-                        <span className="text-white font-semibold">{battle.casualties.CSA}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {battle.notes && (
-                  <div className="mt-4 pt-4 border-t border-slate-700">
-                    <div className="text-slate-400 mb-2 text-sm">Notes</div>
-                    <div className="text-white text-sm italic">{battle.notes}</div>
-                  </div>
-                )}
-
-                {/* Edit Button */}
-                {onEditBattle && (
-                  <div className="mt-4 pt-4 border-t border-slate-700">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEditBattle(battle);
-                      }}
-                      className={`w-full px-3 py-2 rounded font-semibold text-sm transition flex items-center justify-center gap-2 ${
-                        isPending(battle)
-                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                          : 'bg-slate-600 hover:bg-slate-500 text-white'
-                      }`}
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      {isPending(battle) ? 'Complete Battle' : 'Edit Battle'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })}
           </div>
-        ))}
-      </div>
-    </div>
+        )}
+      </CardBody>
+    </Card>
   );
 };
 
