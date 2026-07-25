@@ -46,8 +46,8 @@ const MapFeaturesPanel = ({
       onClick={() => onSelectTool(tool === key ? null : key)}
       className={`flex flex-col items-center gap-1 rounded p-2 border ${
         tool === key
-          ? 'bg-amber-600 border-amber-400 text-white'
-          : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'
+          ? 'bg-brass-500 border-brass-400 text-white'
+          : 'bg-ink-800 border-ink-700 text-mist-300 hover:bg-ink-700'
       }`}
       title={label}
     >
@@ -65,11 +65,11 @@ const MapFeaturesPanel = ({
           className={`flex-1 px-2 py-1 rounded text-xs font-semibold ${
             pointSide === s
               ? s === 'USA'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-union-500 text-white'
                 : s === 'CSA'
-                ? 'bg-red-600 text-white'
-                : 'bg-amber-600 text-white'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                ? 'bg-rebel-500 text-white'
+                : 'bg-brass-500 text-white'
+              : 'bg-ink-800 text-mist-300 hover:bg-ink-700'
           }`}
         >
           {s}
@@ -90,7 +90,7 @@ const MapFeaturesPanel = ({
   const renderFeatureRow = (feature, typeColor) => {
     const isEditing = editingId === feature.id;
     return (
-      <div key={feature.id} className="bg-slate-700 rounded p-1.5 flex items-center gap-1.5 text-xs border border-slate-600">
+      <div key={feature.id} className="bg-ink-800 rounded p-1.5 flex items-center gap-1.5 text-xs border border-ink-700">
         <span className={`w-2 h-2 rounded-full ${typeColor}`} />
         {isEditing ? (
           <input
@@ -98,15 +98,15 @@ const MapFeaturesPanel = ({
             onChange={(e) => setNameDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && commitRename()}
             autoFocus
-            className="flex-1 bg-slate-900 text-white px-1.5 py-0.5 rounded text-xs"
+            className="flex-1 bg-ink-900 text-white px-1.5 py-0.5 rounded text-xs"
           />
         ) : (
-          <span className="flex-1 truncate text-slate-200">
+          <span className="flex-1 truncate text-mist-300">
             {feature.name}
-            {feature.isCapital && <Star className="inline w-3 h-3 text-amber-400 ml-1" />}
+            {feature.isCapital && <Star className="inline w-3 h-3 text-brass-400 ml-1" />}
             {feature.side && feature.side !== 'NEUTRAL' && (
               <span className={`ml-1 text-[9px] font-bold ${
-                feature.side === 'USA' ? 'text-blue-400' : 'text-red-400'
+                feature.side === 'USA' ? 'text-union-400' : 'text-rebel-400'
               }`}>{feature.side}</span>
             )}
           </span>
@@ -114,7 +114,7 @@ const MapFeaturesPanel = ({
         {!isEditing && feature.kind === 'city' && (
           <button
             onClick={() => onUpdateFeature(feature.id, { isCapital: !feature.isCapital })}
-            className={`p-0.5 rounded ${feature.isCapital ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+            className={`p-0.5 rounded ${feature.isCapital ? 'text-brass-400' : 'text-mist-500 hover:text-brass-400'}`}
             title="Toggle capital"
           >
             <Star className="w-3.5 h-3.5" />
@@ -124,7 +124,7 @@ const MapFeaturesPanel = ({
           <select
             value={feature.side}
             onChange={(e) => onUpdateFeature(feature.id, { side: e.target.value })}
-            className="bg-slate-900 text-white text-[10px] rounded px-1 py-0.5"
+            className="bg-ink-900 text-white text-[10px] rounded px-1 py-0.5"
           >
             <option value="USA">USA</option>
             <option value="CSA">CSA</option>
@@ -136,7 +136,7 @@ const MapFeaturesPanel = ({
             <Check className="w-3.5 h-3.5" />
           </button>
         ) : (
-          <button onClick={() => beginRename(feature)} className="p-0.5 text-slate-400 hover:text-white">
+          <button onClick={() => beginRename(feature)} className="p-0.5 text-mist-400 hover:text-white">
             <Pencil className="w-3 h-3" />
           </button>
         )}
@@ -144,7 +144,7 @@ const MapFeaturesPanel = ({
           onClick={() => {
             if (confirm(`Remove ${feature.kind} "${feature.name}"?`)) onRemoveFeature(feature.id);
           }}
-          className="p-0.5 text-red-400 hover:text-red-300"
+          className="p-0.5 text-rebel-400 hover:text-rebel-400"
         >
           <Trash2 className="w-3 h-3" />
         </button>
@@ -154,26 +154,26 @@ const MapFeaturesPanel = ({
 
   const featureGroup = (label, list, typeColor) => (
     <div className="mb-2">
-      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">
+      <div className="text-[10px] font-semibold text-mist-400 uppercase tracking-wide mb-1">
         {label} ({list.length})
       </div>
       <div className="space-y-1">
         {list.length === 0 ? (
-          <div className="text-[10px] text-slate-600 italic">none</div>
+          <div className="text-[10px] text-mist-500 italic">none</div>
         ) : list.map(f => renderFeatureRow(f, typeColor))}
       </div>
     </div>
   );
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-amber-600 p-4">
+    <div className="ui-card border-brass-500/50 p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+        <h3 className="ui-title">
           <MapPin className="w-5 h-5" /> Map Features
         </h3>
         <button
           onClick={onExitEditMode}
-          className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs flex items-center gap-1"
+          className="px-2 py-1 bg-ink-800 hover:bg-ink-700 text-white rounded text-xs flex items-center gap-1"
         >
           <X className="w-3 h-3" /> Done
         </button>
@@ -202,31 +202,31 @@ const MapFeaturesPanel = ({
 
       {/* Tool-specific controls */}
       {tool && !isLineTool && (
-        <div className="mb-3 bg-slate-900 rounded p-2 space-y-2">
+        <div className="mb-3 bg-ink-900 rounded p-2 space-y-2">
           {tool !== 'station' && sideToggle}
           {tool === 'city' && (
-            <label className="flex items-center gap-2 text-xs text-slate-200">
+            <label className="flex items-center gap-2 text-xs text-mist-300">
               <input
                 type="checkbox"
                 checked={pointIsCapital}
                 onChange={onTogglePointCapital}
-                className="accent-amber-500"
+                className="accent-brass-400"
               />
               Place as capital
             </label>
           )}
-          <div className="text-[10px] text-amber-300">
+          <div className="text-[10px] text-brass-300">
             Click on the map to drop a {tool}. Click a side again in the toolbar to stop.
           </div>
         </div>
       )}
 
       {tool && isLineTool && (
-        <div className="mb-3 bg-slate-900 rounded p-2 space-y-2">
-          <div className="text-[10px] text-amber-300">
+        <div className="mb-3 bg-ink-900 rounded p-2 space-y-2">
+          <div className="text-[10px] text-brass-300">
             Click on the map to add points. Need at least 2 points.
             {tool === 'railway' && (
-              <><br /><span className="text-amber-300">First point must be a City, Fort, or Rail Station.</span> Subsequent clicks snap to anchors or other rail endpoints when close.</>
+              <><br /><span className="text-brass-300">First point must be a City, Fort, or Rail Station.</span> Subsequent clicks snap to anchors or other rail endpoints when close.</>
             )}
             <br />Points so far: <span className="font-bold text-white">{lineDraft.length}</span>
           </div>
@@ -234,20 +234,20 @@ const MapFeaturesPanel = ({
             <button
               onClick={onFinishLine}
               disabled={lineDraft.length < 2}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded px-2 py-1 text-xs flex items-center justify-center gap-1"
+              className="ui-btn ui-btn-primary ui-btn-sm flex-1"
             >
               <CheckCheck className="w-3 h-3" /> Finish
             </button>
             <button
               onClick={onUndoLinePoint}
               disabled={lineDraft.length === 0}
-              className="bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded px-2 py-1 text-xs flex items-center justify-center gap-1"
+              className="bg-ink-800 hover:bg-ink-700 disabled:bg-ink-850 disabled:text-mist-500 text-white rounded px-2 py-1 text-xs flex items-center justify-center gap-1"
             >
               <Undo2 className="w-3 h-3" /> Undo
             </button>
             <button
               onClick={onCancelLine}
-              className="bg-red-800 hover:bg-red-700 text-white rounded px-2 py-1 text-xs flex items-center justify-center gap-1"
+              className="bg-rebel-900 hover:bg-rebel-500 text-white rounded px-2 py-1 text-xs flex items-center justify-center gap-1"
             >
               <X className="w-3 h-3" /> Cancel
             </button>
@@ -257,10 +257,10 @@ const MapFeaturesPanel = ({
 
       {/* Existing features list */}
       <div className="max-h-96 overflow-y-auto pr-1">
-        {featureGroup('Cities', mf.cities, 'bg-amber-400')}
-        {featureGroup('Forts', mf.forts, 'bg-slate-300')}
-        {featureGroup('Stations', mf.stations, 'bg-slate-500')}
-        {featureGroup('Railways', mf.railways, 'bg-slate-200')}
+        {featureGroup('Cities', mf.cities, 'bg-brass-400')}
+        {featureGroup('Forts', mf.forts, 'bg-ink-500')}
+        {featureGroup('Stations', mf.stations, 'bg-ink-600')}
+        {featureGroup('Railways', mf.railways, 'bg-mist-300')}
         {featureGroup('Rivers', mf.rivers, 'bg-sky-400')}
       </div>
     </div>

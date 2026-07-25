@@ -20,20 +20,20 @@ const LSRetreatModal = ({ campaign, tokenId, maxMP, onSkip, onAuto, onPickSpot }
   const maxMiles = inchesToMiles(maxInches, gc.settings);
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-800 border-2 border-orange-500 rounded-lg p-5 max-w-md w-full">
+    <div className="ui-modal-backdrop">
+      <div className="ui-modal border-orange-500/50 p-5 max-w-md">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-orange-300 flex items-center gap-2">
             <Flag className="w-5 h-5" /> Last Stand Survived — May Retreat
           </h3>
-          <button onClick={onSkip} className="text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={onSkip} className="text-mist-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="bg-slate-900 rounded p-3 mb-3 text-sm">
-          <div className={`font-semibold ${token.side === 'USA' ? 'text-blue-400' : 'text-red-400'}`}>
+        <div className="bg-ink-900 rounded p-3 mb-3 text-sm">
+          <div className={`font-semibold ${token.side === 'USA' ? 'text-union-400' : 'text-rebel-400'}`}>
             {token.name} <span className="text-[10px]">({token.side})</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1">
+          <div className="text-xs text-mist-400 mt-1">
             MP: <span className="text-white">{token.manpower}</span>
             {' · '}Retreat range: <span className="text-white">{maxMiles} miles ({maxMP} march-MP)</span>
           </div>
@@ -51,13 +51,13 @@ const LSRetreatModal = ({ campaign, tokenId, maxMP, onSkip, onAuto, onPickSpot }
           </button>
           <button
             onClick={onPickSpot}
-            className="w-full bg-slate-700 hover:bg-slate-600 text-white rounded py-2 text-sm font-semibold flex items-center justify-center gap-2"
+            className="w-full bg-ink-800 hover:bg-ink-700 text-white rounded py-2 text-sm font-semibold flex items-center justify-center gap-2"
           >
             <Footprints className="w-4 h-4" /> Choose destination on map…
           </button>
           <button
             onClick={onSkip}
-            className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded py-2 text-sm"
+            className="w-full bg-ink-850 hover:bg-ink-800 border border-ink-700 text-mist-300 rounded py-2 text-sm"
           >
             Hold position (skip retreat)
           </button>

@@ -129,6 +129,7 @@ const MapView = ({
   influenceThreshold = 0, // Grand Campaign: when > 0, territory.influence drives gradient colour.
   rulerFromPoint = null, // Grand Campaign: {x,y} SVG origin for the live movement ruler.
   rulerEvaluator = null, // Grand Campaign: fn(point) -> { miles, cost, mode, valid, reason }
+  readOnly = false,      // Share view: hide hints for interactions that aren't available.
 }) => {
   const [hoveredTerritory, setHoveredTerritory] = useState(null);
   const [countyPaths, setCountyPaths] = useState({});
@@ -411,17 +412,17 @@ const MapView = ({
   // Render loading state for county view
   if (hasCountyData && isLoading) {
     return (
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-            <Map className="w-6 h-6" />
+      <div className="ui-card">
+        <div className="ui-card-head">
+          <h2 className="ui-title">
+            <Map className="w-4 h-4" />
             Campaign Map
           </h2>
         </div>
-        <div className="relative bg-slate-900 rounded-lg p-4 h-96 flex items-center justify-center">
+        <div className="relative m-3 rounded-xl bg-ink-950 border border-ink-700 p-4 h-96 flex items-center justify-center">
           <div className="text-center">
-            <Loader className="w-12 h-12 text-amber-400 animate-spin mx-auto mb-4" />
-            <p className="text-slate-400">Loading county map data...</p>
+            <Loader className="w-10 h-10 text-brass-400 animate-spin mx-auto mb-4" />
+            <p className="text-mist-400 text-sm">Loading county map data…</p>
           </div>
         </div>
       </div>
@@ -431,17 +432,17 @@ const MapView = ({
   // Render error state
   if (loadError) {
     return (
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-            <Map className="w-6 h-6" />
+      <div className="ui-card">
+        <div className="ui-card-head">
+          <h2 className="ui-title">
+            <Map className="w-4 h-4" />
             Campaign Map
           </h2>
         </div>
-        <div className="relative bg-slate-900 rounded-lg p-4 h-96 flex items-center justify-center">
-          <div className="text-center text-red-400">
-            <p className="mb-2">{loadError}</p>
-            <p className="text-sm text-slate-500">Try refreshing the page</p>
+        <div className="relative m-3 rounded-xl bg-ink-950 border border-ink-700 p-4 h-96 flex items-center justify-center">
+          <div className="text-center text-rebel-400">
+            <p className="mb-2 text-sm">{loadError}</p>
+            <p className="text-xs text-mist-500">Try refreshing the page</p>
           </div>
         </div>
       </div>
@@ -584,30 +585,27 @@ const MapView = ({
   };
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
-          <Map className="w-6 h-6" />
+    <div className="ui-card">
+      <div className="ui-card-head">
+        <h2 className="ui-title">
+          <Map className="w-4 h-4" />
           Campaign Map
-          {hasCountyData && <span className="text-sm font-normal text-slate-400 ml-2">(County View)</span>}
+          {hasCountyData && <span className="text-mist-500 font-normal normal-case tracking-normal">County view</span>}
         </h2>
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-500 rounded"></div>
-            <span className="text-slate-300">USA</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-500 rounded"></div>
-            <span className="text-slate-300">CSA</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-orange-500 rounded"></div>
-            <span className="text-slate-300">Neutral</span>
-          </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="flex items-center gap-1.5 text-mist-400">
+            <span className="w-2.5 h-2.5 rounded-sm bg-union-500" />USA
+          </span>
+          <span className="flex items-center gap-1.5 text-mist-400">
+            <span className="w-2.5 h-2.5 rounded-sm bg-rebel-500" />CSA
+          </span>
+          <span className="flex items-center gap-1.5 text-mist-400">
+            <span className="w-2.5 h-2.5 rounded-sm bg-orange-500" />Neutral
+          </span>
         </div>
       </div>
 
-      <div ref={mapContainerRef} className="relative bg-slate-900 rounded-lg p-4" onMouseMove={handleMouseMove}>
+      <div ref={mapContainerRef} className="relative m-3 rounded-xl bg-ink-950 border border-ink-700 p-3" onMouseMove={handleMouseMove}>
         <svg
           ref={attachSvg}
           viewBox="0 0 1000 589"
@@ -991,7 +989,7 @@ const MapView = ({
           if (!r.valid) {
             return (
               <div
-                className="absolute z-20 bg-red-950/95 border border-red-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap text-red-200"
+                className="absolute z-20 bg-red-950/95 border border-rebel-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap text-red-200"
                 style={style}
               >
                 ✕ {r.reason || 'invalid destination'}
@@ -1001,18 +999,18 @@ const MapView = ({
           const mode = r.mode || 'march';
           const cost = r.cost;
           const miles = r.miles ?? 0;
-          const modeColor = mode === 'rail' ? 'text-amber-300'
+          const modeColor = mode === 'rail' ? 'text-brass-300'
             : mode === 'river' ? 'text-sky-300'
-            : 'text-slate-200';
+            : 'text-mist-300';
           return (
             <div
-              className="absolute z-20 bg-slate-900/95 border border-amber-500/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap"
+              className="absolute z-20 bg-ink-900/95 border border-brass-400/70 rounded px-2 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap"
               style={style}
             >
               <span className="text-white font-semibold">{miles} mi</span>
-              <span className="mx-1 text-slate-600">·</span>
+              <span className="mx-1 text-mist-500">·</span>
               <span className="text-white">{cost} MP</span>
-              <span className="mx-1 text-slate-600">·</span>
+              <span className="mx-1 text-mist-500">·</span>
               <span className={`font-semibold uppercase tracking-wide ${modeColor}`}>{mode}</span>
               {r.crossings > 0 && (
                 <span className="ml-1 text-orange-400">+{r.crossings} ford</span>
@@ -1049,19 +1047,19 @@ const MapView = ({
 
           return (
             <div
-              className={`absolute z-10 bg-slate-800/95 backdrop-blur-sm border rounded p-2 shadow-lg pointer-events-none ${
-                isPinned ? 'border-amber-400' : 'border-amber-500/60'
+              className={`absolute z-10 bg-ink-850/95 backdrop-blur-sm border rounded p-2 shadow-lg pointer-events-none ${
+                isPinned ? 'border-brass-400' : 'border-brass-400/60'
               }`}
               style={style}
             >
               <div className="flex items-center gap-1.5 mb-0.5">
-                <span className="text-amber-400 font-semibold text-xs">{tooltipTerritory.name}</span>
-                {isPinned && <span className="text-[9px] text-slate-500 bg-slate-700 px-1 py-0.5 rounded leading-none">pinned</span>}
+                <span className="text-brass-400 font-semibold text-xs">{tooltipTerritory.name}</span>
+                {isPinned && <span className="text-[9px] text-mist-500 bg-ink-800 px-1 py-0.5 rounded leading-none">pinned</span>}
               </div>
-              <div className="text-xs text-slate-300 space-y-0.5">
+              <div className="text-xs text-mist-300 space-y-0.5">
                 <div>Owner: <span className={`font-semibold ${
-                  tooltipTerritory.owner === 'USA' ? 'text-blue-400' :
-                  tooltipTerritory.owner === 'CSA' ? 'text-red-400' :
+                  tooltipTerritory.owner === 'USA' ? 'text-union-400' :
+                  tooltipTerritory.owner === 'CSA' ? 'text-rebel-400' :
                   'text-orange-400'
                 }`}>{tooltipTerritory.owner}</span>
                   {' · '}VP: <span className="text-green-400 font-semibold">{tooltipTerritory.pointValue || tooltipTerritory.victoryPoints}</span>
@@ -1079,33 +1077,33 @@ const MapView = ({
                   );
                 })()}
                 {tooltipTerritory.stateAbbr && (
-                  <div>State: <span className="text-slate-400">{tooltipTerritory.stateAbbr}</span></div>
+                  <div>State: <span className="text-mist-400">{tooltipTerritory.stateAbbr}</span></div>
                 )}
                 {tooltipTerritory.transitionState?.isTransitioning && (
-                  <div className="mt-1 pt-1 border-t border-slate-600">
+                  <div className="mt-1 pt-1 border-t border-ink-700">
                     <div className="text-orange-400 font-semibold text-[10px]">Capturing...</div>
                     <div className="text-[10px]">
                       <span>Turns Left: <span className="text-yellow-400 font-semibold">{tooltipTerritory.transitionState.turnsRemaining}</span></span>
                       {' · '}From: <span className={`font-semibold ${
-                        tooltipTerritory.transitionState.previousOwner === 'USA' ? 'text-blue-400' :
-                        tooltipTerritory.transitionState.previousOwner === 'CSA' ? 'text-red-400' :
-                        'text-slate-400'
+                        tooltipTerritory.transitionState.previousOwner === 'USA' ? 'text-union-400' :
+                        tooltipTerritory.transitionState.previousOwner === 'CSA' ? 'text-rebel-400' :
+                        'text-mist-400'
                       }`}>{tooltipTerritory.transitionState.previousOwner}</span>
                     </div>
                   </div>
                 )}
                 {pendingBattleTerritoryIds.includes(tooltipTerritory.id) && (
-                  <div className="mt-1 pt-1 border-t border-slate-600">
-                    <div className="text-amber-400 font-semibold text-[10px]">Battle Ongoing</div>
+                  <div className="mt-1 pt-1 border-t border-ink-700">
+                    <div className="text-brass-400 font-semibold text-[10px]">Battle Ongoing</div>
                   </div>
                 )}
                 {!pendingBattleTerritoryIds.includes(tooltipTerritory.id) && recentBattleTerritoryIds.includes(tooltipTerritory.id) && (
-                  <div className="mt-1 pt-1 border-t border-slate-600">
-                    <div className="text-slate-400 font-semibold text-[10px]">Battle Recently Fought</div>
+                  <div className="mt-1 pt-1 border-t border-ink-700">
+                    <div className="text-mist-400 font-semibold text-[10px]">Battle Recently Fought</div>
                   </div>
                 )}
                 {tooltipTerritory.countyFips && (
-                  <div className="text-[10px] text-slate-500">Counties: {tooltipTerritory.countyFips.length}</div>
+                  <div className="text-[10px] text-mist-500">Counties: {tooltipTerritory.countyFips.length}</div>
                 )}
                 {spSettings && (() => {
                   const vp = tooltipTerritory.pointValue || tooltipTerritory.victoryPoints || 1;
@@ -1123,20 +1121,20 @@ const MapView = ({
                     }
                   );
                   return (
-                    <div className="mt-1 pt-1 border-t border-slate-600">
-                      <div className="text-amber-400 font-semibold text-[10px] mb-0.5">Max SP Loss</div>
+                    <div className="mt-1 pt-1 border-t border-ink-700">
+                      <div className="text-brass-400 font-semibold text-[10px] mb-0.5">Max SP Loss</div>
                       <div className="text-[10px]">
                         <span>Atk: <span className="text-orange-400 font-semibold">-{attackerMax}</span></span>
                         {' · '}Def: <span className="text-orange-400 font-semibold">-{defenderMax}</span>
-                        {isIsolated && <span className="text-red-400 ml-1">(2x iso)</span>}
+                        {isIsolated && <span className="text-rebel-400 ml-1">(2x iso)</span>}
                       </div>
                     </div>
                   );
                 })()}
               </div>
               {isPinned && (
-                <div className="text-[9px] text-slate-500 mt-1 pt-0.5 border-t border-slate-700">
-                  Ctrl+click to unpin · Dbl-click battle · Ctrl+dbl edit
+                <div className="text-[9px] text-mist-500 mt-1 pt-0.5 border-t border-ink-800">
+                  {readOnly ? 'Ctrl+click to unpin' : 'Ctrl+click to unpin · Dbl-click battle · Ctrl+dbl edit'}
                 </div>
               )}
             </div>
@@ -1145,8 +1143,20 @@ const MapView = ({
       </div>
 
       {/* Zoom/Pan hint */}
-      <div className="mt-2 text-xs text-slate-500 text-center">
-        Hold Ctrl to see territory info · Ctrl+click to pin · Double-click for battle · Ctrl+double-click to edit · Shift+scroll to zoom · Shift+drag to pan
+      <div className="px-4 pb-3 -mt-1 text-[11px] text-mist-500 text-center leading-relaxed">
+        <span className="whitespace-nowrap"><kbd className="ui-kbd">Ctrl</kbd> territory info</span>
+        <span className="mx-1.5 text-ink-600">·</span>
+        <span className="whitespace-nowrap"><kbd className="ui-kbd">Ctrl</kbd>+click to pin</span>
+        {!readOnly && (
+          <>
+            <span className="mx-1.5 text-ink-600">·</span>
+            <span className="whitespace-nowrap">double-click for battle</span>
+          </>
+        )}
+        <span className="mx-1.5 text-ink-600">·</span>
+        <span className="whitespace-nowrap"><kbd className="ui-kbd">Shift</kbd>+scroll to zoom</span>
+        <span className="mx-1.5 text-ink-600">·</span>
+        <span className="whitespace-nowrap"><kbd className="ui-kbd">Shift</kbd>+drag to pan</span>
       </div>
     </div>
   );

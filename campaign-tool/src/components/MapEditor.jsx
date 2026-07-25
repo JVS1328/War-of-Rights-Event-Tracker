@@ -1289,14 +1289,14 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-lg w-full max-w-7xl h-[90vh] flex flex-col">
+    <div className="ui-modal-backdrop">
+      <div className="bg-ink-900 rounded-lg w-full max-w-7xl h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-700">
-          <h2 className="text-2xl font-bold text-amber-400">Custom Campaign Map Editor</h2>
+        <div className="flex items-center justify-between p-4 border-b border-ink-800">
+          <h2 className="text-2xl font-bold text-brass-400">Custom Campaign Map Editor</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-ink-850 rounded-lg transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
@@ -1306,7 +1306,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
         <div className="flex-1 flex overflow-hidden">
           {/* Map View */}
           <div className="flex-1 p-4 overflow-auto">
-            <div className="bg-slate-800 rounded-lg p-4 h-full flex items-center justify-center">
+            <div className="bg-ink-850 rounded-lg p-4 h-full flex items-center justify-center">
               <svg
                 viewBox={isCountyMode && countyData ? countyData.viewBox : "0 0 1000 589"}
                 className="w-full h-full"
@@ -1439,8 +1439,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
             </div>
             
             {/* Instructions */}
-            <div className="mt-4 p-3 bg-slate-800 rounded-lg text-sm text-slate-300">
-              <p className="font-semibold text-amber-400 mb-2">Instructions:</p>
+            <div className="mt-4 p-3 bg-ink-850 rounded-lg text-sm text-mist-300">
+              <p className="font-semibold text-brass-400 mb-2">Instructions:</p>
               {isCountyMode ? (
                 <ul className="space-y-1 list-disc list-inside">
                   <li>Click counties to select/deselect them</li>
@@ -1468,12 +1468,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           </div>
 
           {/* Territory Configuration Panel */}
-          <div className="w-96 border-l border-slate-700 flex flex-col">
-            <div className="p-4 border-b border-slate-700">
-              <h3 className="text-lg font-semibold text-amber-400 mb-2">
+          <div className="w-96 border-l border-ink-800 flex flex-col">
+            <div className="p-4 border-b border-ink-800">
+              <h3 className="text-lg font-semibold text-brass-400 mb-2">
                 Territories ({territories.length})
               </h3>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-mist-400">
                 {isCountyMode
                   ? `${selectedCounties.size} counties selected (${Array.from(selectedStatesForCounties).join(', ')})`
                   : `${selectedStates.size} states selected`
@@ -1484,7 +1484,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
             {/* Territory List */}
             <div className="flex-1 overflow-auto p-4 space-y-3">
               {territories.length === 0 ? (
-                <div className="text-center text-slate-400 py-8">
+                <div className="text-center text-mist-400 py-8">
                   <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No territories yet</p>
                   <p className="text-sm mt-1">Click states on the map to begin</p>
@@ -1493,7 +1493,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                 territories.map((territory, index) => (
                   <div
                     key={territory.id}
-                    className="bg-slate-800 rounded-lg p-3"
+                    className="bg-ink-850 rounded-lg p-3"
                   >
                     {/* Territory Header */}
                     <div className="flex items-start gap-2 mb-3">
@@ -1502,10 +1502,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           type="text"
                           value={territory.name}
                           onChange={(e) => handleTerritoryUpdate(territory.id, 'name', e.target.value)}
-                          className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm font-semibold"
+                          className="w-full bg-ink-800 text-white px-2 py-1 rounded text-sm font-semibold"
                           placeholder="Territory Name"
                         />
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="text-xs text-mist-400 mt-1">
                           {territory.isCountyBased
                             ? (() => {
                                 const countyNames = territory.counties
@@ -1525,24 +1525,24 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                             handleEditTerritoryComponents(territory);
                           }
                         }}
-                        className={`p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0 ${
-                          editingTerritoryComponents?.id === territory.id ? 'bg-amber-600' : ''
+                        className={`p-1 hover:bg-ink-800 rounded transition-colors flex-shrink-0 ${
+                          editingTerritoryComponents?.id === territory.id ? 'bg-brass-500' : ''
                         }`}
                         title={editingTerritoryComponents?.id === territory.id ? "Close Edit Mode" : "Edit Territory Components"}
                       >
-                        <Edit className="w-4 h-4 text-amber-400" />
+                        <Edit className="w-4 h-4 text-brass-400" />
                       </button>
                       <button
                         onClick={() => handleDeleteTerritory(territory.id)}
-                        className="p-1 hover:bg-slate-700 rounded transition-colors flex-shrink-0"
+                        className="p-1 hover:bg-ink-800 rounded transition-colors flex-shrink-0"
                       >
-                        <Trash2 className="w-4 h-4 text-red-400" />
+                        <Trash2 className="w-4 h-4 text-rebel-400" />
                       </button>
                     </div>
 
                     {/* Victory Points */}
                     <div className="mb-3">
-                      <label className="text-xs text-slate-400 block mb-1">
+                      <label className="text-xs text-mist-400 block mb-1">
                         Victory Points: {territory.victoryPoints}
                       </label>
                       <input
@@ -1557,7 +1557,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
                     {/* Current Owner */}
                     <div className="mb-3">
-                      <label className="text-xs text-slate-400 block mb-1">Current Owner</label>
+                      <label className="text-xs text-mist-400 block mb-1">Current Owner</label>
                       <select
                         value={territory.owner || territory.initialOwner}
                         onChange={(e) => {
@@ -1568,7 +1568,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                               : t
                           ));
                         }}
-                        className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm"
+                        className="w-full bg-ink-800 text-white px-2 py-1 rounded text-sm"
                       >
                         <option value="USA">USA</option>
                         <option value="CSA">CSA</option>
@@ -1578,7 +1578,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
                     {/* Assigned Maps */}
                     <div className="mb-3">
-                      <label className="text-xs text-slate-400 block mb-1">Assigned Maps</label>
+                      <label className="text-xs text-mist-400 block mb-1">Assigned Maps</label>
                       <select
                         multiple
                         value={territory.maps}
@@ -1586,7 +1586,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           const selected = Array.from(e.target.selectedOptions, option => option.value);
                           handleTerritoryUpdate(territory.id, 'maps', selected);
                         }}
-                        className="w-full bg-slate-700 text-white px-2 py-1 rounded text-sm h-32"
+                        className="w-full bg-ink-800 text-white px-2 py-1 rounded text-sm h-32"
                       >
                         {Object.entries(mapsByMapset).map(([mapset, maps]) => (
                           <optgroup key={mapset} label={mapset}>
@@ -1596,19 +1596,19 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                           </optgroup>
                         ))}
                       </select>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-mist-500 mt-1">
                         Hold Ctrl/Cmd to select multiple
                       </p>
                     </div>
 
                     {/* Inline Editing Section */}
                     {editingTerritoryComponents?.id === territory.id && (
-                      <div className="mt-4 pt-4 border-t border-slate-600">
-                        <div className="mb-3 p-3 bg-blue-900/30 border border-blue-600 rounded-lg">
+                      <div className="mt-4 pt-4 border-t border-ink-700">
+                        <div className="mb-3 p-3 bg-union-900/30 border border-union-500 rounded-lg">
                           <p className="text-sm text-blue-200 font-semibold mb-1">
-                            <span className="text-blue-400">✏️ Edit Mode Active</span>
+                            <span className="text-union-400">✏️ Edit Mode Active</span>
                           </p>
-                          <p className="text-xs text-blue-300">
+                          <p className="text-xs text-union-400">
                             Click any unassigned {territory.isCountyBased ? 'county' : 'state'} on the map to add it to this territory.
                           </p>
                         </div>
@@ -1617,7 +1617,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                         {((territory.isCountyBased && territory.counties?.length > 1) ||
                           (!territory.isCountyBased && territory.states?.length > 1)) && (
                           <div className="mb-4">
-                            <label className="text-xs font-semibold text-amber-400 block mb-2">
+                            <label className="text-xs font-semibold text-brass-400 block mb-2">
                               Move components to another territory:
                             </label>
                             
@@ -1634,8 +1634,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                       onClick={() => toggleComponentSelection(countyId)}
                                       className={`w-full p-2 rounded text-left transition-colors text-xs ${
                                         selectedComponentsForMerge.has(countyId)
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                          ? 'bg-union-500 text-white'
+                                          : 'bg-ink-800 hover:bg-ink-700 text-mist-300'
                                       }`}
                                     >
                                       {county.name}
@@ -1653,8 +1653,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                       onClick={() => toggleComponentSelection(stateAbbr)}
                                       className={`w-full p-2 rounded text-left transition-colors text-xs ${
                                         selectedComponentsForMerge.has(stateAbbr)
-                                          ? 'bg-blue-600 text-white'
-                                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                          ? 'bg-union-500 text-white'
+                                          : 'bg-ink-800 hover:bg-ink-700 text-mist-300'
                                       }`}
                                     >
                                       {state.abbreviation} - {state.name}
@@ -1669,7 +1669,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                 <select
                                   value={mergeTargetTerritory || ''}
                                   onChange={(e) => setMergeTargetTerritory(e.target.value)}
-                                  className="w-full bg-slate-700 text-white px-2 py-1 rounded text-xs mb-2"
+                                  className="w-full bg-ink-800 text-white px-2 py-1 rounded text-xs mb-2"
                                 >
                                   <option value="">Move to...</option>
                                   {territories
@@ -1687,7 +1687,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                 <button
                                   onClick={handleMergeComponentsToTerritory}
                                   disabled={!mergeTargetTerritory}
-                                  className="w-full px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded text-xs font-semibold"
+                                  className="w-full px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-ink-800 disabled:text-mist-500 text-white rounded text-xs font-semibold"
                                 >
                                   Move {selectedComponentsForMerge.size} selected
                                 </button>
@@ -1698,7 +1698,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
                         {/* Merge Entire Territories */}
                         <div className="mb-3">
-                          <label className="text-xs font-semibold text-amber-400 block mb-2">
+                          <label className="text-xs font-semibold text-brass-400 block mb-2">
                             Merge other territories into this one:
                           </label>
                           
@@ -1715,7 +1715,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                                   className={`w-full p-2 rounded text-left transition-colors text-xs ${
                                     selectedTerritoriesForMerge.has(t.id)
                                       ? 'bg-green-600 text-white'
-                                      : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                      : 'bg-ink-800 hover:bg-ink-700 text-mist-300'
                                   }`}
                                 >
                                   <div className="font-semibold">{t.name}</div>
@@ -1749,16 +1749,16 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
             </div>
 
             {/* Action Buttons */}
-            <div className="p-4 border-t border-slate-700 space-y-2">
+            <div className="p-4 border-t border-ink-800 space-y-2">
               {/* Map Mode Toggle */}
-              <div className="bg-slate-800 rounded-lg p-3 border border-slate-600">
-                <label className="text-xs text-slate-400 block mb-2">Map Display Mode</label>
+              <div className="bg-ink-850 rounded-lg p-3 border border-ink-700">
+                <label className="text-xs text-mist-400 block mb-2">Map Display Mode</label>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleMapModeToggle}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-colors font-semibold ${
                       mapMode === 'states'
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        ? 'bg-union-500 hover:bg-union-500 text-white'
                         : 'bg-purple-600 hover:bg-purple-700 text-white'
                     }`}
                   >
@@ -1766,14 +1766,14 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                     {mapMode === 'states' ? 'States' : 'Counties'}
                   </button>
                 </div>
-                <p className="text-xs text-slate-500 mt-2 text-center">
+                <p className="text-xs text-mist-500 mt-2 text-center">
                   {mapMode === 'states' ? 'Click to switch to county view' : 'Click to switch to state view'}
                 </p>
               </div>
 
               <button
                 onClick={handleReset}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-ink-800 hover:bg-ink-700 rounded-lg transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
                 Reset All
@@ -1781,7 +1781,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
               <button
                 onClick={handleSave}
                 disabled={territories.length < 2}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed rounded-lg transition-colors font-semibold"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brass-500 hover:bg-brass-500 disabled:bg-ink-800 disabled:text-mist-500 disabled:cursor-not-allowed rounded-lg transition-colors font-semibold"
               >
                 <Save className="w-4 h-4" />
                 Save Custom Map
@@ -1793,14 +1793,14 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
       {/* State Selection Modal for County Mode */}
       {showStateSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div className="ui-modal-backdrop">
+          <div className="bg-ink-850 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-700">
-              <h3 className="text-xl font-bold text-amber-400">Select States for County Map</h3>
+            <div className="flex items-center justify-between p-4 border-b border-ink-800">
+              <h3 className="text-xl font-bold text-brass-400">Select States for County Map</h3>
               <button
                 onClick={handleStateSelectionCancel}
-                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                className="p-2 hover:bg-ink-800 rounded-lg transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1808,7 +1808,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
             {/* Content */}
             <div className="flex-1 overflow-auto p-4">
-              <p className="text-slate-300 mb-4">
+              <p className="text-mist-300 mb-4">
                 Select one or more states to load their county boundaries. Counties from selected states will be merged into a single editable map.
               </p>
 
@@ -1820,8 +1820,8 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
                     onClick={() => toggleStateForCounties(state.abbreviation)}
                     className={`p-3 rounded-lg text-left transition-colors ${
                       selectedStatesForCounties.has(state.abbreviation)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                        ? 'bg-union-500 text-white'
+                        : 'bg-ink-800 hover:bg-ink-700 text-mist-300'
                     }`}
                   >
                     <div className="font-semibold text-sm">{state.abbreviation}</div>
@@ -1832,13 +1832,13 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
               {/* Selection Summary */}
               {selectedStatesForCounties.size > 0 && (
-                <div className="mt-4 p-3 bg-slate-700 rounded-lg">
-                  <p className="text-sm text-slate-300">
-                    <span className="font-semibold text-amber-400">
+                <div className="mt-4 p-3 bg-ink-800 rounded-lg">
+                  <p className="text-sm text-mist-300">
+                    <span className="font-semibold text-brass-400">
                       {selectedStatesForCounties.size}
                     </span>{' '}
                     {selectedStatesForCounties.size === 1 ? 'state' : 'states'} selected:{' '}
-                    <span className="text-blue-400">
+                    <span className="text-union-400">
                       {Array.from(selectedStatesForCounties).join(', ')}
                     </span>
                   </p>
@@ -1847,17 +1847,17 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-700 flex gap-2">
+            <div className="p-4 border-t border-ink-800 flex gap-2">
               <button
                 onClick={handleStateSelectionCancel}
-                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-ink-800 hover:bg-ink-700 text-white rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleStateSelectionConfirm}
                 disabled={selectedStatesForCounties.size === 0}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+                className="flex-1 px-4 py-2 bg-union-500 hover:bg-union-500 disabled:bg-ink-800 disabled:text-mist-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
               >
                 Load Counties ({selectedStatesForCounties.size})
               </button>

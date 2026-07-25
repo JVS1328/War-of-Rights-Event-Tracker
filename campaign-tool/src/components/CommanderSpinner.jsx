@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { RotateCw, User, Check, X } from 'lucide-react';
+import { RotateCw, User, Check, X, ChevronDown } from 'lucide-react';
+import { getAvailableCommanders } from '../utils/campaignLogic';
 
 /**
  * CommanderSpinner - Animated roulette for selecting battle commanders
  *
  * Features:
  * - Visual spinning animation OR manual dropdown selection
- * - Pool management (selected commanders removed until pool empty, then reset)
+ * - Pool management (selected commanders leave the pool; the pool refills
+ *   once everyone has led, benching whoever led last for one draw)
  * - Shows both USA and CSA spinners side by side
  */
 const CommanderSpinner = ({
   regiments,
   commanderPool,
+  benchedCommanders,
   onSelect,
   selectedCommanders,
   disabled = false
@@ -20,19 +23,10 @@ const CommanderSpinner = ({
   const [displayName, setDisplayName] = useState({ USA: null, CSA: null });
   const spinIntervalRef = useRef({ USA: null, CSA: null });
 
-  // Get available regiments for each side
-  const getAvailableRegiments = (side) => {
-    const pool = commanderPool?.[side] || [];
-    const sideRegiments = regiments?.[side] || [];
-
-    // If pool is empty, all regiments are available (reset)
-    if (pool.length === 0) {
-      return sideRegiments;
-    }
-
-    // Otherwise, only regiments in the pool are available
-    return sideRegiments.filter(r => pool.includes(r.id));
-  };
+  // Get available regiments for each side. An empty pool means every
+  // regiment is back in the running; the benched one sits out a draw.
+  const getAvailableRegiments = (side) =>
+    getAvailableCommanders(regiments?.[side], commanderPool?.[side], benchedCommanders?.[side]);
 
   const spin = (side) => {
     const available = getAvailableRegiments(side);
@@ -84,100 +78,114 @@ const CommanderSpinner = ({
     const available = getAvailableRegiments(side);
     const isSpinning = spinning[side];
     const selected = selectedCommanders?.[side];
-    const poolSize = commanderPool?.[side]?.length || 0;
     const isUSA = side === 'USA';
 
-    const bgColor = isUSA ? 'bg-blue-900/30' : 'bg-red-900/30';
-    const borderColor = isUSA ? 'border-blue-700' : 'border-red-700';
-    const textColor = isUSA ? 'text-blue-400' : 'text-red-400';
-    const buttonColor = isUSA ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700';
+    // Someone is only really "benched" while they're still in the pool but
+    // held out of this draw.
+    const benched = benchedCommanders?.[side];
+    const isBenched = !!benched && !available.some(r => r.id === benched.id) && !selected;
+
+    const accent = isUSA ? 'text-union-400' : 'text-rebel-400';
+    const ring = isUSA ? 'border-union-500/35' : 'border-rebel-500/35';
+    const tint = isUSA ? 'bg-union-900/40' : 'bg-rebel-900/40';
+    const spinBtn = isUSA ? 'ui-btn-union' : 'ui-btn-rebel';
 
     if (sideRegiments.length === 0) {
       return (
-        <div className={`${bgColor} rounded-lg p-4 border ${borderColor}`}>
-          <div className={`font-semibold ${textColor} mb-2 text-sm`}>{side} Commander</div>
-          <div className="text-slate-500 text-xs italic">No regiments configured</div>
-          <div className="text-slate-600 text-xs mt-1">Add regiments in Settings</div>
+        <div className={`rounded-xl border ${ring} ${tint} p-3 min-w-0 flex flex-col`}>
+          <div className={`text-[11px] font-bold tracking-widest ${accent}`}>{side}</div>
+          <div className="mt-2 text-xs text-mist-500">No regiments configured</div>
         </div>
       );
     }
 
     return (
-      <div className={`${bgColor} rounded-lg p-4 border ${borderColor}`}>
-        <div className="flex justify-between items-center mb-3">
-          <div className={`font-semibold ${textColor} text-sm`}>{side} Commander</div>
-          <div className="text-xs text-slate-500">
-            {poolSize === 0 ? sideRegiments.length : poolSize}/{sideRegiments.length} available
-          </div>
+      <div className={`rounded-xl border ${ring} ${tint} p-3 min-w-0 flex flex-col`}>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={`text-[11px] font-bold tracking-widest ${accent}`}>{side}</span>
+          <span className="text-[11px] text-mist-500 tabular whitespace-nowrap">
+            {available.length}/{sideRegiments.length} in pool
+          </span>
         </div>
 
-        {/* Spinner Display */}
-        <div className={`bg-slate-800 rounded-lg p-3 mb-3 min-h-[60px] flex items-center justify-center border-2 ${
-          isSpinning ? 'border-amber-500' : selected ? 'border-green-500' : 'border-slate-600'
-        } transition-colors`}>
+        {/* Result window */}
+        <div
+          className={`mt-2 rounded-lg border px-3 py-2.5 min-h-[52px] flex items-center justify-center text-center transition-colors ${
+            isSpinning
+              ? 'border-brass-400/70 bg-brass-900/30'
+              : selected
+              ? 'border-emerald-500/50 bg-emerald-950/30'
+              : 'border-ink-600 bg-ink-900/60'
+          }`}
+        >
           {selected ? (
-            <div className="flex items-center gap-2">
-              <Check className="w-5 h-5 text-green-400" />
-              <span className="text-white font-bold">{selected.name}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-sm font-semibold text-mist-100 truncate">{selected.name}</span>
             </div>
           ) : isSpinning ? (
-            <div className="flex items-center gap-2">
-              <RotateCw className="w-5 h-5 text-amber-400 animate-spin" />
-              <span className="text-amber-400 font-semibold animate-pulse">
-                {displayName[side] || '...'}
+            <div className="flex items-center gap-2 min-w-0">
+              <RotateCw className="w-4 h-4 text-brass-300 animate-spin shrink-0" />
+              <span className="text-sm font-semibold text-brass-300 truncate">
+                {displayName[side] || '…'}
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-slate-500">
-              <User className="w-5 h-5" />
-              <span>Click to spin</span>
+            <div className="flex items-center gap-2 text-mist-500">
+              <User className="w-4 h-4" />
+              <span className="text-xs">Not rolled</span>
             </div>
           )}
         </div>
 
-        {/* Spin Button and Manual Select */}
-        <div className="flex gap-2">
+        {isBenched && (
+          <div className="mt-1.5 text-[11px] text-mist-500 leading-tight">
+            {benched.name} led last — sitting out this draw
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="flex gap-1.5 mt-auto pt-2">
           {selected ? (
-            /* Change button when commander is selected */
             <button
               onClick={() => onSelect(side, null)}
               disabled={disabled}
-              className="flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-500 text-white"
+              className="ui-btn ui-btn-ghost ui-btn-sm flex-1"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
               Change
             </button>
           ) : (
-            /* Spin button when no commander selected */
-            <button
-              onClick={() => spin(side)}
-              disabled={isSpinning || disabled || available.length === 0}
-              className={`flex-1 px-3 py-2 rounded font-semibold transition flex items-center justify-center gap-2 ${
-                isSpinning || disabled || available.length === 0
-                  ? 'bg-slate-600 cursor-not-allowed opacity-50 text-slate-400'
-                  : `${buttonColor} text-white`
-              }`}
-            >
-              <RotateCw className={`w-4 h-4 ${isSpinning ? 'animate-spin' : ''}`} />
-              {isSpinning ? 'Spinning...' : 'Spin'}
-            </button>
-          )}
+            <>
+              <button
+                onClick={() => spin(side)}
+                disabled={isSpinning || disabled || available.length === 0}
+                className={`ui-btn ui-btn-sm flex-1 min-w-0 ${spinBtn}`}
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isSpinning ? 'animate-spin' : ''}`} />
+                {isSpinning ? 'Rolling…' : 'Roll'}
+              </button>
 
-          {/* Manual Selection Dropdown */}
-          {!selected && !isSpinning && available.length > 0 && !disabled && (
-            <select
-              onChange={(e) => {
-                const regiment = available.find(r => r.id === e.target.value);
-                if (regiment) onSelect(side, regiment);
-              }}
-              value=""
-              className="px-2 py-2 rounded bg-slate-700 border border-slate-600 text-white text-sm cursor-pointer hover:bg-slate-600 transition"
-            >
-              <option value="" disabled>Pick</option>
-              {available.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+              {!isSpinning && available.length > 0 && !disabled && (
+                <div className="relative shrink-0 w-16">
+                  <select
+                    onChange={(e) => {
+                      const regiment = available.find(r => r.id === e.target.value);
+                      if (regiment) onSelect(side, regiment);
+                    }}
+                    value=""
+                    title="Pick manually"
+                    className="ui-btn ui-btn-ghost ui-btn-sm w-full appearance-none pl-2 pr-5 cursor-pointer"
+                  >
+                    <option value="" disabled>Pick</option>
+                    {available.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-mist-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -185,7 +193,7 @@ const CommanderSpinner = ({
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-2.5">
       {renderSpinner('USA')}
       {renderSpinner('CSA')}
     </div>
