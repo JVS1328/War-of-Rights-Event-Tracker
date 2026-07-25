@@ -430,9 +430,10 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                 <p className="text-amber-400 font-semibold mb-2">Pool rotation</p>
                 <p>
                   A regiment stays out of the pool until every other regiment on its side has had a
-                  turn, then the pool refills — minus whoever commanded last, so nobody leads two
-                  battles running. Editing the regiment roster in Settings resets both pools and
-                  clears any pending roll.
+                  turn. The pool then refills with the whole roster, including whoever just led —
+                  but they sit out the very next draw so nobody commands two battles running.
+                  Editing the regiment roster in Settings resets both pools and clears any pending
+                  roll.
                 </p>
               </div>
             </div>

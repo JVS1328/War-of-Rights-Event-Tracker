@@ -41,6 +41,7 @@ const CommanderRollPanel = ({ campaign, onReserveCommander, onRecordBattle }) =>
           <CommanderSpinner
             regiments={regiments}
             commanderPool={campaign.commanderPool}
+            benchedCommanders={campaign.benchedCommanders}
             selectedCommanders={pending}
             onSelect={onReserveCommander}
           />

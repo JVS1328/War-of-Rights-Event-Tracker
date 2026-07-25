@@ -13,6 +13,7 @@ import { getAvailableCommanders } from '../utils/campaignLogic';
 const CommanderSpinner = ({
   regiments,
   commanderPool,
+  benchedCommanders,
   onSelect,
   selectedCommanders,
   disabled = false
@@ -22,9 +23,9 @@ const CommanderSpinner = ({
   const spinIntervalRef = useRef({ USA: null, CSA: null });
 
   // Get available regiments for each side. An empty pool means every
-  // regiment is back in the running.
+  // regiment is back in the running; the benched one sits out a draw.
   const getAvailableRegiments = (side) =>
-    getAvailableCommanders(regiments?.[side], commanderPool?.[side]);
+    getAvailableCommanders(regiments?.[side], commanderPool?.[side], benchedCommanders?.[side]);
 
   const spin = (side) => {
     const available = getAvailableRegiments(side);
@@ -76,8 +77,12 @@ const CommanderSpinner = ({
     const available = getAvailableRegiments(side);
     const isSpinning = spinning[side];
     const selected = selectedCommanders?.[side];
-    const poolSize = commanderPool?.[side]?.length || 0;
     const isUSA = side === 'USA';
+
+    // Someone is only really "benched" while they're still in the pool but
+    // held out of this draw.
+    const benched = benchedCommanders?.[side];
+    const isBenched = !!benched && !available.some(r => r.id === benched.id) && !selected;
 
     const bgColor = isUSA ? 'bg-blue-900/30' : 'bg-red-900/30';
     const borderColor = isUSA ? 'border-blue-700' : 'border-red-700';
@@ -96,12 +101,18 @@ const CommanderSpinner = ({
 
     return (
       <div className={`${bgColor} rounded-lg p-4 border ${borderColor}`}>
-        <div className="flex justify-between items-baseline gap-2 mb-3">
+        <div className={`flex justify-between items-baseline gap-2 ${isBenched ? 'mb-1' : 'mb-3'}`}>
           <div className={`font-semibold ${textColor} text-sm leading-tight`}>{side} Commander</div>
           <div className="text-xs text-slate-500 whitespace-nowrap">
-            {poolSize === 0 ? sideRegiments.length : poolSize}/{sideRegiments.length} left
+            {available.length}/{sideRegiments.length} left
           </div>
         </div>
+
+        {isBenched && (
+          <div className="text-[11px] text-slate-500 italic mb-3 leading-tight">
+            {benched.name} led last — sitting out this draw
+          </div>
+        )}
 
         {/* Spinner Display */}
         <div className={`bg-slate-800 rounded-lg p-3 mb-3 min-h-[60px] flex items-center justify-center border-2 ${

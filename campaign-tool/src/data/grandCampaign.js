@@ -259,6 +259,7 @@ export const createGrandCampaign = () => {
     regiments: { USA: [], CSA: [] },
     commanderPool: { USA: [], CSA: [] },
     pendingCommanders: { USA: null, CSA: null },
+    benchedCommanders: { USA: null, CSA: null },
     regimentStats: {},
 
     // Grand Campaign specific state

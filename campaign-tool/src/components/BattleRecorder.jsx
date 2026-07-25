@@ -1101,6 +1101,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                 <CommanderSpinner
                   regiments={campaign.regiments}
                   commanderPool={campaign.commanderPool}
+                  benchedCommanders={campaign.benchedCommanders}
                   selectedCommanders={selectedCommanders}
                   onSelect={handleCommanderSelect}
                 />

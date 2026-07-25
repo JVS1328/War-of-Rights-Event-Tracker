@@ -10,9 +10,11 @@ import { isTerritorySupplied } from './supplyLines';
  *
  * @param {Object} campaign - Current campaign state
  * @param {Object} battle - Battle data to process
+ * @param {Object} [options] - { skipCommanderPool } when the commander pool
+ *   was already updated for this battle (pending → completed transition)
  * @returns {Object} Updated campaign state
  */
-export const processBattleResult = (campaign, battle) => {
+export const processBattleResult = (campaign, battle, options = {}) => {
   const territory = campaign.territories.find(t => t.id === battle.territoryId);
   if (!territory) return campaign;
 
@@ -327,7 +329,11 @@ export const processBattleResult = (campaign, battle) => {
 
     });
 
-    updatedCampaign = applyCommanderPoolUpdate(updatedCampaign, battle);
+    // A battle first saved as pending already took its commanders out of the
+    // pool; completing it later must not charge the pool twice.
+    if (!options.skipCommanderPool) {
+      updatedCampaign = applyCommanderPoolUpdate(updatedCampaign, battle);
+    }
   }
 
   return updatedCampaign;
@@ -337,15 +343,23 @@ export const processBattleResult = (campaign, battle) => {
  * Regiments a side may still be drawn from.
  * An empty pool is the "everyone is available" state used by fresh campaigns.
  *
+ * The benched regiment — the one whose turn emptied the pool and triggered a
+ * refill — is skipped so nobody leads two battles running. It is only held
+ * back while there is somebody else to draw.
+ *
  * @param {Array} regiments - One side's regiments ([{ id, name }])
  * @param {Array} pool - One side's commander pool (regiment IDs)
+ * @param {Object|null} benched - Regiment sitting out this draw ({ id, name })
  * @returns {Array} Regiments still eligible to command
  */
-export const getAvailableCommanders = (regiments, pool) => {
+export const getAvailableCommanders = (regiments, pool, benched = null) => {
   const all = regiments || [];
   const ids = pool || [];
-  if (ids.length === 0) return all;
-  return all.filter(r => ids.includes(r.id));
+  const inPool = ids.length === 0 ? all : all.filter(r => ids.includes(r.id));
+
+  if (!benched) return inPool;
+  const eligible = inPool.filter(r => r.id !== benched.id);
+  return eligible.length > 0 ? eligible : inPool;
 };
 
 /**
@@ -363,28 +377,38 @@ export const getAvailableCommanders = (regiments, pool) => {
  */
 export const reserveCommander = (campaign, side, regiment) => {
   const regiments = campaign.regiments?.[side] || [];
-  const pool = [...(campaign.commanderPool?.[side] || [])];
+  let pool = [...(campaign.commanderPool?.[side] || [])];
   const previous = campaign.pendingCommanders?.[side] || null;
+  let benched = campaign.benchedCommanders?.[side] || null;
 
   // Release the previously reserved regiment back into the pool.
-  if (
-    previous &&
-    previous.id !== regiment?.id &&
-    !pool.includes(previous.id) &&
-    regiments.some(r => r.id === previous.id)
-  ) {
-    pool.push(previous.id);
+  if (previous && previous.id !== regiment?.id) {
+    if (benched?.id === previous.id) {
+      // That reservation is what emptied the pool and triggered the refill,
+      // so undo it whole — bench included — rather than leaving the rotation
+      // reset by a roll that never happened.
+      pool = [...(benched.restorePool || pool)];
+      benched = null;
+    } else if (!pool.includes(previous.id) && regiments.some(r => r.id === previous.id)) {
+      pool.push(previous.id);
+    }
   }
 
   let nextPool = pool;
   if (regiment) {
     nextPool = pool.filter(id => id !== regiment.id);
 
-    // Everyone has had a turn — refill for the next round, holding back the
-    // regiment just drawn so it can't command twice running.
     if (nextPool.length === 0 && regiments.length > 0) {
-      const refill = regiments.map(r => r.id).filter(id => id !== regiment.id);
-      nextPool = refill.length > 0 ? refill : regiments.map(r => r.id);
+      // Everyone has had a turn. Refill with the whole roster — including
+      // whoever just drew — but bench them for one draw so they can't lead
+      // back-to-back. With a single regiment there's nobody else to bench for.
+      nextPool = regiments.map(r => r.id);
+      benched = regiments.length > 1
+        ? { id: regiment.id, name: regiment.name, restorePool: [...pool] }
+        : null;
+    } else {
+      // A new commander is up, so the previous bench has been served.
+      benched = null;
     }
   }
 
@@ -397,6 +421,10 @@ export const reserveCommander = (campaign, side, regiment) => {
     pendingCommanders: {
       ...(campaign.pendingCommanders || { USA: null, CSA: null }),
       [side]: regiment ? { id: regiment.id, name: regiment.name } : null
+    },
+    benchedCommanders: {
+      ...(campaign.benchedCommanders || { USA: null, CSA: null }),
+      [side]: benched
     }
   };
 };
@@ -407,8 +435,8 @@ export const reserveCommander = (campaign, side, regiment) => {
  *
  * Commanders rolled ahead of time on the campaign map are already out of the
  * pool, so recording their battle only releases the reservation. A battle
- * fought by someone *other* than the reserved commander puts the reserved
- * regiment back into rotation.
+ * fought by someone *other* than the reserved commander withdraws whoever
+ * actually led and puts the reserved regiment back into rotation.
  *
  * @param {Object} campaign - Current campaign state
  * @param {Object} battle - Battle data (only battle.commanders is used)
@@ -422,16 +450,23 @@ export const applyCommanderPoolUpdate = (campaign, battle) => {
   ['USA', 'CSA'].forEach(side => {
     const commander = battle.commanders[side];
     if (!commander) return;
-    updated = reserveCommander(updated, side, commander);
+
+    const reserved = updated.pendingCommanders?.[side];
+    if (!reserved || reserved.id !== commander.id) {
+      updated = reserveCommander(updated, side, commander);
+    }
+
+    // The reservation was consumed by this battle.
+    updated = {
+      ...updated,
+      pendingCommanders: {
+        ...(updated.pendingCommanders || { USA: null, CSA: null }),
+        [side]: null
+      }
+    };
   });
 
-  // The reservations were consumed by this battle.
-  const pending = { ...(updated.pendingCommanders || { USA: null, CSA: null }) };
-  ['USA', 'CSA'].forEach(side => {
-    if (battle.commanders[side]) pending[side] = null;
-  });
-
-  return { ...updated, pendingCommanders: pending };
+  return updated;
 };
 
 export const canAttackTerritory = (campaign, territoryId, attacker) => {

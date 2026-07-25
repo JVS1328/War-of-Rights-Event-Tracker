@@ -188,7 +188,10 @@ const CampaignTracker = () => {
         ...campaign,
         battles: campaign.battles.filter(b => b.id !== battle.id)
       };
-      const updatedCampaign = processBattleResult(campaignWithoutOld, battle);
+      // The pool was already updated when this battle was saved as pending.
+      const updatedCampaign = processBattleResult(campaignWithoutOld, battle, {
+        skipCommanderPool: true
+      });
       setCampaign(updatedCampaign);
     } else {
       // Metadata-only update (casualties, notes, etc.) or still pending
@@ -477,8 +480,9 @@ const CampaignTracker = () => {
       };
 
       // The roster changed, so any pre-rolled commander is void (its regiment
-      // is back in the refreshed pool above).
+      // is back in the refreshed pool above) and nobody is benched.
       updatedCampaign.pendingCommanders = { USA: null, CSA: null };
+      updatedCampaign.benchedCommanders = { USA: null, CSA: null };
     }
 
     setCampaign(updatedCampaign);

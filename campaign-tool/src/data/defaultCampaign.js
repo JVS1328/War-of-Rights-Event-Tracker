@@ -300,6 +300,10 @@ export const createDefaultCampaign = (customMap = null) => {
       USA: null, // { id, name } rolled ahead of the next battle
       CSA: null
     },
+    benchedCommanders: {
+      USA: null, // { id, name } sitting out one draw after a pool refill
+      CSA: null
+    },
     regimentStats: {}, // { regimentId: { wins, losses, casualties, spLost, vpGained, vpLost, battles: [] } }
 
     // Settings with both old and new fields
@@ -465,6 +469,10 @@ export const createEasternTheatreCampaign = () => {
       USA: null,
       CSA: null
     },
+    benchedCommanders: {
+      USA: null,
+      CSA: null
+    },
     regimentStats: {},
 
     // Settings
@@ -556,6 +564,10 @@ export const createMaryland1862Campaign = () => {
       CSA: []
     },
     pendingCommanders: {
+      USA: null,
+      CSA: null
+    },
+    benchedCommanders: {
       USA: null,
       CSA: null
     },
