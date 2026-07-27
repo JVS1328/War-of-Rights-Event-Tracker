@@ -1,22 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCompany, ticketDamage, pctShare, formatPct, ticketEfficiency } from './labels';
-
-describe('ticketEfficiency', () => {
-  it('is ticket damage per player relative to the team average (1.0 = pulling weight)', () => {
-    // 50% of roster (2 of 4) but only 30% of damage (3 of 10) → 0.6
-    expect(ticketEfficiency(3, 2, 10, 4)).toBeCloseTo(0.6, 5);
-    // half the roster, half the damage → exactly 1.0
-    expect(ticketEfficiency(5, 2, 10, 4)).toBeCloseTo(1, 5);
-    // a quarter of the roster doing half the damage → 2.0 (above its weight)
-    expect(ticketEfficiency(5, 1, 10, 4)).toBeCloseTo(2, 5);
-  });
-
-  it('returns null when the team dealt none or a head count is missing', () => {
-    expect(ticketEfficiency(3, 2, 0, 4)).toBeNull();
-    expect(ticketEfficiency(3, 0, 10, 4)).toBeNull();
-    expect(ticketEfficiency(3, 2, 10, 0)).toBeNull();
-  });
-});
+import { formatCompany, ticketDamage, pctShare, formatPct } from './labels';
 
 describe('ticketDamage', () => {
   it('weights In Formation·1 + Skirmish·3 + Out of Line·5', () => {

@@ -141,9 +141,8 @@ describe('roundAnalytics', () => {
     expect(rows.map((r) => r.name)).toEqual(['1stTX | Alice', '1stTX | Bob']);
     expect(rows[0]).toMatchObject({ damage: 6, regiment: '1STTX', key: '1stTX | Alice' });
     expect(rows[1].damage).toBe(3);
-    // Share of the team's ticket damage (6 + 3 = 9 for USA) + per-player efficiency.
+    // Share of the team's ticket damage (6 + 3 = 9 for USA).
     expect(rows[0].share).toBeCloseTo(6 / 9, 5);
-    expect(rows[0].eff).toBeCloseTo(6 / 1 / (9 / 2), 5); // (6/1)/(9/2)
   });
 
   it('ranks ticket damage received by ×Td weight of each death stance', () => {

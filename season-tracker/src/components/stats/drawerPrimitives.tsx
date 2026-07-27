@@ -3,7 +3,7 @@
 // duplicate the same cell / cause-table / formatting primitives.
 import type { ReactNode } from 'react';
 import type { Team } from '../../stats/types';
-import { formatPct, formatCompany, efficiencyTitle } from '../../stats/labels';
+import { formatPct, formatCompany } from '../../stats/labels';
 
 export const kdStr = (k: number, d: number) => (d > 0 ? k / d : k).toFixed(2);
 
@@ -29,40 +29,14 @@ export function roleLine(parts: {
 }
 
 /**
- * A ticket-damage figure: the headline share (of the team's ticket damage) with
- * the size-adjusted efficiency dimmed beside it. Both halves carry their own
- * hover text — `shareTitle` explains the share (TDI/TDR); the efficiency's title
- * is built from the roster split + `kind` (so it reads "higher is better" for
- * inflicted, "lower is better" for received) and shows the `1.75×` ratio. Used
- * everywhere TDI/TDR appears so they read consistently.
+ * A ticket-damage figure: the share of the team's ticket damage, with
+ * `shareTitle` as its hover text (TDI/TDR). Used everywhere TDI/TDR appears so
+ * they read consistently.
  */
-export function TicketPct({
-  share,
-  eff,
-  shareTitle,
-  unitPlayers,
-  teamPlayers,
-  kind,
-  avg = false,
-}: {
-  share: number | null;
-  eff: number | null;
-  shareTitle?: string;
-  unitPlayers: number;
-  teamPlayers: number;
-  kind: 'inflicted' | 'received';
-  avg?: boolean;
-}) {
-  const effTitle = efficiencyTitle(eff, unitPlayers, teamPlayers, kind, avg);
+export function TicketPct({ share, shareTitle }: { share: number | null; shareTitle?: string }) {
   return (
-    <span className="whitespace-nowrap tabular-nums">
-      <span className={shareTitle ? 'cursor-help' : undefined} title={shareTitle}>
-        {formatPct(share)}
-      </span>
-      <span className="text-[color:var(--color-text-2)]"> · </span>
-      <span className="opacity-70 cursor-help" title={effTitle}>
-        {formatPct(eff)}
-      </span>
+    <span className={`whitespace-nowrap tabular-nums ${shareTitle ? 'cursor-help' : ''}`} title={shareTitle}>
+      {formatPct(share)}
     </span>
   );
 }

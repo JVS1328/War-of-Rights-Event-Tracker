@@ -10,7 +10,6 @@ import type { Scoreboard, ScoreboardPlayer, RosterEntry, Team } from '../../../s
 import {
   avgTicketCost,
   ticketDamage,
-  ticketEfficiency,
   perPlayerRate,
   formatRate,
   AVG_TD_LABEL,
@@ -263,7 +262,6 @@ function TeamBlock({
                 causeIndex={causeIndex}
                 teamInflicted={teamInflicted}
                 teamReceived={teamReceived}
-                teamPlayers={rows.length}
                 onOpenPlayer={onOpenPlayer}
               />
             );
@@ -328,7 +326,6 @@ function RegimentGroup({
   causeIndex,
   teamInflicted,
   teamReceived,
-  teamPlayers,
   onOpenPlayer,
 }: {
   group: RegimentGroupModel;
@@ -340,11 +337,9 @@ function RegimentGroup({
   lookup: (p: ScoreboardPlayer) => RosterEntry | undefined;
   killStance: (p: ScoreboardPlayer) => KillStance;
   causeIndex: CauseIndex;
-  /** Team-wide ticket damage inflicted/received and head count — the share &
-   *  efficiency denominators. */
+  /** Team-wide ticket damage inflicted/received — the share denominators. */
   teamInflicted: number;
   teamReceived: number;
-  teamPlayers: number;
   onOpenPlayer: (key: string) => void;
 }) {
   const { regiment, players } = group;
@@ -353,14 +348,11 @@ function RegimentGroup({
   // Size-normalized rates for this unit's round: kills / casualties per player.
   const killRate = perPlayerRate(agg.kills, players.length);
   const lossRate = perPlayerRate(agg.deaths, players.length);
-  // This unit's share of the team's ticket damage this round, plus the
-  // size-adjusted efficiency (share ÷ roster share) shown beside it.
+  // This unit's share of the team's ticket damage this round.
   const unitInflicted = ticketDamage(agg.killInForm, agg.killSkirm, agg.killOob);
   const unitReceived = ticketDamage(agg.inForm, agg.skirm, agg.oob);
   const pctInflicted = teamInflicted > 0 ? unitInflicted / teamInflicted : null;
   const pctReceived = teamReceived > 0 ? unitReceived / teamReceived : null;
-  const effInflicted = ticketEfficiency(unitInflicted, players.length, teamInflicted, teamPlayers);
-  const effReceived = ticketEfficiency(unitReceived, players.length, teamReceived, teamPlayers);
   // Unit-level "killed with" / "died to" — every member's killfeed rolled up.
   const unitKilledWith = sortedCauses(sumCauses(players.map((p) => killedWithOf(p, causeIndex))));
   const unitDiedTo = sortedCauses(sumCauses(players.map((p) => diedToOf(p, causeIndex))));
@@ -434,14 +426,7 @@ function RegimentGroup({
                 title={TICKET_INFLICTED_LABEL}
                 value={
                   <span className="text-[color:var(--color-text-0)]">
-                    <TicketPct
-                      share={pctInflicted}
-                      eff={effInflicted}
-                      shareTitle={TICKET_INFLICTED_LABEL}
-                      unitPlayers={players.length}
-                      teamPlayers={teamPlayers}
-                      kind="inflicted"
-                    />
+                    <TicketPct share={pctInflicted} shareTitle={TICKET_INFLICTED_LABEL} />
                   </span>
                 }
               />
@@ -450,14 +435,7 @@ function RegimentGroup({
                 title={TICKET_RECEIVED_LABEL}
                 value={
                   <span className="text-[color:var(--color-text-0)]">
-                    <TicketPct
-                      share={pctReceived}
-                      eff={effReceived}
-                      shareTitle={TICKET_RECEIVED_LABEL}
-                      unitPlayers={players.length}
-                      teamPlayers={teamPlayers}
-                      kind="received"
-                    />
+                    <TicketPct share={pctReceived} shareTitle={TICKET_RECEIVED_LABEL} />
                   </span>
                 }
               />

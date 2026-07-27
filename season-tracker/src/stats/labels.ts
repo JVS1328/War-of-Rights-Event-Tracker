@@ -25,19 +25,19 @@ export const AVG_TK_LABEL = 'Avg ticket value per kill (1·In Formation + 3·Ski
 
 /** Tooltip for a single round's ticket-damage-inflicted share (round drawer). */
 export const TICKET_INFLICTED_LABEL =
-  'Ticket damage inflicted: share of the team\'s ticket drain on the enemy this round (this unit\'s ×Tk-weighted kills ÷ the team\'s total). The dimmed figure beside it is size-adjusted efficiency — hover it for the roster split.';
+  'Ticket damage inflicted: share of the team\'s ticket drain on the enemy this round (this unit\'s ×Tk-weighted kills ÷ the team\'s total).';
 
 /** Tooltip for a single round's ticket-damage-received share (round drawer). */
 export const TICKET_RECEIVED_LABEL =
-  'Ticket damage received: share of the team\'s ticket losses this round (this unit\'s ×Td-weighted deaths ÷ the team\'s total). The dimmed figure beside it is size-adjusted efficiency — hover it for the roster split.';
+  'Ticket damage received: share of the team\'s ticket losses this round (this unit\'s ×Td-weighted deaths ÷ the team\'s total).';
 
 /** Tooltip for the cumulative (per-round-averaged) ticket-damage-inflicted share. */
 export const AVG_TICKET_INFLICTED_LABEL =
-  'Avg ticket damage inflicted: this unit\'s share of its team\'s ticket drain on the enemy, averaged across every round it played. The dimmed figure beside it is size-adjusted efficiency — hover it for the roster split.';
+  'Avg ticket damage inflicted: this unit\'s share of its team\'s ticket drain on the enemy, averaged across every round it played.';
 
 /** Tooltip for the cumulative (per-round-averaged) ticket-damage-received share. */
 export const AVG_TICKET_RECEIVED_LABEL =
-  'Avg ticket damage received: this unit\'s share of its team\'s ticket losses, averaged across every round it played. The dimmed figure beside it is size-adjusted efficiency — hover it for the roster split.';
+  'Avg ticket damage received: this unit\'s share of its team\'s ticket losses, averaged across every round it played.';
 
 /** Tooltip for kill rate (KR) — offensive output normalized by unit size. */
 export const KILL_RATE_LABEL =
@@ -97,54 +97,6 @@ export function ticketDamage(inForm: number, skirm: number, oob: number): number
 /** A part÷total share as a 0–1 fraction, or null when the total is zero. */
 export function pctShare(part: number, total: number): number | null {
   return total > 0 ? part / total : null;
-}
-
-/**
- * Size-adjusted ticket-damage index: a unit's ticket damage per player divided
- * by its team's ticket damage per player. 1.0 (shown as 100%) means the unit
- * pulled exactly its weight — it contributed in proportion to its headcount;
- * above 100% is punching above its weight, below is under. So a unit that is 50%
- * of the roster but deals 30% of the damage reads 0.6 (60%), not 30%. Null when
- * the team dealt none or a head count is missing. For damage inflicted higher is
- * better; for damage received it's the reverse (below 100% = cost the team less
- * than its size would predict).
- */
-export function ticketEfficiency(
-  unitDamage: number,
-  unitPlayers: number,
-  teamDamage: number,
-  teamPlayers: number,
-): number | null {
-  if (teamDamage <= 0 || unitPlayers <= 0 || teamPlayers <= 0) return null;
-  return unitDamage / unitPlayers / (teamDamage / teamPlayers);
-}
-
-/**
- * Hover text for the inline efficiency figure. States the efficiency as a `×`
- * ratio and a percent, explains it (share ÷ roster share, 100% = pulling its
- * weight), notes which direction is good — higher for damage inflicted, lower
- * for damage received — and shows the roster split it's built from ("46 of 152
- * players — 30% of the team"). Pass `avg` for cumulative views, where the counts
- * are per-round averages (rounded).
- */
-export function efficiencyTitle(
-  eff: number | null,
-  unitPlayers: number,
-  teamPlayers: number,
-  kind: 'inflicted' | 'received',
-  avg = false,
-): string {
-  const share = pctShare(unitPlayers, teamPlayers);
-  const u = avg ? Math.round(unitPlayers) : unitPlayers;
-  const t = avg ? Math.round(teamPlayers) : teamPlayers;
-  const lead = avg ? 'avg ' : '';
-  const per = avg ? ' per round' : '';
-  const ratio = eff == null ? '—' : `${eff.toFixed(2)}×`;
-  const better =
-    kind === 'inflicted'
-      ? 'higher is better — more enemy tickets drained than its size would predict'
-      : "lower is better — fewer of the team's tickets lost than its size would predict";
-  return `Efficiency ${ratio} (${formatPct(eff)}) = this unit's ticket-damage share ÷ its roster share. 100% = pulling exactly its weight; ${better}. Roster: ${lead}${u} of ${t} players${per} (${formatPct(share)} of the team).`;
 }
 
 /** Format a 0–1 fraction as a whole-number percent ("42%"), or "—" when null. */
