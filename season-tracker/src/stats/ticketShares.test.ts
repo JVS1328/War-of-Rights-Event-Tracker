@@ -132,26 +132,12 @@ describe('computeRegimentTicketShares', () => {
     expect(shares.BETA.perRound['r1.csv'].pctInflicted).toBeCloseTo(0, 5);
   });
 
-  it('adds size-adjusted efficiency (share ÷ roster share) beside the shares', () => {
-    // ALPHA inflicted: R1 100% share ÷ 2/3 roster = 1.5; R2 100% ÷ 1/2 = 2.0 → 1.75
-    expect(shares.ALPHA.avgEffInflicted).toBeCloseTo(1.75, 5);
-    // ALPHA received: R1 (4/9)÷(2/3)=2/3; R2 (5/6)÷(1/2)=5/3 → mean 7/6
-    expect(shares.ALPHA.avgEffReceived).toBeCloseTo(7 / 6, 5);
-    // BETA never scored → 0 inflicted efficiency; its received losses average to exactly its weight
-    expect(shares.BETA.avgEffInflicted).toBeCloseTo(0, 5);
-    expect(shares.BETA.avgEffReceived).toBeCloseTo(1, 5);
-    // GAMMA is the whole CSA team → efficiency 1.0 both ways
-    expect(shares.GAMMA.avgEffInflicted).toBeCloseTo(1, 5);
-    expect(shares.GAMMA.avgEffReceived).toBeCloseTo(1, 5);
-  });
-
-  it('reports average roster head counts and per-round splits for the hover', () => {
+  it('reports average roster head counts and per-round splits', () => {
     expect(shares.ALPHA.avgUnitPlayers).toBeCloseTo(1.5, 5); // (2 + 1) / 2
     expect(shares.ALPHA.avgTeamPlayers).toBeCloseTo(2.5, 5); // (3 + 2) / 2
-    expect(shares.ALPHA.perRound['r1.csv'].effInflicted).toBeCloseTo(1.5, 5);
     expect(shares.ALPHA.perRound['r1.csv'].unitPlayers).toBe(2);
     expect(shares.ALPHA.perRound['r1.csv'].teamPlayers).toBe(3);
-    expect(shares.ALPHA.perRound['r2.csv'].effInflicted).toBeCloseTo(2, 5);
+    expect(shares.ALPHA.perRound['r2.csv'].unitPlayers).toBe(1);
   });
 
   it('splits shares by faction context (asUSA/asCSA)', () => {
@@ -159,7 +145,7 @@ describe('computeRegimentTicketShares', () => {
     expect(shares.ALPHA.asUSA.rounds).toBe(2);
     expect(shares.ALPHA.asCSA.rounds).toBe(0);
     expect(shares.ALPHA.asUSA.avgPctInflicted).toBeCloseTo(shares.ALPHA.avgPctInflicted ?? -1, 5);
-    expect(shares.ALPHA.asUSA.avgEffReceived).toBeCloseTo(shares.ALPHA.avgEffReceived ?? -1, 5);
+    expect(shares.ALPHA.asUSA.avgPctReceived).toBeCloseTo(shares.ALPHA.avgPctReceived ?? -1, 5);
     // GAMMA played CSA both rounds → asCSA mirrors overall, asUSA is empty.
     expect(shares.GAMMA.asCSA.rounds).toBe(2);
     expect(shares.GAMMA.asUSA.rounds).toBe(0);
@@ -201,8 +187,5 @@ describe('computeTokenTicketShares', () => {
     const shares = computeTokenTicketShares([R1, R2], {}, { '1st Brigade': ['ALPHA', 'BETA'] });
     expect(shares['1st Brigade'].avgPctReceived).toBeCloseTo(1, 5);
     expect(shares['1st Brigade'].avgPctInflicted).toBeCloseTo(1, 5);
-    // A token that IS the whole team contributes exactly its weight → efficiency 1.0.
-    expect(shares['1st Brigade'].avgEffInflicted).toBeCloseTo(1, 5);
-    expect(shares['1st Brigade'].avgEffReceived).toBeCloseTo(1, 5);
   });
 });

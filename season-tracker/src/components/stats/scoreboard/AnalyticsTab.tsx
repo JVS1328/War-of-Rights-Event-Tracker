@@ -194,8 +194,8 @@ function IndividualRows({
   );
 }
 
-/** Ranked ticket-damage rows showing each entry's share of the team + efficiency
- *  (via {@link TicketPct}). Player rows open the player drawer; regiment rows,
+/** Ranked ticket-damage rows showing each entry's share of the team (via
+ *  {@link TicketPct}). Player rows open the player drawer; regiment rows,
  *  whose name IS the regiment, are display-only. */
 function TicketRows({
   rows,
@@ -227,14 +227,7 @@ function TicketRows({
               )}
             </td>
             <td className="px-1 py-0.5 text-right text-[color:var(--color-text-0)]">
-              <TicketPct
-                share={r.share}
-                eff={r.eff}
-                shareTitle={shareTitle}
-                unitPlayers={r.unitPlayers}
-                teamPlayers={r.teamPlayers}
-                kind={kind}
-              />
+              <TicketPct share={r.share} shareTitle={shareTitle} />
             </td>
           </tr>
         ))}
