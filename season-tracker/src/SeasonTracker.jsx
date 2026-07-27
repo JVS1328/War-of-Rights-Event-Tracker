@@ -62,6 +62,18 @@ const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 // truth catalog (canonical scoreboard spellings, incl. Conquest/Contention).
 const MAPS = MAP_AREAS;
 
+// Company balancer. Special and cavalry companies are drawn off the top of a
+// side's total company count and carry a player cap; the rest are uncapped
+// regulars. Cavalry's cap is per-week/side editable, special's is fixed.
+const SPECIAL_COMPANY_CAP = 20;
+const DEFAULT_CAVALRY_CAP = 30;
+const DEFAULT_COMPANY_SIDE = { count: 0, specialCount: 0, cavalryCount: 0, cavalryCap: DEFAULT_CAVALRY_CAP };
+const COMPANY_KINDS = {
+  special: { label: 'Special Co', box: 'bg-yellow-900/40 border border-yellow-700/50', text: 'text-yellow-400' },
+  cavalry: { label: 'Cav Co', box: 'bg-purple-900/40 border border-purple-700/50', text: 'text-purple-400' },
+  regular: { label: 'Co', box: 'bg-bg-inset', text: 'text-text-secondary' },
+};
+
 const SeasonTracker = ({ initialShareData = null }) => {
   // v2 app state: events → seasons. All persisted state lives here. Existing
   // top-level field names (units, weeks, etc.) are bound to the active
@@ -391,8 +403,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
       },
       roundSwaps: { r1: [], r2: [] },
       companyConfig: {
-        r1: { A: { count: 0, specialCount: 0 }, B: { count: 0, specialCount: 0 } },
-        r2: { A: { count: 0, specialCount: 0 }, B: { count: 0, specialCount: 0 } }
+        r1: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } },
+        r2: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } }
       }
     };
     setWeeks([...weeks, newWeek]);
@@ -1728,11 +1740,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }
   };
 
-  const SPECIAL_COMPANY_CAP = 20;
-
-  // Distribute regiments into companies for one side of one round
-  const distributeCompanies = (regiments, unitCountsSource, numCompanies, numSpecial) => {
-    if (numCompanies <= 0 || regiments.length === 0) return [];
+  // Distribute regiments into companies for one side of one round. Capped
+  // companies (special, then cavalry) come first; the remainder are regulars.
+  const distributeCompanies = (regiments, unitCountsSource, sideConfig) => {
+    const { count, specialCount, cavalryCount, cavalryCap } = { ...DEFAULT_COMPANY_SIDE, ...sideConfig };
+    if (count <= 0 || regiments.length === 0) return [];
 
     // Build regiment list with avg player count (use balancer-aware counts)
     const regs = regiments.map(unit => {
@@ -1740,13 +1752,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
       return { unit, avg: (counts.min + counts.max) / 2 };
     }).sort((a, b) => b.avg - a.avg); // largest first for greedy fill
 
-    const companies = Array.from({ length: numCompanies }, (_, i) => ({
-      index: i,
-      isSpecial: i < numSpecial,
-      cap: i < numSpecial ? SPECIAL_COMPANY_CAP : Infinity,
-      regiments: [],
-      total: 0
-    }));
+    const numSpecial = Math.min(specialCount, count);
+    const numCavalry = Math.min(cavalryCount, count - numSpecial);
+    const caps = { special: SPECIAL_COMPANY_CAP, cavalry: cavalryCap, regular: Infinity };
+    const companies = Array.from({ length: count }, (_, i) => {
+      const kind = i < numSpecial ? 'special'
+        : i < numSpecial + numCavalry ? 'cavalry'
+        : 'regular';
+      return { kind, cap: caps[kind], regiments: [], total: 0 };
+    });
 
     // Greedy: assign each regiment to the company with the least total that can fit it
     for (const reg of regs) {
@@ -1757,7 +1771,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
       // If no company can fit under cap, put in the least-full regular company
       if (!best) {
-        const regulars = companies.filter(c => !c.isSpecial);
+        const regulars = companies.filter(c => c.kind === 'regular');
         best = regulars.length > 0
           ? regulars.reduce((a, b) => a.total <= b.total ? a : b)
           : companies.reduce((a, b) => a.total <= b.total ? a : b);
@@ -1766,12 +1780,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
       best.total += reg.avg;
     }
 
-    return companies.map((co, i) => ({
-      label: co.isSpecial ? `Special Co ${i + 1}` : `Co ${i + 1 - numSpecial}`,
-      isSpecial: co.isSpecial,
-      regiments: co.regiments,
-      totalAvg: co.total
-    }));
+    const seq = { special: 0, cavalry: 0, regular: 0 };
+    return companies.map(co => {
+      seq[co.kind] += 1;
+      return {
+        label: `${COMPANY_KINDS[co.kind].label} ${seq[co.kind]}`,
+        kind: co.kind,
+        cap: co.cap,
+        regiments: co.regiments,
+        totalAvg: co.total
+      };
+    });
   };
 
   const applyBalancerResults = () => {
@@ -3057,11 +3076,38 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Render company config + auto-computed assignments for a round/side
   const renderCompanySection = (roundKey) => {
     if (!selectedWeek) return null;
-    const defaultSide = { count: 0, specialCount: 0 };
     const rawConfig = selectedWeek.companyConfig?.[roundKey] || {};
-    const config = { A: { ...defaultSide, ...rawConfig.A }, B: { ...defaultSide, ...rawConfig.B } };
+    const config = { A: { ...DEFAULT_COMPANY_SIDE, ...rawConfig.A }, B: { ...DEFAULT_COMPANY_SIDE, ...rawConfig.B } };
     const effective = getEffectiveTeams(selectedWeek, roundKey === 'r1' ? 1 : 2);
     const unitCountsSource = selectedWeek.unitPlayerCounts || unitPlayerCounts;
+
+    // Write one side's config back onto the week, keeping the capped company
+    // counts within the side's total company count.
+    const setSideConfig = (side, patch) => {
+      const next = { ...config[side], ...patch };
+      next.specialCount = Math.min(next.specialCount, next.count);
+      next.cavalryCount = Math.min(next.cavalryCount, next.count - next.specialCount);
+      updateWeek(selectedWeek.id, {
+        companyConfig: {
+          ...(selectedWeek.companyConfig || {}),
+          [roundKey]: { ...(selectedWeek.companyConfig?.[roundKey] || {}), [side]: next }
+        }
+      });
+    };
+
+    const countField = (side, label, field, max) => (
+      <div>
+        <label className="text-xs text-text-secondary">{label}</label>
+        <input
+          type="number"
+          min="0"
+          max={max}
+          value={config[side][field]}
+          onChange={(e) => setSideConfig(side, { [field]: Math.max(0, parseInt(e.target.value) || 0) })}
+          className="w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+        />
+      </div>
+    );
 
     return (
       <div className="mt-3 space-y-3">
@@ -3070,71 +3116,33 @@ const SeasonTracker = ({ initialShareData = null }) => {
           <div key={side} className="bg-bg-card rounded p-2 space-y-2">
             <div className="text-xs font-semibold text-text-secondary">{teamNames[side]}</div>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-text-secondary">Companies</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  value={config[side].count}
-                  onChange={(e) => {
-                    const newCount = parseInt(e.target.value) || 0;
-                    const newSpecial = Math.min(config[side].specialCount, newCount);
-                    updateWeek(selectedWeek.id, {
-                      companyConfig: {
-                        ...(selectedWeek.companyConfig || {}),
-                        [roundKey]: {
-                          ...(selectedWeek.companyConfig?.[roundKey] || {}),
-                          [side]: { count: newCount, specialCount: newSpecial }
-                        }
-                      }
-                    });
-                  }}
-                  className="w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-secondary">Special (cap {SPECIAL_COMPANY_CAP})</label>
-                <input
-                  type="number"
-                  min="0"
-                  max={config[side].count}
-                  value={config[side].specialCount}
-                  onChange={(e) => {
-                    const val = Math.min(parseInt(e.target.value) || 0, config[side].count);
-                    updateWeek(selectedWeek.id, {
-                      companyConfig: {
-                        ...(selectedWeek.companyConfig || {}),
-                        [roundKey]: {
-                          ...(selectedWeek.companyConfig?.[roundKey] || {}),
-                          [side]: { ...config[side], specialCount: val }
-                        }
-                      }
-                    });
-                  }}
-                  className="w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                />
-              </div>
+              {countField(side, 'Companies', 'count', 10)}
+              {countField(side, `Special (cap ${SPECIAL_COMPANY_CAP})`, 'specialCount', config[side].count)}
+              {countField(side, 'Cavalry', 'cavalryCount', Math.max(0, config[side].count - config[side].specialCount))}
+              {countField(side, 'Cavalry cap', 'cavalryCap')}
             </div>
             {config[side].count > 0 && (() => {
               const sideUnits = side === 'A' ? effective.teamA : effective.teamB;
-              const companies = distributeCompanies(sideUnits, unitCountsSource, config[side].count, config[side].specialCount);
+              const companies = distributeCompanies(sideUnits, unitCountsSource, config[side]);
               return companies.length > 0 && (
                 <div className="space-y-1 mt-1">
-                  {companies.map((co, idx) => (
-                    <div key={idx} className={`text-xs rounded px-2 py-1 ${co.isSpecial ? 'bg-yellow-900/40 border border-yellow-700/50' : 'bg-bg-inset'}`}>
-                      <span className={`font-semibold ${co.isSpecial ? 'text-yellow-400' : 'text-text-secondary'}`}>
-                        {co.label}
-                      </span>
-                      <span className="text-text-secondary ml-1">({Math.round(co.totalAvg)} avg)</span>
-                      {co.isSpecial && co.totalAvg > SPECIAL_COMPANY_CAP && (
-                        <span className="text-red-400 ml-1">OVER CAP</span>
-                      )}
-                      <div className="text-text-secondary mt-0.5">
-                        {co.regiments.length > 0 ? co.regiments.join(', ') : 'Empty'}
+                  {companies.map((co, idx) => {
+                    const kind = COMPANY_KINDS[co.kind];
+                    return (
+                      <div key={idx} className={`text-xs rounded px-2 py-1 ${kind.box}`}>
+                        <span className={`font-semibold ${kind.text}`}>
+                          {co.label}
+                        </span>
+                        <span className="text-text-secondary ml-1">({Math.round(co.totalAvg)} avg)</span>
+                        {co.totalAvg > co.cap && (
+                          <span className="text-red-400 ml-1">OVER CAP</span>
+                        )}
+                        <div className="text-text-secondary mt-0.5">
+                          {co.regiments.length > 0 ? co.regiments.join(', ') : 'Empty'}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
