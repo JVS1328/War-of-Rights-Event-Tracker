@@ -10,6 +10,7 @@ A React-based web application for tracking regiment performance across a War of 
 - **Point System**: Configurable point system for wins, losses, and bonuses
 - **Team Balancer**: Weighted balancing of units across the two sides, with an optional skill-based post-season weight for playoffs
 - **Round Types**: Regular, Single Round Leads, Playoffs, and Fun Round (exhibition — no points, no map cooldown, no Elo)
+- **Season Simulator**: Generate a season of lead assignments, evenly spaced per unit, with spread analytics and a sheet-ready schedule export
 - **Standings**: Real-time standings based on performance
 - **Data Persistence**: Automatic saving to browser localStorage
 - **Import/Export**: Save and load season data as JSON files
@@ -63,6 +64,18 @@ Configure the point system in Settings:
 - **Balance Points**: Points for units moved to rebalance a round, awarded Per Night, Per Round, or Per Round (Loss Only) — the last awards only when the balanced unit ends up on the losing side
 
 Point System settings — like the balancer weights and round types — are stored independently per season, so each season can be tuned on its own.
+
+### Season Simulator
+
+The overflow menu's **Simulate** builds a season's worth of weeks from a lead schedule:
+
+- **Full Lead Weeks**: two units lead each night, both rounds each — so a night costs 2 lead slots
+- **Lead Rounds**: four different units lead each night, one per side per round — a night costs 4 lead slots, and no unit ever leads both rounds of the same night
+- **# of Lead Nights per Token Unit**: how many nights each unit leads. Weeks generated = token units × lead nights ÷ leads a night; any leftover slots mean that many units lead one night fewer, which the dialog calls out up front.
+- Each unit's lead nights are spread as evenly across the season as the numbers allow, so everyone waits about the same time between leads. Repeat lead matchups and repeated lead pairings are avoided unless the spacing would suffer badly.
+- **Schedule Only** stops at the leads — no teams, maps or results.
+
+The summary popup afterwards reports season length, average/shortest/longest gap between a unit's leads against the ideal gap, a per-unit breakdown, and — when rounds were simulated — the lead vs assist point split. It also renders the schedule as a tab-separated block you can copy straight into a matchup sheet, or download as CSV.
 
 ### Data Management
 
