@@ -32,8 +32,21 @@ export type StageKey = (typeof STAGE_KEYS)[number];
 
 export type RoundFormats = Record<StageKey, number>;
 
+/**
+ * How the qualifiers are drawn against each other.
+ *
+ *   - 'conference' splits the field in two by conference and crowns each side
+ *     before a championship. It needs exactly two conferences of the right size.
+ *   - 'knockout' seeds the whole field 1..N on points and pairs 1-vs-N down the
+ *     bracket, so it works with any number of groups — or none.
+ */
+export type BracketStyle = 'conference' | 'knockout';
+
+export const BRACKET_STYLES: BracketStyle[] = ['knockout', 'conference'];
+
 export interface PlayoffConfig {
   enabled: boolean;
+  bracketStyle: BracketStyle;
   useDivisions: boolean;
   teamsPerDivision: number;
   wildcardTeams: number;
@@ -43,12 +56,79 @@ export interface PlayoffConfig {
 /** Bounds the settings UI enforces; the search stays inside them. */
 export const LIMITS = {
   teamsPerDivision: { min: 1, max: 4 },
-  wildcardTeams: { min: 0, max: 8 },
+  wildcardTeams: { min: 0, max: 16 },
   roundsPerMatch: { min: 1, max: 3 },
 };
 
 /** Smallest field the bracket generator will draw anything for. */
 export const MIN_FIELD = 4;
+
+/** Largest knockout the four configurable stages can cover. */
+export const MAX_KNOCKOUT_FIELD = 16;
+
+/**
+ * Knockout stages take their series length from the four settings counting back
+ * from the final, so a three-round bracket is quarters/semis/final and a
+ * two-round one is semis/final — the same slots the 4-team bracket already used.
+ */
+const KNOCKOUT_ROUND_NAMES: Record<number, string> = {
+  16: 'Round of 16',
+  8: 'Quarterfinals',
+  4: 'Semifinals',
+  2: 'Finals',
+};
+
+/** What the bracket calls the round that `entering` teams start. */
+export const knockoutRoundName = (entering: number): string =>
+  KNOCKOUT_ROUND_NAMES[entering] ?? `Round of ${entering}`;
+
+/**
+ * Which roundFormats entry drives round `index` of a `roundCount`-round
+ * knockout — counted back from the final, so the planner and the bracket
+ * generator cannot drift on which setting governs which round.
+ */
+export const knockoutStageKey = (roundCount: number, index: number): StageKey =>
+  STAGE_KEYS[STAGE_KEYS.length - roundCount + index];
+
+/** Smallest power of two that seats `n`. */
+export const nextPowerOfTwo = (n: number): number => {
+  let slots = 1;
+  while (slots < n) slots *= 2;
+  return slots;
+};
+
+/**
+ * Seed order for a knockout of `slots`: read in pairs, it is the standard
+ * bracket where the top two seeds can only meet in the final. Eight slots give
+ * 1v8, 4v5, 2v7, 3v6.
+ */
+export const knockoutSeedOrder = (slots: number): number[] => {
+  let order = [1];
+  while (order.length < slots) {
+    const size = order.length * 2;
+    const next: number[] = [];
+    order.forEach(seed => next.push(seed, size + 1 - seed));
+    order = next;
+  }
+  return order;
+};
+
+/**
+ * Byes in a knockout, which always fall to the top seeds: a 6-team field sits
+ * in an 8-slot bracket, so seeds 1 and 2 sit out the opening round.
+ */
+export const knockoutByes = (fieldSize: number): number =>
+  Math.max(0, nextPowerOfTwo(fieldSize) - fieldSize);
+
+/** Opening-round matchups with two real teams; the rest of the slots are byes. */
+export const knockoutOpeningMatchups = (fieldSize: number): number => {
+  const order = knockoutSeedOrder(nextPowerOfTwo(fieldSize));
+  let real = 0;
+  for (let i = 0; i < order.length; i += 2) {
+    if (order[i] <= fieldSize && order[i + 1] <= fieldSize) real++;
+  }
+  return real;
+};
 
 /** Share of the league we want to reach the post-season. */
 const TARGET_QUALIFY_RATE = 0.45;
@@ -100,7 +180,12 @@ export interface ConferenceField {
 
 export interface PlayoffField {
   size: number;
+  /** Per-conference split; empty for a knockout, which does not divide the field. */
   conferences: ConferenceField[];
+  /** Seats won by finishing top-N in a group. */
+  groupSeats: number;
+  /** Seats won by the best units who missed a group seat. */
+  wildcardSeats: number;
   /** Units with no route into the bracket at all under this config. */
   lockedOut: number;
 }
@@ -127,10 +212,29 @@ export const projectField = (config: PlayoffConfig, league: LeagueShape): Playof
   if (!config.useDivisions || divisions.length === 0) {
     // Simple top-N: wildcardTeams doubles as the field size, and 0 means 4.
     const asked = config.wildcardTeams || MIN_FIELD;
-    return { size: Math.min(asked, unitCount), conferences: [], lockedOut: 0 };
+    const size = Math.min(asked, unitCount);
+    return { size, conferences: [], groupSeats: 0, wildcardSeats: 0, lockedOut: 0 };
   }
 
   const perDivision = Math.max(1, config.teamsPerDivision);
+  const assigned = divisions.reduce((sum, d) => sum + d.unitCount, 0);
+  // Group play locks the bracket to units that sit in a group.
+  const lockedOut = Math.max(0, unitCount - assigned);
+
+  if (config.bracketStyle === 'knockout') {
+    // One flat field: every group sends its top N, then the wildcard seats go
+    // to the best of everyone left over, whichever group they came from.
+    let groupSeats = 0;
+    let pool = 0;
+    divisions.forEach(division => {
+      const seats = Math.min(division.unitCount, perDivision);
+      groupSeats += seats;
+      pool += division.unitCount - seats;
+    });
+    const wildcardSeats = Math.min(Math.max(0, config.wildcardTeams), pool);
+    return { size: groupSeats + wildcardSeats, conferences: [], groupSeats, wildcardSeats, lockedOut };
+  }
+
   const grouped = new Map<string, DivisionShape[]>();
   divisions.forEach(division => {
     const conf = conferenceOf(division.name);
@@ -160,12 +264,12 @@ export const projectField = (config: PlayoffConfig, league: LeagueShape): Playof
     });
   });
 
-  const assigned = divisions.reduce((sum, d) => sum + d.unitCount, 0);
   return {
     size: conferences.reduce((sum, c) => sum + c.size, 0),
     conferences,
-    // Division play locks the bracket to units that sit in a division.
-    lockedOut: Math.max(0, unitCount - assigned),
+    groupSeats: conferences.reduce((sum, c) => sum + c.divisionSeats, 0),
+    wildcardSeats: conferences.reduce((sum, c) => sum + c.wildcardSeats, 0),
+    lockedOut,
   };
 };
 
@@ -187,6 +291,8 @@ interface Shape {
   stages: StagePlan[];
   /** Qualifiers the bracket actually seats in a matchup. */
   placed: number;
+  /** Qualifiers that skip the opening round because the draw is not full. */
+  byes: number;
   defects: FormatDefect[];
 }
 
@@ -207,18 +313,57 @@ const makeStage = (name: string, key: StageKey, matchups: number, formats: Round
 };
 
 /**
+ * A seeded knockout: everyone who qualifies is drawn, 1-vs-N down the bracket,
+ * with byes to the top seeds when the field is not a power of two. Any field
+ * from 4 to 16 comes out whole, whatever the groups behind it look like.
+ */
+const planKnockout = (field: PlayoffField, formats: RoundFormats): Shape => {
+  const size = field.size;
+  const defects: FormatDefect[] = [];
+
+  if (size < MIN_FIELD) {
+    defects.push({
+      severity: 'blocker',
+      message: `Only ${size} unit${size === 1 ? '' : 's'} qualify — a bracket needs ${MIN_FIELD}.`,
+    });
+    return { stages: [], placed: 0, byes: 0, defects };
+  }
+  if (size > MAX_KNOCKOUT_FIELD) {
+    defects.push({
+      severity: 'blocker',
+      message: `${size} qualifiers is more than the ${MAX_KNOCKOUT_FIELD}-team bracket the four stage settings cover.`,
+    });
+    return { stages: [], placed: 0, byes: 0, defects };
+  }
+
+  const slots = nextPowerOfTwo(size);
+  const roundCount = Math.round(Math.log2(slots));
+  const stages: StagePlan[] = [];
+
+  for (let round = 0; round < roundCount; round++) {
+    const entering = slots >> round;
+    const matchups = round === 0 ? knockoutOpeningMatchups(size) : entering / 2;
+    const key = knockoutStageKey(roundCount, round);
+    stages.push(makeStage(knockoutRoundName(entering), key, matchups, formats));
+  }
+
+  return { stages, placed: size, byes: knockoutByes(size), defects };
+};
+
+/**
  * The bracket the generator would build for this field, stage by stage.
  *
- * Only three shapes come out whole: a 4-team knockout, and the conference
- * bracket with either exactly 4 or at least 6 qualifiers per conference. The
- * rest are recorded as defects rather than quietly smoothed over — an
- * organiser needs to know that seeds 7 and 8 never take the field.
+ * The conference bracket comes out whole in only two shapes — exactly 4 or at
+ * least 6 qualifiers per conference, across exactly two conferences. The rest
+ * are recorded as defects rather than quietly smoothed over: an organiser needs
+ * to know that seeds 7 and 8 never take the field.
  */
-const planShape = (field: PlayoffField, formats: RoundFormats): Shape => {
+const planConferenceShape = (field: PlayoffField, formats: RoundFormats): Shape => {
   const { size, conferences } = field;
   const defects: FormatDefect[] = [];
   const stages: StagePlan[] = [];
   let placed = 0;
+  let byes = 0;
 
   if (size >= 8 && conferences.length > 0) {
     let wildcardMatchups = 0;
@@ -231,11 +376,13 @@ const planShape = (field: PlayoffField, formats: RoundFormats): Shape => {
         wildcardMatchups += 2;
         divisionalMatchups += 2;
         placed += 6;
+        byes += 2; // the conference's top two skip the wildcard round
         liveConferences++;
       } else if (conf.size === 5) {
         wildcardMatchups += 2;
         divisionalMatchups += 1;
         placed += 5;
+        byes += 1;
         liveConferences++;
         defects.push({
           severity: 'blocker',
@@ -281,6 +428,7 @@ const planShape = (field: PlayoffField, formats: RoundFormats): Shape => {
       makeStage('Championship', 'finals', 1, formats),
     );
     placed = 6;
+    byes = 2;
     defects.push({
       severity: 'blocker',
       message: 'Without conferences the bracket draws a Championship that only ever receives one team — the title is really decided in the round before it.',
@@ -298,8 +446,11 @@ const planShape = (field: PlayoffField, formats: RoundFormats): Shape => {
     });
   }
 
-  return { stages, placed, defects };
+  return { stages, placed, byes, defects };
 };
+
+const planShape = (field: PlayoffField, formats: RoundFormats, style: BracketStyle): Shape =>
+  (style === 'knockout' ? planKnockout : planConferenceShape)(field, formats);
 
 export interface FormatPlan {
   config: PlayoffConfig;
@@ -309,6 +460,8 @@ export interface FormatPlan {
   placed: number;
   /** Qualifiers it leaves out. */
   unplaced: number;
+  /** Qualifiers handed a free pass through the opening round. */
+  byes: number;
   minRounds: number;
   maxRounds: number;
   minNights: number;
@@ -334,16 +487,31 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export const formatNights = (minNights: number, maxNights: number): string =>
   minNights === maxNights ? plural(minNights, 'night') : `${minNights}–${maxNights} nights`;
 
-const buildLabel = (field: PlayoffField): string => {
+const buildLabel = (config: PlayoffConfig, field: PlayoffField): string => {
+  if (config.bracketStyle === 'knockout') return `${field.size}-team seeded knockout`;
   if (field.conferences.length === 0) return `${field.size}-team · open seeding`;
   return `${field.size}-team · ${plural(field.conferences.length, 'conference')}`;
 };
 
-const buildSummary = (config: PlayoffConfig, plan: Omit<FormatPlan, 'summary' | 'score'>, league: LeagueShape): string => {
-  const entry = config.useDivisions && plan.field.conferences.length > 0
-    ? `Top ${config.teamsPerDivision} per division` +
-      (config.wildcardTeams > 0 ? ` plus ${plural(config.wildcardTeams, 'wildcard')} per conference` : ', no wildcards')
-    : `Top ${plan.field.size} in the standings`;
+const buildSummary = (
+  config: PlayoffConfig,
+  plan: Omit<FormatPlan, 'summary' | 'score'>,
+  league: LeagueShape,
+): string => {
+  const grouped = config.useDivisions && (plan.field.conferences.length > 0 || plan.field.groupSeats > 0);
+  let entry: string;
+  if (!grouped) {
+    entry = `Top ${plan.field.size} in the standings`;
+  } else if (config.bracketStyle === 'knockout') {
+    const groups = league.divisions.length;
+    entry = `Top ${config.teamsPerDivision} from each of ${plural(groups, 'group')}`
+      + (plan.field.wildcardSeats > 0
+        ? ` plus ${plural(plan.field.wildcardSeats, 'wildcard')}, seeded on total points`
+        : ', seeded on total points');
+  } else {
+    entry = `Top ${config.teamsPerDivision} per division`
+      + (config.wildcardTeams > 0 ? ` plus ${plural(config.wildcardTeams, 'wildcard')} per conference` : ', no wildcards');
+  }
   const share = league.unitCount > 0 ? ` (${Math.round(plan.qualifyRate * 100)}% of the league)` : '';
   return `${entry} — ${plural(plan.field.size, 'unit')}${share}, ${formatNights(plan.minNights, plan.maxNights)}.`;
 };
@@ -401,22 +569,27 @@ const scorePlan = (plan: Omit<FormatPlan, 'score'>, league: LeagueShape): number
 
   const stakes = 0.5 * finalIsSeries + 0.25 * monotone + 0.25 * depth;
 
-  // Divisions only earn their keep if each one is a route into the bracket, and
-  // winning a division should be the front door — wildcards are the back one.
+  // Groups only earn their keep if each one is a route into the bracket, and
+  // winning your group should be the front door — wildcards are the back one.
   const divisionCount = league.divisions.length;
   let divisionFit = 1;
   if (divisionCount > 0) {
     if (!plan.config.useDivisions) divisionFit = 0.5;
     else {
       const shutOut = plan.field.conferences.reduce((n, c) => n + c.shutOutDivisions.length, 0);
-      const seats = plan.field.conferences.reduce((n, c) => n + c.size, 0);
-      const throughDivision = seats > 0
-        ? plan.field.conferences.reduce((n, c) => n + c.divisionSeats, 0) / seats
-        : 1;
+      const seats = plan.field.groupSeats + plan.field.wildcardSeats;
+      const throughGroup = seats > 0 ? plan.field.groupSeats / seats : 1;
       divisionFit = clamp01(1 - shutOut / divisionCount - (plan.field.lockedOut > 0 ? 0.25 : 0))
-        * (0.75 + 0.25 * throughDivision);
+        * (0.75 + 0.25 * throughGroup);
     }
   }
+
+  // A draw that fills every slot beats one that hands out byes. A bye is a free
+  // pass to the next round, so a full bracket is worth a lot more than a
+  // slightly better qualification rate — hence the cliff rather than a slope.
+  const shape = plan.byes === 0
+    ? 1
+    : clamp01(0.6 - plan.byes / Math.max(1, plan.field.size));
 
   return (
     3.0 * fit +
@@ -424,12 +597,15 @@ const scorePlan = (plan: Omit<FormatPlan, 'score'>, league: LeagueShape): number
     2.0 * access +
     1.5 * stakes +
     1.25 * labelling +
-    1.0 * divisionFit
+    1.0 * divisionFit +
+    1.5 * shape
   );
 };
 
 const normalizeConfig = (config: PlayoffConfig): PlayoffConfig => ({
   enabled: true,
+  // Seasons saved before the knockout existed carry the conference bracket.
+  bracketStyle: config.bracketStyle === 'knockout' ? 'knockout' : 'conference',
   useDivisions: !!config.useDivisions,
   teamsPerDivision: clamp(
     config.teamsPerDivision || 1,
@@ -451,7 +627,7 @@ const normalizeConfig = (config: PlayoffConfig): PlayoffConfig => ({
 export const evaluateFormat = (rawConfig: PlayoffConfig, league: LeagueShape): FormatPlan => {
   const config = normalizeConfig(rawConfig);
   const field = projectField(config, league);
-  const { stages, placed, defects } = planShape(field, config.roundFormats);
+  const { stages, placed, byes, defects } = planShape(field, config.roundFormats, config.bracketStyle);
 
   const minRounds = stages.reduce((sum, s) => sum + s.minRounds, 0);
   const maxRounds = stages.reduce((sum, s) => sum + s.maxRounds, 0);
@@ -469,7 +645,7 @@ export const evaluateFormat = (rawConfig: PlayoffConfig, league: LeagueShape): F
   if (field.lockedOut > 0) {
     allDefects.push({
       severity: 'warning',
-      message: `${plural(field.lockedOut, 'unit')} sit in no division and cannot qualify while division play is on.`,
+      message: `${plural(field.lockedOut, 'unit')} sit in no group and cannot qualify while group play is on.`,
     });
   }
   if (minNights > league.nightsAvailable) {
@@ -500,6 +676,18 @@ export const evaluateFormat = (rawConfig: PlayoffConfig, league: LeagueShape): F
       field.conferences.map(c => `${c.name}: ${c.divisionSeats} division${c.wildcardSeats > 0 ? ` + ${c.wildcardSeats} wildcard` : ''} = ${c.size}`).join(' · '),
     );
   }
+  if (config.bracketStyle === 'knockout') {
+    if (byes > 0 && stages.length > 0) {
+      notes.push(
+        `${field.size} in a ${nextPowerOfTwo(field.size)}-slot bracket, so ${byes === 1 ? 'the top seed sits' : `seeds 1–${byes} sit`} out the opening round.`,
+      );
+    }
+    if (field.groupSeats > 0) {
+      notes.push(
+        `${plural(field.groupSeats, 'seat')} won inside a group, ${field.wildcardSeats} on wildcards — all reseeded 1–${field.size} on total points.`,
+      );
+    }
+  }
 
   const partial: Omit<FormatPlan, 'summary' | 'score'> = {
     config,
@@ -507,6 +695,7 @@ export const evaluateFormat = (rawConfig: PlayoffConfig, league: LeagueShape): F
     stages,
     placed,
     unplaced,
+    byes,
     minRounds,
     maxRounds,
     minNights,
@@ -515,7 +704,7 @@ export const evaluateFormat = (rawConfig: PlayoffConfig, league: LeagueShape): F
     fitsCalendar: maxNights <= league.nightsAvailable,
     defects: allDefects,
     notes,
-    label: buildLabel(field),
+    label: buildLabel(config, field),
   };
 
   const summary = buildSummary(config, partial, league);
@@ -543,9 +732,15 @@ export const suggestFormats = (league: LeagueShape, options: SuggestOptions = {}
   const hasDivisions = league.divisions.length > 0;
 
   const structures: PlayoffConfig[] = [];
-  const pushStructure = (useDivisions: boolean, teamsPerDivision: number, wildcardTeams: number) => {
+  const pushStructure = (
+    bracketStyle: BracketStyle,
+    useDivisions: boolean,
+    teamsPerDivision: number,
+    wildcardTeams: number,
+  ) => {
     structures.push({
       enabled: true,
+      bracketStyle,
       useDivisions,
       teamsPerDivision,
       wildcardTeams,
@@ -553,14 +748,18 @@ export const suggestFormats = (league: LeagueShape, options: SuggestOptions = {}
     });
   };
 
-  for (let field = MIN_FIELD; field <= LIMITS.wildcardTeams.max; field++) pushStructure(false, 1, field);
-  if (hasDivisions) {
-    for (let perDiv = LIMITS.teamsPerDivision.min; perDiv <= LIMITS.teamsPerDivision.max; perDiv++) {
-      for (let wc = LIMITS.wildcardTeams.min; wc <= LIMITS.wildcardTeams.max; wc++) {
-        pushStructure(true, perDiv, wc);
+  BRACKET_STYLES.forEach(style => {
+    for (let field = MIN_FIELD; field <= LIMITS.wildcardTeams.max; field++) {
+      pushStructure(style, false, 1, field);
+    }
+    if (hasDivisions) {
+      for (let perDiv = LIMITS.teamsPerDivision.min; perDiv <= LIMITS.teamsPerDivision.max; perDiv++) {
+        for (let wc = LIMITS.wildcardTeams.min; wc <= LIMITS.wildcardTeams.max; wc++) {
+          pushStructure(style, true, perDiv, wc);
+        }
       }
     }
-  }
+  });
 
   const candidates: FormatPlan[] = [];
 
@@ -591,11 +790,11 @@ export const suggestFormats = (league: LeagueShape, options: SuggestOptions = {}
     });
   });
 
-  /** Collapse to one format per distinct shape: same entry rule, same field. */
+  /** Collapse to one format per distinct shape: same draw, entry rule and field. */
   const perShape = (list: FormatPlan[], better: (a: FormatPlan, b: FormatPlan) => boolean) => {
     const best = new Map<string, FormatPlan>();
     list.forEach(plan => {
-      const key = `${plan.config.useDivisions ? 'div' : 'open'}:${plan.field.size}`;
+      const key = `${plan.config.bracketStyle}:${plan.config.useDivisions ? 'div' : 'open'}:${plan.field.size}`;
       const held = best.get(key);
       if (!held || better(plan, held)) best.set(key, plan);
     });
@@ -630,19 +829,11 @@ export const leagueAdvice = (league: LeagueShape): string[] => {
   if (league.unitCount < MIN_FIELD) {
     advice.push(`Only ${plural(league.unitCount, 'token unit')} in the season — a bracket needs at least ${MIN_FIELD}.`);
   }
-  if (league.divisions.length === 0 && league.unitCount >= 8) {
+  if (league.divisions.length > 0 && conferences.size !== 2) {
     advice.push(
-      'With no divisions the tracker only draws a clean 4-team bracket. Two conferences — divisions whose names share a first word, like "North Valley" and "North Ridge" against "South Valley" and "South Ridge" — unlock the 8- and 12-team formats.',
-    );
-  }
-  if (conferences.size === 1 && league.divisions.length > 0) {
-    advice.push(
-      `All divisions group into one conference ("${[...conferences][0]}"), so there is no championship round. Rename them to start with two different words to split the bracket in half.`,
-    );
-  }
-  if (conferences.size > 2) {
-    advice.push(
-      `Divisions group into ${conferences.size} conferences, but the championship only pairs the first two. Rename them so they fall into exactly two.`,
+      `Your ${plural(league.divisions.length, 'group')} fall into ${plural(conferences.size, 'conference')} `
+      + `(divisions are grouped by the first word of their name). The conference bracket needs exactly two; `
+      + `the seeded knockout takes any number of groups, so use that one.`,
     );
   }
   if (league.nightsAvailable < 2) {
@@ -652,7 +843,7 @@ export const leagueAdvice = (league: LeagueShape): string[] => {
   const assigned = league.divisions.reduce((sum, d) => sum + d.unitCount, 0);
   if (league.divisions.length > 0 && assigned < league.unitCount) {
     advice.push(
-      `${plural(league.unitCount - assigned, 'unit')} are in no division — they can only qualify with division play switched off.`,
+      `${plural(league.unitCount - assigned, 'unit')} are in no group — they can only qualify with group play switched off.`,
     );
   }
 
