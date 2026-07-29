@@ -44,8 +44,14 @@ export const DEFAULT_ELO_CONFIG = {
   mapStatsScope: 'event', // 'event' | 'global'
 };
 
+// 'conference' splits the field in two and crowns each side before a
+// championship; 'knockout' seeds the whole field on points and pairs 1-vs-N
+// down the bracket, which is the only shape that copes with a group count
+// other than two. Seasons saved before the knockout existed have no
+// bracketStyle, so every read of it falls back to 'conference'.
 export const makeDefaultPlayoffConfig = () => ({
   enabled: false,
+  bracketStyle: 'conference',
   useDivisions: false,
   teamsPerDivision: 2,
   wildcardTeams: 0,
