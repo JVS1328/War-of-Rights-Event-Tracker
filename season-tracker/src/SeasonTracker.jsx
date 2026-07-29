@@ -69,6 +69,13 @@ import {
   toTsv,
   weekLeadRounds,
 } from './utils/leadSchedule';
+import {
+  STAGE_KEYS,
+  evaluateFormat as evaluatePlayoffFormat,
+  formatNights,
+  leagueAdvice as playoffLeagueAdvice,
+  suggestFormats as suggestPlayoffFormats,
+} from './utils/playoffPlanner';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -206,6 +213,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
   const [scheduleCopied, setScheduleCopied] = useState(false);
+
+  // Nights the calendar can give the post-season — the planner's one input that
+  // isn't already in the season, so it stays local rather than in the schema.
+  const [playoffNights, setPlayoffNights] = useState(3);
 
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
@@ -3174,6 +3185,41 @@ const SeasonTracker = ({ initialShareData = null }) => {
     () => units.filter(u => !nonTokenUnits.includes(u)),
     [units, nonTokenUnits]
   );
+
+  // The league as the playoff planner sees it: who can qualify, how they are
+  // grouped, and how many nights the post-season has to work with.
+  const playoffLeague = useMemo(() => ({
+    unitCount: tokenUnits.length,
+    divisions: (divisions || []).map(d => ({
+      name: d.name,
+      unitCount: (d.units || []).filter(u => tokenUnits.includes(u)).length,
+    })),
+    nightsAvailable: Math.max(0, playoffNights),
+  }), [tokenUnits, divisions, playoffNights]);
+
+  // What the settings on screen actually produce, and the formats worth
+  // considering instead. Both are cheap enough to recompute as settings change.
+  const playoffAudit = useMemo(
+    () => (playoffConfig.enabled ? evaluatePlayoffFormat(playoffConfig, playoffLeague) : null),
+    [playoffConfig, playoffLeague]
+  );
+  const playoffSuggestions = useMemo(
+    () => (playoffConfig.enabled ? suggestPlayoffFormats(playoffLeague, { limit: 3 }) : []),
+    [playoffConfig.enabled, playoffLeague]
+  );
+  const playoffAdvice = useMemo(
+    () => (playoffConfig.enabled ? playoffLeagueAdvice(playoffLeague) : []),
+    [playoffConfig.enabled, playoffLeague]
+  );
+
+  /** True when a suggested format is the one already configured. */
+  const isPlayoffFormatApplied = useCallback((plan) => (
+    !!playoffAudit &&
+    plan.config.useDivisions === playoffAudit.config.useDivisions &&
+    plan.config.teamsPerDivision === playoffAudit.config.teamsPerDivision &&
+    plan.config.wildcardTeams === playoffAudit.config.wildcardTeams &&
+    STAGE_KEYS.every(k => plan.config.roundFormats[k] === playoffAudit.config.roundFormats[k])
+  ), [playoffAudit]);
 
   // What the current settings would generate, for the simulate dialog's hint.
   const simPreview = useMemo(() => {
@@ -7437,12 +7483,138 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   />
                                 </div>
                               </div>
+                              <p className="text-xs text-text-muted mt-2">
+                                A stage set to N rounds resolves as first to (N ÷ 2) + 1 wins, so 2 and 3 are the same
+                                series — both need two wins, and both can run to a third round.
+                              </p>
                             </div>
                           </>
                         )}
                       </div>
                     </div>
-                    
+
+                    {/* Format Planner — what the settings above actually build,
+                       and the formats worth considering instead. */}
+                    {playoffConfig.enabled && playoffAudit && (
+                      <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                          <h4 className="font-semibold flex items-center gap-2">
+                            <Zap className="w-4 h-4" />
+                            Format Planner
+                          </h4>
+                          <label className="flex items-center gap-2 text-sm text-text-secondary">
+                            Playoff nights available
+                            <input
+                              type="number"
+                              min="1"
+                              max="12"
+                              value={playoffNights}
+                              onChange={(e) => setPlayoffNights(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                            />
+                          </label>
+                        </div>
+                        <p className="text-xs text-text-muted mb-3">
+                          A round hosts one matchup and a night is {ROUNDS_PER_NIGHT} rounds, so two matchups fit in a
+                          night. That is what decides how long a bracket takes.
+                        </p>
+
+                        {/* What the current settings build */}
+                        <div className="bg-bg-card rounded p-3 mb-3">
+                          <h5 className="text-sm font-semibold text-text-secondary mb-2">Your current settings</h5>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-sm">{playoffAudit.label}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${playoffAudit.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                              {formatNights(playoffAudit.minNights, playoffAudit.maxNights)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-text-secondary">{playoffAudit.summary}</p>
+                          {playoffAudit.stages.length > 0 && (
+                            <div className="text-xs text-text-muted mt-2">
+                              {playoffAudit.stages.map(s => (
+                                `${s.name}: ${s.matchups} match${s.matchups === 1 ? '' : 'es'} × ${s.roundsPerMatch} round${s.roundsPerMatch === 1 ? '' : 's'}`
+                              )).join(' · ')}
+                            </div>
+                          )}
+                          {playoffAudit.defects.map((defect, i) => (
+                            <p
+                              key={i}
+                              className={`text-xs mt-2 ${defect.severity === 'blocker' ? 'text-red-400' : 'text-amber-400'}`}
+                            >
+                              {defect.severity === 'blocker' ? '✕' : '!'} {defect.message}
+                            </p>
+                          ))}
+                          {playoffAudit.notes.map((note, i) => (
+                            <p key={i} className="text-xs text-text-muted mt-2">{note}</p>
+                          ))}
+                        </div>
+
+                        {/* Formats worth considering */}
+                        <h5 className="text-sm font-semibold text-text-secondary mb-2">Recommended formats</h5>
+                        {playoffSuggestions.length === 0 ? (
+                          <p className="text-sm text-text-secondary bg-bg-card rounded p-3">
+                            No bracket can be built from this league yet — add token units, or check the notes below.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {playoffSuggestions.map((plan, idx) => {
+                              const applied = isPlayoffFormatApplied(plan);
+                              return (
+                                <div key={idx} className="bg-bg-card rounded p-3">
+                                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                                    <div className="flex-1 min-w-[16rem]">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-semibold text-sm">{plan.label}</span>
+                                        {idx === 0 && (
+                                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+                                            Best fit
+                                          </span>
+                                        )}
+                                        <span className={`text-xs px-2 py-0.5 rounded ${plan.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                                          {formatNights(plan.minNights, plan.maxNights)}
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-text-secondary mt-1">{plan.summary}</p>
+                                      <div className="text-xs text-text-muted mt-1">
+                                        {plan.stages.map(s => (
+                                          `${s.name}: ${s.matchups} × ${s.roundsPerMatch}r`
+                                        )).join(' · ')}
+                                      </div>
+                                      {plan.defects.map((defect, i) => (
+                                        <p key={i} className="text-xs text-amber-400 mt-1">! {defect.message}</p>
+                                      ))}
+                                    </div>
+                                    <button
+                                      onClick={() => setPlayoffConfig({ ...playoffConfig, ...plan.config })}
+                                      disabled={applied}
+                                      className={`px-3 py-1 rounded text-sm transition shrink-0 ${
+                                        applied
+                                          ? 'bg-bg-inset text-text-muted cursor-default'
+                                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                      }`}
+                                    >
+                                      {applied ? 'In use' : 'Apply'}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Things no single format can fix */}
+                        {playoffAdvice.length > 0 && (
+                          <div className="mt-3 bg-bg-card rounded p-3">
+                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Worth knowing</h5>
+                            <ul className="list-disc list-inside space-y-1 text-xs text-text-secondary">
+                              {playoffAdvice.map((note, i) => <li key={i}>{note}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+
                     {/* Playoff Picture */}
                     {playoffConfig.enabled && (() => {
                       const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
