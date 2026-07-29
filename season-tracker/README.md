@@ -11,6 +11,7 @@ A React-based web application for tracking regiment performance across a War of 
 - **Team Balancer**: Weighted balancing of units across the two sides, with an optional skill-based post-season weight for playoffs
 - **Round Types**: Regular, Single Round Leads, Playoffs, and Fun Round (exhibition — no points, no map cooldown, no Elo)
 - **Season Simulator**: Generate a season of lead assignments, evenly spaced per unit, with spread analytics and a sheet-ready schedule export
+- **Playoff Format Planner**: Audits the playoff settings you have and recommends the ones that fit your league and your remaining nights, one click to apply
 - **Standings**: Real-time standings based on performance
 - **Data Persistence**: Automatic saving to browser localStorage
 - **Import/Export**: Save and load season data as JSON files
@@ -76,6 +77,20 @@ The overflow menu's **Simulate** builds a season's worth of weeks from a lead sc
 - **Schedule Only** stops at the leads — no teams, maps or results.
 
 The summary popup afterwards reports season length, average/shortest/longest gap between a unit's leads against the ideal gap, a per-unit breakdown, and — when rounds were simulated — the lead vs assist point split. It also renders the schedule as a tab-separated block you can copy straight into a matchup sheet, or download as CSV.
+
+### Playoff Format Planner
+
+Turning on **Enable Playoff Tracking** (Stats → Playoffs) opens a planner above the playoff picture. Tell it how many playoff nights the calendar can spare and it does two things:
+
+- **Audits the settings you have.** What field they actually produce, which stages get drawn, how many nights that takes, and anything broken — a conference too small to draw, qualifiers that get a seed but never a matchup, units that division play shuts out.
+- **Recommends formats that fit.** Up to three genuinely different brackets — a tight 4-team knockout beside a wider conference bracket — each with its entry rule, field size, share of the league and length. **Apply** writes it straight into the settings.
+
+Two facts about the tracker drive most of the advice:
+
+- **A round hosts one matchup**, since each side has one lead, and a night is two rounds. So two matchups fit in a night, and that — not the number of stages — is what decides how long a bracket takes. An 8-team conference bracket is seven series; a 4-team knockout is three.
+- **"Rounds per match" is really first to (N ÷ 2) + 1 wins.** 2 and 3 are the same series: both need two wins, and both can run to a third round if the first two split. The planner labels these honestly and prefers the odd setting, which says what it means.
+
+The recommendations only include brackets the tracker draws whole. A field it half-draws — where the standings promise a seed the bracket never plays — is never recommended, though the audit will explain it if you configure one by hand. In practice that means a 4-team knockout, or a conference bracket with either exactly 4 or at least 6 qualifiers per conference across exactly two conferences. Conferences come from the first word of a division name, so "North Valley" and "North Ridge" are one conference.
 
 ### Data Management
 

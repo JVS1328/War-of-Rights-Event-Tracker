@@ -137,6 +137,7 @@ A modern React-based web application for tracking regiment performance across a 
 - **Team Rosters**: Assign units to teams for each week
 - **Configurable Point System**: Customize point allocations for wins, losses, and bonuses
 - **Real-Time Standings**: Automatically calculated standings based on performance
+- **Playoff Format Planner**: Audits your playoff settings and recommends formats that fit the league and the nights left, one click to apply
 - **Data Persistence**: Automatic saving to browser localStorage
 - **Import/Export**: Save and load season data as JSON files
 
