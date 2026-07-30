@@ -1,4 +1,11 @@
-import type { RosterEntry, Scoreboard, ScoreboardPlayer, Team, TeamCasualties } from './types';
+import type {
+  RosterEntry,
+  Scoreboard,
+  ScoreboardOfficer,
+  ScoreboardPlayer,
+  Team,
+  TeamCasualties,
+} from './types';
 import type { RegimentAssignmentMap } from './StatsRepository';
 import { extractRegimentTag, matchPlayerToRegimentList } from './regimentMatcher';
 import type { RegimentListEntry } from './regimentMatcher';
@@ -279,6 +286,81 @@ export interface OfficerStatRow {
   winrate: number;
 }
 
+/** One officer's whole round, folded out of the command log's per-stint rows. */
+interface OfficerRound {
+  key: string;
+  name: string;
+  team: Team;
+  battery: boolean;
+  /** Peak subordinates across every stint they held this round. */
+  commanded: number;
+  /** Their command-log rows, in the order the slots were taken. */
+  stints: ScoreboardOfficer[];
+}
+
+/**
+ * Fold the command log into one entry per officer per round.
+ *
+ * Newer scoreboards emit one row per STINT — a contiguous stretch holding one
+ * company's officer slot — so an officer who was replaced and later retook the
+ * slot, or who commanded two companies, appears several times in a single round.
+ * Counting those rows directly inflates `rounds`, sums peak-command figures that
+ * were never concurrent, and double-counts subordinates.
+ *
+ * Keyed by name + branch, matching the leaderboard's own identity, so an officer
+ * who spent part of the round on a battery still splits into separate infantry
+ * and artillery careers.
+ */
+function collapseOfficerStints(officers: ScoreboardOfficer[]): OfficerRound[] {
+  const byKey = new Map<string, OfficerRound>();
+  for (const off of officers) {
+    const key = `${off.name}::${off.battery ? 1 : 0}`;
+    let r = byKey.get(key);
+    if (!r) {
+      r = {
+        key,
+        name: off.name,
+        team: off.team,
+        battery: off.battery,
+        commanded: 0,
+        stints: [],
+      };
+      byKey.set(key, r);
+    }
+    r.commanded = Math.max(r.commanded, off.commanded);
+    r.stints.push(off);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * Every distinct unit an officer commanded this round. Newer scoreboards name the
+ * posting on each command-log row; older ones only named the officer, so fall
+ * back to whatever unit the roster has them in. Each posting carries its own
+ * team — officers do swap sides mid-round, and their subordinates have to be
+ * looked up on the side that posting was served for.
+ */
+function officerUnits(
+  sb: Scoreboard,
+  off: OfficerRound,
+): { team: Team; regiment: string; company: string }[] {
+  const out: { team: Team; regiment: string; company: string }[] = [];
+  const seen = new Set<string>();
+  const add = (team: Team, regiment: string | null | undefined, company: string | null | undefined) => {
+    if (!regiment || !company) return;
+    const k = `${team} ${regiment} ${company}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ team, regiment, company });
+  };
+  for (const s of off.stints) add(s.team, s.regiment, s.company);
+  if (out.length === 0) {
+    const lead = findRoster(sb, null, off.name, off.team);
+    add(off.team, lead?.regiment, lead?.company);
+  }
+  return out;
+}
+
 export function computeOfficerLeaderboard(
   scoreboards: Scoreboard[],
   _assignments: RegimentAssignmentMap,
@@ -293,8 +375,8 @@ export function computeOfficerLeaderboard(
       return p ? { kills: p.kills, deaths: p.deaths } : { kills: 0, deaths: 0 };
     };
 
-    for (const off of sb.officers) {
-      const key = `${off.name}::${off.battery ? 1 : 0}`;
+    for (const off of collapseOfficerStints(sb.officers)) {
+      const key = off.key;
       let row = acc.get(key);
       if (!row) {
         row = {
@@ -317,20 +399,26 @@ export function computeOfficerLeaderboard(
       row.rounds += 1;
       row.commanded += off.commanded;
 
-      // Unit members from the roster (same team + regiment + company).
-      const lead = findRoster(sb, null, off.name, off.team);
+      // Unit members from the roster (same team + regiment + company), unioned
+      // over every unit commanded and deduped, so a man who served under this
+      // officer in two stints of the same company still counts once.
+      const counted = new Set<string>();
       let unitKills = 0;
       let unitDeaths = 0;
-      if (lead?.regiment && lead.company) {
+      for (const unit of officerUnits(sb, off)) {
         const members = sb.roster.filter(
-          (r) => r.team === off.team && r.regiment === lead.regiment && r.company === lead.company,
+          (r) => r.team === unit.team && r.regiment === unit.regiment && r.company === unit.company,
         );
         for (const m of members) {
+          const id = m.steamId ?? `${m.team} ${m.name.toLowerCase()}`;
+          if (counted.has(id)) continue;
+          counted.add(id);
           const kd = playerKD(m.steamId, m.name, m.team);
           unitKills += kd.kills;
           unitDeaths += kd.deaths;
         }
-      } else {
+      }
+      if (counted.size === 0) {
         const kd = playerKD(null, off.name, off.team); // fallback: own row
         unitKills += kd.kills;
         unitDeaths += kd.deaths;

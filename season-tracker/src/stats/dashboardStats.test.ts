@@ -121,6 +121,103 @@ describe('officer leaderboard', () => {
   });
 });
 
+// Newer scoreboards emit the command log as one row per STINT, so a CO who was
+// replaced and later retook the slot — or who commanded two companies — appears
+// several times in a single round. The leaderboard still counts rounds, so those
+// rows have to collapse.
+const STINTS = `round_start_time,18:00:00
+round_end_time,18:30:00
+round_duration_s,1800
+map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+Archer,2,4,1,4.00,1,0,0,76561198000000010
+Grim,2,2,2,1.00,1,1,0,76561198000000011
+Star,2,1,0,1.00,0,0,0,76561198000000012
+
+officer,team,regiment,company,branch,rank,commanded,commanded_avg,start,end,duration_s,pct_round,steam_id
+Archer,2,27th NC,A Company,Infantry,Lt. Colonel,47,43,18:00:00,18:11:00,660,37,76561198000000010
+Archer,2,27th NC,A Company,Infantry,Lt. Colonel,29,25,18:20:00,18:30:00,600,33,76561198000000010
+Archer,2,27th NC,B Company,Infantry,Lt. Colonel,18,15,18:11:00,18:20:00,540,30,76561198000000010
+
+team,regiment,company,name,class,rank,duration_s,pct_round,steam_id
+CSA,27th NC,A Company,Archer,Officer,Lt. Colonel,1800,100,76561198000000010
+CSA,27th NC,A Company,Grim,Private,,1800,100,76561198000000011
+CSA,27th NC,B Company,Star,Private,,1800,100,76561198000000012
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+18:05:00,Archer,76561198000000010,2,xx,76561198000000099,1,in_form,Minie,0,4
+`;
+
+describe('officer leaderboard — per-stint command log', () => {
+  const stintBoards = [parseScoreboard(STINTS, 'scoreboard_20260101_183000.csv')];
+
+  it('counts one round when an officer held the slot across several stints', () => {
+    const archer = computeOfficerLeaderboard(stintBoards, {}).find((o) => o.name === 'Archer')!;
+    expect(archer.rounds).toBe(1);
+  });
+
+  it('reports the peak subordinates commanded, not the sum across stints', () => {
+    const archer = computeOfficerLeaderboard(stintBoards, {}).find((o) => o.name === 'Archer')!;
+    expect(archer.commanded).toBe(47);
+  });
+
+  it('counts the round once in the win/loss record', () => {
+    const archer = computeOfficerLeaderboard(stintBoards, {}).find((o) => o.name === 'Archer')!;
+    expect(archer.wins).toBe(1);
+    expect(archer.losses).toBe(0);
+  });
+
+  it('counts each subordinate once across every company commanded', () => {
+    const archer = computeOfficerLeaderboard(stintBoards, {}).find((o) => o.name === 'Archer')!;
+    // A Co (Archer 4 + Grim 2) and B Co (Star 1) were both his — 7 kills, and
+    // nobody double-counted despite A Company appearing in two stints.
+    expect(archer.unitKills).toBe(7);
+    expect(archer.unitDeaths).toBe(3);
+  });
+});
+
+// Officers do swap sides mid-round: the command log records the stint under each
+// team, so a posting's subordinates must be looked up on the team that posting
+// was served for, not on whichever side the officer happened to start on.
+const TEAM_SWAP = `round_start_time,19:00:00
+round_end_time,19:30:00
+map,DrillCamp
+mode,Skirmish
+winner,USA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+Caldwell,1,3,1,3.00,1,0,0,76561198000000020
+Blue,1,2,1,2.00,1,0,0,76561198000000021
+Gray,2,5,2,2.50,2,0,0,76561198000000022
+
+officer,team,regiment,company,branch,rank,commanded,commanded_avg,start,end,duration_s,pct_round,steam_id
+Caldwell,1,14th Indiana,B Company,Infantry,Captain,20,18,19:00:00,19:15:00,900,50,76561198000000020
+Caldwell,2,27th NC,B Company,Infantry,Captain,25,22,19:15:00,19:30:00,900,50,76561198000000020
+
+team,regiment,company,name,class,rank,duration_s,pct_round,steam_id
+USA,14th Indiana,B Company,Blue,Private,,1800,100,76561198000000021
+USA,14th Indiana,B Company,Caldwell,Officer,Captain,900,50,76561198000000020
+CSA,27th NC,B Company,Gray,Private,,1800,100,76561198000000022
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+19:05:00,Caldwell,76561198000000020,1,xx,76561198000000099,2,in_form,Minie,0,4
+`;
+
+describe('officer leaderboard — officer who swapped teams mid-round', () => {
+  it('resolves each posting on the team it was served for', () => {
+    const boards2 = [parseScoreboard(TEAM_SWAP, 'scoreboard_20260101_193000.csv')];
+    const cald = computeOfficerLeaderboard(boards2, {}).find((o) => o.name === 'Caldwell')!;
+    expect(cald.rounds).toBe(1);
+    expect(cald.commanded).toBe(25); // peak across both sides
+    // USA 14th Indiana B (Caldwell 3 + Blue 2) plus CSA 27th NC B (Gray 5).
+    expect(cald.unitKills).toBe(10);
+    expect(cald.unitDeaths).toBe(4);
+  });
+});
+
 describe('rounds summary', () => {
   it('summarizes each round with duration and kill split', () => {
     const rounds = computeRounds(boards);

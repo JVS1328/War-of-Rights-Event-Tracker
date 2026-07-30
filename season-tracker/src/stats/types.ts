@@ -12,6 +12,9 @@ export const TEAM_BY_CODE: Record<string, Team> = { '1': 'USA', '2': 'CSA' };
 
 export type Formation = 'in_form' | 'skirm' | 'oob';
 
+/** Arm of service a unit belongs to, as labelled by the overlay's command log. */
+export type Branch = 'Infantry' | 'Artillery' | 'Cavalry';
+
 export interface TeamCasualties {
   total: number;
   inForm: number;
@@ -22,6 +25,11 @@ export interface TeamCasualties {
 export interface ScoreboardMeta {
   roundStartTime: string | null;
   roundEndTime: string | null;
+  /**
+   * Round length straight from the overlay. Newer scoreboards only — older ones
+   * leave it null and callers fall back to end − start.
+   */
+  roundDurationS: number | null;
   map: string;
   mode: string;
   area: string | null;
@@ -50,14 +58,41 @@ export interface ScoreboardPlayer {
   steamId: string | null;
 }
 
+/**
+ * One row of the command log: a single officer holding one company's officer
+ * slot for one contiguous stretch of the round. An officer who is replaced and
+ * later retakes the slot, or who commands two companies, yields several rows —
+ * see `collapseOfficerStints` before counting rounds off these.
+ *
+ * Fields below `battery` arrived with the July 2026 overlay build and are
+ * undefined on scoreboards imported before it.
+ */
 export interface ScoreboardOfficer {
   name: string;
   team: Team;
+  /** Peak concurrent subordinates during the stint. */
   commanded: number;
   /** true = artillery (battery), false = infantry. */
   battery: boolean;
+  regiment?: string | null;
+  company?: string | null;
+  branch?: Branch | null;
+  rank?: string | null;
+  /** Mean concurrent subordinates across the stint (`commanded` is the peak). */
+  commandedAvg?: number | null;
+  start?: string | null;
+  end?: string | null;
+  /** Time in the slot, and that as a percentage of the round's duration. */
+  durationS?: number | null;
+  pctRound?: number | null;
+  steamId?: string | null;
 }
 
+/**
+ * One row per player, showing the unit they ENDED the round in. `durationS` is
+ * their total time in that unit summed across every stint served there — see
+ * `Scoreboard.service` for the full movement history.
+ */
 export interface RosterEntry {
   team: Team;
   regiment: string | null;
@@ -65,6 +100,36 @@ export interface RosterEntry {
   name: string;
   className: string | null;
   rank: string | null;
+  steamId: string | null;
+  /**
+   * Time served in this unit, and that as a percentage of the round. Undefined
+   * on scoreboards predating the July 2026 overlay build; null for Unenlisted
+   * players, who have no unit to have served in.
+   */
+  durationS?: number | null;
+  pctRound?: number | null;
+}
+
+/**
+ * One row per posting a player held during the round (the "service log"). A
+ * posting is (team, regiment, company): swapping teams or moving company closes
+ * one row and opens the next, while being promoted inside a company does not, so
+ * `className`/`rank` are the player's state at the END of the posting.
+ *
+ * Postings shorter than the overlay's minimum stint are omitted, so a player's
+ * roster `durationS` can slightly exceed the sum of their stints here.
+ */
+export interface ServiceStint {
+  team: Team;
+  regiment: string | null;
+  company: string | null;
+  name: string;
+  className: string | null;
+  rank: string | null;
+  start: string | null;
+  end: string | null;
+  durationS: number | null;
+  pctRound: number | null;
   steamId: string | null;
 }
 
@@ -97,6 +162,11 @@ export interface Scoreboard {
   players: ScoreboardPlayer[];
   officers: ScoreboardOfficer[];
   roster: RosterEntry[];
+  /**
+   * Per-posting service log. The parser always sets it, but scoreboards stored
+   * before it existed have no such field — read it as `sb.service ?? []`.
+   */
+  service?: ServiceStint[];
   kills: Kill[];
   joinLeaves: JoinLeave[];
 }

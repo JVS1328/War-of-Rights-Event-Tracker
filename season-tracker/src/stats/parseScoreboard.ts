@@ -1,4 +1,5 @@
 import type {
+  Branch,
   Formation,
   JoinLeave,
   Kill,
@@ -7,6 +8,7 @@ import type {
   ScoreboardOfficer,
   ScoreboardPlayer,
   RosterEntry,
+  ServiceStint,
   Team,
   TeamCasualties,
 } from './types';
@@ -100,6 +102,26 @@ function indexHeader(header: string[]): Record<string, number> {
   return idx;
 }
 
+/**
+ * Read a column only newer scoreboards carry. Returns undefined when the section
+ * has no such column at all, so callers can tell "this build didn't record it"
+ * from "recorded, but blank for this row".
+ */
+function optStr(h: Record<string, number>, r: string[], key: string): string | null | undefined {
+  return h[key] === undefined ? undefined : str(r[h[key]]);
+}
+
+function optInt(h: Record<string, number>, r: string[], key: string): number | null | undefined {
+  return h[key] === undefined ? undefined : toInt(r[h[key]]);
+}
+
+const BRANCHES: Branch[] = ['Infantry', 'Artillery', 'Cavalry'];
+
+function branchFrom(v: string | undefined): Branch | null {
+  const t = (v ?? '').trim();
+  return (BRANCHES as string[]).includes(t) ? (t as Branch) : null;
+}
+
 function parsePlayers(rows: string[][]): ScoreboardPlayer[] {
   const h = indexHeader(rows[0]);
   return rows.slice(1).map((r) => ({
@@ -115,14 +137,33 @@ function parsePlayers(rows: string[][]): ScoreboardPlayer[] {
   }));
 }
 
+/**
+ * Parse the command log. Newer builds emit one row per stint with the officer's
+ * full posting; older ones carried only `commanded` plus a 0/1 `battery` column.
+ */
 function parseOfficers(rows: string[][]): ScoreboardOfficer[] {
   const h = indexHeader(rows[0]);
-  return rows.slice(1).map((r) => ({
-    name: r[h['officer']] ?? '',
-    team: teamFromCode(r[h['team']]) ?? 'USA',
-    commanded: num(r[h['commanded']]),
-    battery: num(r[h['battery']]) === 1,
-  }));
+  const hasBranch = h['branch'] !== undefined;
+  return rows.slice(1).map((r) => {
+    const branch = branchFrom(r[h['branch']]);
+    return {
+      name: r[h['officer']] ?? '',
+      team: teamFromCode(r[h['team']]) ?? 'USA',
+      commanded: num(r[h['commanded']]),
+      // The July 2026 build replaced the 0/1 battery column with a branch label.
+      battery: hasBranch ? branch === 'Artillery' : num(r[h['battery']]) === 1,
+      regiment: optStr(h, r, 'regiment'),
+      company: optStr(h, r, 'company'),
+      branch: hasBranch ? branch : undefined,
+      rank: optStr(h, r, 'rank'),
+      commandedAvg: optInt(h, r, 'commanded_avg'),
+      start: optStr(h, r, 'start'),
+      end: optStr(h, r, 'end'),
+      durationS: optInt(h, r, 'duration_s'),
+      pctRound: optInt(h, r, 'pct_round'),
+      steamId: optStr(h, r, 'steam_id'),
+    };
+  });
 }
 
 function parseRoster(rows: string[][]): RosterEntry[] {
@@ -134,6 +175,25 @@ function parseRoster(rows: string[][]): RosterEntry[] {
     name: r[h['name']] ?? '',
     className: str(r[h['class']]),
     rank: str(r[h['rank']]),
+    steamId: str(r[h['steam_id']]),
+    durationS: optInt(h, r, 'duration_s'),
+    pctRound: optInt(h, r, 'pct_round'),
+  }));
+}
+
+function parseService(rows: string[][]): ServiceStint[] {
+  const h = indexHeader(rows[0]);
+  return rows.slice(1).map((r) => ({
+    team: teamFromText(r[h['team']]),
+    regiment: str(r[h['regiment']]),
+    company: str(r[h['company']]),
+    name: r[h['name']] ?? '',
+    className: str(r[h['class']]),
+    rank: str(r[h['rank']]),
+    start: str(r[h['start']]),
+    end: str(r[h['end']]),
+    durationS: toInt(r[h['duration_s']]),
+    pctRound: toInt(r[h['pct_round']]),
     steamId: str(r[h['steam_id']]),
   }));
 }
@@ -218,6 +278,7 @@ function parseMeta(rows: string[][]): ScoreboardMeta {
   return {
     roundStartTime: m['round_start_time'] ?? null,
     roundEndTime: m['round_end_time'] ?? null,
+    roundDurationS: toInt(m['round_duration_s']),
     map: m['map'] ?? '',
     mode: m['mode'] ?? '',
     area: m['area'] ?? null,
@@ -235,7 +296,7 @@ function parseMeta(rows: string[][]): ScoreboardMeta {
 }
 
 /**
- * Parse a War of Rights scoreboard CSV (6 blank-line-delimited sections) into a
+ * Parse a War of Rights scoreboard CSV (blank-line-delimited sections) into a
  * typed Scoreboard. Sections after the meta block are keyed by their header row.
  */
 export function parseScoreboard(csvText: string, sourceFilename: string): Scoreboard {
@@ -265,19 +326,27 @@ export function parseScoreboard(csvText: string, sourceFilename: string): Scoreb
     players: [],
     officers: [],
     roster: [],
+    service: [],
     kills: [],
     joinLeaves: [],
   };
 
-  // Dispatch remaining sections by their header row.
+  // Dispatch remaining sections by their header row. The roster and the service
+  // log share the same leading `team,regiment,company,name,class,rank` columns —
+  // only the service log carries the window served, so `start` tells them apart.
+  // Matching on the shared prefix alone lets the service log overwrite the
+  // roster, which silently multiplies a unit's member count by its stint count.
   for (const section of sections.slice(1)) {
     const header = section[0] ?? [];
-    const h0 = (header[0] ?? '').trim();
-    const h1 = (header[1] ?? '').trim();
-    if (h0 === 'name' && header.includes('kills')) sb.players = parsePlayers(section);
+    const trimmed = header.map((c) => c.trim());
+    const h0 = trimmed[0] ?? '';
+    const h1 = trimmed[1] ?? '';
+    if (h0 === 'name' && trimmed.includes('kills')) sb.players = parsePlayers(section);
     else if (h0 === 'officer') sb.officers = parseOfficers(section);
-    else if (h0 === 'team' && h1 === 'regiment') sb.roster = parseRoster(section);
-    else if (h0 === 'time' && h1 === 'killer') sb.kills = parseKills(section);
+    else if (h0 === 'team' && h1 === 'regiment') {
+      if (trimmed.includes('start')) sb.service = parseService(section);
+      else sb.roster = parseRoster(section);
+    } else if (h0 === 'time' && h1 === 'killer') sb.kills = parseKills(section);
     else if (h0 === 'time' && h1 === 'player') sb.joinLeaves = parseJoinLeaves(section);
   }
 

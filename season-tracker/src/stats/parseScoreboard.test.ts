@@ -191,6 +191,131 @@ describe('parseScoreboard — join/leave', () => {
   });
 });
 
+// Newer overlay builds (July 2026) reshaped three sections: the command log
+// carries each officer's posting, branch and stint window (one row per stint,
+// `battery` replaced by `branch`), the roster gained time-served columns, and a
+// seventh "service log" section lists one row per posting a player held. The
+// service log repeats the roster's leading `team,regiment` columns, so the two
+// are told apart by the service log's `start`/`end` cells.
+const NEW_FORMAT = `round_start_time,21:06:35
+round_end_time,21:44:35
+round_duration_s,2279
+map,Antietam
+mode,Skirmish
+area,Roulette Lane
+era,ACW
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+Frosty,1,4,2,2.00,1,1,0,76561199085016851
+Ferg,1,1,3,0.33,2,1,0,76561198881020357
+
+officer,team,regiment,company,branch,rank,commanded,commanded_avg,start,end,duration_s,pct_round,steam_id
+Frosty,1,Graham's Battery,A Company,Artillery,Major,14,11,21:16:14,21:35:45,1170,51,76561199085016851
+Nuke,1,14th Indiana,B Company,Infantry,Lt. Colonel,45,36,21:06:40,21:44:35,2274,100,76561198062666289
+
+team,regiment,company,name,class,rank,duration_s,pct_round,steam_id
+USA,Graham's Battery,A Company,Frosty,Officer,Major,1928,85,76561199085016851
+USA,Graham's Battery,A Company,Ferg,NCO,Sergeant Major,1957,86,76561198881020357
+USA,Unenlisted,,Drifter,,,,,76561197964860269
+
+team,regiment,company,name,class,rank,start,end,duration_s,pct_round,steam_id
+USA,Graham's Battery,A Company,Ferg,NCO,Sergeant Major,21:06:39,21:35:34,1735,76,76561198881020357
+USA,14th Indiana,B Company,Ferg,Private,,21:35:40,21:44:35,535,23,76561198881020357
+USA,Graham's Battery,A Company,Frosty,Officer,Major,21:06:39,21:35:45,1746,77,76561199085016851
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+21:07:19,,,0,Frosty,76561199085016851,1,skirm,Env,5,0
+
+time,player,steam_id,event
+21:07:00,Ferg,76561198881020357,joined
+`;
+
+describe('parseScoreboard — new format sections', () => {
+  it('keeps the roster section when a service log follows it', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    // One row per player as they ENDED the round — including the Unenlisted,
+    // who never hold a posting and so have no service-log rows at all.
+    expect(sb.roster).toHaveLength(3);
+    expect(sb.roster.map((r) => r.name)).toEqual(['Frosty', 'Ferg', 'Drifter']);
+  });
+
+  it('parses the service log as one row per posting held', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    expect(sb.service).toHaveLength(3);
+    const ferg = sb.service!.filter((s) => s.name === 'Ferg');
+    expect(ferg).toHaveLength(2);
+    expect(ferg.map((s) => s.regiment)).toEqual(["Graham's Battery", '14th Indiana']);
+    expect(ferg[0]).toEqual({
+      team: 'USA',
+      regiment: "Graham's Battery",
+      company: 'A Company',
+      name: 'Ferg',
+      className: 'NCO',
+      rank: 'Sergeant Major',
+      start: '21:06:39',
+      end: '21:35:34',
+      durationS: 1735,
+      pctRound: 76,
+      steamId: '76561198881020357',
+    });
+  });
+
+  it('derives the battery flag from the command log branch column', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    expect(sb.officers[0].battery).toBe(true); // Artillery
+    expect(sb.officers[1].battery).toBe(false); // Infantry
+  });
+
+  it('parses the command log posting and stint window', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    expect(sb.officers[0]).toEqual({
+      name: 'Frosty',
+      team: 'USA',
+      commanded: 14,
+      battery: true,
+      regiment: "Graham's Battery",
+      company: 'A Company',
+      branch: 'Artillery',
+      rank: 'Major',
+      commandedAvg: 11,
+      start: '21:16:14',
+      end: '21:35:45',
+      durationS: 1170,
+      pctRound: 51,
+      steamId: '76561199085016851',
+    });
+  });
+
+  it('parses roster time-served columns', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    expect(sb.roster[0].durationS).toBe(1928);
+    expect(sb.roster[0].pctRound).toBe(85);
+    // Unenlisted players have no unit to have served in — blank, not zero.
+    expect(sb.roster[2].durationS).toBeNull();
+    expect(sb.roster[2].pctRound).toBeNull();
+  });
+
+  it('parses round_duration_s from the meta block', () => {
+    const sb = parseScoreboard(NEW_FORMAT, 'x.csv');
+    expect(sb.meta.roundDurationS).toBe(2279);
+  });
+});
+
+describe('parseScoreboard — older scoreboards', () => {
+  it('falls back to the battery column when there is no branch column', () => {
+    const sb = parseScoreboard(FULL, 'x.csv');
+    expect(sb.officers[0].battery).toBe(false);
+    expect(sb.officers[1].battery).toBe(true);
+  });
+
+  it('reports an empty service log and no round_duration_s', () => {
+    const sb = parseScoreboard(FULL, 'x.csv');
+    expect(sb.service).toEqual([]);
+    expect(sb.meta.roundDurationS).toBeNull();
+  });
+});
+
 describe('parseScoreboard — recordedAt', () => {
   it('derives an ISO timestamp from the filename', () => {
     const sb = parseScoreboard(FULL, 'scoreboard_20260527_173919.csv');

@@ -59,6 +59,7 @@ function emptyMeta(): ScoreboardMeta {
   return {
     roundStartTime: null,
     roundEndTime: null,
+    roundDurationS: null,
     map: 'Antietam',
     mode: 'Skirmish',
     area: null,
