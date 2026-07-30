@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parseScoreboard } from './parseScoreboard';
-import { computePlayerLeaderboard, computeRegimentBreakdown, computeRegimentContextStats } from './statsEngine';
+import {
+  computePlayerLeaderboard,
+  computeRegimentBreakdown,
+  computeRegimentContextStats,
+  computeRegimentTicketShares,
+  withAliasLayer,
+} from './statsEngine';
 import { deriveTokenSnaps, deriveTokenPlayerCounts } from './unitStats';
 import { perPlayerRate } from './labels';
 
@@ -243,5 +249,94 @@ name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
     expect(ny.asUSA.kills).toBe(1);
     expect(ny.asAttacker.rounds).toBe(0);
     expect(ny.asDefender.rounds).toBe(0);
+  });
+});
+
+// The Regiments tab's temporary combine: ticked units are folded into an extra
+// alias layer for a second engine pass, so a combined unit's stats are computed
+// over its members' player-rounds instead of being added up after the fact.
+describe('withAliasLayer (temporary unit combine)', () => {
+  const combineOf = (labels: string[], label: string) =>
+    withAliasLayer({}, Object.fromEntries(labels.map((l) => [l, label])));
+
+  it('rolls the ticked units into one row over their combined player-rounds', () => {
+    const opts = combineOf(['51STNY', '20THGA'], '51STNY + 20THGA');
+    const regs = computeRegimentBreakdown(boards, {}, opts);
+    const combined = regs.find((r) => r.regiment === '51STNY + 20THGA')!;
+    expect(combined).toBeDefined();
+    expect(combined.players).toBe(3); // Joe + Bob + Han
+    expect(combined.kills).toBe(7); // 51stNY 6 + 20thGA 1
+    expect(combined.deaths).toBe(4); // 51stNY 2 + 20thGA 2
+    expect(combined.rounds).toBe(2);
+    // 4 player-rounds: R1 Joe + Han, R2 Joe + Bob.
+    expect(combined.killRate).toBeCloseTo(1.75);
+    expect(combined.lossRate).toBeCloseTo(1.0);
+    // Killfeed causes roll up too — Han's two R1 casualties join Bob's R2 one.
+    expect(combined.casualtiesByCause).toEqual({ Minie: 1, Melee: 1, Canister: 1 });
+    // The members no longer stand alone in this pass — that's the whole point.
+    expect(regs.find((r) => r.regiment === '51STNY')).toBeUndefined();
+    expect(regs.find((r) => r.regiment === '20THGA')).toBeUndefined();
+  });
+
+  it('leaves the stored options and the un-combined view untouched', () => {
+    const base = { aliasMap: { '20THGA': '20TH GEORGIA' } };
+    const opts = combineOf(['51STNY'], '51STNY + X');
+    withAliasLayer(base, { '51STNY': '51STNY + X' });
+    expect(base.aliasMap).toEqual({ '20THGA': '20TH GEORGIA' }); // not mutated
+    expect(opts.aliasMap).toMatchObject({ '51STNY': '51STNY + X' });
+    // A plain pass still sees the real units, so the preview is view-only.
+    const plain = computeRegimentBreakdown(boards, {});
+    expect(plain.find((r) => r.regiment === '51STNY')!.kills).toBe(6);
+    expect(plain.find((r) => r.regiment === '20THGA')!.kills).toBe(1);
+  });
+
+  it('follows a stored rename into the combine layer', () => {
+    // Stored: 51STNY renamed to 51ST NEW YORK. Ticking the renamed label must
+    // still pull in the original's rounds (applyAlias walks the chain).
+    const opts = withAliasLayer({ aliasMap: { '51STNY': '51ST NEW YORK' } }, {
+      '51ST NEW YORK': 'COMBINED',
+      '20THGA': 'COMBINED',
+    });
+    const regs = computeRegimentBreakdown(boards, {}, opts);
+    const combined = regs.find((r) => r.regiment === 'COMBINED')!;
+    expect(combined.players).toBe(3);
+    expect(combined.kills).toBe(7);
+  });
+
+  it('measures the combined unit against the same team ticket denominator', () => {
+    // One round, two CSA units facing a single USA player: 1stA takes two
+    // in-formation kills, 2ndB one skirmish kill.
+    const board = parseScoreboard(
+      `map,DrillCamp
+mode,Skirmish
+winner,CSA
+
+name,team,kills,deaths,kd,deaths_in_form,deaths_skirm,deaths_oob,steam_id
+[1stA]Al,2,2,0,2.00,0,0,0,76561198000000011
+[2ndB]Bo,2,1,0,1.00,0,0,0,76561198000000012
+[3rdU]Cy,1,0,3,0.00,2,1,0,76561198000000013
+
+time,killer,killer_steam_id,killer_team,victim,victim_steam_id,victim_team,victim_formation,cause,cat,sub
+16:05:00,[1stA]Al,76561198000000011,2,[3rdU]Cy,76561198000000013,1,in_form,Minie,0,4
+16:06:00,[1stA]Al,76561198000000011,2,[3rdU]Cy,76561198000000013,1,in_form,Minie,0,4
+16:07:00,[2ndB]Bo,76561198000000012,2,[3rdU]Cy,76561198000000013,1,skirm,Minie,0,4
+`,
+      'scoreboard_20260301_160000.csv',
+    );
+    const apart = computeRegimentTicketShares([board], {});
+    const together = computeRegimentTicketShares([board], {}, combineOf(['1STA', '2NDB'], 'BOTH'))['BOTH'];
+    // Ticket damage is additive, so the combined share is its members' summed —
+    // not renormalized against a smaller denominator.
+    expect(together.avgPctInflicted).toBeCloseTo(
+      apart['1STA'].avgPctInflicted! + apart['2NDB'].avgPctInflicted!,
+    );
+    // 1stA + 2ndB are the whole CSA side, so together they account for all of it.
+    expect(together.avgPctInflicted).toBeCloseTo(1);
+    expect(together.avgUnitPlayers).toBe(2);
+  });
+
+  it('is a no-op for an empty layer', () => {
+    const base = { regimentList: [] };
+    expect(withAliasLayer(base, {})).toBe(base);
   });
 });
