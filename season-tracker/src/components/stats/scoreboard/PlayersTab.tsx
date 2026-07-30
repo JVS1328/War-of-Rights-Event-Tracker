@@ -84,6 +84,17 @@ export function PlayersTab({
       else next.add(key);
       return next;
     });
+  // Collapsed team blocks. Both teams start open; collapsing one leaves the
+  // other's list to itself, so a long flat sort can be read one faction at a
+  // time. Honored while searching too — the header keeps showing the match count.
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<Team>>(new Set());
+  const toggleTeam = (team: Team) =>
+    setCollapsedTeams((prev) => {
+      const next = new Set(prev);
+      if (next.has(team)) next.delete(team);
+      else next.add(team);
+      return next;
+    });
 
   const officers = useMemo(() => officerNameSet(sb.officers), [sb.officers]);
   const isOfficer = (name: string) => officers.has(name.trim().toLowerCase());
@@ -146,6 +157,9 @@ export function PlayersTab({
           className="ml-3 bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-sm font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)] normal-case tracking-normal w-32"
         />
         <span className="text-[color:var(--color-text-2)] ml-auto">★ = officer</span>
+        <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
+          click a faction header to hide it
+        </span>
       </div>
       {allEmpty && searchTrimmed ? (
         <div className="px-3 py-6 text-center text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
@@ -169,6 +183,8 @@ export function PlayersTab({
               search={search}
               openGroups={openGroups}
               onToggleGroup={toggleGroup}
+              collapsed={collapsedTeams.has(team)}
+              onToggleTeam={() => toggleTeam(team)}
               onOpenPlayer={onOpenPlayer}
             />
           );
@@ -191,6 +207,8 @@ function TeamBlock({
   search,
   openGroups,
   onToggleGroup,
+  collapsed,
+  onToggleTeam,
   onOpenPlayer,
 }: {
   team: Team;
@@ -205,6 +223,9 @@ function TeamBlock({
   search: string;
   openGroups: Set<string>;
   onToggleGroup: (key: string) => void;
+  /** Whole faction hidden — only its header row (counts + totals) renders. */
+  collapsed: boolean;
+  onToggleTeam: () => void;
   onOpenPlayer: (key: string) => void;
 }) {
   const grouped = useMemo(() => groupByRegiment(rows, resolve), [rows, resolve]);
@@ -228,10 +249,18 @@ function TeamBlock({
     { kills: 0, deaths: 0 },
   );
 
+  const TeamChevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <div className="mb-4">
-      <div className="flex items-center justify-between px-2 py-1 bg-[color:var(--color-bg-2)] border-y border-[color:var(--color-border)]">
+      <button
+        type="button"
+        onClick={onToggleTeam}
+        aria-expanded={!collapsed}
+        title={collapsed ? `Show ${team}` : `Hide ${team}`}
+        className="w-full flex items-center justify-between gap-3 text-left px-2 py-1 bg-[color:var(--color-bg-2)] border-y border-[color:var(--color-border)] hover:bg-[color:var(--color-bg-3)]"
+      >
         <span className="flex items-center gap-2">
+          <TeamChevron size={12} className="shrink-0 text-[color:var(--color-text-2)]" />
           <Pill tone={teamTone(team)}>{team}</Pill>
           <span className="text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
             {visible.length} player{visible.length === 1 ? '' : 's'}
@@ -240,8 +269,8 @@ function TeamBlock({
         <span className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] uppercase tracking-wider">
           team total · {totals.kills} kills · {totals.deaths} deaths
         </span>
-      </div>
-      {showUnitGroups ? (
+      </button>
+      {collapsed ? null : showUnitGroups ? (
         <div>
           {grouped.map((reg) => {
             const players = searching

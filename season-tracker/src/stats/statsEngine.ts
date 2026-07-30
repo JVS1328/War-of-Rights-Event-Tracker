@@ -91,6 +91,26 @@ export function applyAlias(label: string, aliasMap?: Record<string, string>): st
   return cur;
 }
 
+/**
+ * Fold an extra rename/merge layer over an options object's alias map(s), for
+ * previewing labels rolled together without touching the stored (season /
+ * Overall) alias state. The layer wins over the base map, and because
+ * {@link applyAlias} follows chains, a base label that already renames into one
+ * of the layer's keys lands on the layer's target too. The inputs are left
+ * untouched — nothing here is persisted.
+ */
+export function withAliasLayer(options: EngineOptions, layer: Record<string, string>): EngineOptions {
+  if (Object.keys(layer).length === 0) return options;
+  const base = options.aliasMapFor;
+  return {
+    ...options,
+    aliasMap: { ...(options.aliasMap ?? {}), ...layer },
+    // `resolveRow` prefers `aliasMapFor` whenever it's set, so keep it unset
+    // when the caller had none and let the flat `aliasMap` above carry the layer.
+    aliasMapFor: base ? (sb: Scoreboard) => ({ ...(base(sb) ?? {}), ...layer }) : undefined,
+  };
+}
+
 function kdOf(kills: number, deaths: number): number {
   return deaths > 0 ? kills / deaths : kills;
 }

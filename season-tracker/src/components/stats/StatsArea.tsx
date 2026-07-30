@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, X, GitMerge, ChevronDown, ChevronRight } from 'lucide-react';
+import { Upload, Trash2, Pencil, X, GitMerge, Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
@@ -14,6 +14,7 @@ import {
   computePlayerDetail,
   computeScoreboardMapStats,
   resolveFor,
+  withAliasLayer,
 } from '../../stats/statsEngine';
 import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare, TicketContextShare } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
@@ -253,6 +254,53 @@ export function StatsPanel({
     },
     [regimentList, aliasBySource, overallAlias, assignmentBySource, overallAssignments, selectedStored],
   );
+  // ── Temporary unit combine (Regiments tab) ────────────────────────────────
+  // Tick two or more units to read their stats as one. It's a view, not an edit:
+  // the ticked labels are folded into an extra alias layer for a second engine
+  // pass, so every metric (including the per-round ticket shares, which need the
+  // team denominators) is computed properly rather than added up after the fact —
+  // and the stored rename/merge state is never touched.
+  const [combineOn, setCombineOn] = useState(false);
+  const [combineLabels, setCombineLabels] = useState<string[]>([]);
+  const regimentLabels = useMemo(() => new Set(regiments.map((r) => r.regiment)), [regiments]);
+  const combinedLabel = useMemo(() => {
+    const joined = combineLabels.join(' + ');
+    // A real unit literally named like the join would otherwise be swept into
+    // the preview — keep the synthetic label its own bucket.
+    return regimentLabels.has(joined) ? `${joined} (combined)` : joined;
+  }, [combineLabels, regimentLabels]);
+  const combinedOpts = useMemo(() => {
+    if (combineLabels.length < 2) return null;
+    const layer: Record<string, string> = {};
+    for (const label of combineLabels) layer[label] = combinedLabel;
+    return withAliasLayer(opts, layer);
+  }, [opts, combineLabels, combinedLabel]);
+  const combinedView = useMemo(() => {
+    if (!combinedOpts) return null;
+    const row = computeRegimentBreakdown(sbs, overallAssignments, combinedOpts).find(
+      (r) => r.regiment === combinedLabel,
+    );
+    if (!row) return null;
+    return {
+      row,
+      contextStats: computeRegimentContextStats(sbs, overallAssignments, combinedOpts)[combinedLabel],
+      ticketShare: computeRegimentTicketShares(sbs, overallAssignments, combinedOpts)[combinedLabel],
+    };
+  }, [combinedOpts, combinedLabel, sbs, overallAssignments]);
+  const combine: CombineState = {
+    on: combineOn,
+    labels: combineLabels,
+    label: combinedLabel,
+    view: combinedView,
+    setOn: (on) => {
+      setCombineOn(on);
+      if (!on) setCombineLabels([]);
+    },
+    toggle: (label) =>
+      setCombineLabels((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label])),
+    clear: () => setCombineLabels([]),
+  };
+
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const playerDetail = useMemo(
@@ -387,6 +435,7 @@ export function StatsPanel({
           readOnly={readOnly}
           seasonScope={seasonScope}
           seasonName={seasons.find((s) => s.id === seasonScope)?.name ?? null}
+          combine={combine}
         />
       )}
 
@@ -658,6 +707,32 @@ function regSortValue(r: RegimentStatRow, k: RegSort): number | string {
   }
 }
 
+/** Stats for the synthetic "these units as one" panel. */
+interface CombinedUnit {
+  row: RegimentStatRow;
+  contextStats?: RegimentContextStats;
+  ticketShare?: TicketShare;
+}
+
+/**
+ * Temporary combine-view state for the Regiments tab. Nothing here is written
+ * anywhere: ticking units only adds a preview panel, and unticking them (or
+ * leaving the mode) drops it. Available in the shared read-only view too.
+ */
+interface CombineState {
+  /** Combine mode on — every unit panel shows a tick box. */
+  on: boolean;
+  /** Ticked unit labels, in tick order. */
+  labels: string[];
+  /** The combined panel's label (the ticked units joined). */
+  label: string;
+  /** Combined stats — null until two units are ticked. */
+  view: CombinedUnit | null;
+  setOn: (on: boolean) => void;
+  toggle: (label: string) => void;
+  clear: () => void;
+}
+
 interface RegEdit {
   editMode: boolean;
   allRegiments: string[];
@@ -682,6 +757,7 @@ function RegimentsTab({
   readOnly = false,
   seasonScope,
   seasonName,
+  combine,
 }: {
   regiments: RegimentStatRow[];
   regimentContext: Record<string, RegimentContextStats>;
@@ -697,6 +773,8 @@ function RegimentsTab({
   seasonScope: string;
   /** Display name of the scoped season, or null under Overall. */
   seasonName: string | null;
+  /** Temporary "read these units as one" preview — see {@link CombineState}. */
+  combine: CombineState;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -904,6 +982,84 @@ function RegimentsTab({
         </div>
       )}
 
+      {/* Temporary combine — tick units to read them as one, saving nothing. */}
+      <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
+        <button
+          onClick={() => combine.setOn(!combine.on)}
+          title="Preview two or more units as one — nothing is saved"
+          className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
+            combine.on
+              ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
+              : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
+          }`}
+        >
+          <Layers size={12} /> {combine.on ? 'Done combining' : 'Combine units'}
+        </button>
+        {combine.on && (
+          <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
+            Tick two or more units to see their combined stats. This is a temporary view —{' '}
+            <span className="text-[color:var(--color-text-1)]">nothing is merged or saved</span>.
+          </span>
+        )}
+      </div>
+
+      {/* Ticked units, so a selection stays manageable across pages and searches. */}
+      {combine.on && combine.labels.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Combining:</span>
+          {combine.labels.map((label) => (
+            <span
+              key={label}
+              className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5"
+            >
+              <span className="text-[color:var(--color-text-1)]">{label}</span>
+              <button
+                onClick={() => combine.toggle(label)}
+                title={`Drop ${label} from the combined view`}
+                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={combine.clear}
+            className="uppercase tracking-wider text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {combine.on && combine.labels.length === 1 && (
+        <EmptyHint>Tick one more unit to see the combined stats</EmptyHint>
+      )}
+      {combine.on && combine.labels.length > 1 && !combine.view && (
+        <EmptyHint>None of the ticked units fielded a player in this view</EmptyHint>
+      )}
+      {/* A tick can outlive its unit — e.g. ticked under Overall, then filtered to
+          a season the unit never played. Say so rather than quietly leaving it out. */}
+      {combine.on && combine.view && combine.labels.some((l) => !allRegiments.includes(l)) && (
+        <EmptyHint>
+          Not in this view: {combine.labels.filter((l) => !allRegiments.includes(l)).join(', ')} — the combined
+          stats below cover the rest
+        </EmptyHint>
+      )}
+      {combine.on && combine.view && (
+        <RegimentPanel
+          key={`combined:${combine.label}`}
+          reg={combine.view.row}
+          contextStats={combine.view.contextStats}
+          ticketShare={combine.view.ticketShare}
+          openPlayer={openPlayer}
+          openRound={openRound}
+          edit={{ ...edit, editMode: false }}
+          focusActive={false}
+          focusNonce={0}
+          combined
+        />
+      )}
+
       {/* Sort the regiment panels by any column, and search the roster. */}
       <div className="flex flex-wrap items-center gap-3 font-mono text-xs uppercase tracking-wider">
         <span className="text-[color:var(--color-text-2)]">Sort</span>
@@ -948,6 +1104,11 @@ function RegimentsTab({
             edit={edit}
             focusActive={focusRegiment === r.regiment}
             focusNonce={focusNonce}
+            combineTick={
+              combine.on
+                ? { checked: combine.labels.includes(r.regiment), onToggle: () => combine.toggle(r.regiment) }
+                : undefined
+            }
           />
         ))
       )}
@@ -1113,6 +1274,8 @@ function RegimentPanel({
   edit,
   focusActive,
   focusNonce,
+  combineTick,
+  combined = false,
 }: {
   reg: RegimentStatRow;
   contextStats?: RegimentContextStats;
@@ -1122,6 +1285,14 @@ function RegimentPanel({
   edit: RegEdit;
   focusActive: boolean;
   focusNonce: number;
+  /** Combine-mode tick box in the header; omitted when the mode is off. */
+  combineTick?: { checked: boolean; onToggle: () => void };
+  /**
+   * This is the synthetic combined panel: it starts open, doesn't persist its
+   * collapse state (its label changes with the selection), and shows no edit
+   * tools — there's no stored unit behind it to rename, merge, or remove.
+   */
+  combined?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1145,10 +1316,25 @@ function RegimentPanel({
   return (
     <div ref={wrapRef}>
       <Panel
-        title={reg.regiment}
+        title={
+          <span className="flex flex-wrap items-center gap-2 min-w-0">
+            {combineTick && (
+              <input
+                type="checkbox"
+                checked={combineTick.checked}
+                onChange={combineTick.onToggle}
+                onClick={(e) => e.stopPropagation()}
+                title={`Read ${reg.regiment} together with the other ticked units`}
+                aria-label={`Combine ${reg.regiment}`}
+              />
+            )}
+            <span className="break-words">{reg.regiment}</span>
+            {combined && <Pill tone="accent">combined</Pill>}
+          </span>
+        }
         collapsible
-        defaultOpen={false}
-        storageKey={`reg-panel-${reg.regiment}`}
+        defaultOpen={combined}
+        storageKey={combined ? undefined : `reg-panel-${reg.regiment}`}
         openSignal={focusActive ? focusNonce : undefined}
         right={
           <>
@@ -1175,6 +1361,12 @@ function RegimentPanel({
         }
       >
       <div className="p-3 space-y-3">
+        {combined && (
+          <div className="border-b border-[color:var(--color-border)] pb-2 font-mono text-xs text-[color:var(--color-text-2)]">
+            Temporary view of {reg.regiment} read as one unit — every stat below is recomputed over their
+            combined player-rounds. The units themselves are untouched.
+          </div>
+        )}
         {edit.editMode && !isUntagged && (
           <div className="flex flex-wrap items-center gap-2 font-mono text-sm border-b border-[color:var(--color-border)] pb-2">
             <button onClick={() => edit.rename(reg.regiment)} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
