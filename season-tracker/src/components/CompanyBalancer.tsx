@@ -18,8 +18,8 @@ export function CompanyConfigFields({
 }) {
   // A count can legitimately be 0; a cap cannot, or nothing fits in it.
   const field = (label: string, key: keyof CompanySideConfig, max?: number, min = 0) => (
-    <div>
-      <label className="text-xs text-text-secondary">{label}</label>
+    <div className="fld">
+      <label className="cap">{label}</label>
       <input
         type="number"
         min={min}
@@ -32,7 +32,7 @@ export function CompanyConfigFields({
   );
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid-f">
       {field('Companies', 'count', 10)}
       {field('Special companies', 'specialCount', config.count)}
       {field('Special cap', 'specialCap', undefined, 1)}
@@ -46,16 +46,28 @@ export function CompanyConfigFields({
 export function CompanyList({ companies }: { companies: Company[] }) {
   if (companies.length === 0) return null;
   return (
-    <div className="space-y-1 mt-1">
+    <div style={{ marginTop: 11 }}>
       {companies.map((co, idx) => {
         const kind = COMPANY_KINDS[co.kind];
+        const over = co.totalAvg > co.cap;
         return (
-          <div key={idx} className={`text-xs rounded px-2 py-1 ${kind.box}`}>
-            <span className={`font-semibold ${kind.text}`}>{co.label}</span>
-            <span className="text-text-secondary ml-1">({Math.round(co.totalAvg)} avg)</span>
-            {co.totalAvg > co.cap && <span className="text-red-400 ml-1">OVER CAP</span>}
-            <div className="text-text-secondary mt-0.5">
-              {co.regiments.length > 0 ? co.regiments.join(', ') : 'Empty'}
+          <div
+            key={idx}
+            style={{
+              borderTop: idx === 0 ? '1px solid var(--line)' : 0,
+              borderBottom: '1px solid var(--line)',
+              padding: '6px 0',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span className={`tag q ${kind.text}`}>{co.label}</span>
+              <span className="rule" />
+              <span className="meta" style={over ? { color: 'var(--live)' } : undefined}>
+                {Math.round(co.totalAvg)} of {co.cap}{over && ' — over cap'}
+              </span>
+            </div>
+            <div className="note" style={{ marginTop: 3 }}>
+              {co.regiments.length > 0 ? co.regiments.join(' · ') : 'Empty'}
             </div>
           </div>
         );

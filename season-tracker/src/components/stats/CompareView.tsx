@@ -80,89 +80,48 @@ export function CompareView({
     }
   };
 
-  const selectCls =
-    'min-w-0 max-w-[240px] flex-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1 font-mono text-sm text-[color:var(--color-text-0)]';
-
   const kdOf = (v: number) => v.toFixed(2);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-2">
-        <span className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Compare</span>
-        <div className="flex border border-[color:var(--color-border)]">
-          {(['players', 'units'] as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              aria-pressed={mode === m}
-              className={`px-3 py-1 text-xs uppercase tracking-wider ${
-                mode === m
-                  ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-                  : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
+    <>
+      <div className="panel">
+        <div className="ctl">
+          <span className="cap">Compare</span>
+          <div className="seg">
+            {(['players', 'units'] as Mode[]).map((m) => (
+              <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}>{m}</button>
+            ))}
+          </div>
+          {mode === 'players' ? (
+            <>
+              <select value={pA?.key ?? ''} onChange={(e) => setAKey(e.target.value)} aria-label="First player">
+                {players.map((p) => (
+                  <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
+                ))}
+              </select>
+              <span className="cap">versus</span>
+              <select value={pB?.key ?? ''} onChange={(e) => setBKey(e.target.value)} aria-label="Second player">
+                {players.map((p) => (
+                  <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <>
+              <select value={uA?.regiment ?? ''} onChange={(e) => setAUnit(e.target.value)} aria-label="First unit">
+                {regiments.map((r) => <option key={r.regiment} value={r.regiment}>{r.regiment}</option>)}
+              </select>
+              <span className="cap">versus</span>
+              <select value={uB?.regiment ?? ''} onChange={(e) => setBUnit(e.target.value)} aria-label="Second unit">
+                {regiments.map((r) => <option key={r.regiment} value={r.regiment}>{r.regiment}</option>)}
+              </select>
+            </>
+          )}
+          <button className="gh" onClick={swap}>Swap</button>
         </div>
 
-        {mode === 'players' ? (
-          <>
-            <select className={selectCls} value={pA?.key ?? ''} onChange={(e) => setAKey(e.target.value)} aria-label="First player">
-              {players.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.name} — {p.regiment}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">versus</span>
-            <select className={selectCls} value={pB?.key ?? ''} onChange={(e) => setBKey(e.target.value)} aria-label="Second player">
-              {players.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.name} — {p.regiment}
-                </option>
-              ))}
-            </select>
-          </>
-        ) : (
-          <>
-            <select className={selectCls} value={uA?.regiment ?? ''} onChange={(e) => setAUnit(e.target.value)} aria-label="First unit">
-              {regiments.map((r) => (
-                <option key={r.regiment} value={r.regiment}>
-                  {r.regiment}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">versus</span>
-            <select className={selectCls} value={uB?.regiment ?? ''} onChange={(e) => setBUnit(e.target.value)} aria-label="Second unit">
-              {regiments.map((r) => (
-                <option key={r.regiment} value={r.regiment}>
-                  {r.regiment}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        <button
-          onClick={swap}
-          className="border border-[color:var(--color-border)] px-2 py-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]"
-        >
-          Swap
-        </button>
-      </div>
-
-      {!ready ? (
-        <Panel title="Compare">
-          <EmptyHint>
-            {mode === 'players'
-              ? 'Import scoreboards for at least two players'
-              : 'Import scoreboards for at least two units'}
-          </EmptyHint>
-        </Panel>
-      ) : (
-        <>
-          <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)]">
-            <Scoreline
+        {ready && (
+          <Scoreline
               label="K/D"
               winner={
                 mode === 'players'
@@ -192,11 +151,23 @@ export function CompareView({
                 hue: 'var(--color-text-0)',
               }}
             />
-          </div>
+        )}
+      </div>
 
+      {!ready ? (
+        <Panel title="Compare">
+          <EmptyHint>
+            {mode === 'players'
+              ? 'Import scoreboards for at least two players'
+              : 'Import scoreboards for at least two units'}
+          </EmptyHint>
+        </Panel>
+      ) : (
+        <>
           <Panel
             title="Head to head"
-            right={verdict ? `${verdict.aWins}–${verdict.bWins}${verdict.tied ? ` · ${verdict.tied} tied` : ''}` : undefined}
+            right={verdict ? `${verdict.aWins} of ${rows.length} categories` : undefined}
+            flush
           >
             {rows.length === 0 ? (
               <EmptyHint>Not enough shared data to compare these two</EmptyHint>
@@ -207,11 +178,13 @@ export function CompareView({
 
           {verdict && (
             <Panel title="Read">
-              <p className="wor-name p-3 text-sm leading-relaxed text-[color:var(--color-text-1)]">{verdict.summary}</p>
+              <div className="prose">
+                <p>{verdict.summary}</p>
+              </div>
             </Panel>
           )}
         </>
       )}
-    </div>
+    </>
   );
 }

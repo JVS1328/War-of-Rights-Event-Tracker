@@ -67,6 +67,16 @@
    filled-accent button: the current thing inverts to ink-on-ground, and the
    accent is reserved for what is live. */
 
+/* A .cap used as a heading may carry a lucide icon. Lay it out inline and cut
+   the icon to the type's size — the prototype has no icons at all, so anything
+   that survives here has to read as punctuation, not decoration. */
+h2.cap, h3.cap, h4.cap { display: flex; align-items: center; gap: 7px; margin: 0; }
+h2.cap svg, h3.cap svg, h4.cap svg { width: 12px; height: 12px; flex: none; opacity: 0.7; }
+
+/* A run of fields under one heading. Ruled off from the run above it, because
+   a long settings form with no divisions is one undifferentiated wall. */
+.fset + .fset { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+
 /* Squared, everywhere. The prototype has no rounded corner anywhere in it, and
    this is the one rule that holds that line across components not yet ported —
    an unlayered declaration outranks Tailwind's layered `rounded-*` utilities,

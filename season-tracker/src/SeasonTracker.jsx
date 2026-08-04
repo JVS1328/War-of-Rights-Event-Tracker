@@ -2914,7 +2914,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
     return (
       <div className="mt-3 space-y-3">
-        <label className="block text-sm text-text-secondary mb-1">Company Balancer</label>
+        <label className="cap">Company Balancer</label>
         {['A', 'B'].map(side => (
           <div key={side} className="bg-bg-card rounded p-2 space-y-2">
             <div className="text-xs font-semibold text-text-secondary">{teamNames[side]}</div>
@@ -4661,29 +4661,32 @@ const SeasonTracker = ({ initialShareData = null }) => {
             const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
 
             return (
-              <div className="space-y-4">
-                {/* Event Overview */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Trophy className="w-5 h-5" />
-                    Overview
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">Seasons</div>
-                      <div className="text-2xl font-bold c-accent">{seasons.length}</div>
-                    </div>
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">Weeks</div>
-                      <div className="text-2xl font-bold c-accent">{totalWeeks}</div>
-                    </div>
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
-                      <div className="text-2xl font-bold c-accent">{totalRoundsWithResult}</div>
-                    </div>
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">Registry Units</div>
-                      <div className="text-2xl font-bold c-accent">{Object.keys(activeEvent.unitRegistry).length}</div>
+              <>
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Event at a glance</h2>
+                    <span className="rule" />
+                    <span className="meta wor-name">{activeEvent.name}</span>
+                  </header>
+                  <div className="pb flush">
+                    <div className="kpis">
+                      <div className="kpi">
+                        <div className="cap">Seasons</div><div className="v">{seasons.length}</div>
+                        <div className="h">{totalWeeks} nights across them</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Nights</div><div className="v">{totalWeeks}</div>
+                        <div className="h">of {totalWeeks * 2} scheduled rounds</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Rounds played</div><div className="v">{totalRoundsWithResult}</div>
+                        <div className="h">with a result recorded</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Registry units</div>
+                        <div className="v">{Object.keys(activeEvent.unitRegistry).length}</div>
+                        <div className="h">known to this event</div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -4691,12 +4694,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 {/* Per-season cards — surfaces playoff status and the
                    champion when playoffs occurred (based on the latest
                    playoff week's result). */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Calendar className="w-5 h-5" />
-                    Per-Season Summary
-                  </h3>
-                  <div className="space-y-2">
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Season by season</h2>
+                    <span className="rule" />
+                    <span className="meta">click one to make it active</span>
+                  </header>
+                  <div className="pb flush scroll-x">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Season</th><th />
+                          <th className="num">Nights</th><th className="num">Rounds</th><th className="num">Units</th>
+                          <th>Champion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                     {seasons.map(season => {
                       const seasonWeeks = season.weeks || [];
                       const weekCount = seasonWeeks.length;
@@ -4711,146 +4724,146 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       const isActive = season.id === activeSeason.id;
                       const champion = seasonChampion(season);
                       return (
-                        <button
+                        <tr
                           key={season.id}
-                          onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
-                          className={`w-full text-left bg-bg-card rounded p-3 border transition ${
-                            isActive ? 'border-[color:var(--color-accent)]' : 'border-transparent hover:border-border-default'
-                          }`}
+                          className={isActive ? undefined : 'click'}
+                          onClick={() => !isActive && setAppState(prev => setActiveSeason(prev, season.id))}
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-semibold flex items-center gap-2 flex-wrap">
-                                {season.name}
-                                {isActive && <span className="text-xs c-accent">(active)</span>}
-                                {playoffsScheduled && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 c-warn">
-                                    Playoffs
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-text-secondary mt-0.5">
-                                {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
-                              </div>
-                              {champion && (
-                                <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
-                                  <Trophy className="w-3 h-3 c-warn shrink-0" />
-                                  <span className="text-text-secondary">Champion:</span>
-                                  <span className="font-semibold text-text-primary">
-                                    {champion.lead || '—'}
-                                  </span>
-                                  <span className="text-text-muted">
-                                    ({champion.weekName} R{champion.finalRound})
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
-                          </div>
-                        </button>
+                          <td className="wor-name">
+                            {isActive && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {season.name}
+                          </td>
+                          <td>{playoffsScheduled && <span className="tag q">Playoffs</span>}</td>
+                          <td className="num">{weekCount}</td>
+                          <td className="num">{roundCount}</td>
+                          <td className="num">{rosterSize}</td>
+                          <td className="wor-name">
+                            {champion ? (
+                              <>
+                                {champion.lead || '—'}
+                                <span style={{ color: 'var(--ink-3)' }}> · {champion.weekName} R{champion.finalRound}</span>
+                              </>
+                            ) : (
+                              <span style={{ color: 'var(--ink-3)' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
                       );
                     })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                {/* Cross-season unit ladder */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Award className="w-5 h-5" />
-                    Cross-Season Unit Record
-                  </h3>
-                  {ladder.length === 0 ? (
-                    <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Cross-season unit record</h2>
+                    <span className="rule" />
+                    <span className="meta">every season in this event, rolled together</span>
+                  </header>
+                  <div className="pb flush scroll-x">
+                    {ladder.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>No completed rounds yet.</p>
+                    ) : (
+                      <table>
                         <thead>
-                          <tr className="text-text-secondary border-b border-border-default">
-                            <th className="text-left py-2 px-2">Unit</th>
-                            <th className="text-center py-2 px-2">Elo</th>
-                            <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
-                            <th className="text-center py-2 px-2">W</th>
-                            <th className="text-center py-2 px-2">L</th>
-                            <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
-                            <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
-                            <th className="text-center py-2 px-2">Sweeps</th>
+                          <tr>
+                            <th />
+                            <th>Unit</th>
+                            <th className="num">Elo</th>
+                            <th className="num" title="Total rounds played across every season in this event">Rounds</th>
+                            <th className="num">W–L</th>
+                            <th className="num" title="Win percentage across all rounds">Win %</th>
+                            <th className="num" title="Rounds won while leading">Lead W</th>
+                            <th className="num">Sweeps</th>
                           </tr>
                         </thead>
                         <tbody>
                           {ladder.map((r, idx) => (
-                            <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                              <td className="py-2 px-2 font-medium">{r.unit}</td>
-                              <td className="c-accent text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
-                              <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
-                              <td className="c-ok text-center py-2 px-2">{r.wins}</td>
-                              <td className="c-danger text-center py-2 px-2">{r.losses}</td>
-                              <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
-                              <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
-                              <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
+                            <tr key={r.unit}>
+                              <td><span className={`pos${idx < 3 ? ' q' : ''}`}>{idx + 1}</span></td>
+                              <td className="wor-name">{r.unit}</td>
+                              <td className="num" style={{ fontWeight: 600 }}>{Math.round(r.elo)}</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.rounds}</td>
+                              <td className="num">{r.wins}–{r.losses}</td>
+                              <td className="num">{r.winPct.toFixed(1)}%</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.leadWins}</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.sweeps}</td>
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={8}>
+                              Elo carries across seasons within an event — it is the one figure that does.
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                {/* Cross-season casualties */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Flame className="w-5 h-5" />
-                    Cross-Season Casualties
-                  </h3>
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">USA Total</div>
-                      <div className="text-xl font-bold f-usa">{usaCasTotal}</div>
-                    </div>
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">CSA Total</div>
-                      <div className="text-xl font-bold c-danger">{csaCasTotal}</div>
-                    </div>
-                    <div className="row">
-                      <div className="text-xs text-text-secondary mb-1">Combined</div>
-                      <div className="text-xl font-bold c-accent">{usaCasTotal + csaCasTotal}</div>
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Cross-season casualties</h2>
+                    <span className="rule" />
+                    <span className="meta">{(usaCasTotal + csaCasTotal).toLocaleString()} men lost</span>
+                  </header>
+                  <div className="pb flush">
+                    <div className="kpis">
+                      <div className="kpi">
+                        <div className="cap">USA</div>
+                        <div className="v f-usa">{usaCasTotal.toLocaleString()}</div>
+                        <div className="h">{usaCasTotal + csaCasTotal > 0 ? Math.round((usaCasTotal / (usaCasTotal + csaCasTotal)) * 100) : 0}% of the total</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">CSA</div>
+                        <div className="v f-csa">{csaCasTotal.toLocaleString()}</div>
+                        <div className="h">{usaCasTotal + csaCasTotal > 0 ? Math.round((csaCasTotal / (usaCasTotal + csaCasTotal)) * 100) : 0}% of the total</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Combined</div>
+                        <div className="v">{(usaCasTotal + csaCasTotal).toLocaleString()}</div>
+                        <div className="h">across {totalRoundsWithResult} rounds</div>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-2">
-                    <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
+                </div>
+
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Per-unit player stats</h2>
+                    <span className="rule" />
+                    <span className="meta">full event</span>
+                  </header>
+                  <div className="pb flush scroll-x">
                     {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
                   </div>
                 </div>
 
-                {/* Aggregate map stats — same UI as the Season tab,
-                   sourced from event-wide history. */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Map className="w-5 h-5" />
-                    Map Statistics (event-wide)
-                  </h3>
-                  {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Maps, event-wide</h2>
+                    <span className="rule" />
+                    <span className="meta">every season's rounds together</span>
+                  </header>
+                  <div className="pb">
+                    {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                  </div>
                 </div>
 
-                {/* Cross-season teammate heatmap — opens the existing
-                   heatmap modal in event scope (DRY: same modal, same
-                   render path). */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Swords className="w-5 h-5" />
-                    Cross-Season Teammate Composition
-                  </h3>
-                  <p className="text-xs text-text-secondary mb-3">
-                    How often each pair of units has played as teammates across every season in this event.
-                  </p>
-                  <button
-                    onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}
-                    className="gh live"
-                  >
-                    <Swords className="w-4 h-4" />
-                    Open Cross-Season Pairings
-                  </button>
+                <div className="panel">
+                  <div className="ctl">
+                    <span className="cap">Pairings</span>
+                    <button className="gh live" onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}>
+                      Open cross-season pairings
+                    </button>
+                    <span className="rule" />
+                    <span className="meta">how often each pair has been on the same side, across every season</span>
+                  </div>
                 </div>
-              </div>
+              </>
             );
           })()}
           </>)}
@@ -5049,11 +5062,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <h2 className="cap">System Settings</h2>
               
               {/* Point System Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Point System</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="fset">
+                <h3 className="cap">Point System</h3>
+                <div className="grid-f">
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Win Lead Points</label>
+                  <label className="cap">Win Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.winLead}
@@ -5062,7 +5075,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Win Assist Points</label>
+                  <label className="cap">Win Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.winAssist}
@@ -5071,7 +5084,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Loss Lead Points</label>
+                  <label className="cap">Loss Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossLead}
@@ -5080,7 +5093,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Loss Assist Points</label>
+                  <label className="cap">Loss Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossAssist}
@@ -5089,7 +5102,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Lead</label>
+                  <label className="cap">2-0 Bonus Lead</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Lead}
@@ -5098,7 +5111,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Assist</label>
+                  <label className="cap">2-0 Bonus Assist</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Assist}
@@ -5107,7 +5120,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Balancer Points</label>
+                  <label className="cap">Balancer Points</label>
                   <input
                     type="number"
                     value={pointSystem.balancePoints}
@@ -5117,7 +5130,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
                 {pointSystem.balancePoints !== 0 && (
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Balance Points Style</label>
+                  <label className="cap">Balance Points Style</label>
                   <select
                     value={pointSystem.balancePointsStyle || 'perNight'}
                     onChange={(e) => setPointSystem({ ...pointSystem, balancePointsStyle: e.target.value })}
@@ -5133,14 +5146,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Elo System Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <TrendingUp className="w-5 h-5" />
                   Elo Rating System
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Initial Elo</label>
+                    <label className="cap">Initial Elo</label>
                     <input
                       type="number"
                       value={eloSystem.initialElo}
@@ -5149,7 +5162,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Standard K-Factor</label>
+                    <label className="cap">Standard K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorStandard}
@@ -5158,7 +5171,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Provisional K-Factor</label>
+                    <label className="cap">Provisional K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorProvisional}
@@ -5167,7 +5180,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Provisional Rounds</label>
+                    <label className="cap">Provisional Rounds</label>
                     <input
                       type="number"
                       value={eloSystem.provisionalRounds}
@@ -5176,7 +5189,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Sweep Bonus (×)</label>
+                    <label className="cap">Sweep Bonus (×)</label>
                     <input
                       type="number"
                       step="0.05"
@@ -5186,7 +5199,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Lead Multiplier (×)</label>
+                    <label className="cap">Lead Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5196,7 +5209,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Size Influence</label>
+                    <label className="cap">Size Influence</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5206,7 +5219,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Playoff Multiplier (×)</label>
+                    <label className="cap">Playoff Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.05"
@@ -5219,30 +5232,30 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Map & Unit History Influence */}
-              <div className="mb-6">
+              <div className="fset">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary">Map &amp; Unit History Influence</h3>
+                  <h3 className="cap">Map &amp; Unit History Influence</h3>
                   <button
                     onClick={() => setEloConfig({
                       mapWeight: 1.0, unitWeight: 1.0, priorRounds: 10,
                       carryAlpha: eloConfig.carryAlpha ?? 0.5,
                       mapStatsScope: eloConfig.mapStatsScope ?? 'event',
                     })}
-                    className="text-xs text-text-secondary hover:c-accent underline transition"
+                    className="gh"
                     title="Reset weights and shrinkage to recommended defaults"
                   >
                     Reset to defaults
                   </button>
                 </div>
-                <p className="text-xs text-text-secondary mb-3">
+                <p className="note">
                   Map-side and per-unit-on-side outcome history feed expected win probability via Bayesian-shrunk Elo equivalents.
                   The engine uses <strong>every prior round</strong> in the event (and across events under <em>global</em> scope).
                   Confidence Samples controls regularization, not how much data is used: at <em>n</em> samples a rate reaches
                   <em> n / (n + samples)</em> of full strength, so a single 100% round can't slam ratings while a long pattern eventually approaches full influence.
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on the map-side history's Elo-equivalent contribution. 0 ignores it; 1 uses full Bayesian-shrunk strength.">Map Weight</label>
+                    <label className="cap" title="Multiplier on the map-side history's Elo-equivalent contribution. 0 ignores it; 1 uses full Bayesian-shrunk strength.">Map Weight</label>
                     <input
                       type="number"
                       step="0.05"
@@ -5253,7 +5266,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on each unit's per-side record on the map. 0 ignores per-unit history; 1 uses full Bayesian-shrunk strength.">Unit Weight</label>
+                    <label className="cap" title="Multiplier on each unit's per-side record on the map. 0 ignores per-unit history; 1 uses full Bayesian-shrunk strength.">Unit Weight</label>
                     <input
                       type="number"
                       step="0.05"
@@ -5265,7 +5278,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                   <div>
                     <label
-                      className="block text-sm text-text-secondary mb-1"
+                      className="cap"
                       title="Sample size at which the historical rate reaches half its full Elo-equivalent strength. The engine still uses ALL prior rounds — this only controls regularization. Lower = trust small samples sooner (noisier); higher = require more data before signals matter."
                     >
                       Confidence Samples
@@ -5280,7 +5293,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Source of map history. 'Event only' uses just this event; 'All events (global)' folds in every prior event's rounds as a starting seed (unit-on-side history stays event-scoped since unit identity is per-event).">Map Stats Scope</label>
+                    <label className="cap" title="Source of map history. 'Event only' uses just this event; 'All events (global)' folds in every prior event's rounds as a starting seed (unit-on-side history stays event-scoped since unit identity is per-event).">Map Stats Scope</label>
                     <select
                       value={eloConfig.mapStatsScope}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapStatsScope: e.target.value })}
@@ -5294,14 +5307,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Map Cooldown Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <Map className="w-5 h-5" />
                   Map Cooldown
                 </h3>
                 <div className="flex items-center gap-3">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Weeks Until Replayable</label>
+                    <label className="cap">Weeks Until Replayable</label>
                     <input
                       type="number"
                       min="0"
@@ -5310,7 +5323,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       className="fld-i"
                     />
                   </div>
-                  <span className="text-xs text-text-secondary mt-5">
+                  <span className="note">
                     {mapCooldown === 0
                       ? 'Disabled — maps can be replayed immediately'
                       : `Maps played in the last ${mapCooldown} week${mapCooldown > 1 ? 's' : ''} will be marked on cooldown`}
@@ -5319,17 +5332,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Balancer Settings Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <Target className="w-5 h-5" />
                   Team Balancer Weights
                 </h3>
-                <p className="text-xs text-text-secondary mb-3">
+                <p className="note">
                   Adjust the weights used in the composite score calculation. Higher weights increase the importance of that metric.
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Teammate History Weight</label>
+                    <label className="cap">Teammate History Weight</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5339,7 +5352,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Avg Difference Weight</label>
+                    <label className="cap">Avg Difference Weight</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5349,7 +5362,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Regiment Count Weight</label>
+                    <label className="cap">Regiment Count Weight</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5359,7 +5372,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Range Similarity Weight</label>
+                    <label className="cap">Range Similarity Weight</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5370,7 +5383,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
                   {divisions.length > 0 && (
                     <div>
-                      <label className="block text-sm text-text-secondary mb-1">Division Opposition Weight</label>
+                      <label className="cap">Division Opposition Weight</label>
                       <input
                         type="number"
                         step="0.1"
@@ -5382,7 +5395,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                   {playoffConfig.enabled && (
                     <div>
-                      <label className="block text-sm text-text-secondary mb-1">Post-Season Skill Weight</label>
+                      <label className="cap">Post-Season Skill Weight</label>
                       <input
                         type="number"
                         step="0.1"
@@ -5394,7 +5407,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm text-text-secondary mb-1">Balance Options to Show</label>
+                  <label className="cap">Balance Options to Show</label>
                   <input
                     type="number"
                     min="1"
@@ -5403,11 +5416,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
                     className="fld-i"
                   />
-                  <span className="text-xs text-text-secondary ml-2">Number of balance options the balancer will return (1-10)</span>
+                  <div className="note">Balance options the balancer returns, 1 to 10.</div>
                 </div>
-                <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                  <p className="font-semibold text-text-secondary mb-2">💡 Weight Explanations:</p>
-                  <ul className="space-y-1 ml-4">
+                <div className="gloss" style={{ marginTop: 13, border: '1px solid var(--line)' }}>
+                  <ul className="note" style={{ margin: 0, paddingLeft: 16, gridColumn: '1 / -1', listStyle: 'disc' }}>
                     <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
                     <li><strong>Regiment Count:</strong> Favors equal regiment counts per team (e.g., 8v8 over 11v5)</li>
@@ -5423,7 +5435,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Division and Map Bias Management Buttons */}
-              <div className="mt-6 flex gap-4">
+              <div className="ctl" style={{ marginTop: 18, border: '1px solid var(--line)' }}>
                 <button
                   onClick={() => goScreen('divisions')}
                   className="gh live"
@@ -5852,7 +5864,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <h3 className="font-semibold truncate">Assign stats → {assignToken}</h3>
                     <button onClick={() => setAssignToken(null)} className="p-1 rounded hover:bg-bg-inset"><X className="w-4 h-4 text-text-muted" /></button>
                   </div>
-                  <p className="text-xs text-text-secondary mb-3">
+                  <p className="note">
                     Toggle the scoreboard regiment(s) that played as <span className="font-semibold">{assignToken}</span>. Regiments already claimed by another token are locked.
                   </p>
 
@@ -5955,101 +5967,105 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Division Management Modal */}
           {screen === 'divisions' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Divisions</h2>
-                <span className="rule" />
-              </header>
-              <div className="pb">
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Left: Unassigned Units */}
-                    <div className="panel pb">
-                      <h3 className="cap">Unassigned Units</h3>
-                      <div className="bg-bg-inset rounded p-3 max-h-96 overflow-y-auto">
-                        {getUnassignedUnits().length > 0 ? (
-                          <div className="space-y-1">
-                            {getUnassignedUnits().map(unit => (
-                              <div key={unit} className="text-sm py-1">
-                                {unit}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-text-secondary text-sm">All units assigned to divisions</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right: Divisions */}
-                    <div className="panel pb">
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="cap">Divisions</h3>
-                        <button
-                          onClick={addDivision}
-                          className="gh live"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {divisions.map((division) => (
-                          <div key={division.name} className="panel pb">
-                            <div className="flex justify-between items-center mb-2">
-                              <input
-                                type="text"
-                                value={division.name}
-                                onChange={(e) => renameDivision(division.name, e.target.value)}
-                                className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm font-semibold"
-                              />
-                              <button
-                                onClick={() => deleteDivision(division.name)}
-                                className="ml-2 p-1 hover:bg-red-600 rounded transition"
-                              >
-                                <Trash2 className="w-4 h-4 text-white" />
-                              </button>
-                            </div>
-                            <div className="space-y-1">
-                              {division.units.map(unit => (
-                                <div key={unit} className="flex justify-between items-center text-xs">
-                                  <span>{unit}</span>
-                                  <button
-                                    onClick={() => removeUnitFromDivision(division.name, unit)}
-                                    className="ib danger"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              ))}
-                              {division.units.length === 0 && (
-                                <p className="text-text-secondary text-xs">No units in this division</p>
-                              )}
-                            </div>
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  addUnitToDivision(division.name, e.target.value);
-                                  e.target.value = '';
-                                }
-                              }}
-                              className="w-full mt-2 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-xs"
-                            >
-                              <option value="">Add unit...</option>
-                              {getUnassignedUnits().map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
-                        {divisions.length === 0 && (
-                          <p className="text-text-secondary text-sm text-center py-4">No divisions created yet</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
+            <>
+              <div className="panel">
+                <div className="ctl">
+                  <span className="cap">Divisions</span>
+                  <button className="gh live" onClick={addDivision}>
+                    <Plus className="w-3 h-3" /> New division
+                  </button>
+                  <span className="rule" />
+                  <span className="meta">
+                    {divisions.length} division{divisions.length === 1 ? '' : 's'} ·{' '}
+                    {getUnassignedUnits().length} unit{getUnassignedUnits().length === 1 ? '' : 's'} unassigned
+                  </span>
+                </div>
               </div>
-            </div>
+
+              <div className="panel">
+                <header className="ph">
+                  <h2>Unassigned</h2>
+                  <span className="rule" />
+                  <span className="meta">a unit outside a division still plays — it just has no group to top</span>
+                </header>
+                <div className="pb">
+                  {getUnassignedUnits().length > 0 ? (
+                    <div className="rl">
+                      {getUnassignedUnits().map(unit => (
+                        <span key={unit} className="tag q">{unit}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="note">Every unit belongs to a division.</p>
+                  )}
+                </div>
+              </div>
+
+              {divisions.map((division) => (
+                <div className="panel" key={division.name}>
+                  <div className="ctl">
+                    <span className="cap">Name</span>
+                    <input
+                      className="fld-i"
+                      type="text"
+                      value={division.name}
+                      onChange={(e) => renameDivision(division.name, e.target.value)}
+                      aria-label="Division name"
+                    />
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          addUnitToDivision(division.name, e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                      aria-label={`Add a unit to ${division.name}`}
+                    >
+                      <option value="">Add a unit…</option>
+                      {getUnassignedUnits().map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                    <span className="rule" />
+                    <span className="meta">{division.units.length} unit{division.units.length === 1 ? '' : 's'}</span>
+                    <button className="gh c-danger" onClick={() => deleteDivision(division.name)}>
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  </div>
+                  <div className="pb flush">
+                    {division.units.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>Nobody in this division yet.</p>
+                    ) : (
+                      <table>
+                        <tbody>
+                          {division.units.map(unit => (
+                            <tr key={unit}>
+                              <td className="wor-name">{unit}</td>
+                              <td className="num">
+                                <button className="gh" onClick={() => removeUnitFromDivision(division.name, unit)}>
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {divisions.length === 0 && (
+                <div className="panel">
+                  <div className="pb">
+                    <p className="note">
+                      No divisions yet. A division groups units so the standings can be read within it and the
+                      playoff bracket can seed from each one's top two.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Map History Viewer Modal — derived from outcome history (no manual bias) */}
@@ -6181,24 +6197,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <span className="rule" />
                   <span className="meta wor-name">{activeEvent.name}</span>
                 </header>
-                  <div className="pb">
-
-                    <div className="panel pb">
-                      <p className="text-xs text-text-secondary">
-                        Every unit ever associated with this event. Renaming here propagates to all seasons (rosters, leads, swaps, casualties).
-                        Hard-delete is only available when a unit has no roster appearance anywhere in the event.
-                      </p>
-                    </div>
-
+                  <div className="pb flush scroll-x">
                     {registryEntries.length === 0 ? (
-                      <div className="text-center text-text-muted py-8">No units in this event yet.</div>
+                      <p className="note" style={{ padding: 13 }}>No units in this event yet.</p>
                     ) : (
-                      <table className="w-full text-sm">
+                      <table>
                         <thead>
-                          <tr className="text-left text-text-secondary border-b border-border-default">
-                            <th className="py-2 pr-2">Unit</th>
-                            <th className="py-2 pr-2">In seasons</th>
-                            <th className="py-2 pr-2 text-right">Actions</th>
+                          <tr>
+                            <th>Unit</th>
+                            <th>In seasons</th>
+                            <th className="num">Rename</th>
+                            <th className="num">Delete</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -6206,46 +6215,55 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             const seasons = seasonsByUnit[name] || [];
                             const inUse = seasons.length > 0;
                             return (
-                              <tr key={id} className="border-b border-border-default/40">
-                                <td className="py-2 pr-2 font-medium">{name}</td>
-                                <td className="py-2 pr-2 text-xs text-text-secondary">
-                                  {seasons.length === 0 ? <span className="text-text-muted italic">unused</span> : seasons.join(', ')}
+                              <tr key={id}>
+                                <td className="wor-name">{name}</td>
+                                <td style={{ color: 'var(--ink-2)' }}>
+                                  {seasons.length === 0
+                                    ? <span style={{ color: 'var(--ink-3)' }}>never rostered</span>
+                                    : seasons.join(' \u00b7 ')}
                                 </td>
-                                <td className="py-2 pr-2">
-                                  <div className="flex gap-1 justify-end">
-                                    <button
-                                      onClick={() => {
-                                        const newName = window.prompt(`Rename "${name}" to:`, name);
-                                        if (newName == null) return;
-                                        const trimmed = newName.trim();
-                                        if (!trimmed || trimmed === name) return;
-                                        setAppState(prev => renameUnitInEvent(prev, name, trimmed));
-                                      }}
-                                      className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                                      title="Rename (sweeps all seasons)"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      disabled={inUse}
-                                      onClick={() => {
-                                        if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearance anywhere.`)) return;
-                                        setAppState(prev => removeUnitFromRegistry(prev, name));
-                                      }}
-                                      className="p-1 rounded-md hover:bg-red-500/20 c-danger disabled:opacity-30 disabled:hover:bg-transparent"
-                                      title={inUse ? 'Cannot hard-delete — unit appears in roster data. Remove from each season first.' : 'Hard-delete from registry'}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                <td className="num">
+                                  <button
+                                    className="gh"
+                                    onClick={() => {
+                                      const newName = window.prompt(`Rename "${name}" to:`, name);
+                                      if (newName == null) return;
+                                      const trimmed = newName.trim();
+                                      if (!trimmed || trimmed === name) return;
+                                      setAppState(prev => renameUnitInEvent(prev, name, trimmed));
+                                    }}
+                                    title="Sweeps every season \u2014 rosters, leads, swaps, playoffs and the registry"
+                                  >
+                                    Rename
+                                  </button>
+                                </td>
+                                <td className="num">
+                                  <button
+                                    className="gh c-danger"
+                                    disabled={inUse}
+                                    onClick={() => {
+                                      if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearances.`)) return;
+                                      setAppState(prev => removeUnitFromRegistry(prev, name));
+                                    }}
+                                    title={inUse ? 'Appears in roster data \u2014 remove it from each season first' : 'Hard-delete from the registry'}
+                                  >
+                                    Delete
+                                  </button>
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={4}>
+                              Renaming propagates to every season. Deleting is only offered when a unit has never
+                              been rostered anywhere in the event.
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
                     )}
-
                   </div>
               </div>
             );

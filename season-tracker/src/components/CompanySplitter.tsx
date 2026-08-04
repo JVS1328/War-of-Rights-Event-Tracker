@@ -53,82 +53,77 @@ export function CompanySplitter() {
   };
 
   return (
-    <div className="bg-bg-card border border-border-default rounded-lg p-4">
-      <div className="grid md:grid-cols-2 gap-4">
-        {/* Roster paste */}
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold">Roster</label>
-          <p className="text-xs text-text-secondary">
-            One unit per line: name, min, max — tab-separated (paste straight from the coord
-            sheet) or space-separated. Blank lines and filler columns are ignored.
-          </p>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={PLACEHOLDER}
-            rows={14}
-            className="fld-i"
-          />
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-secondary">
-              {roster.length} unit{roster.length === 1 ? '' : 's'} · {Math.round(totalAvg)} avg
-              players
-            </span>
+    <div className="panel">
+      <header className="ph">
+        <h2>Company splitter</h2>
+        <span className="rule" />
+        <span className="meta">
+          {roster.length} unit{roster.length === 1 ? '' : 's'} · {Math.round(totalAvg)} men
+        </span>
+      </header>
+      <div className="pb flush">
+        <div className="cols">
+          <div className="col">
+            <div className="cap">Roster</div>
+            <p className="note" style={{ margin: '5px 0 7px' }}>
+              One unit a line: name, min, max — tab-separated straight from the coord sheet, or
+              spaced. Blank lines and filler columns are ignored.
+            </p>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={PLACEHOLDER}
+              rows={14}
+            />
             {text.trim() && (
-              <button
-                onClick={() => setText('')}
-                className="ml-auto flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:bg-bg-inset rounded-md transition"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Clear
+              <button className="gh" style={{ marginTop: 7 }} onClick={() => setText('')}>
+                <Trash2 className="w-3 h-3" /> Clear
               </button>
             )}
+            {roster.length > 0 && (
+              <div className="scroll-x" style={{ maxHeight: 240, overflowY: 'auto', marginTop: 11 }}>
+                <table>
+                  <thead>
+                    <tr><th>Unit</th><th className="num">Range</th><th className="num">Avg</th></tr>
+                  </thead>
+                  <tbody>
+                    {roster.map((r, idx) => (
+                      <tr key={idx}>
+                        <td className="wor-name">{r.unit}</td>
+                        <td className="num" style={{ color: 'var(--ink-2)' }}>{r.min}–{r.max}</td>
+                        <td className="num">{Math.round(rosterAvg(r))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-          {roster.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded border border-border-default">
-              <table className="w-full text-xs">
-                <tbody>
-                  {roster.map((r, idx) => (
-                    <tr key={idx} className="border-b border-border-default last:border-0">
-                      <td className="px-2 py-1 text-text-primary">{r.unit}</td>
-                      <td className="px-2 py-1 text-text-secondary text-right">
-                        {r.min}–{r.max}
-                      </td>
-                      <td className="px-2 py-1 text-text-secondary text-right w-16">
-                        {Math.round(rosterAvg(r))} avg
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
 
-        {/* Split */}
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold">Split</label>
-          <CompanyConfigFields
-            config={config}
-            onChange={(patch) => setConfig((prev) => clampSideConfig({ ...prev, ...patch }))}
-          />
-          {companies.length > 0 ? (
-            <>
-              <CompanyList companies={companies} />
-              <button
-                onClick={copySplit}
-                className="gh live"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copied' : 'Copy split'}
-              </button>
-            </>
-          ) : (
-            <p className="text-xs text-text-secondary py-2">
-              {roster.length === 0
-                ? 'Paste a roster to split it into companies.'
-                : 'Set a company count to build the split.'}
-            </p>
-          )}
+          <div className="col">
+            <div className="cap">Split</div>
+            <div style={{ marginTop: 7 }}>
+              <CompanyConfigFields
+                config={config}
+                onChange={(patch) => setConfig((prev) => clampSideConfig({ ...prev, ...patch }))}
+              />
+            </div>
+            {companies.length > 0 ? (
+              <>
+                <CompanyList companies={companies} />
+                <button className="gh live" style={{ marginTop: 11 }} onClick={copySplit}>
+                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {copied ? 'Copied' : 'Copy split'}
+                </button>
+              </>
+            ) : (
+              <p className="note" style={{ marginTop: 7 }}>
+                {roster.length === 0
+                  ? 'Paste a roster to split it into companies.'
+                  : 'Set a company count to build the split.'}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
