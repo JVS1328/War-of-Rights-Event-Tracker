@@ -11,20 +11,20 @@
      Dark overrides live in the .dark block below. The legacy semantic
      tokens further down reference this scale, so the whole existing app
      adopts the new look without touching its 9000-line component. */
-  --color-bg-0: #eceef1;   /* page background          */
-  --color-bg-1: #ffffff;   /* cards / panels           */
-  --color-bg-2: #f4f6f8;   /* panel headers / inset    */
-  --color-bg-3: #e6e9ed;   /* hover                    */
-  --color-border: #d6dae0;
-  --color-border-strong: #bcc3cc;
-  --color-text-0: #1b1e23; /* primary text             */
-  --color-text-1: #5a626d; /* secondary text           */
-  --color-text-2: #8b939e; /* tertiary / labels        */
-  --color-accent: #b07d3f;         /* UI accent — selection, focus, links */
-  --color-accent-soft: rgb(176 125 63 / 0.15);
-  --color-ok: #4d7a62;             /* semantic success         */
-  --color-warn: #9a7a44;
-  --color-danger: #9e4d4d;
+  --color-bg-0: #e8e6e1;   /* ground — page            */
+  --color-bg-1: #f6f5f2;   /* surface — panels         */
+  --color-bg-2: #ecebe6;   /* raised — headers, hover  */
+  --color-bg-3: #dedbd4;   /* sunken — tracks, wells   */
+  --color-border: #c9c5bc;
+  --color-border-strong: #a8a397;
+  --color-text-0: #1a1916; /* ink                      */
+  --color-text-1: #55514a; /* ink-2                    */
+  --color-text-2: #867f73; /* ink-3                    */
+  --color-accent: #7a3b1c;         /* live — selection, focus, the current thing */
+  --color-accent-soft: rgb(122 59 28 / 0.13);
+  --color-ok: #2f6249;             /* semantic success         */
+  --color-warn: #8c5c1e;
+  --color-danger: #8e3b3b;
 
   /* ── Faction identity ──────────────────────────────────────────────────
      USA and CSA used to borrow --color-ok and --color-accent. That made the
@@ -115,20 +115,20 @@
      Legacy tokens reference the scale via var(), so they update live when
      .dark flips these values. */
   .dark {
-    --color-bg-0: #050608;
-    --color-bg-1: #0c0e12;
-    --color-bg-2: #14171c;
-    --color-bg-3: #1a1e25;
-    --color-border: #1f242c;
-    --color-border-strong: #2a3038;
-    --color-text-0: #e6e8eb;
-    --color-text-1: #9aa1ab;
-    --color-text-2: #5b6470;
-    --color-accent: #d4a574;
-    --color-accent-soft: rgb(212 165 116 / 0.18);
-    --color-ok: #5b8a72;
-    --color-warn: #b8915a;
-    --color-danger: #a85a5a;
+    --color-bg-0: #0a0b0a;
+    --color-bg-1: #111312;
+    --color-bg-2: #171a18;
+    --color-bg-3: #0d0f0e;
+    --color-border: #242826;
+    --color-border-strong: #39403c;
+    --color-text-0: #e7e5df;
+    --color-text-1: #9a978e;
+    --color-text-2: #67645c;
+    --color-accent: #d3814a;
+    --color-accent-soft: rgb(211 129 74 / 0.18);
+    --color-ok: #6faa87;
+    --color-warn: #d3a163;
+    --color-danger: #c07070;
     --color-usa: #3f8ec8;
     --color-usa-soft: rgb(63 142 200 / 0.16);
     --color-csa: #bc8630;
@@ -141,9 +141,12 @@
   html, body {
     background: var(--color-bg-0);
     color: var(--color-text-0);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    line-height: 1.35;
+    /* Everything the instrument says about itself is monospace. Sans is for
+       names the game gave us and for prose — see .wor-name and .sans. */
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
     font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
   }
@@ -173,7 +176,9 @@
      them — a player called `vanreiswick` shows as VANREISWICK, and `1stTX`
      as 1STTX, while the same names render correctly in plain table cells.
      Anything carrying a name the game gave us opts out with this. */
-  .wor-name {
+  .wor-name, .sans {
+    font-family: var(--font-sans);
+    font-variant-numeric: normal;
     text-transform: none;
     letter-spacing: normal;
   }

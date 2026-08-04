@@ -58,6 +58,7 @@ import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 import { CompanyConfigFields, CompanyList } from './components/CompanyBalancer';
 import { BalanceSwaps } from './components/BalanceSwaps';
 import { EloLadder } from './components/EloLadder';
+import { Shell } from './components/Shell';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
@@ -119,6 +120,59 @@ const NIGHT_TYPES = [
     flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true } },
 ];
 
+/**
+ * The rail. Everything the app can do is on it — the prototype's rule was that
+ * no view hides behind a modal, so each of these is a place you can be rather
+ * than a dialog you open.
+ */
+const RAIL_NAV = [
+  { title: 'Season', items: [
+    { key: 'dash', label: 'Overview' },
+    { key: 'standings', label: 'Standings' },
+    { key: 'schedule', label: 'Schedule' },
+    { key: 'night', label: 'Night builder' },
+    { key: 'balancer', label: 'Balancer' },
+    { key: 'week', label: 'Night matchup' },
+    { key: 'playoffs', label: 'Playoffs' },
+    { key: 'simulator', label: 'Schedule maker' },
+    { key: 'elo', label: 'Elo ladder' },
+    { key: 'heat', label: 'Pairings' },
+  ]},
+  { title: 'Player stats', items: [
+    { key: 'stats-overview', label: 'Stats overview' },
+    { key: 'stats-rounds', label: 'Rounds' },
+    { key: 'stats-players', label: 'Players' },
+    { key: 'stats-regiments', label: 'Units' },
+    { key: 'stats-compare', label: 'Compare' },
+    { key: 'stats-maps', label: 'Maps' },
+  ]},
+  { title: 'Setup', items: [
+    { key: 'events', label: 'Events & seasons' },
+    { key: 'identity', label: 'Unit & player identity' },
+    { key: 'splitter', label: 'Company splitter' },
+    { key: 'settings', label: 'Settings' },
+    { key: 'stats-import', label: 'Import rounds' },
+    { key: 'share', label: 'Share & export' },
+  ]},
+];
+
+/** Screens the season/all-seasons scope changes the meaning of. */
+const STATS_SCREENS = new Set(
+  RAIL_NAV[1].items.map(i => i.key).concat(['week', 'stats-import'])
+);
+
+/** Rail key → the sub-tab the stats panel should be showing. */
+const STATS_TAB_OF = {
+  'stats-overview': 'overview',
+  'stats-rounds': 'rounds',
+  'stats-players': 'players',
+  'stats-regiments': 'regiments',
+  'stats-compare': 'compare',
+  'stats-maps': 'maps',
+  'stats-import': 'import',
+  week: 'nights',
+};
+
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
 // Map names, area grouping, and attacker info come from the single-source-of-
@@ -130,7 +184,7 @@ const VIEW_MODES = { tracker: 'Tracker', stats: 'Player Stats', splitter: 'Compa
 
 /** One figure in the simulation summary: big number, label, optional hint. */
 const SimStat = ({ label, value, hint }) => (
-  <div className="bg-bg-inset rounded p-3">
+  <div className="panel pb">
     <div className="text-xs text-text-secondary">{label}</div>
     <div className="text-xl font-bold tabular-nums">{value}</div>
     {hint && <div className="text-xs text-text-secondary mt-0.5">{hint}</div>}
@@ -194,23 +248,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [eloConfig, setEloConfig] = eventField('eloConfig');
 
   // Session-only UI state
-  const [showSettings, setShowSettings] = useState(false);
-  const [viewMode, setViewMode] = useState('tracker'); // key of VIEW_MODES
+  // Which screen the rail is showing. `viewMode` survives as a derived value so
+  // the blocks that still switch on it keep working while they move across.
+  const [screen, setScreen] = useState('dash');
+  const viewMode =
+    screen === 'splitter' ? 'splitter'
+    : STATS_SCREENS.has(screen) ? 'stats'
+    : 'tracker';
+  const setViewMode = (mode) =>
+    setScreen(mode === 'splitter' ? 'splitter' : mode === 'stats' ? 'stats-overview' : 'dash');
+  const goScreen = (key) => {
+    setScreen(key);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
   // Player-stats season scope: when true, the stats view aggregates every
   // season ("Overall"); when false it follows the active season. Stats-only —
   // it never changes which season the tracker view is editing.
   const [statsAllSeasons, setStatsAllSeasons] = useState(true);
-  const [showStatsModal, setShowStatsModal] = useState(false);
-  const [showBalancerModal, setShowBalancerModal] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
-  const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
-  const [showRegistryModal, setShowRegistryModal] = useState(false);
   const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
-  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [heatmapMode, setHeatmapMode] = useState('together'); // 'together' | 'against'
-  const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [simulationAnalytics, setSimulationAnalytics] = useState(null);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
@@ -1368,22 +1427,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setBalancerResults(null);
     setBalancerStatus('');
     setBalancerSatOut([]);
-    setShowBalancerModal(true);
+    goScreen('balancer');
   };
 
-  const closeBalancerModal = () => {
-    if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
-      updateWeek(selectedWeek.id, {
-        ...selectedWeek,
-        unitPlayerCounts: { ...balancerUnitCounts }
-      });
-      setUnitPlayerCounts(prev => ({
-        ...prev,
-        ...balancerUnitCounts
-      }));
-    }
-    setShowBalancerModal(false);
-    setBalancerResults(null);
+  /**
+   * Player counts belong to the night, so they are written back as they change
+   * rather than on the way out of a dialog — the balancer is a screen now and
+   * has no way out to hook.
+   */
+  const commitBalancerCounts = (counts) => {
+    setBalancerUnitCounts(counts);
+    if (selectedWeek) updateWeek(selectedWeek.id, { unitPlayerCounts: { ...counts } });
+    setUnitPlayerCounts(prev => ({ ...prev, ...counts }));
   };
 
   // --- Coord Sheet Paste helpers ---
@@ -1589,7 +1644,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
       ...balancerUnitCounts
     }));
 
-    setShowBalancerModal(false);
     setBalancerResults(null);
   };
 
@@ -2202,8 +2256,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Refresh scoreboard data whenever the Stats or Assign modal opens (so the
   // per-unit stats auto-recompute and reflect any re-imported scoreboards).
   useEffect(() => {
-    if (showStatsModal || showCasualtyModal) void loadScoreboardData();
-  }, [showStatsModal, showCasualtyModal, loadScoreboardData]);
+    // Scoreboard-backed figures are only needed where they are shown.
+    if (screen === 'elo' || showCasualtyModal) void loadScoreboardData();
+  }, [screen, showCasualtyModal, loadScoreboardData]);
 
   // The event's registry unit names — feeds both regiment resolution and the
   // shared stats bundle (so a view-only share resolves regiments identically).
@@ -2340,11 +2395,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return (
       <tr className="bg-bg-card/50 text-[10px]">
         <td className="py-1 px-2 pl-6 text-text-secondary italic">{label}</td>
-        <td className="text-cyan-400/70 text-center py-1 px-2" />
-        <td className="text-cyan-400/70 text-center py-1 px-2" />
-        <td className="text-green-400/70 text-center py-1 px-2">{snap.kills}</td>
-        <td className="text-red-400/70 text-center py-1 px-2">{snap.deaths}</td>
-        <td className="text-indigo-400/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
+        <td className="c-accent/70 text-center py-1 px-2" />
+        <td className="c-accent/70 text-center py-1 px-2" />
+        <td className="c-ok/70 text-center py-1 px-2">{snap.kills}</td>
+        <td className="c-danger/70 text-center py-1 px-2">{snap.deaths}</td>
+        <td className="c-accent/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
         {/* KR/LR need a player-count denominator the context snaps don't carry — left blank, like Players/Avg-Rd above. */}
         <td className="text-center py-1 px-2" />
         <td className="text-center py-1 px-2" />
@@ -2432,18 +2487,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       )}
                       {r.unit}
                     </td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
-                    <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
-                    <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
-                    <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
-                    <td className="text-green-400/80 text-center py-2 px-2">{formatRate(r.killRate)}</td>
-                    <td className="text-red-400/80 text-center py-2 px-2">{formatRate(r.lossRate)}</td>
+                    <td className="c-accent text-center py-2 px-2">{r.uniquePlayers}</td>
+                    <td className="c-accent text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
+                    <td className="c-ok text-center py-2 px-2">{r.kills}</td>
+                    <td className="c-danger text-center py-2 px-2">{r.deaths}</td>
+                    <td className="c-accent text-center py-2 px-2">{r.kd.toFixed(2)}</td>
+                    <td className="c-ok/80 text-center py-2 px-2">{formatRate(r.killRate)}</td>
+                    <td className="c-danger/80 text-center py-2 px-2">{formatRate(r.lossRate)}</td>
                     <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
                     <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
-                    <td className="text-green-400/80 text-center py-2 px-2"><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
-                    <td className="text-red-400/80 text-center py-2 px-2"><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
+                    <td className="c-ok/80 text-center py-2 px-2"><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
+                    <td className="c-danger/80 text-center py-2 px-2"><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
                   </tr>
                   {isOpen && r.ctx && (
                     <>
@@ -3199,8 +3254,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     }));
     setWeeks([...weeks, ...newWeeks]);
     setSimPaste('');
-    setShowSimulateModal(false);
-  };
+      };
 
   const simulateSeason = () => {
     if (units.length === 0) {
@@ -3292,8 +3346,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
 
     setWeeks([...weeks, ...simulatedWeeks]);
-    setShowSimulateModal(false);
-    setSimulationAnalytics({
+        setSimulationAnalytics({
       scheduleOnly: simScheduleOnly,
       splitLeads,
       spacing: summarizeLeadSpacing(simulatedWeeks, tokenUnits),
@@ -3864,7 +3917,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 min="0"
                 value={form[k] || 0}
                 onChange={(e) => setF(k, e.target.value)}
-                className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                className="fld-i sm"
               />
             </div>
           ))}
@@ -3874,7 +3927,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           <select
             value={morale}
             onChange={(e) => updateWeek(selectedWeek.id, { [moraleField]: e.target.value || null })}
-            className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+            className="fld-i sm"
           >
             <option value="">—</option>
             {MORALE_STATES.map((m) => (
@@ -3899,66 +3952,66 @@ const SeasonTracker = ({ initialShareData = null }) => {
         {overall.totalRounds > 0 && (
           <div className="mb-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">USA Overall</div>
-                <div className="text-lg font-bold text-blue-400">
+                <div className="text-lg font-bold f-usa">
                   {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">CSA Overall</div>
-                <div className="text-lg font-bold text-red-400">
+                <div className="text-lg font-bold c-danger">
                   {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaWins}/{overall.totalRounds})</span>
                 </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
-                <div className="text-lg font-bold text-indigo-400">
+                <div className="text-lg font-bold c-accent">
                   {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">Defenders Won</div>
-                <div className="text-lg font-bold text-green-400">
+                <div className="text-lg font-bold c-ok">
                   {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.defenderWins}/{overall.totalRounds})</span>
                 </div>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">USA Attack</div>
-                <div className="text-sm font-semibold text-blue-400">
+                <div className="text-sm font-semibold f-usa">
                   {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">USA Defense</div>
-                <div className="text-sm font-semibold text-blue-400">
+                <div className="text-sm font-semibold f-usa">
                   {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">CSA Attack</div>
-                <div className="text-sm font-semibold text-red-400">
+                <div className="text-sm font-semibold c-danger">
                   {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">CSA Defense</div>
-                <div className="text-sm font-semibold text-red-400">
+                <div className="text-sm font-semibold c-danger">
                   {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
                 </div>
               </div>
             </div>
             {overall.totalCasualties > 0 && (
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-2">Casualties &amp; formation makeup</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   {[
-                    { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'text-blue-400' },
-                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'text-red-400' },
+                    { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'f-usa' },
+                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'c-danger' },
                     { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: 'text-text-primary' },
                   ].map(({ label, total, form, color }) => (
                     <div key={label} className="bg-bg-card rounded p-2">
@@ -4001,8 +4054,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <td className="py-1 px-1 text-text-secondary">{i + 1}</td>
                       <td className="py-1 px-1 font-medium">{name}</td>
                       <td className="text-center py-1 px-1">{s.plays}</td>
-                      <td className="text-center py-1 px-1 text-blue-400">{pct(s.usaWins, s.plays)}%</td>
-                      <td className="text-center py-1 px-1 text-red-400">{pct(s.csaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 f-usa">{pct(s.usaWins, s.plays)}%</td>
+                      <td className="text-center py-1 px-1 c-danger">{pct(s.csaWins, s.plays)}%</td>
                       <td className="text-center py-1 px-1 text-text-secondary">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
                     </tr>
                   ))}
@@ -4046,14 +4099,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </div>
                             <div className="text-xs space-y-0.5">
                               <div>
-                                <span className="text-blue-300">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+                                <span className="f-usa">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
                                 <span className="text-text-secondary mx-2">|</span>
-                                <span className="text-red-300">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+                                <span className="c-danger">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
                               </div>
                               <div className="text-text-secondary">
-                                Avg losses: <span className="text-blue-300">USA {s.avgLossesUsa}</span>
+                                Avg losses: <span className="f-usa">USA {s.avgLossesUsa}</span>
                                 <span className="mx-1">·</span>
-                                <span className="text-red-300">CSA {s.avgLossesCsa}</span>
+                                <span className="c-danger">CSA {s.avgLossesCsa}</span>
                                 <span className="text-text-muted"> (total {s.totalCasualties}, {avgCas}/rd)</span>
                               </div>
                               {s.hasFormation && (
@@ -4068,9 +4121,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               )}
                               {s.hasMorale && (
                                 <div className="text-text-secondary">
-                                  Avg morale: <span className="text-blue-300">USA {s.avgMoraleUsa || '—'}</span>
+                                  Avg morale: <span className="f-usa">USA {s.avgMoraleUsa || '—'}</span>
                                   <span className="mx-1">·</span>
-                                  <span className="text-red-300">CSA {s.avgMoraleCsa || '—'}</span>
+                                  <span className="c-danger">CSA {s.avgMoraleCsa || '—'}</span>
                                 </div>
                               )}
                             </div>
@@ -4117,268 +4170,214 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   return (
-    <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
-      <div className="max-w-7xl mx-auto">
+    <Shell
+      nav={RAIL_NAV}
+      screen={screen}
+      onScreen={goScreen}
+      title="Season Tracker"
+      subtitle={`${activeEvent.name} · ${activeSeason.name}`}
+      crumb={
+        <>
+          <span className="cap">Event</span>
+          <select
+            value={appState.activeEventId}
+            onChange={(e) => setAppState(prev => setActiveEvent(prev, e.target.value))}
+            aria-label="Active event"
+          >
+            {appState.events.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <select
+            value={appState.activeSeasonId}
+            onChange={(e) => setAppState(prev => setActiveSeason(prev, e.target.value))}
+            aria-label="Active season"
+          >
+            {activeEvent.seasons.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <button className="gh" onClick={() => goScreen('events')} title="Events, seasons and what they hold">
+            Manage
+          </button>
+          {/* Scope only changes what the stats screens mean, so it only shows there. */}
+          {STATS_SCREENS.has(screen) && (
+            <div className="sc" role="group" aria-label="Stats scope">
+              <button aria-pressed={!statsAllSeasons} onClick={() => setStatsAllSeasons(false)}>
+                {activeSeason.name}
+              </button>
+              <button aria-pressed={statsAllSeasons} onClick={() => setStatsAllSeasons(true)}>
+                All seasons
+              </button>
+            </div>
+          )}
+        </>
+      }
+    >
         <div>
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4 gap-3">
-            <h1 className="text-xl font-semibold flex items-center gap-2 shrink-0">
-              <Trophy className="w-5 h-5 text-indigo-500" />
-              <span className="hidden sm:inline">Season Tracker</span>
-              <span className="sm:hidden">Tracker</span>
-            </h1>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowStatsModal(!showStatsModal)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Stats</span>
-              </button>
-              <button
-                onClick={shareSeason}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                title="Copy share link to clipboard"
-              >
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Share</span>
-              </button>
-              <button
-                onClick={() => {
-                  const name = window.prompt('New event name:', 'New Event');
-                  if (!name) return;
-                  setAppState(prev => addEvent(prev, name.trim() || 'New Event'));
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                title="Add a new event (separate ladder, separate registry)"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Event</span>
-              </button>
-              {/* Overflow Menu */}
-              <div className="relative" ref={overflowMenuRef}>
-                <button
-                  onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                  title="More actions"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-                {showOverflowMenu && (
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-bg-card border border-border-default rounded-lg shadow-lg z-50 py-1">
-                    <button
-                      onClick={() => { exportData(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Download className="w-4 h-4" /> Export JSON
-                    </button>
-                    <button
-                      onClick={() => { exportToCSV(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Download className="w-4 h-4" /> Export CSV
-                    </button>
-                    <button
-                      onClick={() => { shareStats(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                      title="Copy a link to a read-only, stats-only view of this event's player stats"
-                    >
-                      <Share2 className="w-4 h-4" /> Share Player Stats
-                    </button>
-                    <label className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition cursor-pointer">
-                      <Upload className="w-4 h-4" /> Import
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={(e) => { importData(e); setShowOverflowMenu(false); }}
-                        className="hidden"
-                      />
-                    </label>
-                    <button
-                      onClick={() => { setShowSettings(!showSettings); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Settings className="w-4 h-4" /> Settings
-                    </button>
-                    <button
-                      onClick={() => { setShowSimulateModal(true); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Zap className="w-4 h-4" /> Simulate
-                    </button>
-                    <div className="border-t border-border-default my-1" />
-                    <button
-                      onClick={() => { newSeason(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-red-500/20 text-red-500 transition text-left"
-                      title="Wipe ALL data (every event, every season)"
-                    >
-                      <Trash2 className="w-4 h-4" /> Wipe Everything
-                    </button>
-                  </div>
-                )}
+          {screen === 'splitter' && <CompanySplitter />}
+
+          {/* Events & seasons — what the header strip used to carry. */}
+          {screen === 'events' && (
+            <>
+              <div className="panel">
+                <header className="ph">
+                  <h2>Events</h2>
+                  <span className="rule" />
+                  <button className="gh" onClick={() => {
+                    const name = window.prompt('New event name:', 'New Event');
+                    if (!name) return;
+                    setAppState(prev => addEvent(prev, name.trim() || 'New Event'));
+                  }}>New event</button>
+                </header>
+                <div className="pb flush">
+                  <table>
+                    <thead><tr><th>Event</th><th className="num">Seasons</th><th className="num">Units</th><th /></tr></thead>
+                    <tbody>
+                      {appState.events.map(ev => (
+                        <tr key={ev.id} className={ev.id === appState.activeEventId ? '' : 'click'}
+                            onClick={() => ev.id !== appState.activeEventId && setAppState(prev => setActiveEvent(prev, ev.id))}>
+                          <td className="wor-name">
+                            {ev.id === appState.activeEventId && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {ev.name}
+                          </td>
+                          <td className="num">{ev.seasons.length}</td>
+                          <td className="num">{Object.keys(ev.unitRegistry || {}).length}</td>
+                          <td className="num">
+                            <button className="gh" onClick={(e) => {
+                              e.stopPropagation();
+                              const name = window.prompt('Rename event:', ev.name);
+                              if (!name || !name.trim() || name.trim() === ev.name) return;
+                              setAppState(prev => renameActiveEvent(setActiveEvent(prev, ev.id), name.trim()));
+                            }}>Rename</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              {/* Theme: Modern | Classic family switch (light/dark toggle below) */}
-              <ThemeControls showMode={false} />
-              {/* Light/Dark Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-              >
-                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
+
+              <div className="panel">
+                <header className="ph">
+                  <h2>Seasons</h2>
+                  <span className="rule" />
+                  <span className="meta wor-name">{activeEvent.name}</span>
+                  <button className="gh" onClick={() => {
+                    const name = window.prompt('New season name:', `Season ${activeEvent.seasons.length + 1}`);
+                    if (!name) return;
+                    setAppState(prev => addSeasonToActiveEvent(prev, name.trim()));
+                  }}>New season</button>
+                </header>
+                <div className="pb flush">
+                  <table>
+                    <thead><tr><th>Season</th><th className="num">Weeks</th><th className="num">Units</th><th /></tr></thead>
+                    <tbody>
+                      {activeEvent.seasons.map(se => (
+                        <tr key={se.id} className={se.id === appState.activeSeasonId ? '' : 'click'}
+                            onClick={() => se.id !== appState.activeSeasonId && setAppState(prev => setActiveSeason(prev, se.id))}>
+                          <td className="wor-name">
+                            {se.id === appState.activeSeasonId && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {se.name}
+                          </td>
+                          <td className="num">{(se.weeks || []).length}</td>
+                          <td className="num">{(se.units || []).length}</td>
+                          <td className="num">
+                            <button className="gh" onClick={(e) => {
+                              e.stopPropagation();
+                              const name = window.prompt('Rename season:', se.name);
+                              if (!name || !name.trim() || name.trim() === se.name) return;
+                              setAppState(prev => renameActiveSeason(setActiveSeason(prev, se.id), name.trim()));
+                            }}>Rename</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="panel">
+                <header className="ph"><h2>What lives where</h2><span className="rule" /></header>
+                <div className="pb flush">
+                  <div className="cols">
+                    <div className="col">
+                      <span className="cap">An event</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        Its own unit registry, its own Elo ladder and its own imported rounds. Two leagues that
+                        share players but not standings are two events.
+                      </p>
+                    </div>
+                    <div className="col">
+                      <span className="cap">A season</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        Weeks, rosters, points and results. Elo carries across the seasons of one event; points
+                        do not.
+                      </p>
+                    </div>
+                    <div className="col">
+                      <span className="cap">Identity</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        A rename on the identity screen sweeps every season of the event — rosters, leads, swaps
+                        and casualties all follow it.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Share & export — the overflow menu, unpacked onto a page. */}
+          {screen === 'share' && (
+            <div className="panel">
+              <header className="ph"><h2>Share &amp; export</h2><span className="rule" /></header>
+              <div className="pb flush">
+                <div className="cols">
+                  <div className="col">
+                    <span className="cap">Take it with you</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      A JSON export is the whole event — every season, week and setting. The CSV is the
+                      schedule and results only, for a spreadsheet.
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="gh" onClick={exportData}>Export JSON</button>
+                      <button className="gh" onClick={exportToCSV}>Export CSV</button>
+                      <label className="gh" style={{ cursor: 'pointer' }}>
+                        Import JSON
+                        <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="col">
+                    <span className="cap">Send someone a link</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      Both links are read-only and carry their data in the URL — nothing is uploaded anywhere.
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="gh" onClick={shareSeason}>Share the season</button>
+                      <button className="gh" onClick={shareStats}>Share player stats</button>
+                    </div>
+                  </div>
+                  <div className="col">
+                    <span className="cap">Start over</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      Wipes every event and season in this browser. Export first.
+                    </p>
+                    <button className="gh danger" onClick={newSeason}>Wipe everything</button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Event + Season Nav */}
-          <div className="bg-bg-card border border-border-default rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
-            {/* Event picker */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-text-secondary">Event</span>
-              <select
-                value={appState.activeEventId}
-                onChange={(e) => setAppState(prev => setActiveEvent(prev, e.target.value))}
-                className="px-2 py-1.5 bg-bg-input rounded-md border border-border-default text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {appState.events.map(e => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => {
-                  const name = window.prompt('Rename event:', activeEvent.name);
-                  if (!name || !name.trim() || name.trim() === activeEvent.name) return;
-                  setAppState(prev => renameActiveEvent(prev, name.trim()));
-                }}
-                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Rename event"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                disabled={appState.events.length <= 1}
-                onClick={() => {
-                  if (!confirm(`Delete event "${activeEvent.name}" and all its seasons? This cannot be undone.`)) return;
-                  setAppState(prev => removeActiveEvent(prev));
-                }}
-                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                title={appState.events.length <= 1 ? 'Cannot delete the last event' : 'Delete event'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
 
-            <div className="h-6 w-px bg-border-default" />
-
-            {/* Season tabs */}
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-xs uppercase tracking-wide text-text-secondary mr-1">Seasons</span>
-              {activeEvent.seasons.map(s => {
-                // In the stats view, Overall steals the highlight from the
-                // active season; otherwise the active season is highlighted.
-                const highlighted = (viewMode === 'stats' && statsAllSeasons)
-                  ? false
-                  : s.id === appState.activeSeasonId;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      // In the stats view, picking a season exits Overall and
-                      // narrows player-stats to it. In the tracker view it's just
-                      // the normal active-season switch — leave Overall untouched.
-                      if (viewMode === 'stats') setStatsAllSeasons(false);
-                      setAppState(prev => setActiveSeason(prev, s.id));
-                    }}
-                    className={`px-2.5 py-1 text-sm rounded-md border transition ${
-                      highlighted
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'border-border-default hover:bg-bg-inset text-text-secondary'
-                    }`}
-                  >
-                    {s.name}
-                  </button>
-                );
-              })}
-              {/* Overall — player-stats only: aggregate every season at once. */}
-              {viewMode === 'stats' && (
-                <button
-                  onClick={() => setStatsAllSeasons(true)}
-                  title="Player stats across all seasons combined"
-                  className={`px-2.5 py-1 text-sm rounded-md border transition ${
-                    statsAllSeasons
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'border-border-default hover:bg-bg-inset text-text-secondary'
-                  }`}
-                >
-                  Overall
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  const name = window.prompt(`New season name:`, `Season ${activeEvent.seasons.length + 1}`);
-                  if (name === null) return;
-                  setAppState(prev => addSeasonToActiveEvent(prev, (name && name.trim()) || undefined));
-                }}
-                className="p-1.5 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Add a new season to this event (inherits the current roster)"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              <div className="h-5 w-px bg-border-default mx-1" />
-              <button
-                onClick={() => {
-                  const name = window.prompt('Rename season:', activeSeason.name);
-                  if (!name || !name.trim() || name.trim() === activeSeason.name) return;
-                  setAppState(prev => renameActiveSeason(prev, name.trim()));
-                }}
-                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Rename current season"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                disabled={activeEvent.seasons.length <= 1}
-                onClick={() => {
-                  if (!confirm(`Delete season "${activeSeason.name}"? This cannot be undone.`)) return;
-                  setAppState(prev => removeActiveSeason(prev));
-                }}
-                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                title={activeEvent.seasons.length <= 1 ? 'Cannot delete the last season' : 'Delete season'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Registry summary — clickable to open the full editor */}
-            <button
-              onClick={() => setShowRegistryModal(true)}
-              className="ml-auto flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:bg-bg-inset rounded-md transition"
-              title="Manage event-level unit registry"
-            >
-              <Users className="w-3.5 h-3.5" />
-              {Object.keys(activeEvent.unitRegistry).length} unit{Object.keys(activeEvent.unitRegistry).length === 1 ? '' : 's'} in registry
-            </button>
-          </div>
-
-          {/* Tracker | Player Stats | Company Splitter view toggle */}
-          <div className="flex items-center gap-1 mb-4 border border-border-default rounded-lg p-1 bg-bg-card w-fit">
-            {Object.entries(VIEW_MODES).map(([mode, label]) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 text-sm rounded-md transition ${viewMode === mode ? 'bg-indigo-600 text-white' : 'text-text-secondary hover:bg-bg-inset'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {viewMode === 'splitter' && <CompanySplitter />}
 
           {/* The whole week goes across as `weeks`, not just id/name/flip: the
               Nights tab reads a night's result, leads and rosters as a matchup. */}
           {viewMode === 'stats' && (
             <StatsArea
+              tab={STATS_TAB_OF[screen]}
+              onTab={(t) => {
+                const key = Object.keys(STATS_TAB_OF).find(k => STATS_TAB_OF[k] === t);
+                if (key) goScreen(key);
+              }}
               eventId={appState.activeEventId}
               eventName={activeEvent.name}
               registryUnits={registryUnitNames}
@@ -4389,7 +4388,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 const w = weeks.find(x => String(x.id) === weekId);
                 if (!w) return;
                 setSelectedWeek(w);
-                setViewMode('tracker');
+                goScreen('night');
               }}
               seasons={statsSeasonRefs}
               seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
@@ -4404,10 +4403,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {viewMode === 'tracker' && (<>
-          {/* Settings Panel */}
-          {showSettings && (
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 mb-4">
-              <h2 className="text-lg font-semibold mb-3">System Settings</h2>
+          {/* Settings — its own screen. */}
+          {screen === 'settings' && (
+            <div className="panel pb mb-4">
+              <h2 className="cap">System Settings</h2>
               
               {/* Point System Section */}
               <div className="mb-6">
@@ -4419,7 +4418,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.winLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, winLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4428,7 +4427,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.winAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, winAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4437,7 +4436,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.lossLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4446,7 +4445,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.lossAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4455,7 +4454,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.bonus2_0Lead}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Lead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4464,7 +4463,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.bonus2_0Assist}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Assist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
@@ -4473,7 +4472,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     type="number"
                     value={pointSystem.balancePoints}
                     onChange={(e) => setPointSystem({ ...pointSystem, balancePoints: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 {pointSystem.balancePoints !== 0 && (
@@ -4482,7 +4481,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <select
                     value={pointSystem.balancePointsStyle || 'perNight'}
                     onChange={(e) => setPointSystem({ ...pointSystem, balancePointsStyle: e.target.value })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   >
                     <option value="perNight">Per Night</option>
                     <option value="perRound">Per Round</option>
@@ -4506,7 +4505,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="number"
                       value={eloSystem.initialElo}
                       onChange={(e) => setEloSystem({ ...eloSystem, initialElo: parseInt(e.target.value) || 1500 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4515,7 +4514,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="number"
                       value={eloSystem.kFactorStandard}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorStandard: parseInt(e.target.value) || 96 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4524,7 +4523,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="number"
                       value={eloSystem.kFactorProvisional}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorProvisional: parseInt(e.target.value) || 128 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4533,7 +4532,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="number"
                       value={eloSystem.provisionalRounds}
                       onChange={(e) => setEloSystem({ ...eloSystem, provisionalRounds: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4543,7 +4542,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.05"
                       value={eloSystem.sweepBonusMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, sweepBonusMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4553,7 +4552,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={eloSystem.leadMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, leadMultiplier: parseFloat(e.target.value) || 2.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4563,7 +4562,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={eloSystem.sizeInfluence}
                       onChange={(e) => setEloSystem({ ...eloSystem, sizeInfluence: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4573,7 +4572,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.05"
                       value={eloSystem.playoffMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, playoffMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                 </div>
@@ -4589,7 +4588,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       carryAlpha: eloConfig.carryAlpha ?? 0.5,
                       mapStatsScope: eloConfig.mapStatsScope ?? 'event',
                     })}
-                    className="text-xs text-text-secondary hover:text-indigo-400 underline transition"
+                    className="text-xs text-text-secondary hover:c-accent underline transition"
                     title="Reset weights and shrinkage to recommended defaults"
                   >
                     Reset to defaults
@@ -4610,7 +4609,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       min="0"
                       value={eloConfig.mapWeight}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4621,7 +4620,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       min="0"
                       value={eloConfig.unitWeight}
                       onChange={(e) => setEloConfig({ ...eloConfig, unitWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4637,7 +4636,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       min="1"
                       value={eloConfig.priorRounds}
                       onChange={(e) => setEloConfig({ ...eloConfig, priorRounds: Math.max(1, parseInt(e.target.value) || 10) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4645,7 +4644,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <select
                       value={eloConfig.mapStatsScope}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapStatsScope: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     >
                       <option value="event">Event only</option>
                       <option value="global">All events (global)</option>
@@ -4696,7 +4695,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={balancerSettings.teammateWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, teammateWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4706,7 +4705,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={balancerSettings.avgDiffWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, avgDiffWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4716,7 +4715,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={balancerSettings.regimentCountWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, regimentCountWeight: parseFloat(e.target.value) || 0.75 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
@@ -4726,7 +4725,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       step="0.1"
                       value={balancerSettings.rangeSimilarityWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, rangeSimilarityWeight: parseFloat(e.target.value) || 0.50 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   {divisions.length > 0 && (
@@ -4737,7 +4736,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         step="0.1"
                         value={balancerSettings.divisionOppositionWeight}
                         onChange={(e) => setBalancerSettings({ ...balancerSettings, divisionOppositionWeight: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       />
                     </div>
                   )}
@@ -4749,7 +4748,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         step="0.1"
                         value={balancerSettings.postSeasonSkillWeight ?? 0}
                         onChange={(e) => setBalancerSettings({ ...balancerSettings, postSeasonSkillWeight: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       />
                     </div>
                   )}
@@ -4786,8 +4785,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
               {/* Division and Map Bias Management Buttons */}
               <div className="mt-6 flex gap-4">
                 <button
-                  onClick={() => setShowDivisionModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                  onClick={() => goScreen('divisions')}
+                  className="gh live"
                 >
                   <Users className="w-4 h-4" />
                   Manage Divisions
@@ -4804,25 +4803,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-            {/* Left Column - Weeks */}
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm">
+          <div className={screen === 'dash' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start' : ''}>
+            {/* Left Column — Weeks. This column is also the whole of the
+                Schedule screen, so it is composed in rather than duplicated. */}
+            {(screen === 'dash' || screen === 'schedule') && (
+            <div className="panel pb">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
+                <h2 className="cap">
                   <Calendar className="w-6 h-6" />
                   Weeks ({weeks.length})
                 </h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleEnlarge('weeks')}
-                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                    className="ib"
                     title="Enlarge View"
                   >
                     <Maximize2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={addWeek}
-                    className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition"
+                    className="gh live"
                     title="Add Week"
                   >
                     <Plus className="w-4 h-4" />
@@ -4879,7 +4880,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             e.stopPropagation();
                             removeWeek(week.id);
                           }}
-                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
+                          className="p-1 rounded-md hover:bg-red-500/20 c-danger transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -4890,20 +4891,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
             </div>
 
-            {/* Middle Column - Units */}
+            )}
+            {/* Middle Column — Units */}
+            {screen === 'dash' && (
             <div
-              className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm"
+              className="panel pb"
               onDragOver={handleMainDragOver}
               onDrop={handleMainDropToUnassigned}
             >
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
+                <h2 className="cap">
                   <Users className="w-6 h-6" />
                   {selectedWeek ? `Available Units (${getAvailableUnitsForWeek().length})` : `Units (${units.length})`}
                 </h2>
                 <button
                   onClick={() => toggleEnlarge('units')}
-                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                  className="ib"
                   title="Enlarge View"
                 >
                   <Maximize2 className="w-4 h-4" />
@@ -4920,7 +4923,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 />
                 <button
                   onClick={addUnit}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
+                  className="gh live"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -4954,7 +4957,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         >
                           {isNonToken ? '*' : '○'}
                         </button>
-                        <span className={`font-medium ${isNonToken ? 'text-indigo-400' : ''}`}>
+                        <span className={`font-medium ${isNonToken ? 'c-accent' : ''}`}>
                           {unit}
                         </span>
                       </div>
@@ -4986,7 +4989,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </button>
                         <button
                           onClick={() => removeUnit(unit)}
-                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
+                          className="p-1 rounded-md hover:bg-red-500/20 c-danger transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -4997,17 +5000,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
              </div>
             </div>
 
-            {/* Right Column - Standings */}
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm sm:col-span-2 lg:col-span-1">
+            )}
+            {/* Right Column — Standings, and the whole of the Standings screen. */}
+            {(screen === 'dash' || screen === 'standings') && (
+            <div className="panel pb sm:col-span-2 lg:col-span-1">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
+                <h2 className="cap">
                   <Award className="w-6 h-6" />
                   Standings
                 </h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => toggleEnlarge('standings')}
-                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                    className="ib"
                     title="Enlarge View"
                   >
                     <Maximize2 className="w-4 h-4" />
@@ -5051,13 +5056,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             >
                               <div className="flex justify-between items-center mb-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-indigo-400 font-bold text-lg">
+                                  <span className="c-accent font-bold text-lg">
                                     #{stat.divisionRank || stat.currentRank}
                                   </span>
                                 {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                   <span className={`text-xs font-semibold ${
-                                    stat.rankDelta > 0 ? 'text-green-400' :
-                                    stat.rankDelta < 0 ? 'text-red-400' :
+                                    stat.rankDelta > 0 ? 'c-ok' :
+                                    stat.rankDelta < 0 ? 'c-danger' :
                                     'text-text-secondary'
                                   }`}>
                                     {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -5065,25 +5070,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                      '−'}
                                   </span>
                                 )}
-                                <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
+                                <span className={`font-semibold ${isNonToken ? 'c-accent' : ''}`}>
                                   {isNonToken ? '*' : ''}{stat.unit}
                                 </span>
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-1 text-xs">
                                   {stat.eloDelta > 0 ? (
-                                    <TrendingUp className="w-3 h-3 text-blue-400" />
+                                    <TrendingUp className="w-3 h-3 f-usa" />
                                   ) : stat.eloDelta < 0 ? (
-                                    <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                    <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                                   ) : (
                                     <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                   )}
-                                  <span className="text-indigo-400 font-semibold">
+                                  <span className="c-accent font-semibold">
                                     {Math.round(stat.elo)}
                                   </span>
                                   {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                                     <span className={`ml-1 ${
-                                      stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                      stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                                     }`}>
                                       ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                                     </span>
@@ -5101,16 +5106,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       });
                                     }
                                   }}
-                                  className="p-1 hover:bg-bg-inset rounded transition"
+                                  className="ib"
                                   title="Adjust points"
                                 >
                                   <Edit2 className="w-3 h-3 text-text-secondary" />
                                 </button>
-                                <span className="text-green-400 font-bold text-xl">
+                                <span className="c-ok font-bold text-xl">
                                   {stat.points}
                                 </span>
                                 {stat.pointsDelta !== 0 && (
-                                  <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                                     ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                                   </span>
                                 )}
@@ -5121,12 +5126,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div>L-Loss: {stat.leadLosses}</div>
                               <div>A-Wins: {stat.assistWins}</div>
                               <div>A-Loss: {stat.assistLosses}</div>
-                              <div className="col-span-2 text-indigo-400">
+                              <div className="col-span-2 c-accent">
                                 Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                               </div>
                             </div>
                             {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                              <div className="mt-1 text-xs text-indigo-400">
+                              <div className="mt-1 text-xs c-accent">
                                 Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                               </div>
                             )}
@@ -5147,13 +5152,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       >
                         <div className="flex justify-between items-center mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-indigo-400 font-bold text-lg">
+                            <span className="c-accent font-bold text-lg">
                               #{index + 1}
                             </span>
                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                             <span className={`text-xs font-semibold ${
-                              stat.rankDelta > 0 ? 'text-green-400' :
-                              stat.rankDelta < 0 ? 'text-red-400' :
+                              stat.rankDelta > 0 ? 'c-ok' :
+                              stat.rankDelta < 0 ? 'c-danger' :
                               'text-text-secondary'
                             }`}>
                               {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -5161,25 +5166,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                '−'}
                             </span>
                           )}
-                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
+                          <span className={`font-semibold ${isNonToken ? 'c-accent' : ''}`}>
                             {isNonToken ? '*' : ''}{stat.unit}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1 text-xs">
                             {stat.eloDelta > 0 ? (
-                              <TrendingUp className="w-3 h-3 text-blue-400" />
+                              <TrendingUp className="w-3 h-3 f-usa" />
                             ) : stat.eloDelta < 0 ? (
-                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                              <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                             ) : (
                               <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                             )}
-                            <span className="text-indigo-400 font-semibold">
+                            <span className="c-accent font-semibold">
                               {Math.round(stat.elo)}
                             </span>
                             {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                               <span className={`ml-1 ${
-                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                               }`}>
                                 ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                               </span>
@@ -5197,16 +5202,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 });
                               }
                             }}
-                            className="p-1 hover:bg-bg-inset rounded transition"
+                            className="ib"
                             title="Adjust points"
                           >
                             <Edit2 className="w-3 h-3 text-text-secondary" />
                           </button>
-                          <span className="text-green-400 font-bold text-xl">
+                          <span className="c-ok font-bold text-xl">
                             {stat.points}
                           </span>
                           {stat.pointsDelta !== 0 && (
-                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                               ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                             </span>
                           )}
@@ -5217,12 +5222,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <div>L-Loss: {stat.leadLosses}</div>
                         <div>A-Wins: {stat.assistWins}</div>
                         <div>A-Loss: {stat.assistLosses}</div>
-                        <div className="col-span-2 text-indigo-400">
+                        <div className="col-span-2 c-accent">
                           Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                         </div>
                       </div>
                       {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                        <div className="mt-1 text-xs text-indigo-400">
+                        <div className="mt-1 text-xs c-accent">
                           Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
                         </div>
                       )}
@@ -5232,12 +5237,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
                )}
              </div>
             </div>
+            )}
           </div>
 
-          {/* Week Details */}
-          {selectedWeek && (
+          {/* Night builder. A screen you can arrive at cold, so it carries its
+              own picker rather than assuming a week was clicked first. */}
+          {screen === 'night' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Night builder</h2>
+                <select
+                  value={selectedWeek?.id ?? ''}
+                  onChange={(e) => setSelectedWeek(weeks.find(w => String(w.id) === e.target.value) || null)}
+                  aria-label="Night to build"
+                >
+                  <option value="">Pick a night…</option>
+                  {weeks.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+                <span className="rule" />
+                {weeks.length === 0 && <button className="gh live" onClick={addWeek}>Add the first night</button>}
+                {weeks.length > 0 && <button className="gh" onClick={addWeek}>Add night</button>}
+              </header>
+              {!selectedWeek && (
+                <div className="pb"><p className="note">Pick a night above, or add one.</p></div>
+              )}
+            </div>
+          )}
+          {screen === 'night' && selectedWeek && (
             <div className="mt-6 bg-bg-card border border-border-default rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-4">
+              <h2 className="cap">
                 {selectedWeek.name} - Team Rosters
               </h2>
               
@@ -5247,53 +5275,53 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 if (!stats) return null;
                 
                 return (
-                  <div className="mb-6 bg-bg-inset rounded-lg p-4">
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <div className="panel pb">
+                    <h3 className="cap">
                       <Target className="w-5 h-5" />
                       Team Balance Overview
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                        <div className="text-lg font-bold text-indigo-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.avgDiff.toFixed(1)}
                         </div>
                       </div>
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                        <div className="text-lg font-bold text-cyan-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.minDiff.toFixed(0)}
                         </div>
                       </div>
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                        <div className="text-lg font-bold text-purple-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.maxDiff.toFixed(0)}
                         </div>
                       </div>
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                        <div className="text-lg font-bold text-green-400">
+                        <div className="text-lg font-bold c-ok">
                           {stats.combinedAvgHistory.toFixed(2)}
                         </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3 mt-3">
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                        <div className="text-lg font-bold text-cyan-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.totalMin}
                         </div>
                       </div>
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                        <div className="text-lg font-bold text-purple-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.totalMax}
                         </div>
                       </div>
-                      <div className="bg-bg-inset rounded p-3">
+                      <div className="panel pb">
                         <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                        <div className="text-lg font-bold text-indigo-400">
+                        <div className="text-lg font-bold c-accent">
                           {stats.totalAvg.toFixed(1)}
                         </div>
                       </div>
@@ -5311,7 +5339,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         ].map(({ label, prob, map }) => {
                           if (!prob) return null;
                           return (
-                            <div key={label} className="bg-bg-inset rounded p-3">
+                            <div key={label} className="panel pb">
                               <div className="flex justify-between items-center mb-2">
                                 <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
                                 <div className="flex gap-3 text-xs">
@@ -5327,7 +5355,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                <span className="text-xs font-bold f-usa w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
                                 <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
                                   <div
                                     className="h-full transition-all duration-300"
@@ -5344,7 +5372,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     }}
                                   />
                                 </div>
-                                <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                                <span className="text-xs font-bold c-danger w-16">{prob.teamBProb}% {teamNames.B}</span>
                               </div>
                             </div>
                           );
@@ -5353,26 +5381,26 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                       {/* Team A Stats */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold text-blue-400 mb-2">
+                      <div className="panel pb">
+                        <h4 className="text-sm font-semibold f-usa mb-2">
                           {teamNames.A} ({stats.teamA.length} units)
                         </h4>
                         <div className="text-text-secondary text-sm space-y-1">
                           <p>Players: {stats.minA}-{stats.maxA} (avg: {stats.avgA.toFixed(1)})</p>
                           <p className="text-xs">
-                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
+                            Avg Teammate History: <span className="c-accent font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
                           </p>
                         </div>
                       </div>
                       {/* Team B Stats */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold text-red-400 mb-2">
+                      <div className="panel pb">
+                        <h4 className="text-sm font-semibold c-danger mb-2">
                           {teamNames.B} ({stats.teamB.length} units)
                         </h4>
                         <div className="text-text-secondary text-sm space-y-1">
                           <p>Players: {stats.minB}-{stats.maxB} (avg: {stats.avgB.toFixed(1)})</p>
                           <p className="text-xs">
-                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
+                            Avg Teammate History: <span className="c-accent font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
                           </p>
                         </div>
                       </div>
@@ -5383,15 +5411,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <div className="mt-3 bg-bg-inset rounded p-3">
                           <div className="text-xs text-text-secondary mb-2">
-                            Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                            Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
                           </div>
                           <div className="space-y-1 max-h-32 overflow-y-auto">
                             {matchups.map((m, i) => (
                               <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                <span className="text-blue-400">{m.unitA}</span>
+                                <span className="f-usa">{m.unitA}</span>
                                 <span className="text-text-secondary">vs</span>
-                                <span className="text-red-400">{m.unitB}</span>
-                                <span className="text-indigo-400 ml-1">({m.division})</span>
+                                <span className="c-danger">{m.unitB}</span>
+                                <span className="c-accent ml-1">({m.division})</span>
                               </div>
                             ))}
                           </div>
@@ -5417,7 +5445,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="text"
                       value={teamNames.A}
                       onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      className="fld-i big-i"
                     />
                   </div>
                   {selectedWeek.teamA.length === 0 && (
@@ -5465,7 +5493,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'A')}
-                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
+                            className="ib danger"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -5479,7 +5507,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadA || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        className="fld-i"
                       >
                         <option value="">Select lead...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5501,7 +5529,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       type="text"
                       value={teamNames.B}
                       onChange={(e) => setTeamNames({ ...teamNames, B: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      className="fld-i big-i"
                     />
                   </div>
                   {selectedWeek.teamB.length === 0 && (
@@ -5549,7 +5577,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <button
                             onClick={() => removeUnitFromTeam(unit, 'B')}
-                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
+                            className="ib danger"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -5563,7 +5591,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadB || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        className="fld-i"
                       >
                         <option value="">Select lead...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5611,7 +5639,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Playoffs Lead Selection */}
               {selectedWeek.isPlayoffs && (
-                <div className="mb-6 bg-bg-inset rounded-lg p-4">
+                <div className="panel pb">
                   <h3 className="text-lg font-bold mb-3">Playoff Round Leads</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -5619,7 +5647,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadA_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5632,7 +5660,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadB_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5645,7 +5673,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadA_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5658,7 +5686,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadB_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5672,7 +5700,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
               {/* Single Round Leads Lead Selection */}
               {selectedWeek.isSingleRoundLeads && (
-                <div className="mb-6 bg-bg-inset rounded-lg p-4">
+                <div className="panel pb">
                   <h3 className="text-lg font-bold mb-3">Round Leads</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -5680,7 +5708,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadA_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5693,7 +5721,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadB_r1 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5706,7 +5734,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadA_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamA.map((unit) => (
@@ -5719,7 +5747,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.leadB_r2 || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select...</option>
                         {selectedWeek.teamB.map((unit) => (
@@ -5738,8 +5766,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 return (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Round 1 */}
-                <div className="bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <div className="panel pb">
+                  <h3 className="cap">
                     <Target className="w-4 h-4" />
                     Round 1
                   </h3>
@@ -5749,7 +5777,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.round1Map || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round1Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
@@ -5780,7 +5808,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             ? { round1Winner: null, round1Draw: true }
                             : { round1Winner: v || null, round1Draw: false });
                         }}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        className="fld-i"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
@@ -5796,7 +5824,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         type="number"
                         value={selectedWeek.r1CasualtiesA || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                         min="0"
                       />
                       {renderCasualtyFormation(1, 'A')}
@@ -5807,7 +5835,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         type="number"
                         value={selectedWeek.r1CasualtiesB || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                         min="0"
                       />
                       {renderCasualtyFormation(1, 'B')}
@@ -5828,8 +5856,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
 
                 {/* Round 2 */}
-                <div className="bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <div className="panel pb">
+                  <h3 className="cap">
                     <Target className="w-4 h-4" />
                     Round 2
                   </h3>
@@ -5839,7 +5867,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <select
                         value={selectedWeek.round2Map || ''}
                         onChange={(e) => updateWeek(selectedWeek.id, { round2Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       >
                         <option value="">Select map...</option>
                         {ALL_MAPS.map((map) => (
@@ -5870,7 +5898,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             ? { round2Winner: null, round2Draw: true }
                             : { round2Winner: v || null, round2Draw: false });
                         }}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                        className="fld-i"
                       >
                         <option value="">No winner</option>
                         <option value="A">{teamNames.A}</option>
@@ -5886,7 +5914,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         type="number"
                         value={selectedWeek.r2CasualtiesA || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                         min="0"
                       />
                       {renderCasualtyFormation(2, 'A')}
@@ -5897,7 +5925,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         type="number"
                         value={selectedWeek.r2CasualtiesB || 0}
                         onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                         min="0"
                       />
                       {renderCasualtyFormation(2, 'B')}
@@ -5951,23 +5979,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
           </>)}
 
-          {/* Balancer Modal */}
-          {showBalancerModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Target className="w-6 h-6" />
-                      Team Balancer - {selectedWeek.name}
-                    </h2>
-                    <button
-                      onClick={closeBalancerModal}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {/* Balancer — a screen, not a dialog. */}
+          {screen === 'balancer' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Balancer</h2>
+                <span className="rule" />
+                <span className="meta">{selectedWeek ? selectedWeek.name : 'no night selected'}</span>
+              </header>
+              {!selectedWeek ? (
+                <div className="pb"><p className="note">Pick a night on the Schedule screen first — the balancer splits that night's units.</p></div>
+              ) : (
+                <div className="pb">
 
                   {!balancerResults || balancerResults.length === 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -5975,7 +5998,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           struck through rather than silently dropped — it is
                           left out of the split, and that should be visible
                           before the balance runs, not discovered after. */}
-                      <div className="bg-bg-inset rounded-lg p-4">
+                      <div className="panel pb">
                         {(() => {
                           const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
                           const available = units.filter(u => !assignedUnits.has(u));
@@ -5983,12 +6006,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           const playing = available.filter(u => !satOut.has(u));
                           return (<>
                             <div className="flex items-baseline justify-between mb-3">
-                              <h3 className="text-lg font-semibold">Available Units Pool</h3>
+                              <h3 className="cap">Available Units Pool</h3>
                               <span className="text-xs text-text-secondary">
                                 {playing.length} playing{satOut.size > 0 ? ` · ${satOut.size} sitting out` : ''}
                               </span>
                             </div>
-                            <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
+                            <div className="rows scroll-y">
                               {available.length === 0 ? (
                                 <p className="text-text-secondary text-sm">All units assigned</p>
                               ) : (
@@ -6020,7 +6043,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {/* Right: Constraints */}
                       <div className="space-y-4">
                         {/* Max Player Difference */}
-                        <div className="bg-bg-inset rounded-lg p-4">
+                        <div className="panel pb">
                           <label className="block text-sm text-text-secondary mb-2">Max Player Difference</label>
                           <input
                             type="number"
@@ -6028,12 +6051,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             onChange={(e) => setBalancerMaxDiff(parseInt(e.target.value) || 1)}
                             min="0"
                             max="100"
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                            className="fld-i"
                           />
                         </div>
 
                         {/* Balance Options Count */}
-                        <div className="bg-bg-inset rounded-lg p-4">
+                        <div className="panel pb">
                           <label className="block text-sm text-text-secondary mb-2">Balance Options</label>
                           <input
                             type="number"
@@ -6041,18 +6064,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
                             min="1"
                             max="10"
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                            className="fld-i"
                           />
                           <p className="text-xs text-text-secondary mt-1">How many balance options to compare (1-10)</p>
                         </div>
 
                         {/* Unit Player Counts */}
-                        <div className="bg-bg-inset rounded-lg p-4">
+                        <div className="panel pb">
                           <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-lg font-semibold">Unit Player Counts</h3>
+                            <h3 className="cap">Unit Player Counts</h3>
                             <button
                               onClick={openCoordPasteModal}
-                              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition"
+                              className="gh"
                             >
                               <FileText className="w-3 h-3" />
                               Paste from Coord Sheet
@@ -6066,27 +6089,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   type="number"
                                   placeholder="Min"
                                   value={balancerUnitCounts[unit]?.min ?? 0}
-                                  onChange={(e) => setBalancerUnitCounts({
+                                  onChange={(e) => commitBalancerCounts({
                                     ...balancerUnitCounts,
-                                    [unit]: {
-                                      ...balancerUnitCounts[unit],
-                                      min: parseInt(e.target.value) || 0
-                                    }
+                                    [unit]: { ...balancerUnitCounts[unit], min: parseInt(e.target.value) || 0 }
                                   })}
-                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 />
                                 <input
                                   type="number"
                                   placeholder="Max"
                                   value={balancerUnitCounts[unit]?.max ?? 0}
-                                  onChange={(e) => setBalancerUnitCounts({
+                                  onChange={(e) => commitBalancerCounts({
                                     ...balancerUnitCounts,
-                                    [unit]: {
-                                      ...balancerUnitCounts[unit],
-                                      max: parseInt(e.target.value) || 0
-                                    }
+                                    [unit]: { ...balancerUnitCounts[unit], max: parseInt(e.target.value) || 0 }
                                   })}
-                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 />
                               </div>
                             ))}
@@ -6094,15 +6111,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </div>
 
                         {/* Opposing Units */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-lg font-semibold mb-3">Opposing Units</h3>
+                        <div className="panel pb">
+                          <h3 className="cap">Opposing Units</h3>
                           <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
                             {balancerOpposingPairs.map((pair, idx) => (
                               <div key={idx} className="flex justify-between items-center bg-bg-inset rounded p-2">
                                 <span className="text-sm">{pair[0]} vs {pair[1]}</span>
                                 <button
                                   onClick={() => setBalancerOpposingPairs(balancerOpposingPairs.filter((_, i) => i !== idx))}
-                                  className="p-1 hover:bg-red-600 rounded transition"
+                                  className="ib danger"
                                 >
                                   <X className="w-3 h-3 text-white" />
                                 </button>
@@ -6112,7 +6129,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <div className="grid grid-cols-2 gap-2">
                             <select
                               id="opposing-unit-1"
-                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                              className="fld-i"
                             >
                               <option value="">Select first unit...</option>
                               {units.map(unit => (
@@ -6121,7 +6138,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </select>
                             <select
                               id="opposing-unit-2"
-                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                              className="fld-i"
                             >
                               <option value="">Select second unit...</option>
                               {units.map(unit => (
@@ -6149,7 +6166,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               select1.value = '';
                               select2.value = '';
                             }}
-                            className="w-full mt-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
+                            className="gh live"
                           >
                             Add Opposing Pair
                           </button>
@@ -6191,70 +6208,70 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       )}
 
                       <div className="text-center mb-6">
-                        <h3 className="text-xl font-bold text-green-400 mb-2">
+                        <h3 className="text-xl font-bold c-ok mb-2">
                           {selectedBalanceIndex === 0 ? 'Best Balance Found!' : `Option ${selectedBalanceIndex + 1}`}
                         </h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                            <div className="text-lg font-bold text-indigo-400">
+                            <div className="text-lg font-bold c-accent">
                               {activeResult.score.toFixed(1)}
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                            <div className="text-lg font-bold text-cyan-400">
+                            <div className="text-lg font-bold c-accent">
                               {Math.abs(activeResult.minA - activeResult.minB).toFixed(0)}
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                            <div className="text-lg font-bold text-purple-400">
+                            <div className="text-lg font-bold c-accent">
                               {Math.abs(activeResult.maxA - activeResult.maxB).toFixed(0)}
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                            <div className="text-lg font-bold text-green-400">
+                            <div className="text-lg font-bold c-ok">
                               {activeResult.combinedAvgHistory?.toFixed(2) || '0.00'}
                             </div>
                           </div>
                         </div>
                         <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                            <div className="text-lg font-bold text-cyan-400">
+                            <div className="text-lg font-bold c-accent">
                               {activeResult.minA + activeResult.minB}
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                            <div className="text-lg font-bold text-purple-400">
+                            <div className="text-lg font-bold c-accent">
                               {activeResult.maxA + activeResult.maxB}
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                            <div className="text-lg font-bold text-indigo-400">
+                            <div className="text-lg font-bold c-accent">
                               {((activeResult.minA + activeResult.maxA + activeResult.minB + activeResult.maxB) / 2).toFixed(1)}
                             </div>
                           </div>
                         </div>
                         {activeResult.avgEloA != null && activeResult.avgEloB != null && (
                           <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                            <div className="bg-bg-inset rounded p-3">
+                            <div className="panel pb">
                               <div className="text-xs text-text-secondary mb-1">{teamNames.A} Avg Elo</div>
-                              <div className="text-lg font-bold text-blue-400">{Math.round(activeResult.avgEloA)}</div>
+                              <div className="text-lg font-bold f-usa">{Math.round(activeResult.avgEloA)}</div>
                             </div>
-                            <div className="bg-bg-inset rounded p-3">
+                            <div className="panel pb">
                               <div className="text-xs text-text-secondary mb-1">Elo Difference</div>
-                              <div className="text-lg font-bold text-indigo-400">
+                              <div className="text-lg font-bold c-accent">
                                 {Math.abs(Math.round(activeResult.avgEloA - activeResult.avgEloB))}
                               </div>
                             </div>
-                            <div className="bg-bg-inset rounded p-3">
+                            <div className="panel pb">
                               <div className="text-xs text-text-secondary mb-1">{teamNames.B} Avg Elo</div>
-                              <div className="text-lg font-bold text-red-400">{Math.round(activeResult.avgEloB)}</div>
+                              <div className="text-lg font-bold c-danger">{Math.round(activeResult.avgEloB)}</div>
                             </div>
                           </div>
                         )}
@@ -6269,15 +6286,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           return (
                             <div className="mt-3 max-w-4xl mx-auto bg-bg-inset rounded p-3">
                               <div className="text-xs text-text-secondary mb-2">
-                                Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
+                                Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
                               </div>
                               <div className="space-y-1 max-h-32 overflow-y-auto">
                                 {matchups.map((m, i) => (
                                   <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                    <span className="text-blue-400">{m.unitA}</span>
+                                    <span className="f-usa">{m.unitA}</span>
                                     <span className="text-text-secondary">vs</span>
-                                    <span className="text-red-400">{m.unitB}</span>
-                                    <span className="text-indigo-400 ml-1">({m.division})</span>
+                                    <span className="c-danger">{m.unitB}</span>
+                                    <span className="c-accent ml-1">({m.division})</span>
                                   </div>
                                 ))}
                               </div>
@@ -6297,7 +6314,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             ].map(({ label, prob, map }) => {
                               if (!prob) return null;
                               return (
-                                <div key={label} className="bg-bg-inset rounded p-3">
+                                <div key={label} className="panel pb">
                                   <div className="flex justify-between items-center mb-2">
                                     <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
                                     <div className="flex gap-3 text-xs">
@@ -6313,7 +6330,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
+                                    <span className="text-xs font-bold f-usa w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
                                     <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
                                       <div
                                         className="h-full transition-all duration-300"
@@ -6330,7 +6347,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         }}
                                       />
                                     </div>
-                                    <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
+                                    <span className="text-xs font-bold c-danger w-16">{prob.teamBProb}% {teamNames.B}</span>
                                   </div>
                                 </div>
                               );
@@ -6345,25 +6362,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         {/* Team A Results */}
                         <div
-                          className="bg-bg-inset rounded-lg p-4"
+                          className="panel pb"
                           onDragOver={handleDragOver}
                           onDrop={() => handleDrop('A')}
                         >
-                          <h4 className="text-lg font-semibold text-blue-400 mb-3">
+                          <h4 className="text-lg font-semibold f-usa mb-3">
                             Team A ({activeResult.teamA.length} unit{activeResult.teamA.length === 1 ? '' : 's'})
                           </h4>
                           <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
                             <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
+                              Avg Teammate History: <span className="c-accent font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
                             </p>
                             {activeResult.avgEloA != null && (
                               <p className="text-xs">
-                                Avg Elo: <span className="text-cyan-400 font-semibold">{Math.round(activeResult.avgEloA)}</span>
+                                Avg Elo: <span className="c-accent font-semibold">{Math.round(activeResult.avgEloA)}</span>
                               </p>
                             )}
                           </div>
-                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
+                          <div className="rows scroll-y">
                             <div className="space-y-1">
                               {activeResult.teamA.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
@@ -6389,25 +6406,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                         {/* Team B Results */}
                         <div
-                          className="bg-bg-inset rounded-lg p-4"
+                          className="panel pb"
                           onDragOver={handleDragOver}
                           onDrop={() => handleDrop('B')}
                         >
-                          <h4 className="text-lg font-semibold text-red-400 mb-3">
+                          <h4 className="text-lg font-semibold c-danger mb-3">
                             Team B ({activeResult.teamB.length} unit{activeResult.teamB.length === 1 ? '' : 's'})
                           </h4>
                           <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
                             <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
+                              Avg Teammate History: <span className="c-accent font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
                             </p>
                             {activeResult.avgEloB != null && (
                               <p className="text-xs">
-                                Avg Elo: <span className="text-cyan-400 font-semibold">{Math.round(activeResult.avgEloB)}</span>
+                                Avg Elo: <span className="c-accent font-semibold">{Math.round(activeResult.avgEloB)}</span>
                               </p>
                             )}
                           </div>
-                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
+                          <div className="rows scroll-y">
                             <div className="space-y-1">
                               {activeResult.teamB.sort().map(unit => {
                                 const counts = balancerUnitCounts[unit];
@@ -6436,48 +6453,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   })()}
 
                   {/* Bottom Buttons */}
-                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-border-default">
-                    <div className="text-text-secondary text-sm">
-                      {balancerStatus}
-                    </div>
-                    <div className="flex gap-2">
-                      {!balancerResults || balancerResults.length === 0 ? (
-                        <>
-                          <button
-                            onClick={closeBalancerModal}
-                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                          >
-                            Close
-                          </button>
-                          <button
-                            onClick={runBalancer}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                          >
-                            <Target className="w-4 h-4" />
-                            Balance!
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}
-                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                          >
-                            Back
-                          </button>
-                          <button
-                            onClick={applyBalancerResults}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                          >
-                            <Save className="w-4 h-4" />
-                            Apply to Week
-                          </button>
-                        </>
-                      )}
-                    </div>
+                  <div className="ctl" style={{ marginTop: 13, marginLeft: -13, marginRight: -13, marginBottom: -13, borderBottom: 0, borderTop: '1px solid var(--color-border)' }}>
+                    <span className="note">{balancerStatus}</span>
+                    <span className="rule" />
+                    {!balancerResults || balancerResults.length === 0 ? (
+                      <button className="gh live" onClick={runBalancer}>Balance</button>
+                    ) : (
+                      <>
+                        <button className="gh" onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}>Back</button>
+                        <button className="gh live" onClick={applyBalancerResults}>Apply to the night</button>
+                      </>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -6487,10 +6476,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto">
                 <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold">Paste from Coord Sheet</h2>
+                    <h2 className="cap">Paste from Coord Sheet</h2>
                     <button
                       onClick={() => { setShowCoordPasteModal(false); setCoordParsedRows([]); setCoordPasteText(''); }}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
@@ -6619,13 +6608,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="flex gap-2 mt-4">
                         <button
                           onClick={() => { setCoordParsedRows([]); }}
-                          className="flex-1 px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                          className="gh"
                         >
                           Back
                         </button>
                         <button
                           onClick={applyCoordPaste}
-                          className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition font-semibold"
+                          className="gh live"
                         >
                           <span className="flex items-center justify-center gap-2">
                             <CheckCircle2 className="w-4 h-4" />
@@ -6646,13 +6635,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
                 <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       <Flame className="w-6 h-6" />
                       Assign Player Stats - {selectedWeek.name}
                     </h2>
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
@@ -6662,7 +6651,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     Assign each token the scoreboard regiment(s) that played as it — for units that used a different in-game tag this event, or that fielded several regiments under one token. Stats are pulled from imported scoreboards and apply across every round we have data for.
                     {' '}These do <span className="font-semibold text-text-primary">not</span> change the round casualty totals (those stay on the per-side casualty inputs, which include untagged losses).
                     {sbStored.length === 0 && (
-                      <span className="block mt-1 text-amber-400">No scoreboards imported for this event yet — import them in the Player Stats view first.</span>
+                      <span className="block mt-1 c-warn">No scoreboards imported for this event yet — import them in the Player Stats view first.</span>
                     )}
                   </div>
 
@@ -6672,8 +6661,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       const rosterUnits = selectedWeek[`team${teamId}`] || [];
 
                       return (
-                        <div key={teamName} className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-lg font-semibold mb-4">{teamName} Units</h3>
+                        <div key={teamName} className="panel pb">
+                          <h3 className="cap">{teamName} Units</h3>
                           <div className="space-y-2">
                             {rosterUnits.length === 0 && (
                               <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
@@ -6692,7 +6681,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   </div>
                                   <button
                                     onClick={() => openAssign(unit)}
-                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition whitespace-nowrap"
+                                    className="gh live"
                                   >
                                     Assign stats
                                   </button>
@@ -6709,7 +6698,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                      className="gh"
                     >
                       Close
                     </button>
@@ -6759,8 +6748,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const kd = snap.deaths > 0 ? (snap.kills / snap.deaths).toFixed(2) : String(snap.kills);
                     return (
                       <div className="text-xs bg-bg-inset rounded p-2 mb-3 flex flex-wrap gap-x-4 gap-y-1">
-                        <span className="text-green-400">{snap.kills}K</span>
-                        <span className="text-red-400">{snap.deaths}D</span>
+                        <span className="c-ok">{snap.kills}K</span>
+                        <span className="c-danger">{snap.deaths}D</span>
                         <span>K/D {kd}</span>
                         <span title={AVG_TD_LABEL}>×Td {formatAvgT(unitSnapAvgTd(snap))}</span>
                         <span title={AVG_TK_LABEL}>×Tk {formatAvgT(unitSnapAvgTk(snap))}</span>
@@ -6790,7 +6779,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                   <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border-default">
                     <button onClick={() => setAssignToken(null)} className="px-3 py-1.5 border border-border-default hover:bg-bg-inset text-sm rounded">Cancel</button>
-                    <button onClick={saveAssign} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded flex items-center gap-1.5">
+                    <button onClick={saveAssign} className="gh live">
                       <Save className="w-4 h-4" /> Save
                     </button>
                   </div>
@@ -6800,513 +6789,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {/* Statistics Modal */}
-          {showStatsModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowStatsModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <BarChart3 className="w-6 h-6" />
-                      Statistics — {activeEvent.name}
-                    </h2>
-                    <button
-                      onClick={() => setShowStatsModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
-
-                  {/* Tab toggle: per-season vs event-wide */}
-                  <div className="flex gap-1 mb-5 border-b border-border-default">
-                    <button
-                      onClick={() => setStatsTab('season')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'season'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Season — {activeSeason.name}
-                    </button>
-                    <button
-                      onClick={() => setStatsTab('event')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'event'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
-                    </button>
-                  </div>
-
-                  {statsTab === 'event' && (() => {
-                    // Event-wide aggregates: walk every season's rounds.
-                    const seasons = activeEvent.seasons;
-                    const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
-
-                    // Cross-season unit record (rounds-as-lead/assist won/lost) +
-                    // event-wide casualties (per side + per unit).
-                    const unitRecord = {};
-                    let usaCasTotal = 0, csaCasTotal = 0;
-                    let totalRoundsWithResult = 0;
-                    const ensure = (u) => unitRecord[u] ||= {
-                      rounds: 0, leadWins: 0, leadLosses: 0,
-                      assistWins: 0, assistLosses: 0,
-                      sweeps: 0, casualtiesTaken: 0,
-                    };
-
-                    for (const season of seasons) {
-                      for (const week of season.weeks || []) {
-                        const isPlayoffs = !!week.isPlayoffs;
-                        const isSingleRoundLeads = !!week.isSingleRoundLeads;
-                        const teamA = week.teamA || [];
-                        const teamB = week.teamB || [];
-
-                        // Sweep tally
-                        if (week.round1Winner && week.round1Winner === week.round2Winner) {
-                          const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
-                          sweepTeam.forEach(u => ensure(u).sweeps += 1);
-                        }
-
-                        for (const roundNum of [1, 2]) {
-                          const winner = week[`round${roundNum}Winner`];
-                          if (!winner) continue;
-                          totalRoundsWithResult += 1;
-
-                          // Effective rosters (per-round swaps)
-                          const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
-                          const eA = swaps.size === 0 ? teamA :
-                            teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
-                          const eB = swaps.size === 0 ? teamB :
-                            teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
-
-                          const winningTeam = winner === 'A' ? eA : eB;
-                          const losingTeam = winner === 'A' ? eB : eA;
-                          const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
-                          const leadW = week[`lead${winner}${leadKey}`];
-                          const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
-
-                          winningTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
-                          });
-                          losingTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
-                          });
-
-                          // Side-aware casualty bucket
-                          const flipped = !!week[`round${roundNum}Flipped`];
-                          const usaSide = flipped ? 'B' : 'A';
-                          const casA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casB = week[`r${roundNum}CasualtiesB`] || 0;
-                          if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
-                          else                 { usaCasTotal += casB; csaCasTotal += casA; }
-
-                          // Per-unit casualties (lost) from weeklyCasualties
-                          const wc = week.weeklyCasualties || {};
-                          for (const sideKey of Object.keys(wc)) {
-                            const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
-                            for (const [u, n] of Object.entries(byUnit)) {
-                              ensure(u).casualtiesTaken += Number(n) || 0;
-                            }
-                          }
-                        }
-                      }
-                    }
-
-                    const eventElo = calculateEloRatings();
-                    const ladder = Object.entries(unitRecord)
-                      .map(([unit, r]) => ({
-                        unit, ...r,
-                        wins: r.leadWins + r.assistWins,
-                        losses: r.leadLosses + r.assistLosses,
-                        winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
-                        elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
-                      }))
-                      .filter(r => r.rounds > 0)
-                      .sort((a, b) => b.elo - a.elo);
-
-                    const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
-
-                    return (
-                      <div className="space-y-4">
-                        {/* Event Overview */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Trophy className="w-5 h-5" />
-                            Overview
-                          </h3>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Seasons</div>
-                              <div className="text-2xl font-bold text-indigo-400">{seasons.length}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Weeks</div>
-                              <div className="text-2xl font-bold text-indigo-400">{totalWeeks}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
-                              <div className="text-2xl font-bold text-indigo-400">{totalRoundsWithResult}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Registry Units</div>
-                              <div className="text-2xl font-bold text-indigo-400">{Object.keys(activeEvent.unitRegistry).length}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Per-season cards — surfaces playoff status and the
-                           champion when playoffs occurred (based on the latest
-                           playoff week's result). */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Calendar className="w-5 h-5" />
-                            Per-Season Summary
-                          </h3>
-                          <div className="space-y-2">
-                            {seasons.map(season => {
-                              const seasonWeeks = season.weeks || [];
-                              const weekCount = seasonWeeks.length;
-                              let roundCount = 0;
-                              let playoffsScheduled = false;
-                              for (const w of seasonWeeks) {
-                                if (w.round1Winner || w.round1Draw) roundCount += 1;
-                                if (w.round2Winner || w.round2Draw) roundCount += 1;
-                                if (w.isPlayoffs) playoffsScheduled = true;
-                              }
-                              const rosterSize = (season.units || []).length;
-                              const isActive = season.id === activeSeason.id;
-                              const champion = seasonChampion(season);
-                              return (
-                                <button
-                                  key={season.id}
-                                  onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
-                                  className={`w-full text-left bg-bg-card rounded p-3 border transition ${
-                                    isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <div className="font-semibold flex items-center gap-2 flex-wrap">
-                                        {season.name}
-                                        {isActive && <span className="text-xs text-indigo-400">(active)</span>}
-                                        {playoffsScheduled && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                                            Playoffs
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-text-secondary mt-0.5">
-                                        {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
-                                      </div>
-                                      {champion && (
-                                        <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
-                                          <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
-                                          <span className="text-text-secondary">Champion:</span>
-                                          <span className="font-semibold text-text-primary">
-                                            {champion.lead || '—'}
-                                          </span>
-                                          <span className="text-text-muted">
-                                            ({champion.weekName} R{champion.finalRound})
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Cross-season unit ladder */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Award className="w-5 h-5" />
-                            Cross-Season Unit Record
-                          </h3>
-                          {ladder.length === 0 ? (
-                            <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-text-secondary border-b border-border-default">
-                                    <th className="text-left py-2 px-2">Unit</th>
-                                    <th className="text-center py-2 px-2">Elo</th>
-                                    <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
-                                    <th className="text-center py-2 px-2">W</th>
-                                    <th className="text-center py-2 px-2">L</th>
-                                    <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
-                                    <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
-                                    <th className="text-center py-2 px-2">Sweeps</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {ladder.map((r, idx) => (
-                                    <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                                      <td className="py-2 px-2 font-medium">{r.unit}</td>
-                                      <td className="text-indigo-400 text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
-                                      <td className="text-green-400 text-center py-2 px-2">{r.wins}</td>
-                                      <td className="text-red-400 text-center py-2 px-2">{r.losses}</td>
-                                      <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Cross-season casualties */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Flame className="w-5 h-5" />
-                            Cross-Season Casualties
-                          </h3>
-                          <div className="grid grid-cols-3 gap-3 mb-3">
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">USA Total</div>
-                              <div className="text-xl font-bold text-blue-400">{usaCasTotal}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">CSA Total</div>
-                              <div className="text-xl font-bold text-red-400">{csaCasTotal}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Combined</div>
-                              <div className="text-xl font-bold text-indigo-400">{usaCasTotal + csaCasTotal}</div>
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
-                          </div>
-                        </div>
-
-                        {/* Aggregate map stats — same UI as the Season tab,
-                           sourced from event-wide history. */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Map className="w-5 h-5" />
-                            Map Statistics (event-wide)
-                          </h3>
-                          {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
-                        </div>
-
-                        {/* Cross-season teammate heatmap — opens the existing
-                           heatmap modal in event scope (DRY: same modal, same
-                           render path). */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                            <Swords className="w-5 h-5" />
-                            Cross-Season Teammate Composition
-                          </h3>
-                          <p className="text-xs text-text-secondary mb-3">
-                            How often each pair of units has played as teammates across every season in this event.
-                          </p>
-                          <button
-                            onClick={() => { setHeatmapScope('event'); setShowHeatmapModal(true); }}
-                            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                          >
-                            <Swords className="w-4 h-4" />
-                            Open Cross-Season Pairings
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {statsTab === 'season' && <>
-
-                  {/* Map Statistics — active season only */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <Map className="w-5 h-5" />
-                      Map Statistics
-                    </h3>
-                    {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
-                  </div>
-
-                  {/* Casualties Summary */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <Flame className="w-5 h-5" />
-                      Total Casualties
-                    </h3>
-                    {(() => {
-                      // Calculate USA/CSA casualties based on map sides
-                      let usaCasualties = 0;
-                      let csaCasualties = 0;
-                      
-                      weeks.forEach(week => {
-                        [1, 2].forEach(roundNum => {
-                          const mapName = week[`round${roundNum}Map`];
-                          const flipped = week[`round${roundNum}Flipped`] || false;
-                          const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
-                          
-                          // Determine which side is USA based on map and flipped state
-                          // If not flipped: Team A = USA, Team B = CSA
-                          // If flipped: Team A = CSA, Team B = USA
-                          const usaSide = flipped ? 'B' : 'A';
-                          
-                          if (usaSide === 'A') {
-                            usaCasualties += casualtiesA;
-                            csaCasualties += casualtiesB;
-                          } else {
-                            usaCasualties += casualtiesB;
-                            csaCasualties += casualtiesA;
-                          }
-                        });
-                      });
-                      
-                      const totalCasualties = usaCasualties + csaCasualties;
-                      
-                      return (
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
-                            <div className="text-2xl font-bold text-blue-400">
-                              {usaCasualties}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
-                            <div className="text-2xl font-bold text-red-400">
-                              {csaCasualties}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
-                            <div className="text-2xl font-bold text-indigo-400">
-                              {totalCasualties}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Per-Unit Player Stats — derived from assigned scoreboards,
-                        cumulative through the selected week. */}
-                    <div className="bg-bg-inset rounded p-3 mt-4">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        Per-Unit Player Stats
-                        {selectedWeek && (
-                          <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
-                        )}
-                      </h4>
-                      {(() => {
-                        const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Teammate Impact Index (TII) */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5" />
-                      Teammate Impact Index (TII)
-                    </h3>
-                    {(() => {
-                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                      const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
-                      
-                      // Filter to only units that have played
-                      const tableData = Object.entries(impactStats)
-                        .map(([unit, data]) => ({
-                          unit,
-                          ...data,
-                          totalGames: data.leadGames + data.assistGames
-                        }))
-                        .filter(row => row.totalGames > 0)
-                        .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
-                      
-                      if (tableData.length === 0) {
-                        return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
-                      }
-                      
-                      return (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-text-secondary border-b border-border-default">
-                                <th className="text-left py-2 px-2">Unit (Avg Players)</th>
-                                <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
-                                <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
-                                <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
-                                <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
-                                <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tableData.map((row, idx) => {
-                                const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
-                                return (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
-                                    <td className="py-2 px-2">
-                                      {row.unit} ({Math.round(row.avgPlayers)})
-                                    </td>
-                                    <td className="text-indigo-400 text-center py-2 px-2 font-semibold">
-                                      {row.adjustedTiiScore.toFixed(3)}
-                                    </td>
-                                    <td className="text-cyan-400 text-center py-2 px-2">
-                                      {row.impactScore.toFixed(3)}
-                                    </td>
-                                    <td className="text-green-400 text-center py-2 px-2">
-                                      {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
-                                    </td>
-                                    <td className="text-blue-400 text-center py-2 px-2">
-                                      {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
-                                    </td>
-                                    <td className={`text-center py-2 px-2 ${delta < 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                      {(delta * 100).toFixed(1)}%
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                          <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                            <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
-                            <ul className="space-y-1 ml-4">
-                              <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
-                              <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
-                              <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
-                              <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
-                              <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
-                            </ul>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Playoffs Section */}
-                  <div className="bg-bg-inset rounded-lg p-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
+          {/* Playoffs — its own screen; the bracket and its format settings. */}
+          {screen === 'playoffs' && (
+            <div className="panel">
+              <header className="ph"><h2>Playoffs</h2><span className="rule" />
+                <span className="meta">{playoffConfig.enabled ? 'enabled' : 'off'}</span></header>
+              <div className="pb">
+                  <div className="panel pb">
+                    <h3 className="cap">
                       <Trophy className="w-5 h-5" />
                       Playoffs
                     </h3>
                     
                     {/* Playoff Configuration */}
-                    <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                      <h4 className="font-semibold mb-3">Playoff Format Settings</h4>
+                    <div className="panel pb">
+                      <h4 className="cap">Playoff Format Settings</h4>
                       
                       <div className="space-y-3">
                         {/* Enable Playoffs */}
@@ -7460,7 +6957,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     {/* Format Planner — what the settings above actually build,
                        and the formats worth considering instead. */}
                     {playoffConfig.enabled && playoffAudit && (
-                      <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                      <div className="panel pb">
                         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
                           <h4 className="font-semibold flex items-center gap-2">
                             <Zap className="w-4 h-4" />
@@ -7488,7 +6985,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <h5 className="text-sm font-semibold text-text-secondary mb-2">Your current settings</h5>
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="font-semibold text-sm">{playoffAudit.label}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${playoffAudit.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded ${playoffAudit.fitsCalendar ? 'bg-green-500/15 c-ok' : 'bg-amber-500/15 c-warn'}`}>
                               {formatNights(playoffAudit.minNights, playoffAudit.maxNights)}
                             </span>
                           </div>
@@ -7503,7 +7000,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           {playoffAudit.defects.map((defect, i) => (
                             <p
                               key={i}
-                              className={`text-xs mt-2 ${defect.severity === 'blocker' ? 'text-red-400' : 'text-amber-400'}`}
+                              className={`text-xs mt-2 ${defect.severity === 'blocker' ? 'c-danger' : 'c-warn'}`}
                             >
                               {defect.severity === 'blocker' ? '✕' : '!'} {defect.message}
                             </p>
@@ -7524,17 +7021,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             {playoffSuggestions.map((plan, idx) => {
                               const applied = isPlayoffFormatApplied(plan);
                               return (
-                                <div key={idx} className="bg-bg-card rounded p-3">
+                                <div key={idx} className="row">
                                   <div className="flex items-start justify-between gap-3 flex-wrap">
                                     <div className="flex-1 min-w-[16rem]">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-semibold text-sm">{plan.label}</span>
                                         {idx === 0 && (
-                                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
+                                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/15 c-accent">
                                             Best fit
                                           </span>
                                         )}
-                                        <span className={`text-xs px-2 py-0.5 rounded ${plan.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
+                                        <span className={`text-xs px-2 py-0.5 rounded ${plan.fitsCalendar ? 'bg-green-500/15 c-ok' : 'bg-amber-500/15 c-warn'}`}>
                                           {formatNights(plan.minNights, plan.maxNights)}
                                         </span>
                                       </div>
@@ -7545,7 +7042,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         )).join(' · ')}
                                       </div>
                                       {plan.defects.map((defect, i) => (
-                                        <p key={i} className="text-xs text-amber-400 mt-1">! {defect.message}</p>
+                                        <p key={i} className="text-xs c-warn mt-1">! {defect.message}</p>
                                       ))}
                                     </div>
                                     <button
@@ -7595,7 +7092,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       }
                       
                       return (
-                        <div className="bg-bg-inset rounded-lg p-4">
+                        <div className="panel pb">
                           <h4 className="font-semibold mb-3 flex items-center gap-2">
                             <Target className="w-4 h-4" />
                             Playoff Picture
@@ -7622,12 +7119,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 return (
                                   <div className="space-y-3">
                                     {Object.entries(conferences).map(([confName, confTeams]) => (
-                                      <div key={confName} className="bg-bg-inset rounded p-2">
-                                        <h6 className="text-xs font-bold text-cyan-300 mb-2">{confName} Conference</h6>
+                                      <div key={confName} className="row">
+                                        <h6 className="text-xs font-bold c-accent mb-2">{confName} Conference</h6>
                                         <div className="grid grid-cols-2 gap-2">
                                           {confTeams.map((team) => (
                                             <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                              <span className="text-indigo-400 font-bold">#{team.conferenceSeed}</span>
+                                              <span className="c-accent font-bold">#{team.conferenceSeed}</span>
                                               <span>{team.unit}</span>
                                               <span className="text-text-secondary text-xs">
                                                 ({team.points} pts{team.isWildcard ? ', WC' : ''})
@@ -7647,14 +7144,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="grid grid-cols-2 gap-2">
                                 {bracket.teams.map((team) => (
                                   <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                    <span className="text-indigo-400 font-bold">#{team.seed}</span>
+                                    <span className="c-accent font-bold">#{team.seed}</span>
                                     <span>{team.unit}</span>
                                     <span className="text-text-secondary text-xs">({team.points} pts)</span>
                                     {team.isWildcard && (
-                                      <span className="text-purple-400 text-xs font-bold">WC</span>
+                                      <span className="c-accent text-xs font-bold">WC</span>
                                     )}
                                     {team.division && !team.isWildcard && (
-                                      <span className="text-cyan-400 text-xs">{team.division}</span>
+                                      <span className="c-accent text-xs">{team.division}</span>
                                     )}
                                   </div>
                                 ))}
@@ -7665,7 +7162,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           {/* Bracket Rounds */}
                           <div className="space-y-3">
                             {bracket.rounds.map((round, roundIdx) => (
-                              <div key={roundIdx} className="bg-bg-card rounded p-3">
+                              <div key={roundIdx} className="row">
                                 <h5 className="text-sm font-semibold text-text-secondary mb-2 flex items-center gap-2">
                                   <Swords className="w-4 h-4" />
                                   {round.name}
@@ -7681,25 +7178,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       : '';
                                     const team1IsWinner = matchup.winner && matchup.team1 && matchup.winner.unit === matchup.team1.unit;
                                     const team2IsWinner = matchup.winner && matchup.team2 && matchup.winner.unit === matchup.team2.unit;
-                                    const team1Class = team1IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
-                                    const team2Class = team2IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
+                                    const team1Class = team1IsWinner ? 'c-ok font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
+                                    const team2Class = team2IsWinner ? 'c-ok font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
 
                                     return (
-                                      <div key={matchIdx} className="bg-bg-inset rounded p-2">
+                                      <div key={matchIdx} className="row">
                                         {confLabel && (
-                                          <div className="text-xs text-cyan-400 font-semibold mb-1">{confLabel}</div>
+                                          <div className="text-xs c-accent font-semibold mb-1">{confLabel}</div>
                                         )}
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-2 flex-1">
                                             {matchup.team1 ? (
                                               <>
-                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed1}</span>
+                                                <span className="c-accent font-bold text-xs">#{matchup.seed1}</span>
                                                 <span className={`text-sm ${team1Class}`}>{matchup.team1.unit}</span>
                                                 {matchup.team1.isWildcard && (
-                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
+                                                  <span className="c-accent text-xs font-bold">WC</span>
                                                 )}
                                                 {team1IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                                                  <CheckCircle2 className="w-3.5 h-3.5 c-ok" />
                                                 )}
                                               </>
                                             ) : matchup.slot1Label ? (
@@ -7715,13 +7212,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                             {matchup.team2 ? (
                                               <>
                                                 {team2IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                                                  <CheckCircle2 className="w-3.5 h-3.5 c-ok" />
                                                 )}
                                                 {matchup.team2.isWildcard && (
-                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
+                                                  <span className="c-accent text-xs font-bold">WC</span>
                                                 )}
                                                 <span className={`text-sm ${team2Class}`}>{matchup.team2.unit}</span>
-                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed2}</span>
+                                                <span className="c-accent font-bold text-xs">#{matchup.seed2}</span>
                                               </>
                                             ) : matchup.bye ? (
                                               <span className="text-text-secondary text-sm italic">Bye — advances</span>
@@ -7747,10 +7244,496 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     })()}
                   </div>
+              </div>
+            </div>
+          )}
+
+          {screen === 'elo' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Season analytics</h2>
+                <span className="rule" />
+              </header>
+              <div className="pb">
+
+                  {/* Tab toggle: per-season vs event-wide */}
+                  <div className="flex gap-1 mb-5 border-b border-border-default">
+                    <button
+                      onClick={() => setStatsTab('season')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        statsTab === 'season'
+                          ? 'border-indigo-500 c-accent'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Season — {activeSeason.name}
+                    </button>
+                    <button
+                      onClick={() => setStatsTab('event')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                        statsTab === 'event'
+                          ? 'border-indigo-500 c-accent'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
+                    </button>
+                  </div>
+
+                  {statsTab === 'event' && (() => {
+                    // Event-wide aggregates: walk every season's rounds.
+                    const seasons = activeEvent.seasons;
+                    const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
+
+                    // Cross-season unit record (rounds-as-lead/assist won/lost) +
+                    // event-wide casualties (per side + per unit).
+                    const unitRecord = {};
+                    let usaCasTotal = 0, csaCasTotal = 0;
+                    let totalRoundsWithResult = 0;
+                    const ensure = (u) => unitRecord[u] ||= {
+                      rounds: 0, leadWins: 0, leadLosses: 0,
+                      assistWins: 0, assistLosses: 0,
+                      sweeps: 0, casualtiesTaken: 0,
+                    };
+
+                    for (const season of seasons) {
+                      for (const week of season.weeks || []) {
+                        const isPlayoffs = !!week.isPlayoffs;
+                        const isSingleRoundLeads = !!week.isSingleRoundLeads;
+                        const teamA = week.teamA || [];
+                        const teamB = week.teamB || [];
+
+                        // Sweep tally
+                        if (week.round1Winner && week.round1Winner === week.round2Winner) {
+                          const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
+                          sweepTeam.forEach(u => ensure(u).sweeps += 1);
+                        }
+
+                        for (const roundNum of [1, 2]) {
+                          const winner = week[`round${roundNum}Winner`];
+                          if (!winner) continue;
+                          totalRoundsWithResult += 1;
+
+                          // Effective rosters (per-round swaps)
+                          const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+                          const eA = swaps.size === 0 ? teamA :
+                            teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
+                          const eB = swaps.size === 0 ? teamB :
+                            teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
+
+                          const winningTeam = winner === 'A' ? eA : eB;
+                          const losingTeam = winner === 'A' ? eB : eA;
+                          const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
+                          const leadW = week[`lead${winner}${leadKey}`];
+                          const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
+
+                          winningTeam.forEach(u => {
+                            const r = ensure(u); r.rounds += 1;
+                            if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
+                          });
+                          losingTeam.forEach(u => {
+                            const r = ensure(u); r.rounds += 1;
+                            if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
+                          });
+
+                          // Side-aware casualty bucket
+                          const flipped = !!week[`round${roundNum}Flipped`];
+                          const usaSide = flipped ? 'B' : 'A';
+                          const casA = week[`r${roundNum}CasualtiesA`] || 0;
+                          const casB = week[`r${roundNum}CasualtiesB`] || 0;
+                          if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
+                          else                 { usaCasTotal += casB; csaCasTotal += casA; }
+
+                          // Per-unit casualties (lost) from weeklyCasualties
+                          const wc = week.weeklyCasualties || {};
+                          for (const sideKey of Object.keys(wc)) {
+                            const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
+                            for (const [u, n] of Object.entries(byUnit)) {
+                              ensure(u).casualtiesTaken += Number(n) || 0;
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    const eventElo = calculateEloRatings();
+                    const ladder = Object.entries(unitRecord)
+                      .map(([unit, r]) => ({
+                        unit, ...r,
+                        wins: r.leadWins + r.assistWins,
+                        losses: r.leadLosses + r.assistLosses,
+                        winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
+                        elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
+                      }))
+                      .filter(r => r.rounds > 0)
+                      .sort((a, b) => b.elo - a.elo);
+
+                    const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Event Overview */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Trophy className="w-5 h-5" />
+                            Overview
+                          </h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">Seasons</div>
+                              <div className="text-2xl font-bold c-accent">{seasons.length}</div>
+                            </div>
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">Weeks</div>
+                              <div className="text-2xl font-bold c-accent">{totalWeeks}</div>
+                            </div>
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
+                              <div className="text-2xl font-bold c-accent">{totalRoundsWithResult}</div>
+                            </div>
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">Registry Units</div>
+                              <div className="text-2xl font-bold c-accent">{Object.keys(activeEvent.unitRegistry).length}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Per-season cards — surfaces playoff status and the
+                           champion when playoffs occurred (based on the latest
+                           playoff week's result). */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Calendar className="w-5 h-5" />
+                            Per-Season Summary
+                          </h3>
+                          <div className="space-y-2">
+                            {seasons.map(season => {
+                              const seasonWeeks = season.weeks || [];
+                              const weekCount = seasonWeeks.length;
+                              let roundCount = 0;
+                              let playoffsScheduled = false;
+                              for (const w of seasonWeeks) {
+                                if (w.round1Winner || w.round1Draw) roundCount += 1;
+                                if (w.round2Winner || w.round2Draw) roundCount += 1;
+                                if (w.isPlayoffs) playoffsScheduled = true;
+                              }
+                              const rosterSize = (season.units || []).length;
+                              const isActive = season.id === activeSeason.id;
+                              const champion = seasonChampion(season);
+                              return (
+                                <button
+                                  key={season.id}
+                                  onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
+                                  className={`w-full text-left bg-bg-card rounded p-3 border transition ${
+                                    isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold flex items-center gap-2 flex-wrap">
+                                        {season.name}
+                                        {isActive && <span className="text-xs c-accent">(active)</span>}
+                                        {playoffsScheduled && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 c-warn">
+                                            Playoffs
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-text-secondary mt-0.5">
+                                        {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
+                                      </div>
+                                      {champion && (
+                                        <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
+                                          <Trophy className="w-3 h-3 c-warn shrink-0" />
+                                          <span className="text-text-secondary">Champion:</span>
+                                          <span className="font-semibold text-text-primary">
+                                            {champion.lead || '—'}
+                                          </span>
+                                          <span className="text-text-muted">
+                                            ({champion.weekName} R{champion.finalRound})
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Cross-season unit ladder */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Award className="w-5 h-5" />
+                            Cross-Season Unit Record
+                          </h3>
+                          {ladder.length === 0 ? (
+                            <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-text-secondary border-b border-border-default">
+                                    <th className="text-left py-2 px-2">Unit</th>
+                                    <th className="text-center py-2 px-2">Elo</th>
+                                    <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
+                                    <th className="text-center py-2 px-2">W</th>
+                                    <th className="text-center py-2 px-2">L</th>
+                                    <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
+                                    <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
+                                    <th className="text-center py-2 px-2">Sweeps</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {ladder.map((r, idx) => (
+                                    <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                                      <td className="py-2 px-2 font-medium">{r.unit}</td>
+                                      <td className="c-accent text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
+                                      <td className="c-ok text-center py-2 px-2">{r.wins}</td>
+                                      <td className="c-danger text-center py-2 px-2">{r.losses}</td>
+                                      <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
+                                      <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Cross-season casualties */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Flame className="w-5 h-5" />
+                            Cross-Season Casualties
+                          </h3>
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">USA Total</div>
+                              <div className="text-xl font-bold f-usa">{usaCasTotal}</div>
+                            </div>
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">CSA Total</div>
+                              <div className="text-xl font-bold c-danger">{csaCasTotal}</div>
+                            </div>
+                            <div className="row">
+                              <div className="text-xs text-text-secondary mb-1">Combined</div>
+                              <div className="text-xl font-bold c-accent">{usaCasTotal + csaCasTotal}</div>
+                            </div>
+                          </div>
+                          <div className="mt-2">
+                            <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
+                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
+                          </div>
+                        </div>
+
+                        {/* Aggregate map stats — same UI as the Season tab,
+                           sourced from event-wide history. */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Map className="w-5 h-5" />
+                            Map Statistics (event-wide)
+                          </h3>
+                          {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                        </div>
+
+                        {/* Cross-season teammate heatmap — opens the existing
+                           heatmap modal in event scope (DRY: same modal, same
+                           render path). */}
+                        <div className="panel pb">
+                          <h3 className="cap">
+                            <Swords className="w-5 h-5" />
+                            Cross-Season Teammate Composition
+                          </h3>
+                          <p className="text-xs text-text-secondary mb-3">
+                            How often each pair of units has played as teammates across every season in this event.
+                          </p>
+                          <button
+                            onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}
+                            className="gh live"
+                          >
+                            <Swords className="w-4 h-4" />
+                            Open Cross-Season Pairings
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {statsTab === 'season' && <>
+
+                  {/* Map Statistics — active season only */}
+                  <div className="panel pb">
+                    <h3 className="cap">
+                      <Map className="w-5 h-5" />
+                      Map Statistics
+                    </h3>
+                    {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
+                  </div>
+
+                  {/* Casualties Summary */}
+                  <div className="panel pb">
+                    <h3 className="cap">
+                      <Flame className="w-5 h-5" />
+                      Total Casualties
+                    </h3>
+                    {(() => {
+                      // Calculate USA/CSA casualties based on map sides
+                      let usaCasualties = 0;
+                      let csaCasualties = 0;
+                      
+                      weeks.forEach(week => {
+                        [1, 2].forEach(roundNum => {
+                          const mapName = week[`round${roundNum}Map`];
+                          const flipped = week[`round${roundNum}Flipped`] || false;
+                          const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
+                          const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
+                          
+                          // Determine which side is USA based on map and flipped state
+                          // If not flipped: Team A = USA, Team B = CSA
+                          // If flipped: Team A = CSA, Team B = USA
+                          const usaSide = flipped ? 'B' : 'A';
+                          
+                          if (usaSide === 'A') {
+                            usaCasualties += casualtiesA;
+                            csaCasualties += casualtiesB;
+                          } else {
+                            usaCasualties += casualtiesB;
+                            csaCasualties += casualtiesA;
+                          }
+                        });
+                      });
+                      
+                      const totalCasualties = usaCasualties + csaCasualties;
+                      
+                      return (
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="panel pb">
+                            <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
+                            <div className="text-2xl font-bold f-usa">
+                              {usaCasualties}
+                            </div>
+                          </div>
+                          <div className="panel pb">
+                            <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
+                            <div className="text-2xl font-bold c-danger">
+                              {csaCasualties}
+                            </div>
+                          </div>
+                          <div className="panel pb">
+                            <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
+                            <div className="text-2xl font-bold c-accent">
+                              {totalCasualties}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Per-Unit Player Stats — derived from assigned scoreboards,
+                        cumulative through the selected week. */}
+                    <div className="bg-bg-inset rounded p-3 mt-4">
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        Per-Unit Player Stats
+                        {selectedWeek && (
+                          <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
+                        )}
+                      </h4>
+                      {(() => {
+                        const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Teammate Impact Index (TII) */}
+                  <div className="panel pb">
+                    <h3 className="cap">
+                      <TrendingUp className="w-5 h-5" />
+                      Teammate Impact Index (TII)
+                    </h3>
+                    {(() => {
+                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                      const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
+                      
+                      // Filter to only units that have played
+                      const tableData = Object.entries(impactStats)
+                        .map(([unit, data]) => ({
+                          unit,
+                          ...data,
+                          totalGames: data.leadGames + data.assistGames
+                        }))
+                        .filter(row => row.totalGames > 0)
+                        .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
+                      
+                      if (tableData.length === 0) {
+                        return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
+                      }
+                      
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-text-secondary border-b border-border-default">
+                                <th className="text-left py-2 px-2">Unit (Avg Players)</th>
+                                <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
+                                <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
+                                <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
+                                <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
+                                <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tableData.map((row, idx) => {
+                                const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                                return (
+                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
+                                    <td className="py-2 px-2">
+                                      {row.unit} ({Math.round(row.avgPlayers)})
+                                    </td>
+                                    <td className="c-accent text-center py-2 px-2 font-semibold">
+                                      {row.adjustedTiiScore.toFixed(3)}
+                                    </td>
+                                    <td className="c-accent text-center py-2 px-2">
+                                      {row.impactScore.toFixed(3)}
+                                    </td>
+                                    <td className="c-ok text-center py-2 px-2">
+                                      {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
+                                    </td>
+                                    <td className="f-usa text-center py-2 px-2">
+                                      {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
+                                    </td>
+                                    <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
+                                      {(delta * 100).toFixed(1)}%
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
+                            <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
+                            <ul className="space-y-1 ml-4">
+                              <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
+                              <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
+                              <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
+                              <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
+                              <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
+                            </ul>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
 
                   {/* Elo ladder. Replays the engine once per week so a unit's
                       whole season is on the row, not just where it ended. */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                  <div className="panel pb">
                     <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
                       <TrendingUp className="w-5 h-5" />
                       Elo Ladder
@@ -7759,15 +7742,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Unit Interactions */}
-                  <div className="bg-bg-inset rounded-lg p-4">
+                  <div className="panel pb">
                     <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-base font-semibold flex items-center gap-2">
+                      <h3 className="cap">
                         <Users className="w-5 h-5" />
                         Unit Interactions
                       </h3>
                       <button
-                        onClick={() => setShowHeatmapModal(true)}
-                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
+                        onClick={() => goScreen('heat')}
+                        className="gh live"
                         title="Who has played alongside whom, and who against"
                       >
                         <Swords className="w-4 h-4" />
@@ -7815,13 +7798,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         
                         return (
                           <>
-                            <div className="bg-bg-inset rounded p-3">
-                              <h4 className="font-semibold mb-2">Most Frequent Teammates</h4>
+                            <div className="panel pb">
+                              <h4 className="cap">Most Frequent Teammates</h4>
                               <div className="space-y-1">
                                 {teammatePairs.slice(0, 5).map((pair, idx) => (
                                   <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} & {pair.unit2}</span>
-                                    <span className="text-indigo-400">{pair.count} rounds</span>
+                                    <span className="c-accent">{pair.count} rounds</span>
                                   </div>
                                 ))}
                                 {teammatePairs.length === 0 && (
@@ -7830,13 +7813,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               </div>
                             </div>
 
-                            <div className="bg-bg-inset rounded p-3">
-                              <h4 className="font-semibold mb-2">Most Frequent Opponents</h4>
+                            <div className="panel pb">
+                              <h4 className="cap">Most Frequent Opponents</h4>
                               <div className="space-y-1">
                                 {opponentPairs.slice(0, 5).map((pair, idx) => (
                                   <div key={idx} className="text-xs text-text-secondary flex justify-between">
                                     <span>{pair.unit1} vs {pair.unit2}</span>
-                                    <span className="text-red-400">{pair.count} rounds</span>
+                                    <span className="c-danger">{pair.count} rounds</span>
                                   </div>
                                 ))}
                                 {opponentPairs.length === 0 && (
@@ -7850,33 +7833,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
                   </div>
                   </>}
-                </div>
               </div>
             </div>
           )}
 
           {/* Division Management Modal */}
-          {showDivisionModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Users className="w-6 h-6" />
-                      Division Management
-                    </h2>
-                    <button
-                      onClick={() => setShowDivisionModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {screen === 'divisions' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Divisions</h2>
+                <span className="rule" />
+              </header>
+              <div className="pb">
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Left: Unassigned Units */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <h3 className="text-lg font-semibold mb-3">Unassigned Units</h3>
+                    <div className="panel pb">
+                      <h3 className="cap">Unassigned Units</h3>
                       <div className="bg-bg-inset rounded p-3 max-h-96 overflow-y-auto">
                         {getUnassignedUnits().length > 0 ? (
                           <div className="space-y-1">
@@ -7893,19 +7866,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
 
                     {/* Right: Divisions */}
-                    <div className="bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-lg font-semibold">Divisions</h3>
+                        <h3 className="cap">Divisions</h3>
                         <button
                           onClick={addDivision}
-                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition"
+                          className="gh live"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
                         {divisions.map((division) => (
-                          <div key={division.name} className="bg-bg-inset rounded-lg p-3">
+                          <div key={division.name} className="panel pb">
                             <div className="flex justify-between items-center mb-2">
                               <input
                                 type="text"
@@ -7926,7 +7899,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   <span>{unit}</span>
                                   <button
                                     onClick={() => removeUnitFromDivision(division.name, unit)}
-                                    className="p-1 hover:bg-red-600 rounded transition"
+                                    className="ib danger"
                                   >
                                     <X className="w-3 h-3" />
                                   </button>
@@ -7959,16 +7932,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
                   </div>
 
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowDivisionModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -7981,13 +7944,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
                   <div className="p-4 sm:p-6">
                     <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-lg font-semibold flex items-center gap-2">
+                      <h2 className="cap">
                         <Map className="w-6 h-6" />
                         Map History
                       </h2>
                       <button
                         onClick={() => setShowMapBiasModal(false)}
-                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                        className="ib"
                       >
                         <X className="w-5 h-5 text-text-muted" />
                       </button>
@@ -8007,7 +7970,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onClick={() => toggleSection(category)}
                           className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
                         >
-                          <h3 className="text-lg font-semibold">
+                          <h3 className="cap">
                             {category.replace(/_/g, ' ').toUpperCase()}
                           </h3>
                           {expandedSections[category] ? (
@@ -8064,7 +8027,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                       <button
                         onClick={() => setShowMapBiasModal(false)}
-                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                        className="gh"
                       >
                         Close
                       </button>
@@ -8078,7 +8041,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Unit Registry Editor Modal — event-level identity for every unit
              ever associated with this event. Renames sweep all rosters; hard
              delete is gated on whether the unit has any roster appearance. */}
-          {showRegistryModal && (() => {
+          {screen === 'identity' && (() => {
             const registryEntries = Object.entries(activeEvent.unitRegistry)
               .map(([id, entry]) => ({ id, name: entry.name }))
               .sort((a, b) => a.name.localeCompare(b.name));
@@ -8096,23 +8059,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
             }
 
             return (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-                   onClick={() => setShowRegistryModal(false)}>
-                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
-                     onClick={(e) => e.stopPropagation()}>
-                  <div className="p-4 sm:p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <Users className="w-6 h-6" />
-                        Unit Registry — {activeEvent.name}
-                      </h2>
-                      <button
-                        onClick={() => setShowRegistryModal(false)}
-                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                      >
-                        <X className="w-5 h-5 text-text-muted" />
-                      </button>
-                    </div>
+              <div className="panel">
+                <header className="ph">
+                  <h2>Unit &amp; player identity</h2>
+                  <span className="rule" />
+                  <span className="meta wor-name">{activeEvent.name}</span>
+                </header>
+                  <div className="pb">
 
                     <div className="mb-4 bg-bg-inset rounded-lg p-3">
                       <p className="text-xs text-text-secondary">
@@ -8163,7 +8116,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearance anywhere.`)) return;
                                         setAppState(prev => removeUnitFromRegistry(prev, name));
                                       }}
-                                      className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                                      className="p-1 rounded-md hover:bg-red-500/20 c-danger disabled:opacity-30 disabled:hover:bg-transparent"
                                       title={inUse ? 'Cannot hard-delete — unit appears in roster data. Remove from each season first.' : 'Hard-delete from registry'}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -8177,43 +8130,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </table>
                     )}
 
-                    <div className="flex justify-end mt-6 pt-4 border-t border-border-default">
-                      <button
-                        onClick={() => setShowRegistryModal(false)}
-                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                      >
-                        Close
-                      </button>
-                    </div>
                   </div>
-                </div>
               </div>
             );
           })()}
 
           {/* Teammate Composition Heatmap Modal */}
-          {showHeatmapModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowHeatmapModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Swords className="w-6 h-6" />
-                      Unit Pairings
-                    </h2>
-                    <button
-                      onClick={() => setShowHeatmapModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {screen === 'heat' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Unit pairings</h2>
+                <span className="rule" />
+              </header>
+              <div className="pb">
 
                   {/* Scope toggle — same UI as the stats modal tab strip */}
                   <div className="flex gap-1 mb-3 border-b border-border-default">
@@ -8221,7 +8150,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       onClick={() => setHeatmapScope('season')}
                       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                         heatmapScope === 'season'
-                          ? 'border-indigo-500 text-indigo-400'
+                          ? 'border-indigo-500 c-accent'
                           : 'border-transparent text-text-secondary hover:text-text-primary'
                       }`}
                     >
@@ -8231,7 +8160,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       onClick={() => setHeatmapScope('event')}
                       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                         heatmapScope === 'event'
-                          ? 'border-indigo-500 text-indigo-400'
+                          ? 'border-indigo-500 c-accent'
                           : 'border-transparent text-text-secondary hover:text-text-primary'
                       }`}
                     >
@@ -8283,7 +8212,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
 
                     return (
-                      <div className="bg-bg-inset rounded-lg p-4">
+                      <div className="panel pb">
                         <div className="w-full">
                           <table className="w-full border-collapse table-fixed">
                             <thead>
@@ -8378,47 +8307,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     );
                   })()}
 
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowHeatmapModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           )}
 
           {/* Simulation Modal */}
-          {showSimulateModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowSimulateModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Zap className="w-6 h-6" />
-                      Simulate Season
-                    </h2>
-                    <button
-                      onClick={() => setShowSimulateModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {screen === 'simulator' && (
+            <div className="panel">
+              <header className="ph">
+                <h2>Schedule maker</h2>
+                <span className="rule" />
+              </header>
+              <div className="pb">
 
                   <div className="space-y-6">
                     {/* Info Box */}
-                    <div className="bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <p className="text-sm text-text-secondary mb-2">
                         This will simulate a season by generating weeks with {simScheduleOnly ? 'scheduled leads' : 'randomized'}:
                       </p>
@@ -8450,10 +8354,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                     {/* Settings */}
                     <div className="bg-bg-inset rounded-lg p-4 space-y-4">
-                      <h3 className="text-lg font-semibold mb-3">Simulation Settings</h3>
+                      <h3 className="cap">Simulation Settings</h3>
 
                       {/* Schedule Only Toggle */}
-                      <div className="bg-bg-inset rounded-lg p-3">
+                      <div className="panel pb">
                         <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
                           <input
                             type="checkbox"
@@ -8482,7 +8386,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           max="20"
                           value={simLeadNightsPerUnit}
                           onChange={(e) => setSimLeadNightsPerUnit(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                          className="fld-i"
                         />
                         <p className="text-xs text-text-secondary mt-1">
                           {simLeadMode === 'rounds'
@@ -8546,7 +8450,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             max={simLeadNightsPerUnit}
                             value={simLeadNightsInDivision}
                             onChange={(e) => setSimLeadNightsInDivision(Math.min(parseInt(e.target.value) || 0, simLeadNightsPerUnit))}
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                            className="fld-i"
                           />
                           <p className="text-xs text-text-secondary mt-1">
                             {simLeadNightsInDivision === 0
@@ -8586,7 +8490,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               min="0"
                               value={simHomePerUnit}
                               onChange={(e) => setSimHomePerUnit(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                              className="fld-i"
                             />
                           </div>
                           <div>
@@ -8596,7 +8500,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               min="0"
                               value={simAwayPerUnit}
                               onChange={(e) => setSimAwayPerUnit(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                              className="fld-i"
                             />
                           </div>
                         </div>
@@ -8635,7 +8539,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </div>
 
                             {(pastedSchedule.problems.length > 0 || (pastedAudit && pastedAudit.problems.length > 0)) && (
-                              <ul className="text-xs text-amber-500 space-y-0.5 max-h-40 overflow-y-auto list-disc list-inside">
+                              <ul className="text-xs c-warn space-y-0.5 max-h-40 overflow-y-auto list-disc list-inside">
                                 {[...pastedSchedule.problems, ...(pastedAudit?.problems ?? [])].slice(0, 40).map((p, i) => (
                                   <li key={i}>{describeScheduleProblem(p)}</li>
                                 ))}
@@ -8658,8 +8562,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     {pastedAudit.tallies.map(t => (
                                       <tr key={t.unit} className="border-t border-border-default">
                                         <td className="py-1">{t.unit}</td>
-                                        <td className={`text-right py-1 px-2 tabular-nums ${simHomePerUnit > 0 && t.home !== simHomePerUnit ? 'text-amber-500' : ''}`}>{t.home}</td>
-                                        <td className={`text-right py-1 px-2 tabular-nums ${simAwayPerUnit > 0 && t.away !== simAwayPerUnit ? 'text-amber-500' : ''}`}>{t.away}</td>
+                                        <td className={`text-right py-1 px-2 tabular-nums ${simHomePerUnit > 0 && t.home !== simHomePerUnit ? 'c-warn' : ''}`}>{t.home}</td>
+                                        <td className={`text-right py-1 px-2 tabular-nums ${simAwayPerUnit > 0 && t.away !== simAwayPerUnit ? 'c-warn' : ''}`}>{t.away}</td>
                                         {simLeadMode === 'rounds' && (
                                           <td className="text-right py-1 px-2 tabular-nums text-text-secondary">{t.homeR1}/{t.homeR2}</td>
                                         )}
@@ -8685,8 +8589,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </div>
 
                       {/* Unit Summary */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold mb-2">Current Units</h4>
+                      <div className="panel pb">
+                        <h4 className="cap">Current Units</h4>
                         <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
                           <div>Token Units: {units.filter(u => !nonTokenUnits.includes(u)).length}</div>
                           <div>Non-Token Units: {nonTokenUnits.length}</div>
@@ -8699,23 +8603,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
                   </div>
 
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowSimulateModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={simulateSeason}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                    >
-                      {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
-                      {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
+                  <div className="ctl" style={{ marginTop: 13, marginLeft: -13, marginRight: -13, marginBottom: -13, borderBottom: 0, borderTop: '1px solid var(--color-border)' }}>
+                    <span className="rule" />
+                    <button className="gh live" onClick={simulateSeason}>
+                      {simScheduleOnly ? 'Generate schedule' : 'Simulate season'}
                     </button>
                   </div>
-                </div>
               </div>
             </div>
           )}
@@ -8732,13 +8625,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
               >
                 <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       <TrendingUp className="w-6 h-6" />
                       Simulation Summary
                     </h2>
                     <button
                       onClick={() => setShowAnalyticsModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
@@ -8747,7 +8640,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <div className="space-y-6">
                     {/* Success Message */}
                     <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
-                      <p className="text-green-400 font-semibold flex items-center gap-2">
+                      <p className="c-ok font-semibold flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
                         Added {simulationAnalytics.spacing.nights} weeks ({simulationAnalytics.spacing.rounds} rounds) to the season
                       </p>
@@ -8759,8 +8652,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
 
                     {/* Lead Spread */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                    <div className="panel pb">
+                      <h3 className="text-lg font-semibold c-warn mb-3 flex items-center gap-2">
                         <Clock className="w-5 h-5" />
                         Lead Spread
                       </h3>
@@ -8826,16 +8719,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
 
                     {/* Schedule Export */}
-                    <div className="bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <h3 className="cap">
                           <FileText className="w-5 h-5" />
                           Matchup Sheet Export
                         </h3>
                         <div className="flex gap-2">
                           <button
                             onClick={copyScheduleToClipboard}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-md transition flex items-center gap-2"
+                            className="gh live"
                           >
                             <Copy className="w-4 h-4" /> {scheduleCopied ? 'Copied!' : 'Copy'}
                           </button>
@@ -8862,34 +8755,34 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     {simulationAnalytics.points && (
                       <>
                       {/* Point System Summary */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="cap">
                           <Settings className="w-5 h-5" />
                           Current Point System
                         </h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Lead Points</div>
                             <div className="space-y-1 text-text-secondary">
-                              <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winLead}</span></div>
-                              <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossLead}</span></div>
-                              <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
+                              <div>Win: <span className="c-accent font-semibold">{pointSystem.winLead}</span></div>
+                              <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossLead}</span></div>
+                              <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Lead}</span></div>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Assist Points</div>
                             <div className="space-y-1 text-text-secondary">
-                              <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winAssist}</span></div>
-                              <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossAssist}</span></div>
-                              <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
+                              <div>Win: <span className="c-accent font-semibold">{pointSystem.winAssist}</span></div>
+                              <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossAssist}</span></div>
+                              <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Assist}</span></div>
                             </div>
                           </div>
                         </div>
                       </div>
 
                       {/* Theoretical Analysis */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="text-lg font-semibold f-usa mb-3 flex items-center gap-2">
                           <FileText className="w-5 h-5" />
                           Theoretical Distribution (Per Token Unit)
                         </h3>
@@ -8897,15 +8790,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           Maximum possible points per token unit (winning every round and sweep)
                         </p>
                         <div className="space-y-3">
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Season)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{simulationAnalytics.points.theoretical.leadPoints.toFixed(1)}</span>
+                              <span className="c-accent font-bold">{simulationAnalytics.points.theoretical.leadPoints.toFixed(1)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{simulationAnalytics.points.theoretical.assistPoints.toFixed(1)}</span>
+                              <span className="f-usa font-bold">{simulationAnalytics.points.theoretical.assistPoints.toFixed(1)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8913,15 +8806,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{simulationAnalytics.points.theoretical.totalPoints.toFixed(1)}</span>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Per Round)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{(simulationAnalytics.points.theoretical.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="c-accent font-bold">{(simulationAnalytics.points.theoretical.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{(simulationAnalytics.points.theoretical.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="f-usa font-bold">{(simulationAnalytics.points.theoretical.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8931,11 +8824,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
-                              <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
+                              <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
                             <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
-                              <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.points.theoretical.assistPercentage.toFixed(1)}%</div>
+                              <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.theoretical.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
                           </div>
@@ -8943,8 +8836,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </div>
 
                       {/* Simulated Results */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="text-lg font-semibold c-ok mb-3 flex items-center gap-2">
                           <BarChart3 className="w-5 h-5" />
                           Simulated Results (Per Token Unit Average)
                         </h3>
@@ -8952,15 +8845,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           Actual points averaged across all token units from the simulation
                         </p>
                         <div className="space-y-3">
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Season Totals (Average)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{simulationAnalytics.points.simulated.leadPoints.toFixed(1)}</span>
+                              <span className="c-accent font-bold">{simulationAnalytics.points.simulated.leadPoints.toFixed(1)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{simulationAnalytics.points.simulated.assistPoints.toFixed(1)}</span>
+                              <span className="f-usa font-bold">{simulationAnalytics.points.simulated.assistPoints.toFixed(1)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8968,15 +8861,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{simulationAnalytics.points.simulated.totalPoints.toFixed(1)}</span>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Per Round Average</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{(simulationAnalytics.points.simulated.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="c-accent font-bold">{(simulationAnalytics.points.simulated.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{(simulationAnalytics.points.simulated.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="f-usa font-bold">{(simulationAnalytics.points.simulated.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8989,11 +8882,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
-                              <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
+                              <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
                             <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
-                              <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.points.simulated.assistPercentage.toFixed(1)}%</div>
+                              <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.simulated.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
                           </div>
@@ -9002,21 +8895,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                       {/* Comparison */}
                       <div className="bg-indigo-900/20 border border-indigo-700 rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-indigo-400 mb-3 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold c-accent mb-3 flex items-center gap-2">
                           <TrendingUp className="w-5 h-5" />
                           Comparison
                         </h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <div className="text-text-secondary mb-1">Lead Point Variance</div>
-                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage) < 2 ? 'c-ok' : 'text-yellow-400'}`}>
                               {(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage > 0 ? '+' : '')}
                               {(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage).toFixed(1)}%
                             </div>
                           </div>
                           <div>
                             <div className="text-text-secondary mb-1">Assist Point Variance</div>
-                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage) < 2 ? 'c-ok' : 'text-yellow-400'}`}>
                               {(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage > 0 ? '+' : '')}
                               {(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage).toFixed(1)}%
                             </div>
@@ -9050,7 +8943,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <div className="bg-bg-card rounded-xl shadow-lg border border-border-default w-full max-w-6xl max-h-[85vh] overflow-y-auto">
                 <div className="p-4 sm:p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       {enlargedSection === 'weeks' && (
                         <>
                           <Calendar className="w-6 h-6" />
@@ -9072,7 +8965,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </h2>
                     <button
                       onClick={() => setEnlargedSection(null)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
@@ -9084,7 +8977,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="mb-4 flex justify-end">
                         <button
                           onClick={addWeek}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
+                          className="gh live"
                         >
                           <Plus className="w-4 h-4" />
                           Add Week
@@ -9131,7 +9024,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     e.stopPropagation();
                                     setEditingWeek(week.id);
                                   }}
-                                  className="p-1 hover:bg-bg-inset rounded transition"
+                                  className="ib"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
@@ -9140,7 +9033,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     e.stopPropagation();
                                     removeWeek(week.id);
                                   }}
-                                  className="p-1 hover:bg-red-600 rounded transition"
+                                  className="ib danger"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -9166,7 +9059,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         />
                         <button
                           onClick={addUnit}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
+                          className="gh live"
                         >
                           <Plus className="w-4 h-4" />
                           Add Unit
@@ -9192,7 +9085,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 >
                                   {isNonToken ? '*' : '○'}
                                 </button>
-                                <span className={`font-medium ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                <span className={`font-medium ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                   {unit}
                                 </span>
                               </div>
@@ -9217,7 +9110,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 )}
                                 <button
                                   onClick={() => removeUnit(unit)}
-                                  className="p-1 hover:bg-red-600 rounded transition"
+                                  className="ib danger"
                                 >
                                   <Trash2 className="w-4 h-4 text-white" />
                                 </button>
@@ -9244,7 +9137,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         {divisions && divisions.length > 0 && (
                           <button
                             onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-1"
+                            className="gh live"
                             title={showGroupedStandings ? "Show All" : "Group by Division"}
                           >
                             {showGroupedStandings ? <Users className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
@@ -9255,7 +9148,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {showGroupedStandings && divisions && divisions.length > 0 ? (
                           getGroupedStandings().map((group) => (
-                            <div key={group.name} className="bg-bg-inset rounded-lg p-4">
+                            <div key={group.name} className="panel pb">
                               <h3 className="text-sm font-bold text-text-secondary mb-3 px-2 flex items-center gap-2">
                                 <Shield className="w-4 h-4" />
                                 {group.name}
@@ -9266,17 +9159,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   return (
                                     <div
                                       key={stat.unit}
-                                      className="bg-bg-inset rounded-lg p-3"
+                                      className="panel pb"
                                     >
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-indigo-400 font-bold text-lg">
+                                          <span className="c-accent font-bold text-lg">
                                             #{stat.divisionRank || stat.currentRank}
                                           </span>
                                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                             <span className={`text-xs font-semibold ${
-                                              stat.rankDelta > 0 ? 'text-green-400' :
-                                              stat.rankDelta < 0 ? 'text-red-400' :
+                                              stat.rankDelta > 0 ? 'c-ok' :
+                                              stat.rankDelta < 0 ? 'c-danger' :
                                               'text-text-secondary'
                                             }`}>
                                               {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -9284,35 +9177,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                                '−'}
                                             </span>
                                           )}
-                                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                          <span className={`font-semibold ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                             {isNonToken ? '*' : ''}{stat.unit}
                                           </span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                           <div className="flex items-center gap-1 text-xs">
                                             {stat.eloDelta > 0 ? (
-                                              <TrendingUp className="w-3 h-3 text-blue-400" />
+                                              <TrendingUp className="w-3 h-3 f-usa" />
                                             ) : stat.eloDelta < 0 ? (
-                                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                              <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                                             ) : (
                                               <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                             )}
-                                            <span className="text-cyan-400 font-semibold">
+                                            <span className="c-accent font-semibold">
                                               {Math.round(stat.elo)}
                                             </span>
                                             {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                                               <span className={`ml-1 ${
-                                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                                stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                                               }`}>
                                                 ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                                               </span>
                                             )}
                                           </div>
-                                          <span className="text-green-400 font-bold text-xl">
+                                          <span className="c-ok font-bold text-xl">
                                             {stat.points}
                                           </span>
                                           {stat.pointsDelta !== 0 && (
-                                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                                               ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                                             </span>
                                           )}
@@ -9323,7 +9216,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         <div>L-Loss: {stat.leadLosses}</div>
                                         <div>A-Wins: {stat.assistWins}</div>
                                         <div>A-Loss: {stat.assistLosses}</div>
-                                        <div className="col-span-2 text-cyan-300">
+                                        <div className="col-span-2 c-accent">
                                           Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                                         </div>
                                       </div>
@@ -9339,17 +9232,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             return (
                               <div
                                 key={stat.unit}
-                                className="bg-bg-inset rounded-lg p-3"
+                                className="panel pb"
                               >
                                 <div className="flex justify-between items-center mb-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-indigo-400 font-bold text-lg">
+                                    <span className="c-accent font-bold text-lg">
                                       #{index + 1}
                                     </span>
                                     {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                       <span className={`text-xs font-semibold ${
-                                        stat.rankDelta > 0 ? 'text-green-400' :
-                                        stat.rankDelta < 0 ? 'text-red-400' :
+                                        stat.rankDelta > 0 ? 'c-ok' :
+                                        stat.rankDelta < 0 ? 'c-danger' :
                                         'text-text-secondary'
                                       }`}>
                                         {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -9357,35 +9250,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                          '−'}
                                       </span>
                                     )}
-                                    <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                    <span className={`font-semibold ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                       {isNonToken ? '*' : ''}{stat.unit}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-1 text-xs">
                                       {stat.eloDelta > 0 ? (
-                                        <TrendingUp className="w-3 h-3 text-blue-400" />
+                                        <TrendingUp className="w-3 h-3 f-usa" />
                                       ) : stat.eloDelta < 0 ? (
-                                        <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                        <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                                       ) : (
                                         <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                       )}
-                                      <span className="text-cyan-400 font-semibold">
+                                      <span className="c-accent font-semibold">
                                         {Math.round(stat.elo)}
                                       </span>
                                       {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                                         <span className={`ml-1 ${
-                                          stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                          stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                                         }`}>
                                           ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                                         </span>
                                       )}
                                     </div>
-                                    <span className="text-green-400 font-bold text-xl">
+                                    <span className="c-ok font-bold text-xl">
                                       {stat.points}
                                     </span>
                                     {stat.pointsDelta !== 0 && (
-                                      <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                                         ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                                       </span>
                                     )}
@@ -9396,7 +9289,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   <div>L-Loss: {stat.leadLosses}</div>
                                   <div>A-Wins: {stat.assistWins}</div>
                                   <div>A-Loss: {stat.assistLosses}</div>
-                                  <div className="col-span-2 text-cyan-300">
+                                  <div className="col-span-2 c-accent">
                                     Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                                   </div>
                                 </div>
@@ -9420,7 +9313,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
         </div>
-      </div>
 
       {/* Generic Choice Dialog — replaces window.prompt() for action picks */}
       {choiceDialog && (
@@ -9434,7 +9326,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           >
             <div className="p-5">
               <div className="flex justify-between items-start gap-3 mb-2">
-                <h2 className="text-base font-semibold">{choiceDialog.title}</h2>
+                <h2 className="cap">{choiceDialog.title}</h2>
                 <button
                   onClick={choiceDialog.onClose}
                   className="p-1 rounded-md hover:bg-bg-inset transition shrink-0"
@@ -9474,7 +9366,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           </div>
         </div>
       )}
-    </div>
+    </Shell>
   );
 };
 

@@ -129,6 +129,12 @@ interface StatsAreaProps {
   /** Opens the tracker's night builder for a week, from the Nights tab. */
   onEditNight?: (weekId: string) => void;
   /**
+   * Which sub-tab to show. When given, the panel is driven from outside (the
+   * tracker's rail) and hides its own tab strip — the rail is the navigation.
+   */
+  tab?: SubTab;
+  onTab?: (tab: SubTab) => void;
+  /**
    * All seasons (id, name, weekIds) for the season/Overall stats filter. A
    * scoreboard belongs to a season when its `binding.weekId` is in that
    * season's `weekIds`; unbound scoreboards show only under Overall.
@@ -173,6 +179,8 @@ export function StatsPanel({
   pointSystem,
   tokenUnits,
   onEditNight,
+  tab: tabProp,
+  onTab,
   seasons = [],
   seasonScope = OVERALL_SCOPE,
   onSeasonScope,
@@ -180,7 +188,10 @@ export function StatsPanel({
   stats,
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
-  const [tab, setTab] = useState<SubTab>('overview');
+  const [ownTab, setOwnTab] = useState<SubTab>('overview');
+  const railDriven = tabProp != null;
+  const tab: SubTab = tabProp ?? ownTab;
+  const setTab = (t: SubTab) => (onTab ? onTab(t) : setOwnTab(t));
   // Regiment-list textarea starts empty — it's a manual override, no longer
   // pre-filled from the event unit registry. (Registry-based matching still
   // happens automatically via `opts` below.)
@@ -376,7 +387,7 @@ export function StatsPanel({
       {/* Season / Overall filter — rendered only when this panel owns the
           control (the shared view). The live tracker drives `seasonScope` from
           its own season nav, so it passes no handler and this row stays hidden. */}
-      {onSeasonScope && seasons.length > 0 && (
+      {!railDriven && onSeasonScope && seasons.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
           <span className="px-2 text-[color:var(--color-text-2)]">Season</span>
           {seasons.map((s) => (
@@ -405,6 +416,7 @@ export function StatsPanel({
           </button>
         </div>
       )}
+      {!railDriven && (
       <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
         {visibleTabs.map((t) => (
           <button
@@ -419,6 +431,7 @@ export function StatsPanel({
         ))}
         <span className="px-3 text-[color:var(--color-text-2)]">{eventName}</span>
       </div>
+      )}
 
       {tab === 'overview' && (
         <div className="space-y-3">

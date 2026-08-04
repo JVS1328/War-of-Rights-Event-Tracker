@@ -1,0 +1,392 @@
+/* ── The ledger: the design language from the prototype ────────────────────
+   docs/design/season-tracker-overhaul/prototype.html, ported verbatim in
+   spirit and re-expressed against the app's own tokens so both themes and
+   both modes drive it.
+
+   Plain, unlayered CSS on purpose, imported after index.css. Tailwind v4
+   scans its entry stylesheet and would hoist/strip redeclared theme tokens;
+   a separate file is left alone. Unlayered rules also sit ahead of index.css's
+   @layer base in the cascade, which is what lets these primitives set type and
+   colour without every call site fighting a utility class.
+
+   Everything here is squared, hairline-ruled and monospace. There is no
+   filled-accent button: the current thing inverts to ink-on-ground, and the
+   accent is reserved for what is live. */
+
+/* ── ledger primitives ──────────────────────────────────────────────────── */
+
+.cap {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+}
+
+/* A rule that eats the space between a title and whatever sits at the end. */
+.rule {
+  flex: 1 1 auto;
+  height: 0;
+  border-top: 1px solid var(--color-border);
+  min-width: 12px;
+  align-self: center;
+}
+
+.panel {
+  background: var(--color-bg-1);
+  border: 1px solid var(--color-border);
+  margin-bottom: 18px;
+}
+.panel:last-child { margin-bottom: 0; }
+
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+  flex-wrap: wrap;
+}
+.ph h2, .ph h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  color: var(--color-text-0);
+}
+.ph .meta {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+
+.pb { padding: 13px; max-width: 100%; }
+.pb:not(.flush) { overflow-x: auto; }
+.pb.flush { padding: 0; }
+.scroll-x { overflow-x: auto; }
+
+.note { font-size: 11px; color: var(--color-text-2); line-height: 1.5; }
+.note.warn { color: var(--color-warn); }
+.note.live { color: var(--color-accent); }
+
+.big { font-size: 46px; font-weight: 600; letter-spacing: -0.05em; line-height: 0.88; }
+.mid { font-size: 23px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+
+/* ── frame ──────────────────────────────────────────────────────────────── */
+
+.app {
+  display: grid;
+  grid-template-columns: 198px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.rail {
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-1);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.rail-h { padding: 14px 13px 12px; border-bottom: 1px solid var(--color-border); }
+.rail-h .t {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; display: block;
+}
+.rail-h .s {
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-2); margin-top: 3px; display: block;
+}
+.rgrp { padding: 11px 0 4px; }
+.rgrp > .cap { padding: 0 13px 5px; display: block; }
+.rail button {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 5px 13px; font-size: 12px; color: var(--color-text-1);
+  border-left: 3px solid transparent; text-align: left;
+  text-transform: none; letter-spacing: normal;
+  background: none; border-top: 0; border-right: 0; border-bottom: 0;
+  cursor: pointer;
+}
+.rail button:hover { background: var(--color-bg-2); color: var(--color-text-0); }
+.rail button[aria-current="true"] {
+  background: var(--color-text-0); color: var(--color-bg-0);
+  border-left-color: var(--color-accent); font-weight: 500;
+}
+.rail button .n { margin-left: auto; font-size: 10px; color: var(--color-text-2); }
+.rail button[aria-current="true"] .n { color: var(--color-bg-0); opacity: 0.6; }
+
+.main { min-width: 0; padding: 0 0 60px; }
+
+.crumb {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 20px; border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-1); flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 9;
+}
+.crumb .sc { display: flex; border: 1px solid var(--color-border); margin-left: auto; }
+
+.body { padding: 20px; max-width: 1120px; }
+
+/* Narrow: the rail lies down across the top and scrolls sideways. */
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: static; height: auto; border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rail-h { display: flex; align-items: baseline; gap: 10px; }
+  .rail-h .s { margin-top: 0; }
+  .rail-nav { display: flex; overflow-x: auto; }
+  .rgrp { padding: 6px 0; border-right: 1px solid var(--color-border); }
+  .rail button { white-space: nowrap; }
+  .body { padding: 13px; }
+  .crumb { padding: 9px 13px; }
+}
+
+/* ── faction ────────────────────────────────────────────────────────────── */
+
+.tag {
+  display: inline-flex; align-items: center; padding: 1px 6px;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 600; background: var(--color-text-0); color: var(--color-bg-0);
+  white-space: nowrap;
+}
+.tag.usa { background: var(--color-usa); color: #fff; }
+.tag.csa { background: var(--color-csa); color: #fff; }
+.tag.live { background: var(--color-accent); color: #fff; }
+.tag.q {
+  background: none; border: 1px solid var(--color-border-strong);
+  color: var(--color-text-1); font-weight: 400; letter-spacing: 0.06em;
+  text-transform: none; font-size: 11px;
+}
+.f-usa { color: var(--color-usa); }
+.f-csa { color: var(--color-csa); }
+.stripe-usa { border-left: 3px solid var(--color-usa); }
+.stripe-csa { border-left: 3px solid var(--color-csa); }
+
+/* ── tables ─────────────────────────────────────────────────────────────── */
+
+.panel table, table.ledger { width: 100%; border-collapse: collapse; font-size: 12px; }
+.panel thead th, table.ledger thead th {
+  padding: 6px 9px; text-align: left; white-space: nowrap;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 600; color: var(--color-text-2);
+  border-bottom: 2px solid var(--color-border-strong); background: var(--color-bg-2);
+}
+.panel thead th.num, table.ledger thead th.num { text-align: right; }
+.panel tbody td, table.ledger tbody td { padding: 5px 9px; border-bottom: 1px solid var(--color-border); }
+.panel tbody td.num, table.ledger tbody td.num { text-align: right; }
+.panel tbody tr.click:hover, table.ledger tbody tr.click:hover {
+  background: var(--color-bg-2); cursor: pointer;
+}
+.panel tbody tr.click:hover td:first-child,
+table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+.pos { display: inline-block; min-width: 19px; color: var(--color-text-2); }
+.pos.q { color: var(--color-text-0); font-weight: 600; }
+
+/* ── layout inside a panel ──────────────────────────────────────────────── */
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+.kpi {
+  padding: 11px 13px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+.kpi:last-child { border-right: none; }
+.kpi .v { font-size: 26px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05; margin-top: 2px; }
+.kpi .h { font-size: 10px; color: var(--color-text-2); margin-top: 2px; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); }
+.col { padding: 13px; border-right: 1px solid var(--color-border); min-width: 0; }
+.col:last-child { border-right: none; }
+.click-col { cursor: pointer; }
+.click-col:hover { background: var(--color-bg-2); }
+
+/* ── bars ───────────────────────────────────────────────────────────────── */
+
+.hb { display: grid; grid-template-columns: 74px 1fr 38px; align-items: center; gap: 8px; font-size: 11.5px; margin-top: 5px; }
+.hb .t { height: 7px; background: var(--color-bg-3); }
+.hb .t i { display: block; height: 100%; background: var(--color-border-strong); }
+.hb .n { text-align: right; color: var(--color-text-1); }
+
+.stack { display: flex; height: 9px; background: var(--color-bg-3); }
+.stack i { display: block; height: 100%; }
+.stripebar { display: flex; height: 3px; }
+.stripebar i { display: block; height: 100%; }
+.pctbar { height: 2px; background: var(--color-bg-3); margin-top: 5px; }
+.pctbar i { display: block; height: 100%; background: var(--color-text-0); }
+
+.leg { display: flex; gap: 13px; flex-wrap: wrap; font-size: 10.5px; color: var(--color-text-1); margin-top: 6px; }
+.leg span { display: inline-flex; align-items: center; gap: 5px; }
+.leg i { width: 8px; height: 8px; display: inline-block; }
+
+/* ── controls ───────────────────────────────────────────────────────────── */
+
+.ctl {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 9px 13px; border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-2);
+}
+
+.ledger input[type="search"], .ledger select,
+.crumb select, .ctl select, .ctl input[type="search"] {
+  font: inherit; font-size: 11.5px; padding: 4px 7px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-1); color: var(--color-text-0);
+  border-radius: 0; min-width: 0;
+}
+.crumb select { max-width: 190px; }
+
+/* Segmented control: the chosen one inverts. */
+.seg { display: flex; border: 1px solid var(--color-border-strong); }
+.seg button {
+  padding: 3px 9px; font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--color-text-2);
+  background: none; border: 0; cursor: pointer;
+}
+.seg button:hover { color: var(--color-text-0); }
+.seg button[aria-pressed="true"] { background: var(--color-text-0); color: var(--color-bg-0); }
+
+/* Ghost button — the only button shape there is. */
+.gh {
+  padding: 4px 9px; border: 1px solid var(--color-border-strong);
+  font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--color-text-1); background: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.gh:hover { color: var(--color-text-0); border-color: var(--color-text-2); }
+.gh[aria-pressed="true"] { background: var(--color-text-0); color: var(--color-bg-0); border-color: var(--color-text-0); }
+.gh:disabled { opacity: 0.4; cursor: not-allowed; }
+.gh.live { color: var(--color-accent); border-color: var(--color-accent); }
+.gh.live:hover { background: var(--color-accent); color: #fff; }
+.gh.danger { color: var(--color-danger); border-color: var(--color-danger); }
+.gh.danger:hover { background: var(--color-danger); color: #fff; }
+
+/* ── forms ──────────────────────────────────────────────────────────────── */
+
+.grid-f { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 11px; }
+.fld { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fld > label, .fld > .cap { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-2); }
+.fld input, .fld select, .fld textarea {
+  font: inherit; font-size: 12px; padding: 5px 7px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-1); color: var(--color-text-0);
+  border-radius: 0; width: 100%; min-width: 0;
+}
+.fld input:focus, .fld select:focus, .fld textarea:focus { border-color: var(--color-text-0); outline: none; }
+.fld .note { font-size: 10px; line-height: 1.45; }
+
+.ledger textarea, .panel textarea {
+  font: inherit; font-size: 11.5px; padding: 7px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-1); color: var(--color-text-0);
+  border-radius: 0; resize: vertical; width: 100%;
+}
+
+.chk { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 12px; }
+.chk input { margin-top: 2px; accent-color: var(--color-text-0); }
+.chk .l { display: block; }
+.chk .note { display: block; margin-top: 1px; }
+
+/* A row of toggle chips — units, filters, anything picked from a set. */
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  padding: 2px 7px; font-size: 11px; border: 1px solid var(--color-border-strong);
+  color: var(--color-text-1); background: none; cursor: pointer;
+  text-transform: none; letter-spacing: normal; white-space: nowrap;
+}
+.chip:hover { color: var(--color-text-0); }
+.chip[aria-pressed="true"] { background: var(--color-text-0); color: var(--color-bg-0); border-color: var(--color-text-0); }
+.chip.usa { border-color: var(--color-usa); color: var(--color-usa); }
+.chip.csa { border-color: var(--color-csa); color: var(--color-csa); }
+.chip.off { opacity: 0.45; border-style: dashed; }
+
+/* ── overlay ────────────────────────────────────────────────────────────── */
+
+.sheet-bg {
+  position: fixed; inset: 0; background: rgb(0 0 0 / 0.45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 16px; z-index: 50; overflow-y: auto;
+}
+.sheet {
+  background: var(--color-bg-1); border: 1px solid var(--color-border-strong);
+  width: 100%; max-width: 940px;
+}
+.sheet .ph { position: sticky; top: 0; z-index: 2; }
+
+/* ── swept-in primitives ────────────────────────────────────────────────────
+   The tracker's own markup was written against a rounded-card idiom; these are
+   the shapes it was swept onto. Kept here rather than as utility soup at 400
+   call sites, so the language stays in one file. */
+
+/* One field shape. The border darkening is the focus signal — no ring. */
+.fld-i {
+  font: inherit; font-size: 12px; padding: 5px 7px; width: 100%; min-width: 0;
+  border: 1px solid var(--color-border-strong); border-radius: 0;
+  background: var(--color-bg-1); color: var(--color-text-0);
+}
+.fld-i:focus { border-color: var(--color-text-0); outline: none; }
+.fld-i.sm { font-size: 11px; padding: 3px 5px; }
+.fld-i.big-i { text-align: center; font-size: 15px; font-weight: 600; }
+
+/* Icon button: no chrome until you reach for it. */
+.ib {
+  padding: 3px; border: 0; background: none; color: var(--color-text-2);
+  cursor: pointer; display: inline-flex; align-items: center; border-radius: 0;
+}
+.ib:hover { background: var(--color-bg-2); color: var(--color-text-0); }
+.ib.danger:hover { background: var(--color-danger); color: #fff; }
+
+/* A list of things is ruled, not a stack of cards. */
+.rows { display: flex; flex-direction: column; }
+.rows.scroll-y { max-height: 260px; overflow-y: auto; }
+.row {
+  padding: 7px 9px; border-bottom: 1px solid var(--color-border);
+  display: block; min-width: 0;
+}
+.row:last-child { border-bottom: 0; }
+.row.click { cursor: pointer; }
+.row.click:hover { background: var(--color-bg-2); box-shadow: inset 3px 0 0 var(--color-accent); }
+.row.on { background: var(--color-bg-2); box-shadow: inset 3px 0 0 var(--color-accent); }
+
+/* Semantic ink. Everything that used to be a Tailwind rainbow shade lands here. */
+.c-accent { color: var(--color-accent); }
+.c-ok { color: var(--color-ok); }
+.c-warn { color: var(--color-warn); }
+.c-danger { color: var(--color-danger); }
+
+/* A panel that was swept in as `panel pb` gets its padding from .pb; drop the
+   double border a nested one would otherwise draw. */
+.panel .panel { border-left: 0; border-right: 0; margin-bottom: 0; }
+.panel .panel:first-child { border-top: 0; }
+.panel .panel:last-child { border-bottom: 0; }
+
+/* A panel swept in as `panel pb` carries its title as the first .cap inside the
+   padding. Rather than restructure eighty call sites, the leading caption is
+   promoted to a header bar here: negative margins pull it out to the panel's
+   edges and it picks up the raised ground and the rule. Panels written against
+   .ph directly are unaffected. */
+.panel.pb > .cap:first-child {
+  display: flex; align-items: center; gap: 9px;
+  margin: -13px -13px 11px;
+  padding: 9px 13px;
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-0);
+  font-size: 11px;
+}
+/* Same for the very common "title on the left, buttons on the right" row. */
+.panel.pb > .flex:first-child:has(> .cap) {
+  margin: -13px -13px 11px;
+  padding: 6px 13px;
+  background: var(--color-bg-2);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 34px;
+}
+.panel.pb > .flex:first-child:has(> .cap) > .cap { color: var(--color-text-0); font-size: 11px; }
+.panel.pb > .cap:first-child svg,
+.panel.pb > .flex:first-child:has(> .cap) svg { width: 13px; height: 13px; }
