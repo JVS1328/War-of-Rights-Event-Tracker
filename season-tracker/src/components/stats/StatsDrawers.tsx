@@ -1,11 +1,89 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
-import type { PlayerDetail, PlayerRoundRow, PlayerType } from '../../stats/statsEngine';
+import type { PlayerDetail, PlayerRoundRow, PlayerStatRow, PlayerType } from '../../stats/statsEngine';
 import { splitPlayerRounds, SPLIT_LABELS } from '../../stats/playerSplits';
 import { StanceBar } from '../ui/StanceBar';
 import { Cell, CauseTable, kdStr, whenOf, teamTone, roleLine } from './drawerPrimitives';
 import { formatAvgT, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+
+const ord = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+};
+
+/**
+ * One headline figure with where it sits in the field. The bar under it is the
+ * percentile, not the value — a K/D of 2.4 means nothing until you know whether
+ * that is 3rd of 200 or 3rd of 4.
+ */
+function Ranked({
+  head,
+  value,
+  rank,
+  total,
+  hint,
+}: {
+  head: string;
+  value: ReactNode;
+  rank: number | null;
+  total: number;
+  hint: string;
+}) {
+  return (
+    <div className="kpi">
+      <div className="cap">{head}</div>
+      <div className="v">{value}</div>
+      <div className="h">
+        {rank != null && total > 0 && (
+          <><b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ord(rank)}</b> of {total} · </>
+        )}
+        {hint}
+      </div>
+      {rank != null && total > 0 && (
+        <div className="pctbar"><i style={{ width: `${(1 - (rank - 1) / total) * 100}%` }} /></div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Every round as one bar, oldest left. Height is kills, and a won round is set
+ * in ink where a lost one is ghosted — so a run of form reads as a shape before
+ * any number is looked at.
+ */
+function Form({ rounds }: { rounds: PlayerRoundRow[] }) {
+  if (rounds.length === 0) return null;
+  const ordered = [...rounds].sort((a, b) => (a.recordedAt ?? '').localeCompare(b.recordedAt ?? ''));
+  const max = Math.max(1, ...ordered.map((r) => r.kills));
+  const wins = ordered.filter((r) => r.won === true).length;
+  const losses = ordered.filter((r) => r.won === false).length;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span className="cap">Form</span>
+        <span className="rule" />
+        <span className="cap">{wins}–{losses} across {ordered.length} rounds · most recent right</span>
+      </div>
+      <div className="form">
+        {ordered.map((r) => (
+          <i
+            key={r.sourceFilename}
+            className={r.won ? 'w' : undefined}
+            style={{ height: Math.max(4, (r.kills / max) * 34) }}
+            title={`${r.map} — ${r.kills}K ${r.deaths}D${r.won == null ? '' : r.won ? ' · won' : ' · lost'}`}
+          />
+        ))}
+      </div>
+      <div className="leg">
+        <span><i style={{ background: 'var(--ink)' }} />won</span>
+        <span><i style={{ background: 'var(--ink)', opacity: 0.2 }} />lost</span>
+        <span>bar height = kills</span>
+      </div>
+    </div>
+  );
+}
 
 /** Rounds most-recent first (undated rounds sort last). */
 function byRecentFirst(rounds: PlayerRoundRow[]): PlayerRoundRow[] {
@@ -273,6 +351,7 @@ export function PlayerDrawer({
   onOpenRound,
   type,
   onType,
+  field = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -280,7 +359,22 @@ export function PlayerDrawer({
   onOpenRound: (filename: string) => void;
   type: PlayerType;
   onType: (t: PlayerType) => void;
+  /** The leaderboard this player sits in, so each figure can carry its rank. */
+  field?: PlayerStatRow[];
 }) {
+  // Ranked ascending for the two figures where less is better: a cheap death
+  // and a low death count are good, and ranking them high-first would put the
+  // worst player at the top of the bar.
+  const LOWER_IS_BETTER = new Set(['deaths', 'avgTd']);
+  const fieldSize = field.length;
+  const rankOf = (k: 'kills' | 'deaths' | 'kd' | 'rounds' | 'avgTd' | 'avgTk'): number | null => {
+    if (!detail || fieldSize === 0) return null;
+    const low = LOWER_IS_BETTER.has(k);
+    const val = (p: PlayerStatRow) => (p[k] ?? (low ? Infinity : -1)) as number;
+    const sorted = [...field].sort((a, b) => (low ? val(a) - val(b) : val(b) - val(a)));
+    const i = sorted.findIndex((p) => p.key === detail.key);
+    return i < 0 ? null : i + 1;
+  };
   const toggle = (
     <div className="ctl">
       <span className="cap">Branch</span>
@@ -329,13 +423,21 @@ export function PlayerDrawer({
           )}
 
           <div className="kpis" style={{ border: '1px solid var(--line)' }}>
-            <Cell label="Rounds" value={detail.rounds} />
-            <Cell label="Kills" value={detail.kills} />
-            <Cell label="Deaths" value={detail.deaths} />
-            <Cell label="K/D" value={detail.kd.toFixed(2)} />
-            <Cell label="×Td" value={formatAvgT(detail.avgTd)} title={AVG_TD_LABEL} />
-            <Cell label="×Tk" value={formatAvgT(detail.avgTk)} title={AVG_TK_LABEL} />
+            <Ranked head="Kills" value={detail.kills} rank={rankOf('kills')} total={fieldSize}
+                    hint={`${(detail.kills / Math.max(1, detail.rounds)).toFixed(1)} per round`} />
+            <Ranked head="Deaths" value={detail.deaths} rank={rankOf('deaths')} total={fieldSize}
+                    hint={`${(detail.deaths / Math.max(1, detail.rounds)).toFixed(1)} per round`} />
+            <Ranked head="K/D" value={detail.kd.toFixed(2)} rank={rankOf('kd')} total={fieldSize}
+                    hint="kills ÷ deaths" />
+            <Ranked head="Rounds" value={detail.rounds} rank={rankOf('rounds')} total={fieldSize}
+                    hint="scoreboards they appear on" />
+            <Ranked head="Cost per death" value={formatAvgT(detail.avgTd)} rank={rankOf('avgTd')} total={fieldSize}
+                    hint="tickets · ×Td · lower is better" />
+            <Ranked head="Value per kill" value={formatAvgT(detail.avgTk)} rank={rankOf('avgTk')} total={fieldSize}
+                    hint="tickets · ×Tk" />
           </div>
+
+          <div style={{ marginTop: 18 }}><Form rounds={detail.perRound} /></div>
 
           <div className="cols" style={{ marginTop: 18 }}>
             <div className="col">

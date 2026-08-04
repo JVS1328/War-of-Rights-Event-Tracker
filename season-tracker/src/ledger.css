@@ -348,6 +348,12 @@ details.panel[open] > summary.ph::before { content: '▼'; }
 .drawer > .ph { flex: none; }
 .drawer-b { flex: 1; min-height: 0; overflow: auto; }
 
+/* A run of rounds as bars, oldest left. Won rounds in ink, lost ones ghosted —
+   the shape of a season reads before any figure does. */
+.form { display: flex; align-items: flex-end; gap: 2px; height: 36px; }
+.form i { display: block; width: 6px; background: var(--ink); opacity: 0.2; }
+.form i.w { opacity: 1; }
+
 /* One killfeed line: timestamp, then the event. Fixed-width stamp so the
    sentences start on the same column and the log reads as a column of events
    rather than a ragged paragraph. */

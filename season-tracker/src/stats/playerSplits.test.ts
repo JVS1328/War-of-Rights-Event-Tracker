@@ -15,6 +15,7 @@ const round = (over: Partial<PlayerRoundRow> = {}): PlayerRoundRow => ({
   rank: 'Pvt',
   battery: false,
   branch: 'Infantry',
+  won: null,
   kills: 4,
   deaths: 2,
   deathsInForm: 2,

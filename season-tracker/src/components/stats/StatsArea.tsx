@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Upload, Trash2, Pencil, X, GitMerge, Layers } from 'lucide-react';
 import { Panel, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
@@ -577,6 +577,7 @@ export function StatsPanel({
         onOpenRound={openRound}
         type={playerType}
         onType={setPlayerType}
+        field={players}
       />
       <ScoreboardDrawer
         open={scoreboardId != null}
@@ -1216,6 +1217,7 @@ function RegimentsTab({
             edit={edit}
             focusActive={focusRegiment === r.regiment}
             focusNonce={focusNonce}
+            field={regiments}
             combineTick={
               combine.on
                 ? { checked: combine.labels.includes(r.regiment), onToggle: () => combine.toggle(r.regiment) }
@@ -1376,6 +1378,46 @@ function RegimentRoundBreakdown({
   );
 }
 
+const ordinal = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+};
+
+/** Where a unit sits in the field on one figure. Nulls sort last either way. */
+function rankIn(
+  field: RegimentStatRow[],
+  reg: RegimentStatRow,
+  k: 'kd' | 'killRate' | 'lossRate' | 'avgTd' | 'avgTk' | 'avgPlayers',
+  low = false,
+): number | null {
+  const val = (r: RegimentStatRow) => (r[k] ?? (low ? Infinity : -1)) as number;
+  const sorted = [...field].sort((a, b) => (low ? val(a) - val(b) : val(b) - val(a)));
+  const i = sorted.findIndex((r) => r.regiment === reg.regiment);
+  return i < 0 ? null : i + 1;
+}
+
+/**
+ * A unit's headline figure with its place in the field. The bar is the
+ * percentile, not the value — 0.94 K/D means nothing until you know whether
+ * that is 2nd of 18 or 17th.
+ */
+function RegRanked({
+  head, value, rank, total, hint,
+}: { head: string; value: ReactNode; rank: number | null; total: number; hint: string }) {
+  return (
+    <div className="kpi">
+      <div className="cap">{head}</div>
+      <div className="v">{value}</div>
+      <div className="h">
+        {rank != null && <><b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ordinal(rank)}</b> of {total} · </>}
+        {hint}
+      </div>
+      {rank != null && <div className="pctbar"><i style={{ width: `${(1 - (rank - 1) / total) * 100}%` }} /></div>}
+    </div>
+  );
+}
+
 function RegimentPanel({
   reg,
   contextStats,
@@ -1387,6 +1429,7 @@ function RegimentPanel({
   focusNonce,
   combineTick,
   combined = false,
+  field = [],
 }: {
   reg: RegimentStatRow;
   contextStats?: RegimentContextStats;
@@ -1404,6 +1447,8 @@ function RegimentPanel({
    * tools — there's no stored unit behind it to rename, merge, or remove.
    */
   combined?: boolean;
+  /** Every unit in view, so each figure can carry its rank in the field. */
+  field?: RegimentStatRow[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1471,6 +1516,22 @@ function RegimentPanel({
           </>
         }
       >
+      {!combined && field.length > 1 && (
+        <div className="kpis" style={{ borderBottom: '1px solid var(--line)' }}>
+          <RegRanked head="K/D" value={reg.kd.toFixed(2)} rank={rankIn(field, reg, 'kd')} total={field.length}
+                     hint={`${reg.kills} kills · ${reg.deaths} lost`} />
+          <RegRanked head="Kills per man" value={formatRate(reg.killRate)} rank={rankIn(field, reg, 'killRate')} total={field.length}
+                     hint="size-normalised output" />
+          <RegRanked head="Losses per man" value={formatRate(reg.lossRate)} rank={rankIn(field, reg, 'lossRate', true)} total={field.length}
+                     hint="lower is better" />
+          <RegRanked head="Cost per death" value={formatAvgT(reg.avgTd)} rank={rankIn(field, reg, 'avgTd', true)} total={field.length}
+                     hint="tickets · ×Td · lower is better" />
+          <RegRanked head="Value per kill" value={formatAvgT(reg.avgTk)} rank={rankIn(field, reg, 'avgTk')} total={field.length}
+                     hint="tickets · ×Tk" />
+          <RegRanked head="Men fielded" value={Math.round(reg.avgPlayers)} rank={rankIn(field, reg, 'avgPlayers')} total={field.length}
+                     hint={`${reg.players} seen across ${reg.rounds} rounds`} />
+        </div>
+      )}
       <div className="pb">
         {combined && (
           <p className="note" style={{ borderBottom: '1px solid var(--line)', paddingBottom: 9, marginBottom: 13 }}>

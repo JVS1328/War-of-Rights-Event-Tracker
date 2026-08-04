@@ -888,6 +888,11 @@ export interface PlayerRoundRow {
   avgTk: number | null;
   /** Kills this round bucketed by weapon/cause (killfeed) — what the player killed with. */
   killsByCause: Record<string, number>;
+  /**
+   * Whether the player's side took this round. Null when the round was drawn or
+   * no winner was recorded — a draw is not a loss and should not read as one.
+   */
+  won: boolean | null;
   /** Deaths this round bucketed by weapon/cause (killfeed) — what the player died to. */
   deathsByCause: Record<string, number>;
 }
@@ -1028,6 +1033,7 @@ export function computePlayerDetail(
       killsOob: kOob,
       avgTd: avgTicketCost(p.deathsInForm, p.deathsSkirm, p.deathsOob),
       avgTk: avgTicketCost(kIf, kSk, kOob),
+      won: sb.meta.winner == null ? null : sb.meta.winner === p.team,
       killsByCause: roundKillsByCause,
       deathsByCause: roundDeathsByCause,
     });

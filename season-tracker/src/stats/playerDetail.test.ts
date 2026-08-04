@@ -141,6 +141,24 @@ CSA,1st Battery,A,[Bty]Gun,Cannoneer,Cpl,76561198000000050
     expect(d.isArtillery).toBe(true);
   });
 
+  it('records whether the player\'s side took each round', () => {
+    // Joe plays team 2 (CSA) in R1, which CSA won, and team 2 in R2, which USA
+    // won — so one win and one loss, in that order.
+    const d = computePlayerDetail(boards, '76561198000000001', {})!;
+    const byMap = Object.fromEntries(d.perRound.map((r) => [r.map, r.won]));
+    expect(byMap['DrillCamp']).toBe(true);
+    expect(byMap['Antietam']).toBe(false);
+  });
+
+  it('leaves won null on a round with no recorded winner', () => {
+    const drawn = parseScoreboard(
+      R1.replace('winner,CSA', 'winner,'),
+      'scoreboard_20260102_120000.csv',
+    );
+    const d = computePlayerDetail([drawn], '76561198000000001', {})!;
+    expect(d.perRound[0].won).toBeNull();
+  });
+
   it('leaves per-round role fields null when the player has no roster entry', () => {
     const d = computePlayerDetail(boards, '76561198000000001', {})!;
     const r = d.perRound[0];
