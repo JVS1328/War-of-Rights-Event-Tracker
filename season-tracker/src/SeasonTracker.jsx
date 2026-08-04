@@ -83,6 +83,12 @@ import {
   suggestFormats as suggestPlayoffFormats,
 } from './utils/playoffPlanner';
 import { balanceTeams, sitOuts, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
+import {
+  parseSchedulePaste,
+  auditSchedule,
+  scheduleWeeks,
+  describeProblem as describeScheduleProblem,
+} from './utils/scheduleImport';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -221,6 +227,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
+  // Paste-a-schedule: the raw text plus the home/away plan it is checked against.
+  const [simPaste, setSimPaste] = useState('');
+  const [simHomePerUnit, setSimHomePerUnit] = useState(2);
+  const [simAwayPerUnit, setSimAwayPerUnit] = useState(2);
+  const [simSplitRounds, setSimSplitRounds] = useState(true);
   const [scheduleCopied, setScheduleCopied] = useState(false);
 
   // Nights the calendar can give the post-season — the planner's one input that
@@ -3128,6 +3139,73 @@ const SeasonTracker = ({ initialShareData = null }) => {
         team.forEach((unit, i) => team.slice(i + 1).forEach(mate => record(unit, mate)))
       );
     };
+  };
+
+  // ── Paste a schedule ───────────────────────────────────────────────────────
+  // Leagues plan fixtures in a spreadsheet, so the schedule maker takes the
+  // paste rather than insisting the schedule be built here. Home picks the map
+  // and away picks the side, so home lands on side A.
+  const pastedSchedule = useMemo(
+    () => (simPaste.trim() ? parseSchedulePaste(simPaste, units) : null),
+    [simPaste, units]
+  );
+
+  const pastedAudit = useMemo(() => {
+    if (!pastedSchedule) return null;
+    return auditSchedule(pastedSchedule.rows, tokenUnits, {
+      mode: simLeadMode,
+      homePerUnit: simHomePerUnit,
+      awayPerUnit: simAwayPerUnit,
+      splitAcrossRounds: simSplitRounds,
+    });
+  }, [pastedSchedule, tokenUnits, simLeadMode, simHomePerUnit, simAwayPerUnit, simSplitRounds]);
+
+  const applyPastedSchedule = () => {
+    if (!pastedSchedule || pastedSchedule.rows.length === 0) return;
+    const drafts = scheduleWeeks(pastedSchedule.rows, simLeadMode);
+    const lastWeek = weeks[weeks.length - 1];
+    const inheritedUnitPlayerCounts = lastWeek?.unitPlayerCounts ?? unitPlayerCounts;
+    const stamp = Date.now();
+    const newWeeks = drafts.map((d, i) => ({
+      id: stamp + i,
+      name: d.name,
+      teamA: d.teamA,
+      teamB: d.teamB,
+      round1Winner: null,
+      round2Winner: null,
+      round1Draw: false,
+      round2Draw: false,
+      round1Map: null,
+      round2Map: null,
+      round1Flipped: false,
+      round2Flipped: false,
+      leadA: d.leadA,
+      leadB: d.leadB,
+      isPlayoffs: false,
+      isSingleRoundLeads: d.isSingleRoundLeads,
+      isFunRound: false,
+      leadA_r1: d.leadA_r1,
+      leadB_r1: d.leadB_r1,
+      leadA_r2: d.leadA_r2,
+      leadB_r2: d.leadB_r2,
+      r1CasualtiesA: 0,
+      r1CasualtiesB: 0,
+      r2CasualtiesA: 0,
+      r2CasualtiesB: 0,
+      unitPlayerCounts: { ...inheritedUnitPlayerCounts },
+      weeklyCasualties: {
+        [teamNames.A]: { r1: {}, r2: {} },
+        [teamNames.B]: { r1: {}, r2: {} }
+      },
+      roundSwaps: { r1: [], r2: [] },
+      companyConfig: {
+        r1: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } },
+        r2: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } }
+      }
+    }));
+    setWeeks([...weeks, ...newWeeks]);
+    setSimPaste('');
+    setShowSimulateModal(false);
   };
 
   const simulateSeason = () => {
@@ -8577,6 +8655,134 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </p>
                         </div>
                       )}
+
+                      {/* Paste a schedule. The home/away plan below is what the
+                          paste is audited against, and the round-split rule only
+                          means anything when leads are set per round — so it
+                          appears with the lead mode, not beside it. */}
+                      <div className="border-t border-border-default pt-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4" />
+                          <h4 className="text-sm font-semibold">Paste a Schedule</h4>
+                        </div>
+                        <p className="text-xs text-text-secondary mb-2">
+                          Week, Round, Home, Away, Date — tabs or commas, header optional. Home picks the map and
+                          away picks the side, so home lands on {teamNames.A}.
+                        </p>
+                        <textarea
+                          value={simPaste}
+                          onChange={(e) => setSimPaste(e.target.value)}
+                          rows={5}
+                          spellCheck={false}
+                          placeholder={'Week\tRound\tHome\tAway\tDate\n1\t1\t1st Texas\t69th New York\t8/5/2026'}
+                          className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-xs font-mono"
+                        />
+
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div>
+                            <label className="block text-xs text-text-secondary mb-1">Home lead rounds per unit</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={simHomePerUnit}
+                              onChange={(e) => setSimHomePerUnit(Math.max(0, parseInt(e.target.value) || 0))}
+                              className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-text-secondary mb-1">Away lead rounds per unit</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={simAwayPerUnit}
+                              onChange={(e) => setSimAwayPerUnit(Math.max(0, parseInt(e.target.value) || 0))}
+                              className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-text-secondary mt-1">
+                          0 turns a check off. {simLeadMode === 'rounds'
+                            ? `${simHomePerUnit + simAwayPerUnit} lead rounds a unit across the season.`
+                            : `${simHomePerUnit + simAwayPerUnit} lead nights a unit across the season — both rounds each.`}
+                        </p>
+
+                        {simLeadMode === 'rounds' && (
+                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer mt-3">
+                            <input
+                              type="checkbox"
+                              checked={simSplitRounds}
+                              onChange={(e) => setSimSplitRounds(e.target.checked)}
+                              className="mt-1 w-4 h-4 rounded border-border-default bg-bg-card"
+                            />
+                            <div>
+                              <div className="text-sm">Split home and away across the rounds</div>
+                              <div className="text-xs text-text-secondary">
+                                Each unit's home leads spread over round 1 and round 2, and the same for its away
+                                leads — so nobody always leads the same round.
+                              </div>
+                            </div>
+                          </label>
+                        )}
+
+                        {pastedSchedule && (
+                          <div className="mt-3 bg-bg-inset rounded p-3 space-y-2">
+                            <div className="text-xs text-text-secondary">
+                              {pastedSchedule.rows.length} fixture{pastedSchedule.rows.length === 1 ? '' : 's'} over{' '}
+                              {pastedSchedule.weeks.length} week{pastedSchedule.weeks.length === 1 ? '' : 's'}
+                              {pastedAudit && (pastedAudit.ok
+                                ? ' · meets the plan'
+                                : ` · ${pastedAudit.problems.length} thing${pastedAudit.problems.length === 1 ? '' : 's'} to look at`)}
+                            </div>
+
+                            {(pastedSchedule.problems.length > 0 || (pastedAudit && pastedAudit.problems.length > 0)) && (
+                              <ul className="text-xs text-amber-500 space-y-0.5 max-h-40 overflow-y-auto list-disc list-inside">
+                                {[...pastedSchedule.problems, ...(pastedAudit?.problems ?? [])].slice(0, 40).map((p, i) => (
+                                  <li key={i}>{describeScheduleProblem(p)}</li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {pastedAudit && pastedAudit.tallies.some(t => t.total > 0) && (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead className="text-text-secondary">
+                                    <tr>
+                                      <th className="text-left py-1">Unit</th>
+                                      <th className="text-right py-1 px-2">Home</th>
+                                      <th className="text-right py-1 px-2">Away</th>
+                                      {simLeadMode === 'rounds' && <th className="text-right py-1 px-2">Home R1/R2</th>}
+                                      {simLeadMode === 'rounds' && <th className="text-right py-1 px-2">Away R1/R2</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {pastedAudit.tallies.map(t => (
+                                      <tr key={t.unit} className="border-t border-border-default">
+                                        <td className="py-1">{t.unit}</td>
+                                        <td className={`text-right py-1 px-2 tabular-nums ${simHomePerUnit > 0 && t.home !== simHomePerUnit ? 'text-amber-500' : ''}`}>{t.home}</td>
+                                        <td className={`text-right py-1 px-2 tabular-nums ${simAwayPerUnit > 0 && t.away !== simAwayPerUnit ? 'text-amber-500' : ''}`}>{t.away}</td>
+                                        {simLeadMode === 'rounds' && (
+                                          <td className="text-right py-1 px-2 tabular-nums text-text-secondary">{t.homeR1}/{t.homeR2}</td>
+                                        )}
+                                        {simLeadMode === 'rounds' && (
+                                          <td className="text-right py-1 px-2 tabular-nums text-text-secondary">{t.awayR1}/{t.awayR2}</td>
+                                        )}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+
+                            <button
+                              onClick={applyPastedSchedule}
+                              disabled={pastedSchedule.rows.length === 0}
+                              className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition"
+                            >
+                              Create {pastedSchedule.weeks.length} week{pastedSchedule.weeks.length === 1 ? '' : 's'} from this schedule
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Unit Summary */}
                       <div className="bg-bg-inset rounded p-3">
