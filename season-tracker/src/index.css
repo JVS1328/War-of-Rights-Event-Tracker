@@ -20,11 +20,30 @@
   --color-text-0: #1b1e23; /* primary text             */
   --color-text-1: #5a626d; /* secondary text           */
   --color-text-2: #8b939e; /* tertiary / labels        */
-  --color-accent: #b07d3f;         /* CSA tan (darkened for light contrast) */
+  --color-accent: #b07d3f;         /* UI accent — selection, focus, links */
   --color-accent-soft: rgb(176 125 63 / 0.15);
-  --color-ok: #4d7a62;             /* USA green                */
+  --color-ok: #4d7a62;             /* semantic success         */
   --color-warn: #9a7a44;
   --color-danger: #9e4d4d;
+
+  /* ── Faction identity ──────────────────────────────────────────────────
+     USA and CSA used to borrow --color-ok and --color-accent. That made the
+     UI accent read as "Confederate" (a selected tab looked like a faction),
+     and the green/tan pair measured ΔE 6.2 under protanopia and 13.7 for
+     normal vision — below the 8 and 15 floors, so the two sides were hard to
+     tell apart even with full colour vision. This pair clears both at ~20,
+     and blue is what the game gives the Union anyway. */
+  --color-usa: #1a6493;
+  --color-usa-soft: rgb(26 100 147 / 0.12);
+  --color-csa: #b06a0a;
+  --color-csa-soft: rgb(176 106 10 / 0.12);
+
+  /* ── Stance ramp ───────────────────────────────────────────────────────
+     Ticket cost is ordinal (1 · 3 · 5), so it gets a sequential scale of its
+     own rather than borrowing the faction hues. */
+  --color-stance-1: #41627a;   /* in formation — 1 ticket  */
+  --color-stance-2: #8a7245;   /* skirmish     — 3 tickets */
+  --color-stance-3: #a4522c;   /* out of line  — 5 tickets */
 
   /* ── Legacy semantic tokens — remapped onto the Palantir scale ─────────
      These are what SeasonTracker.jsx already uses (638 references), so the
@@ -110,6 +129,13 @@
     --color-ok: #5b8a72;
     --color-warn: #b8915a;
     --color-danger: #a85a5a;
+    --color-usa: #3f8ec8;
+    --color-usa-soft: rgb(63 142 200 / 0.16);
+    --color-csa: #bc8630;
+    --color-csa-soft: rgb(188 134 48 / 0.16);
+    --color-stance-1: #6f93a8;
+    --color-stance-2: #a5895a;
+    --color-stance-3: #c4744a;
   }
 
   html, body {
@@ -140,6 +166,16 @@
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  /* Data is not a label. The rules above uppercase every button and heading
+     for the terminal look, which silently rewrites the names rendered inside
+     them — a player called `vanreiswick` shows as VANREISWICK, and `1stTX`
+     as 1STTX, while the same names render correctly in plain table cells.
+     Anything carrying a name the game gave us opts out with this. */
+  .wor-name {
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   /* Custom scrollbars to match the aesthetic. */

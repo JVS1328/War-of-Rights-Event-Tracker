@@ -48,7 +48,7 @@ import {
 const UNTAGGED_KEY = '__untagged__';
 const groupKey = (team: Team, regiment: string | null) => `${team}::${regiment ?? UNTAGGED_KEY}`;
 
-const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
+const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
 
 /** `×N.N` or `—` (no `×` prefix — the surrounding label supplies it). */
 function formatTicket(avg: number | null): string {
@@ -552,7 +552,7 @@ function PlayerCardList({
                 )}
                 <button
                   onClick={() => onOpenPlayer(playerKey(p))}
-                  className="truncate text-left text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
+                  className="wor-name truncate text-left text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
                 >
                   {p.name}
                 </button>

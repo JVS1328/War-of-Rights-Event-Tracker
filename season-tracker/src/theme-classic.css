@@ -25,6 +25,15 @@
   --color-accent: #d97706;            /* amber-600 (white text readable) */
   --color-accent-soft: rgb(217 119 6 / 0.12);
   --color-ok: #15803d;     /* green-700                */
+  /* Faction identity — same validated pair as the modern theme; it clears the
+     colour-vision separation floors on this theme's surfaces too. */
+  --color-usa: #1a6493;
+  --color-usa-soft: rgb(26 100 147 / 0.12);
+  --color-csa: #b06a0a;
+  --color-csa-soft: rgb(176 106 10 / 0.12);
+  --color-stance-1: #41627a;
+  --color-stance-2: #8a7245;
+  --color-stance-3: #a4522c;
   --color-warn: #b45309;   /* amber-700                */
   --color-danger: #dc2626; /* red-600                  */
 
@@ -85,6 +94,13 @@
   --color-ok: #4ade80;     /* green-400                */
   --color-warn: #fbbf24;
   --color-danger: #f87171; /* red-400                  */
+  --color-usa: #3f8ec8;
+  --color-usa-soft: rgb(63 142 200 / 0.16);
+  --color-csa: #bc8630;
+  --color-csa-soft: rgb(188 134 48 / 0.16);
+  --color-stance-1: #6f93a8;
+  --color-stance-2: #a5895a;
+  --color-stance-3: #c4744a;
 
   --color-indigo-300: #fcd34d;
   --color-indigo-400: #fbbf24;

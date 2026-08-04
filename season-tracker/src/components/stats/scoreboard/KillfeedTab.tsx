@@ -11,7 +11,7 @@ const teamTextColor = (t: Team | null): string =>
       ? 'text-[color:var(--color-accent)]'
       : 'text-[color:var(--color-text-2)]';
 
-const teamTone = (t: Team | null) => (t === 'USA' ? 'ok' : t === 'CSA' ? 'accent' : 'neutral');
+const teamTone = (t: Team | null) => (t === 'USA' ? 'usa' : t === 'CSA' ? 'csa' : 'neutral');
 
 export function KillfeedTab({
   sb,

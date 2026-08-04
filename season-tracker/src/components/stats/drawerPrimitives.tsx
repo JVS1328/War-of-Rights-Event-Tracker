@@ -49,7 +49,7 @@ export function fmtDuration(sec: number | null): string {
   return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
 }
 
-export const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent') as 'ok' | 'accent';
+export const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa') as 'usa' | 'csa';
 
 /** Labeled stat tile. `title` makes it a hover-help cell. */
 export function Cell({ label, value, title }: { label: string; value: ReactNode; title?: string }) {

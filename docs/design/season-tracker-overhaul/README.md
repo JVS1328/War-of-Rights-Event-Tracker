@@ -71,10 +71,18 @@ These are defects in the current code, not the prototype.
    check in both themes at ΔE ~20, and is closer to the game's own colours.
 
 2. **`button { text-transform: uppercase }` in `src/index.css` rewrites data.**
-   Player names and unit tags render inside buttons, so `vanreiswick` displays as
-   VANREISWICK and `1stTX` as 1STTX — while the same names appear correctly in
-   the Rounds table, which doesn't use buttons. Names are identity; the CSS is
-   editing them.
+   Player names render inside buttons, so `vanreiswick` displays as VANREISWICK
+   — while the same name appears correctly in a plain table cell. Names are
+   identity; the CSS was editing them. Fixed with a `.wor-name` opt-out applied
+   to the name-bearing controls and drawer titles.
+
+   *Correction to an earlier version of this note:* unit tags showing as
+   `1STTX` are **not** the same bug. `extractRegimentTag` uppercases
+   deliberately, so `[1stTX]`, `[1STTX]` and `[1sttx]` collapse to one unit —
+   correct for matching. It only affects units resolved by the name-tag
+   fallback; registry-matched units keep the casing you typed (minus spaces, so
+   `12th VA` shows as `12thVA`). Preserving a display label alongside the match
+   key would fix both, but it changes identity semantics and wants its own pass.
 
 3. **The Regiments tab is unreadable at a glance.** Each unit is one wrapped
    line of right-aligned grey text, so nothing lines up vertically and K/D can't

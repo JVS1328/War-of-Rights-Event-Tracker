@@ -38,7 +38,7 @@ export interface WeekRef {
 type SubTab = 'overview' | 'players' | 'regiments' | 'maps' | 'rounds' | 'import';
 const TABS: SubTab[] = ['overview', 'players', 'regiments', 'maps', 'rounds', 'import'];
 
-const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
+const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
 
 function fmtDuration(sec: number | null): string {
   if (sec == null) return '—';
@@ -561,7 +561,7 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
       sortable: true,
       sortValue: (p) => p.name.toLowerCase(),
       render: (p) => (
-        <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+        <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
           {p.name}
         </button>
       ),
@@ -574,7 +574,7 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
       render: (p) => (
         <button
           onClick={() => goToRegiment(p.regiment)}
-          className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)]"
+          className="wor-name underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)]"
           title="Open this regiment in the Regiments tab"
         >
           {p.regiment}
@@ -1479,7 +1479,7 @@ function RegimentPanel({
                   key: 'name',
                   header: 'Player',
                   render: (p) => (
-                    <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+                    <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
                       {p.name}
                     </button>
                   ),
@@ -1539,7 +1539,7 @@ function EditablePlayers({
                 />
               </td>
               <td className="px-2 py-1">
-                <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+                <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
                   {p.name}
                 </button>
                 {moved && <span className="text-[color:var(--color-text-2)]"> → {staged}</span>}
@@ -1804,8 +1804,8 @@ function MapsTab({
                     <td className="px-2 py-1 text-[color:var(--color-text-2)]">{i + 1}</td>
                     <td className="px-2 py-1 text-[color:var(--color-text-0)]">{name}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{s.plays}</td>
-                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-ok)]">{pct(s.usaWins, s.plays)}%</td>
-                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-accent)]">{pct(s.csaWins, s.plays)}%</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-usa)]">{pct(s.usaWins, s.plays)}%</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-csa)]">{pct(s.csaWins, s.plays)}%</td>
                     <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
                   </tr>
                 ))}
@@ -1866,9 +1866,9 @@ function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: 
       </div>
       <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
         <div>
-          <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+          <span className="text-[color:var(--color-usa)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
           <span className="mx-2">|</span>
-          <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+          <span className="text-[color:var(--color-csa)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
           {s.draws > 0 && (
             <>
               <span className="mx-2">|</span>
@@ -1877,9 +1877,9 @@ function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: 
           )}
         </div>
         <div>
-          Avg losses: <span className="text-[color:var(--color-ok)]">USA {s.avgLossesUsa}</span>
+          Avg losses: <span className="text-[color:var(--color-usa)]">USA {s.avgLossesUsa}</span>
           <span className="mx-1">·</span>
-          <span className="text-[color:var(--color-accent)]">CSA {s.avgLossesCsa}</span>
+          <span className="text-[color:var(--color-csa)]">CSA {s.avgLossesCsa}</span>
           <span className="text-[color:var(--color-text-2)]"> (total {s.totalCasualties.toLocaleString()}, {s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}/rd)</span>
         </div>
         {s.hasFormation && (
@@ -1894,9 +1894,9 @@ function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: 
         )}
         {s.hasMorale && (
           <div>
-            Avg morale: <span className="text-[color:var(--color-ok)]">USA {s.avgMoraleUsa || '—'}</span>
+            Avg morale: <span className="text-[color:var(--color-usa)]">USA {s.avgMoraleUsa || '—'}</span>
             <span className="mx-1">·</span>
-            <span className="text-[color:var(--color-accent)]">CSA {s.avgMoraleCsa || '—'}</span>
+            <span className="text-[color:var(--color-csa)]">CSA {s.avgMoraleCsa || '—'}</span>
           </div>
         )}
       </div>

@@ -32,7 +32,7 @@ export function Drawer({
         >
           <div className="flex items-center justify-between border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-2">
             <div className="min-w-0">
-              <Dialog.Title className="truncate text-base font-mono text-[color:var(--color-text-0)]">
+              <Dialog.Title className="wor-name truncate text-base font-mono text-[color:var(--color-text-0)]">
                 {title}
               </Dialog.Title>
               {subtitle && (

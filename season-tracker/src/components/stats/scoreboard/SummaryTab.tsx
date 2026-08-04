@@ -51,9 +51,9 @@ export function SummaryTab({
   const statRow = (label: string, usa: number, csa: number, usaTotal: number | null, csaTotal: number | null) => (
     <tr key={label} className="border-t border-[color:var(--color-border)]">
       <td className="px-3 py-1 text-[color:var(--color-text-1)]">{label}</td>
-      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-ok)]">{usa}</td>
+      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-usa)]">{usa}</td>
       <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(usa, usaTotal)}</td>
-      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-accent)]">{csa}</td>
+      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-csa)]">{csa}</td>
       <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(csa, csaTotal)}</td>
     </tr>
   );
