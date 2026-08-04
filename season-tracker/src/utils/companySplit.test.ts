@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_SPECIAL_CAP,
   DEFAULT_CAVALRY_CAP,
   SPECIAL_COMPANY_CAP,
   clampSideConfig,
@@ -46,10 +47,16 @@ describe('parseRosterPaste', () => {
 });
 
 describe('clampSideConfig', () => {
-  it('fills defaults, cavalry cap included', () => {
+  it('fills defaults, both caps included', () => {
     expect(clampSideConfig({ count: 3 })).toEqual({
-      count: 3, specialCount: 0, cavalryCount: 0, cavalryCap: DEFAULT_CAVALRY_CAP,
+      count: 3, specialCount: 0, cavalryCount: 0,
+      specialCap: DEFAULT_SPECIAL_CAP, cavalryCap: DEFAULT_CAVALRY_CAP,
     });
+  });
+
+  it('gives a config saved before the special cap was editable the old fixed value', () => {
+    const legacy = { count: 2, specialCount: 1, cavalryCount: 0, cavalryCap: 30 };
+    expect(clampSideConfig(legacy).specialCap).toBe(DEFAULT_SPECIAL_CAP);
   });
 
   it('keeps special + cavalry within the total company count', () => {
@@ -59,9 +66,38 @@ describe('clampSideConfig', () => {
       .toMatchObject({ specialCount: 1, cavalryCount: 3 });
   });
 
-  it('floors negatives at zero', () => {
-    expect(clampSideConfig({ count: -2, specialCount: -1, cavalryCount: -1, cavalryCap: -5 }))
-      .toEqual({ count: 0, specialCount: 0, cavalryCount: 0, cavalryCap: 0 });
+  it('floors negative counts at zero', () => {
+    expect(clampSideConfig({ count: -2, specialCount: -1, cavalryCount: -1 }))
+      .toMatchObject({ count: 0, specialCount: 0, cavalryCount: 0 });
+  });
+
+  it('never lets a cap reach zero, which would leave a company nothing fits in', () => {
+    const c = clampSideConfig({ count: 2, specialCap: -5, cavalryCap: 0 });
+    expect(c.specialCap).toBe(1);
+    expect(c.cavalryCap).toBe(1);
+    expect(clampSideConfig({ count: 2, specialCap: 1 }).specialCap).toBe(1);
+  });
+
+  it('falls back to the default only when there is no cap to read', () => {
+    expect(clampSideConfig({ count: 2 }).specialCap).toBe(DEFAULT_SPECIAL_CAP);
+    expect(clampSideConfig({ count: 2, specialCap: undefined }).specialCap).toBe(DEFAULT_SPECIAL_CAP);
+  });
+});
+
+describe('the special cap', () => {
+  it('is honoured when packing, not fixed at 20', () => {
+    // One special company capped at 12: a 20-man unit no longer fits in it.
+    const split = distributeCompanies(roster(['A', 20, 20], ['B', 5, 5]), {
+      count: 2, specialCount: 1, specialCap: 12,
+    });
+    const special = split.find((c) => c.kind === 'special')!;
+    expect(special.cap).toBe(12);
+    expect(special.regiments).toEqual(['B']);
+  });
+
+  it('takes a bigger cap too', () => {
+    const split = distributeCompanies(roster(['A', 40, 40]), { count: 1, specialCount: 1, specialCap: 50 });
+    expect(split[0]).toMatchObject({ kind: 'special', cap: 50, regiments: ['A'] });
   });
 });
 

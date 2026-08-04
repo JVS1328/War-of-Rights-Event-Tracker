@@ -49,44 +49,48 @@ export function fmtDuration(sec: number | null): string {
   return `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
 }
 
-export const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent') as 'ok' | 'accent';
+export const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa') as 'usa' | 'csa';
 
 /** Labeled stat tile. `title` makes it a hover-help cell. */
-export function Cell({ label, value, title }: { label: string; value: ReactNode; title?: string }) {
+export function Cell({ label, value, title, hint }: { label: string; value: ReactNode; title?: string; hint?: ReactNode }) {
   return (
-    <div
-      className={`border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5 ${title ? 'cursor-help' : ''}`}
-      title={title}
-    >
-      <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{label}</div>
-      <div className="text-lg tabular-nums text-[color:var(--color-text-0)]">{value}</div>
+    <div className="kpi" title={title} style={title ? { cursor: 'help' } : undefined}>
+      <div className="cap">{label}</div>
+      <div className="v">{value}</div>
+      {hint && <div className="h">{hint}</div>}
     </div>
   );
 }
 
-/** Count + share table for a `cause → count` map (kills with / died to, etc.). */
+/**
+ * Count + share for a `cause → count` map (killed with / died to). Bars against
+ * the largest rather than bare counts — a killfeed's long tail is mostly ones
+ * and twos, and the shape of the distribution is the point.
+ */
 export function CauseTable({ title, data }: { title: string; data: Record<string, number> }) {
   const rows = Object.entries(data).sort((a, b) => b[1] - a[1]);
   const total = rows.reduce((s, [, v]) => s + v, 0);
+  const max = rows.reduce((m, [, v]) => Math.max(m, v), 0);
   return (
     <div>
-      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">{title}</div>
+      <div className="cap">{title}</div>
       {rows.length === 0 ? (
-        <div className="text-xs text-[color:var(--color-text-2)] py-2">No killfeed data</div>
+        <p className="note" style={{ marginTop: 5 }}>No killfeed data.</p>
       ) : (
-        <table className="w-full text-sm">
-          <tbody>
-            {rows.map(([cause, count]) => (
-              <tr key={cause} className="border-b border-[color:var(--color-border)]">
-                <td className="py-0.5 text-[color:var(--color-text-1)] capitalize">{cause}</td>
-                <td className="py-0.5 text-right tabular-nums text-[color:var(--color-text-0)]">{count}</td>
-                <td className="py-0.5 text-right tabular-nums text-[color:var(--color-text-2)] w-10">
-                  {total ? `${Math.round((count / total) * 100)}%` : ''}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ marginTop: 5 }}>
+          {rows.map(([cause, count]) => (
+            <div key={cause} className="hb">
+              <span className="nm" style={{ textTransform: 'capitalize' }}>{cause}</span>
+              <span className="t">
+                <i style={{ width: `${max > 0 ? (count / max) * 100 : 0}%` }} />
+              </span>
+              <span className="n">
+                {count}
+                <span style={{ color: 'var(--ink-3)' }}> · {total ? Math.round((count / total) * 100) : 0}%</span>
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

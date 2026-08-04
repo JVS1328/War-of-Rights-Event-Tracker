@@ -66,7 +66,7 @@ export function ScoreboardDrawer({
             : sb.sourceFilename
           : undefined
       }
-      width={660}
+      width={860}
     >
       {!sb ? (
         <EmptyHint>No data</EmptyHint>
@@ -96,20 +96,13 @@ export function ScoreboardDrawer({
 
 function Tabs({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
   return (
-    <div className="flex border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-sm uppercase tracking-wider font-mono">
-      {TABS.map((t) => (
-        <button
-          key={t}
-          onClick={() => onChange(t)}
-          className={`px-3 py-2 ${
-            tab === t
-              ? 'text-[color:var(--color-accent)] border-b-2 border-[color:var(--color-accent)]'
-              : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]'
-          }`}
-        >
-          {t}
-        </button>
-      ))}
+    <div className="ctl">
+      <div className="seg">
+        {TABS.map((t) => (
+          <button key={t} onClick={() => onChange(t)} aria-pressed={tab === t}>{t}</button>
+        ))}
+      </div>
+      <span className="rule" />
     </div>
   );
 }

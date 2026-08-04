@@ -56,6 +56,14 @@ import {
 } from './utils/eloEngine';
 import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 import { CompanyConfigFields, CompanyList } from './components/CompanyBalancer';
+import { BalanceSwaps } from './components/BalanceSwaps';
+import { EloLadder } from './components/EloLadder';
+import { Shell } from './components/Shell';
+import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
+import { NightBuilder, RT_RULES } from './components/season/NightBuilder';
+import { Balancer } from './components/season/Balancer';
+import { Playoffs } from './components/season/Playoffs';
+import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
 import {
@@ -82,6 +90,104 @@ import {
   nextPowerOfTwo,
   suggestFormats as suggestPlayoffFormats,
 } from './utils/playoffPlanner';
+import { balanceTeams, sitOuts, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
+import {
+  parseSchedulePaste,
+  auditSchedule,
+  scheduleWeeks,
+  describeProblem as describeScheduleProblem,
+} from './utils/scheduleImport';
+import { buildPairHeatmap } from './utils/pairHeatmap';
+import { PairingsScreen } from './components/season/PairingsScreen';
+import { ScheduleMaker } from './components/season/ScheduleMaker';
+import { nightType, leadsPerNight } from './stats/nightMatchup';
+
+/**
+ * The four kinds of night, and the flags each one sets. Exclusive by
+ * construction: picking one clears the other two, so a week can never carry
+ * more than one kind.
+ */
+const NIGHT_TYPES = [
+  { key: 'Regular', label: 'Regular', hint: 'Two leads, each leading both rounds',
+    flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: false } },
+  { key: 'Single-round leads', label: 'Single-round leads', hint: 'Four leads — one per side, per round',
+    flags: { isPlayoffs: false, isSingleRoundLeads: true, isFunRound: false } },
+  { key: 'Playoffs', label: 'Playoffs', hint: 'Four leads, and no points awarded',
+    flags: { isPlayoffs: true, isSingleRoundLeads: false, isFunRound: false } },
+  { key: 'Fun round', label: 'Fun round', hint: 'Exhibition — no leads, no points, no Elo',
+    flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true } },
+];
+
+/**
+ * The rail. Everything the app can do is on it — the prototype's rule was that
+ * no view hides behind a modal, so each of these is a place you can be rather
+ * than a dialog you open.
+ */
+/** Round type name → the flags a week carries for it. */
+const ROUND_TYPE_FLAGS = {
+  'Regular':            { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: false },
+  'Single round leads': { isPlayoffs: false, isSingleRoundLeads: true,  isFunRound: false },
+  'Playoffs':           { isPlayoffs: true,  isSingleRoundLeads: false, isFunRound: false },
+  'Fun round':          { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true },
+};
+
+/** Weight key on the balancer screen → the field the season stores it in. */
+const BALANCER_WEIGHT_FIELD = {
+  teammate: 'teammateWeight',
+  avgDiff: 'avgDiffWeight',
+  regimentCount: 'regimentCountWeight',
+  rangeSimilarity: 'rangeSimilarityWeight',
+  divisionOpposition: 'divisionOppositionWeight',
+  postSeasonSkill: 'postSeasonSkillWeight',
+};
+
+const RAIL_NAV = [
+  { title: 'Season', items: [
+    { key: 'dash', label: 'Overview' },
+    { key: 'standings', label: 'Standings' },
+    { key: 'schedule', label: 'Schedule' },
+    { key: 'night', label: 'Night builder' },
+    { key: 'balancer', label: 'Balancer' },
+    { key: 'week', label: 'Night matchup' },
+    { key: 'playoffs', label: 'Playoffs' },
+    { key: 'simulator', label: 'Schedule maker' },
+    { key: 'elo', label: 'Elo ladder' },
+    { key: 'heat', label: 'Pairings' },
+  ]},
+  { title: 'Player stats', items: [
+    { key: 'stats-overview', label: 'Stats overview' },
+    { key: 'stats-rounds', label: 'Rounds' },
+    { key: 'stats-players', label: 'Players' },
+    { key: 'stats-regiments', label: 'Units' },
+    { key: 'stats-compare', label: 'Compare' },
+    { key: 'stats-maps', label: 'Maps' },
+  ]},
+  { title: 'Setup', items: [
+    { key: 'events', label: 'Events & seasons' },
+    { key: 'identity', label: 'Unit & player identity' },
+    { key: 'splitter', label: 'Company splitter' },
+    { key: 'settings', label: 'Settings' },
+    { key: 'stats-import', label: 'Import rounds' },
+    { key: 'share', label: 'Share & export' },
+  ]},
+];
+
+/** Screens the season/all-seasons scope changes the meaning of. */
+const STATS_SCREENS = new Set(
+  RAIL_NAV[1].items.map(i => i.key).concat(['week', 'stats-import'])
+);
+
+/** Rail key → the sub-tab the stats panel should be showing. */
+const STATS_TAB_OF = {
+  'stats-overview': 'overview',
+  'stats-rounds': 'rounds',
+  'stats-players': 'players',
+  'stats-regiments': 'regiments',
+  'stats-compare': 'compare',
+  'stats-maps': 'maps',
+  'stats-import': 'import',
+  week: 'nights',
+};
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -94,7 +200,7 @@ const VIEW_MODES = { tracker: 'Tracker', stats: 'Player Stats', splitter: 'Compa
 
 /** One figure in the simulation summary: big number, label, optional hint. */
 const SimStat = ({ label, value, hint }) => (
-  <div className="bg-bg-inset rounded p-3">
+  <div className="panel pb">
     <div className="text-xs text-text-secondary">{label}</div>
     <div className="text-xl font-bold tabular-nums">{value}</div>
     {hint && <div className="text-xs text-text-secondary mt-0.5">{hint}</div>}
@@ -158,22 +264,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [eloConfig, setEloConfig] = eventField('eloConfig');
 
   // Session-only UI state
-  const [showSettings, setShowSettings] = useState(false);
-  const [viewMode, setViewMode] = useState('tracker'); // key of VIEW_MODES
+  // Which screen the rail is showing. `viewMode` survives as a derived value so
+  // the blocks that still switch on it keep working while they move across.
+  const [screen, setScreen] = useState('dash');
+  const viewMode =
+    screen === 'splitter' ? 'splitter'
+    : STATS_SCREENS.has(screen) ? 'stats'
+    : 'tracker';
+  const setViewMode = (mode) =>
+    setScreen(mode === 'splitter' ? 'splitter' : mode === 'stats' ? 'stats-overview' : 'dash');
+  const goScreen = (key) => {
+    setScreen(key);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
   // Player-stats season scope: when true, the stats view aggregates every
   // season ("Overall"); when false it follows the active season. Stats-only —
   // it never changes which season the tracker view is editing.
   const [statsAllSeasons, setStatsAllSeasons] = useState(true);
-  const [showStatsModal, setShowStatsModal] = useState(false);
-  const [showBalancerModal, setShowBalancerModal] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
-  const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
-  const [showRegistryModal, setShowRegistryModal] = useState(false);
-  const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
-  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
-  const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [heatmapMode, setHeatmapMode] = useState('together'); // 'together' | 'against'
+  const [tiiGloss, setTiiGloss] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [simulationAnalytics, setSimulationAnalytics] = useState(null);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
@@ -203,6 +315,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [balancerResults, setBalancerResults] = useState(null); // Now an array of options
   const [selectedBalanceIndex, setSelectedBalanceIndex] = useState(0);
   const [balancerStatus, setBalancerStatus] = useState('');
+  // Units the balancer left out because they field nobody this night.
+  const [balancerSatOut, setBalancerSatOut] = useState([]);
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
   const [draggedMainUnit, setDraggedMainUnit] = useState(null);
@@ -218,6 +332,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
+  const [simSource, setSimSource] = useState('paste'); // 'paste' | 'generate'
+  // Paste-a-schedule: the raw text plus the home/away plan it is checked against.
+  const [simPaste, setSimPaste] = useState('');
+  const [simHomePerUnit, setSimHomePerUnit] = useState(2);
+  const [simAwayPerUnit, setSimAwayPerUnit] = useState(2);
+  const [simSplitRounds, setSimSplitRounds] = useState(true);
   const [scheduleCopied, setScheduleCopied] = useState(false);
 
   // Nights the calendar can give the post-season — the planner's one input that
@@ -1323,22 +1443,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setBalancerOpposingPairs([]);
     setBalancerResults(null);
     setBalancerStatus('');
-    setShowBalancerModal(true);
+    setBalancerSatOut([]);
+    goScreen('balancer');
   };
 
-  const closeBalancerModal = () => {
-    if (selectedWeek && Object.keys(balancerUnitCounts).length > 0) {
-      updateWeek(selectedWeek.id, {
-        ...selectedWeek,
-        unitPlayerCounts: { ...balancerUnitCounts }
-      });
-      setUnitPlayerCounts(prev => ({
-        ...prev,
-        ...balancerUnitCounts
-      }));
-    }
-    setShowBalancerModal(false);
-    setBalancerResults(null);
+  /**
+   * Player counts belong to the night, so they are written back as they change
+   * rather than on the way out of a dialog — the balancer is a screen now and
+   * has no way out to hook.
+   */
+  const commitBalancerCounts = (counts) => {
+    setBalancerUnitCounts(counts);
+    if (selectedWeek) updateWeek(selectedWeek.id, { unitPlayerCounts: { ...counts } });
+    setUnitPlayerCounts(prev => ({ ...prev, ...counts }));
   };
 
   // --- Coord Sheet Paste helpers ---
@@ -1453,315 +1570,112 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
   const runBalancer = () => {
     if (!selectedWeek) return;
-
     setBalancerStatus('Balancing...');
-    
-    // Get available units (not assigned to teams in current week)
-    const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
-    const available = units.filter(u => !assignedUnits.has(u));
 
-    // Validate inputs
-    try {
-      const maxDiff = parseInt(balancerMaxDiff);
-      if (isNaN(maxDiff) || maxDiff < 0) {
-        alert('Max player difference must be a valid number');
-        setBalancerStatus('Error!');
-        return;
-      }
+    // The night's own roster is what gets split — the balancer re-splits the
+    // units playing tonight, it does not fill the sides from the bench. Units
+    // sat out on the pool row are excluded rather than balanced around.
+    const out = new Set(balancerSatOut);
+    const available = [...new Set([...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])])]
+      .filter(u => !out.has(u))
+      .sort();
 
-      // Get teammate history
-      const { teammate } = computeStats();
-
-      // Skill-based post-season balancing: the set of playoff-pedigree units to
-      // even across the two sides (null outside playoffs or when weight is 0).
-      const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-      const postSeasonSkillUnits = getPostSeasonSkillUnits(weekIdx);
-
-      // Run the balancing algorithm
-      const result = balanceTeams(
-        available,
-        balancerUnitCounts,
-        balancerOpposingPairs,
-        maxDiff,
-        teammate,
-        divisions,
-        postSeasonSkillUnits
-      );
-
-      if (result) {
-        // result is now an array of top N solutions
-        const enrichedResults = result.map(r => {
-          const stats = calculatePreviewStats(r.teamA, r.teamB);
-          return {
-            ...r,
-            avgHistoryA: stats.avgHistoryA,
-            avgHistoryB: stats.avgHistoryB,
-            combinedAvgHistory: stats.combinedAvgHistory,
-            round1Probability: stats.round1Probability,
-            round2Probability: stats.round2Probability
-          };
-        });
-        setBalancerResults(enrichedResults);
-        setSelectedBalanceIndex(0);
-        setBalancerStatus(`Found ${enrichedResults.length} balance option${enrichedResults.length > 1 ? 's' : ''}! Best Avg. Diff: ${enrichedResults[0].score.toFixed(1)}`);
-      } else {
-        setBalancerStatus('Failed to find a valid balance.');
-      }
-    } catch (error) {
-      alert('Error during balancing: ' + error.message);
-      setBalancerStatus('Error!');
+    const maxDiff = parseInt(balancerMaxDiff);
+    if (isNaN(maxDiff) || maxDiff < 0) {
+      setBalancerStatus('Max player difference must be a whole number.');
+      return;
     }
+
+    const { teammate } = computeStats();
+    const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+    const postSeasonSkillUnits = getPostSeasonSkillUnits(weekIdx);
+    // Ratings as they stood going into this week, so an option's Elo split
+    // reflects the night being built rather than the season's end state.
+    const { eloRatings } = weekIdx > 0 ? calculateEloRatings(weekIdx - 1) : { eloRatings: {} };
+    const elo = {};
+    units.forEach(u => { elo[u] = eloRatings[u] ?? eloSystem.initialElo; });
+
+    const result = balanceTeams({
+      available,
+      counts: balancerUnitCounts,
+      opposingPairs: balancerOpposingPairs,
+      maxPlayerDiff: maxDiff,
+      teammateHistory: teammate,
+      divisions,
+      postSeasonSkillUnits,
+      weights: {
+        teammate: balancerSettings.teammateWeight,
+        avgDiff: balancerSettings.avgDiffWeight,
+        regimentCount: balancerSettings.regimentCountWeight,
+        rangeSimilarity: balancerSettings.rangeSimilarityWeight,
+        divisionOpposition: balancerSettings.divisionOppositionWeight,
+        postSeasonSkill: balancerSettings.postSeasonSkillWeight || 0,
+      },
+      optionCount: balancerSettings.balanceOptionCount || 3,
+      elo,
+    });
+
+    if (!result.ok) {
+      setBalancerResults(null);
+      setBalancerStatus(describeBalanceFailure(result.failure, maxDiff));
+      return;
+    }
+
+    // Win probability and teammate averages are the tracker's own, so they get
+    // layered on here rather than pushed into the scoring model.
+    const enriched = result.options.map(o => {
+      const stats = calculatePreviewStats(o.teamA, o.teamB);
+      return {
+        ...o,
+        score: o.avgDiff,
+        avgHistoryA: stats.avgHistoryA,
+        avgHistoryB: stats.avgHistoryB,
+        combinedAvgHistory: stats.combinedAvgHistory,
+        round1Probability: stats.round1Probability,
+        round2Probability: stats.round2Probability,
+      };
+    });
+    setBalancerResults(enriched);
+    setSelectedBalanceIndex(0);
+    const zero = result.satOut.filter(u => !out.has(u));
+    const sat = zero.length ? ` · ${zero.length} fielding nobody` : '';
+    setBalancerStatus(
+      `${enriched.length} option${enriched.length === 1 ? '' : 's'} · best average difference ${enriched[0].avgDiff.toFixed(1)}${sat}`
+    );
   };
 
-  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = [], postSeasonSkillUnits = null) => {
-    // Validate and prepare unit data
-    const unitData = {};
-    try {
-      Object.entries(unitCounts).forEach(([unit, counts]) => {
-        unitData[unit] = {
-          min: parseInt(counts.min) || 0,
-          max: parseInt(counts.max) || 0
-        };
-      });
-    } catch (error) {
-      alert('Min/Max values for all units must be valid integers.');
-      return null;
+  /**
+   * The balancer is a screen you can walk onto from the rail, not just a dialog
+   * opened from a night — so its counts seed themselves from the night rather
+   * than relying on having been opened through openBalancerModal.
+   */
+  useEffect(() => {
+    if (screen !== 'balancer' || !selectedWeek) return;
+    const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])];
+    if (roster.every(u => balancerUnitCounts[u])) return;
+    const src = selectedWeek.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+      ? selectedWeek.unitPlayerCounts
+      : unitPlayerCounts;
+    const next = { ...balancerUnitCounts };
+    units.forEach(u => { next[u] = next[u] ?? { ...(src[u] ?? { min: 0, max: 0 }) }; });
+    setBalancerUnitCounts(next);
+  }, [screen, selectedWeek, units, unitPlayerCounts, balancerUnitCounts]);
+
+  /** Put one option's split onto the night. */
+  const applyBalancerOption = (option) => {
+    if (!selectedWeek || !option) return;
+    updateWeek(selectedWeek.id, { teamA: [...option.teamA], teamB: [...option.teamB] });
+    goScreen('night');
+  };
+
+  /** Carry the previous night's counts forward — most weeks barely move. */
+  const pullLastNightCounts = () => {
+    const idx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+    for (let k = idx - 1; k >= 0; k--) {
+      const c = weeks[k]?.unitPlayerCounts;
+      if (c && Object.keys(c).length) { commitBalancerCounts({ ...balancerUnitCounts, ...c }); return; }
     }
-
-    // Filter out units with 0 min and 0 max
-    const presentUnits = new Set(
-      Object.entries(unitData)
-        .filter(([unit, data]) => !(data.min === 0 && data.max === 0))
-        .map(([unit]) => unit)
-    );
-
-    const players = available.filter(u => presentUnits.has(u)).sort();
-
-    // Build opposing map
-    const opposingMap = {};
-    opposingPairs.forEach(([p1, p2]) => {
-      if (!opposingMap[p1]) opposingMap[p1] = new Set();
-      if (!opposingMap[p2]) opposingMap[p2] = new Set();
-      opposingMap[p1].add(p2);
-      opposingMap[p2].add(p1);
-    });
-
-    // Build unit-to-division lookup for division opposition scoring
-    const unitDivision = {};
-    if (balancerSettings.divisionOppositionWeight > 0 && divisionsList.length > 0) {
-      divisionsList.forEach(div => {
-        div.units.forEach(unit => { unitDivision[unit] = div.name; });
-      });
-    }
-
-    // Calculate average teammate count for penalty
-    const allCounts = [];
-    const countedPairs = new Set();
-    Object.entries(teammateHistory).forEach(([u1, others]) => {
-      Object.entries(others).forEach(([u2, count]) => {
-        const pair = [u1, u2].sort().join('|');
-        if (!countedPairs.has(pair)) {
-          allCounts.push(count);
-          countedPairs.add(pair);
-        }
-      });
-    });
-
-    const averageTeammateCount = allCounts.length > 0
-      ? allCounts.reduce((sum, val) => sum + val, 0) / allCounts.length
-      : 0;
-    const overTeamingThreshold = Math.round(averageTeammateCount);
-    const overTeamingPenaltyMultiplier = 10;
-
-    // Handle forced teams from opposing pairs
-    const forcedA = new Set(opposingPairs.map(p => p[0]).filter(Boolean));
-    const forcedB = new Set(opposingPairs.map(p => p[1]).filter(Boolean));
-
-    // Check for contradictions
-    const conflict = [...forcedA].filter(u => forcedB.has(u));
-    if (conflict.length > 0) {
-      alert(`Units cannot be in both opposing teams: ${conflict.join(', ')}`);
-      return null;
-    }
-
-    // Players to assign (not forced to either team)
-    const playersToAssign = players.filter(p => !forcedA.has(p) && !forcedB.has(p)).sort();
-    const n = playersToAssign.length;
-    const totalCombos = 1 << n; // 2^n bitmask iteration — each bit assigns a unit to team A or B
-
-    const hasDivisions = balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0;
-    const forcedAArray = [...forcedA];
-    const forcedBArray = [...forcedB];
-
-    // Evaluate raw metrics for a given bitmask
-    const evaluateMask = (mask) => {
-      const teamAArray = [...forcedAArray];
-      const teamBArray = [...forcedBArray];
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) teamAArray.push(playersToAssign[i]);
-        else teamBArray.push(playersToAssign[i]);
-      }
-
-      const minA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-      const maxA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-      const minB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-      const maxB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-
-      const regimentCountDiff = Math.abs(teamAArray.length - teamBArray.length);
-      const rangeA = maxA - minA;
-      const rangeB = maxB - minB;
-      const rangeSimilarity = Math.abs(rangeA - rangeB);
-      const avgA = teamAArray.length > 0 ? (minA + maxA) / 2 : 0;
-      const avgB = teamBArray.length > 0 ? (minB + maxB) / 2 : 0;
-      const avgDiff = Math.abs(avgA - avgB);
-
-      let teammateScore = 0;
-      const scorePairs = (arr) => {
-        for (let i = 0; i < arr.length; i++) {
-          for (let j = i + 1; j < arr.length; j++) {
-            const count = teammateHistory[arr[i]]?.[arr[j]] || 0;
-            teammateScore += (averageTeammateCount > 0 && count > overTeamingThreshold)
-              ? count * overTeamingPenaltyMultiplier : count;
-          }
-        }
-      };
-      scorePairs(teamAArray);
-      scorePairs(teamBArray);
-
-      let divisionOppositionScore = 0;
-      if (hasDivisions) {
-        for (const uA of teamAArray) {
-          const divA = unitDivision[uA];
-          if (!divA) continue;
-          for (const uB of teamBArray) {
-            if (unitDivision[uB] === divA) divisionOppositionScore--;
-          }
-        }
-      }
-
-      // Skill-based post-season balancing: minimize the difference in the count
-      // of playoff-pedigree units between the two sides (see getPostSeasonSkillUnits).
-      let postSeasonSkillDiff = 0;
-      if (postSeasonSkillUnits) {
-        let qA = 0, qB = 0;
-        for (const u of teamAArray) if (postSeasonSkillUnits.has(u)) qA++;
-        for (const u of teamBArray) if (postSeasonSkillUnits.has(u)) qB++;
-        postSeasonSkillDiff = Math.abs(qA - qB);
-      }
-
-      let gap = 0;
-      if (maxA < minB) gap = minB - maxA;
-      else if (maxB < minA) gap = minA - maxB;
-
-      return {
-        stats: [minA, maxA, minB, maxB],
-        isValid: gap <= maxPlayerDiff && avgDiff <= maxPlayerDiff,
-        raw: { teammateScore, avgDiff, regimentCountDiff, rangeSimilarity, divisionOppositionScore, postSeasonSkillDiff }
-      };
-    };
-
-    // Pass 1: Iterate all partitions to find min/max of each metric (for normalization)
-    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'rangeSimilarity', 'divisionOppositionScore', 'postSeasonSkillDiff'];
-    const metricMin = {};
-    const metricMax = {};
-    for (const key of metricKeys) { metricMin[key] = Infinity; metricMax[key] = -Infinity; }
-
-    for (let mask = 0; mask < totalCombos; mask++) {
-      const { raw } = evaluateMask(mask);
-      for (const key of metricKeys) {
-        if (raw[key] < metricMin[key]) metricMin[key] = raw[key];
-        if (raw[key] > metricMax[key]) metricMax[key] = raw[key];
-      }
-    }
-
-    const metricRange = {};
-    for (const key of metricKeys) { metricRange[key] = metricMax[key] - metricMin[key]; }
-
-    const weights = {
-      teammateScore: balancerSettings.teammateWeight,
-      avgDiff: balancerSettings.avgDiffWeight,
-      regimentCountDiff: balancerSettings.regimentCountWeight,
-      rangeSimilarity: balancerSettings.rangeSimilarityWeight,
-      divisionOppositionScore: balancerSettings.divisionOppositionWeight,
-      postSeasonSkillDiff: balancerSettings.postSeasonSkillWeight || 0
-    };
-
-    // Pass 2: Normalize, score, and find top N partitions
-    const topN = balancerSettings.balanceOptionCount || 3;
-    const topValidSolutions = []; // sorted ascending by score (best first)
-    let bestOverallSolution = null;
-
-    const insertIntoTopN = (arr, entry) => {
-      // Insert into sorted array, keep only topN entries
-      let inserted = false;
-      for (let i = 0; i < arr.length; i++) {
-        if (entry.score < arr[i].score) {
-          arr.splice(i, 0, entry);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) arr.push(entry);
-      if (arr.length > topN) arr.pop();
-    };
-
-    for (let mask = 0; mask < totalCombos; mask++) {
-      const result = evaluateMask(mask);
-      let score = 0;
-      for (const key of metricKeys) {
-        const normalized = metricRange[key] === 0 ? 0 : (result.raw[key] - metricMin[key]) / metricRange[key];
-        score += normalized * weights[key];
-      }
-
-      if (result.isValid) {
-        if (topValidSolutions.length < topN || score < topValidSolutions[topValidSolutions.length - 1].score) {
-          insertIntoTopN(topValidSolutions, { mask, score, stats: result.stats });
-        }
-      }
-      if (!bestOverallSolution || score < bestOverallSolution.score) {
-        bestOverallSolution = { mask, score, stats: result.stats };
-      }
-    }
-
-    // Reconstruct teams from a bitmask
-    const buildTeams = (mask) => {
-      const teamA = [...forcedAArray];
-      const teamB = [...forcedBArray];
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) teamA.push(playersToAssign[i]);
-        else teamB.push(playersToAssign[i]);
-      }
-      return [teamA, teamB];
-    };
-
-    // Prefer valid solutions; fall back to overall best for error reporting
-    if (topValidSolutions.length > 0) {
-      return topValidSolutions.map(sol => {
-        const [teamA, teamB] = buildTeams(sol.mask);
-        const [minA, maxA, minB, maxB] = sol.stats;
-        const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
-        return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB, compositeScore: sol.score };
-      });
-    } else if (bestOverallSolution) {
-      const [minA, maxA, minB, maxB] = bestOverallSolution.stats;
-      let gap = 0;
-      if (maxA < minB) gap = minB - maxA;
-      else if (maxB < minA) gap = minA - maxB;
-      const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
-
-      let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
-      if (gap > maxPlayerDiff) {
-        msg += `The best possible balance has a range gap of ${gap.toFixed(0)} players.\n`;
-      }
-      if (avgDiff > maxPlayerDiff) {
-        msg += `The best possible balance has an average difference of ${avgDiff.toFixed(0)} players.\n`;
-      }
-      alert(msg.trim());
-      return null;
-    } else {
-      alert('No valid team composition could be found with the given constraints.');
-      return null;
-    }
+    setBalancerStatus('No earlier night has player counts to pull.');
   };
 
   const applyBalancerResults = () => {
@@ -1785,7 +1699,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
       ...balancerUnitCounts
     }));
 
-    setShowBalancerModal(false);
     setBalancerResults(null);
   };
 
@@ -2398,8 +2311,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // Refresh scoreboard data whenever the Stats or Assign modal opens (so the
   // per-unit stats auto-recompute and reflect any re-imported scoreboards).
   useEffect(() => {
-    if (showStatsModal || showCasualtyModal) void loadScoreboardData();
-  }, [showStatsModal, showCasualtyModal, loadScoreboardData]);
+    // Scoreboard-backed figures are only needed where they are shown.
+    if (screen === 'elo' || showCasualtyModal) void loadScoreboardData();
+  }, [screen, showCasualtyModal, loadScoreboardData]);
 
   // The event's registry unit names — feeds both regiment resolution and the
   // shared stats bundle (so a view-only share resolves regiments identically).
@@ -2534,24 +2448,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!snap || (!snap.kills && !snap.deaths)) return null;
     const kd = snap.deaths > 0 ? snap.kills / snap.deaths : snap.kills;
     return (
-      <tr className="bg-bg-card/50 text-[10px]">
-        <td className="py-1 px-2 pl-6 text-text-secondary italic">{label}</td>
-        <td className="text-cyan-400/70 text-center py-1 px-2" />
-        <td className="text-cyan-400/70 text-center py-1 px-2" />
-        <td className="text-green-400/70 text-center py-1 px-2">{snap.kills}</td>
-        <td className="text-red-400/70 text-center py-1 px-2">{snap.deaths}</td>
-        <td className="text-indigo-400/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
+      <tr style={{ background: 'var(--sunken)', fontSize: 10.5 }}>
+        <td className="pl-6 text-text-secondary italic">{label}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }} />
+        <td className="num" style={{ color: 'var(--ink-3)' }} />
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{snap.kills}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{snap.deaths}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{kd.toFixed(2)}</td>
         {/* KR/LR need a player-count denominator the context snaps don't carry — left blank, like Players/Avg-Rd above. */}
-        <td className="text-center py-1 px-2" />
-        <td className="text-center py-1 px-2" />
-        <td className="text-text-secondary text-center py-1 px-2">
+        <td className="num" />
+        <td className="num" />
+        <td className="num" style={{ color: 'var(--ink-2)' }}>
           {snap.deathsForm.in_form}/{snap.deathsForm.skirm}/{snap.deathsForm.oob}
         </td>
-        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTd(snap))}</td>
-        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTk(snap))}</td>
+        <td className="num">{formatAvgT(unitSnapAvgTd(snap))}</td>
+        <td className="num">{formatAvgT(unitSnapAvgTk(snap))}</td>
         {/* TDI/TDR% need per-round team totals the context snaps don't carry — left blank. */}
-        <td className="text-center py-1 px-2" />
-        <td className="text-center py-1 px-2" />
+        <td className="num" />
+        <td className="num" />
       </tr>
     );
   };
@@ -2588,29 +2502,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
       .sort((a, b) => b.kills - a.kills);
     if (rows.length === 0) {
       return (
-        <p className="text-text-secondary text-center py-4 text-sm">
+        <p className="note">
           No assigned player stats yet. Use "Assign Player Stats" on a week to map units to scoreboard regiments.
         </p>
       );
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table>
           <thead>
-            <tr className="text-text-secondary border-b border-border-default">
-              <th className="text-left py-2 px-2">Unit</th>
-              <th className="text-center py-2 px-2" title="Total unique players across all rounds">Players</th>
-              <th className="text-center py-2 px-2" title="Average player count per round">Avg/Rd</th>
-              <th className="text-center py-2 px-2">K</th>
-              <th className="text-center py-2 px-2">D</th>
-              <th className="text-center py-2 px-2">K/D</th>
-              <th className="text-center py-2 px-2 cursor-help" title={KILL_RATE_LABEL}>KR</th>
-              <th className="text-center py-2 px-2 cursor-help" title={LOSS_RATE_LABEL}>LR</th>
-              <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
-              <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
-              <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
-              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI%</th>
-              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR%</th>
+            <tr>
+              <th>Unit</th>
+              <th className="num" title="Total unique players across all rounds">Players</th>
+              <th className="num" title="Average player count per round">Avg/Rd</th>
+              <th className="num">K</th>
+              <th className="num">D</th>
+              <th className="num">K/D</th>
+              <th className="num cursor-help" title={KILL_RATE_LABEL}>KR</th>
+              <th className="num cursor-help" title={LOSS_RATE_LABEL}>LR</th>
+              <th className="num" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
+              <th className="num" title={AVG_TD_LABEL}>×Td</th>
+              <th className="num" title={AVG_TK_LABEL}>×Tk</th>
+              <th className="num cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI%</th>
+              <th className="num cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR%</th>
             </tr>
           </thead>
           <tbody>
@@ -2619,27 +2533,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
               return (
                 <React.Fragment key={r.unit}>
                   <tr
-                    className={`${idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'} ${r.ctx ? 'cursor-pointer hover:brightness-110' : ''}`}
+                    className={`${r.ctx ? 'click hover:brightness-110' : ''}`}
                     onClick={() => r.ctx && toggleExpandedUnit(r.unit)}
                   >
-                    <td className="py-2 px-2 font-medium">
+                    <td className="wor-name">
                       {r.ctx && (
                         <span className="inline-block w-3 mr-1 text-text-secondary">{isOpen ? '▾' : '▸'}</span>
                       )}
                       {r.unit}
                     </td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{r.uniquePlayers}</td>
-                    <td className="text-cyan-400 text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
-                    <td className="text-green-400 text-center py-2 px-2">{r.kills}</td>
-                    <td className="text-red-400 text-center py-2 px-2">{r.deaths}</td>
-                    <td className="text-indigo-400 text-center py-2 px-2">{r.kd.toFixed(2)}</td>
-                    <td className="text-green-400/80 text-center py-2 px-2">{formatRate(r.killRate)}</td>
-                    <td className="text-red-400/80 text-center py-2 px-2">{formatRate(r.lossRate)}</td>
-                    <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
-                    <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
-                    <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
-                    <td className="text-green-400/80 text-center py-2 px-2"><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
-                    <td className="text-red-400/80 text-center py-2 px-2"><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
+                    <td className="num">{r.uniquePlayers}</td>
+                    <td className="num">{Math.round(r.avgPlayers)}</td>
+                    <td className="num">{r.kills}</td>
+                    <td className="num">{r.deaths}</td>
+                    <td className="num">{r.kd.toFixed(2)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{formatRate(r.killRate)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{formatRate(r.lossRate)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
+                    <td className="num">{formatAvgT(r.td)}</td>
+                    <td className="num">{formatAvgT(r.tk)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
                   </tr>
                   {isOpen && r.ctx && (
                     <>
@@ -2782,64 +2696,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const assignedUnits = new Set(divisions.flatMap(d => d.units));
     return units.filter(u => !assignedUnits.has(u));
   };
-
-  // Calculate teammate composition heatmap (per-round, swap-aware)
-  // Build a teammate-composition heatmap from any list of seasons. KISS DRY:
-  // the active-season heatmap is just `seasons = [activeSeason]`; the
-  // event-wide heatmap is `seasons = activeEvent.seasons`. Pure aggregation —
-  // counts how often each pair was on the same team across all rounds in the
-  // supplied seasons (swap-aware via getEffectiveTeams).
-  const calculateTeammateHeatmapForSeasons = (seasons) => {
-    const allWeeks = (seasons || []).flatMap(s => s.weeks || []);
-    const teammate = {};
-    allWeeks.forEach(week => {
-      [1, 2].forEach(roundNum => {
-        const { teamA, teamB } = getEffectiveTeams(week, roundNum);
-        const ensure = (u) => (teammate[u] ||= {});
-        teamA.forEach(u1 => {
-          const m = ensure(u1);
-          teamA.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
-        });
-        teamB.forEach(u1 => {
-          const m = ensure(u1);
-          teamB.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
-        });
-      });
-    });
-
-    // Active units across the supplied seasons.
-    const allUnits = new Set();
-    for (const s of seasons || []) (s.units || []).forEach(u => allUnits.add(u));
-    const activeUnits = [...allUnits].filter(unit =>
-      allWeeks.some(w => (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit))
-    ).sort();
-
-    const unitActiveWeeks = {};
-    activeUnits.forEach(unit => {
-      unitActiveWeeks[unit] = allWeeks.filter(w =>
-        (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit)
-      ).length;
-    });
-
-    const heatmapData = [];
-    activeUnits.forEach(u1 => {
-      activeUnits.forEach(u2 => {
-        if (u1 === u2) return;
-        const count = teammate[u1]?.[u2] || 0;
-        const bothActiveWeeks = Math.min(unitActiveWeeks[u1] || 0, unitActiveWeeks[u2] || 0);
-        const bothActiveRounds = bothActiveWeeks * 2;
-        if (count > 0 || bothActiveRounds > 0) {
-          heatmapData.push({ unit1: u1, unit2: u2, count, bothActiveWeeks, bothActiveRounds });
-        }
-      });
-    });
-
-    return { heatmapData, activeUnits, unitActiveWeeks };
-  };
-
-  // Active-season heatmap (legacy callers).
-  const calculateTeammateHeatmap = () =>
-    calculateTeammateHeatmapForSeasons(activeSeason ? [activeSeason] : []);
 
   // Calculate live preview stats for balancer
   const calculatePreviewStats = (teamA, teamB) => {
@@ -3057,10 +2913,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
 
     return (
-      <div className="mt-3 space-y-3">
-        <label className="block text-sm text-text-secondary mb-1">Company Balancer</label>
+      <div style={{ marginTop: 13 }}>
+        <label className="cap">Company Balancer</label>
         {['A', 'B'].map(side => (
-          <div key={side} className="bg-bg-card rounded p-2 space-y-2">
+          <div key={side} className="panel pb">
             <div className="text-xs font-semibold text-text-secondary">{teamNames[side]}</div>
             <CompanyConfigFields config={config[side]} onChange={(patch) => setSideConfig(side, patch)} />
             <CompanyList
@@ -3191,6 +3047,169 @@ const SeasonTracker = ({ initialShareData = null }) => {
     () => units.filter(u => !nonTokenUnits.includes(u)),
     [units, nonTokenUnits]
   );
+
+  /** Expected head count per unit — the midpoint of its min/max. */
+  const unitHeadcounts = useMemo(() => {
+    const src = selectedWeek?.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+      ? selectedWeek.unitPlayerCounts
+      : unitPlayerCounts;
+    const out = {};
+    units.forEach(u => {
+      const c = src[u];
+      out[u] = c ? ((c.min || 0) + (c.max || 0)) / 2 : 0;
+    });
+    return out;
+  }, [units, unitPlayerCounts, selectedWeek]);
+
+  /** The night builder names round types the way the prototype does. */
+  const nightBuilderType = !selectedWeek ? 'Regular'
+    : selectedWeek.isPlayoffs ? 'Playoffs'
+    : selectedWeek.isSingleRoundLeads ? 'Single round leads'
+    : selectedWeek.isFunRound ? 'Fun round'
+    : 'Regular';
+
+  /** Copy a night's shape — sides and leads — without its results. */
+  const duplicateSelectedWeek = () => {
+    if (!selectedWeek) return;
+    const copy = {
+      ...selectedWeek,
+      id: Date.now(),
+      name: `${selectedWeek.name} (copy)`,
+      round1Winner: null, round2Winner: null,
+      round1Draw: false, round2Draw: false,
+      round1Map: null, round2Map: null,
+      r1CasualtiesA: 0, r1CasualtiesB: 0, r2CasualtiesA: 0, r2CasualtiesB: 0,
+      roundSwaps: { r1: [], r2: [] },
+    };
+    setWeeks([...weeks, copy]);
+    setSelectedWeek(copy);
+  };
+
+  /**
+   * The season as the Overview, Standings and Schedule screens read it. One
+   * shape, three screens — the prototype's rows, not three ad-hoc projections.
+   */
+  const divisionOfUnit = useMemo(() => {
+    const m = {};
+    divisions.forEach(d => (d.units || []).forEach(u => { m[u] = d.name; }));
+    return m;
+  }, [divisions]);
+
+  const standingRows = useMemo(() => {
+    const stats = calculatePointsUpToWeek();
+    return Object.entries(stats)
+      .map(([unit, d]) => {
+        const w = (d.leadWins || 0) + (d.assistWins || 0);
+        const l = (d.leadLosses || 0) + (d.assistLosses || 0);
+        return {
+          unit,
+          division: divisionOfUnit[unit] ?? null,
+          points: d.points || 0,
+          leadWins: d.leadWins || 0,
+          leadLosses: d.leadLosses || 0,
+          assistWins: d.assistWins || 0,
+          assistLosses: d.assistLosses || 0,
+          w, l,
+          wr: w + l > 0 ? Math.round((w / (w + l)) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.points - a.points || a.unit.localeCompare(b.unit))
+      .map((r, i) => ({ ...r, pos: i + 1 }));
+    // calculatePointsUpToWeek reads the season off appState.
+  }, [weeks, divisionOfUnit, pointSystem, manualAdjustments, appState]);
+
+  const nightRows = useMemo(() => weeks.map((w, i) => {
+    const leads = w.isPlayoffs || w.isSingleRoundLeads
+      ? { a: w.leadA_r1 || w.leadA_r2, b: w.leadB_r1 || w.leadB_r2 }
+      : { a: w.leadA, b: w.leadB };
+    return {
+      index: i,
+      n: i + 1,
+      name: w.name,
+      leadA: leads.a || null,
+      leadB: leads.b || null,
+      map1: w.round1Map || null,
+      map2: w.round2Map || null,
+      sidesA: (w.teamA || []).length,
+      sidesB: (w.teamB || []).length,
+      r1: w.round1Winner || null,
+      r2: w.round2Winner || null,
+      played: !!(w.round1Winner || w.round2Winner || w.round1Draw || w.round2Draw),
+      playoffs: !!w.isPlayoffs,
+    };
+  }), [weeks]);
+
+  /** Season-at-a-glance figures. */
+  const seasonKpis = useMemo(() => {
+    let roundsPlayed = 0;
+    let regular = 0;
+    let usaCasualties = 0;
+    let csaCasualties = 0;
+    for (const w of weeks) {
+      if (w.round1Winner || w.round1Draw) roundsPlayed += 1;
+      if (w.round2Winner || w.round2Draw) roundsPlayed += 1;
+      if (!w.isPlayoffs) regular += 1;
+      // Which side is which faction flips per round, so read the flag first.
+      for (const r of [1, 2]) {
+        const a = w[`r${r}CasualtiesA`] || 0;
+        const b = w[`r${r}CasualtiesB`] || 0;
+        if (w[`round${r}Flipped`]) { usaCasualties += b; csaCasualties += a; }
+        else { usaCasualties += a; csaCasualties += b; }
+      }
+    }
+    const totalCasualties = usaCasualties + csaCasualties;
+    return [
+      { head: 'Units', value: units.length, hint: `${divisions.length} division${divisions.length === 1 ? '' : 's'}` },
+      { head: 'Nights', value: weeks.length, hint: `${regular} regular · ${weeks.length - regular} playoff` },
+      { head: 'Rounds played', value: roundsPlayed, hint: `of ${weeks.length * 2} scheduled` },
+      { head: 'Token units', value: tokenUnits.length, hint: `${units.length - tokenUnits.length} score nothing` },
+      { head: 'Casualties', value: totalCasualties.toLocaleString(), hint: `${usaCasualties.toLocaleString()} USA · ${csaCasualties.toLocaleString()} CSA` },
+    ];
+  }, [weeks, units, divisions, tokenUnits]);
+
+  /**
+   * The pairing grid. Scope decides whether it reads this season or every
+   * season in the event — a unit's history with another one does not reset in
+   * January, and the balancer's teammate weight is happy to read either.
+   */
+  const pairHeatmapData = useMemo(() => {
+    const scanned = heatmapScope === 'event'
+      ? (activeEvent?.seasons || [])
+      : (activeSeason ? [activeSeason] : []);
+    return buildPairHeatmap(scanned.flatMap(s => s.weeks || []));
+  }, [heatmapScope, activeEvent, activeSeason]);
+
+  /**
+   * Ratings after each week of the active season, so the ladder can draw a
+   * unit's whole run. One engine replay per week — the engine is pure and the
+   * season is a couple of dozen weeks, so this is cheap enough to memoize
+   * rather than cache.
+   */
+  const eloLadderRows = useMemo(() => {
+    const weekElo = weeks.map((_, i) => calculateEloRatings(i).eloRatings);
+    const { roundsPlayed } = weeks.length > 0
+      ? calculateEloRatings(weeks.length - 1)
+      : { roundsPlayed: {} };
+    const divisionOf = {};
+    divisions.forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
+    // Where each unit sits on points, so the ladder can show the two orderings
+    // side by side and say where they disagree.
+    const byPoints = Object.entries(calculatePointsUpToWeek())
+      .sort((a, b) => (b[1].points ?? 0) - (a[1].points ?? 0));
+    const pointsRank = {};
+    byPoints.forEach(([unit], i) => { pointsRank[unit] = i + 1; });
+    return buildEloLadder({
+      units: tokenUnits,
+      initialElo: eloSystem.initialElo,
+      weekElo,
+      roundsPlayed,
+      provisionalRounds: eloSystem.provisionalRounds || 0,
+      divisionOf,
+      pointsRank,
+    });
+    // calculateEloRatings reads appState, so the season identity is the dependency.
+  }, [weeks, tokenUnits, divisions, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
+
 
   // The league as the playoff planner sees it: who can qualify, how they are
   // grouped, and how many nights the post-season has to work with.
@@ -3367,6 +3386,72 @@ const SeasonTracker = ({ initialShareData = null }) => {
     };
   };
 
+  // ── Paste a schedule ───────────────────────────────────────────────────────
+  // Leagues plan fixtures in a spreadsheet, so the schedule maker takes the
+  // paste rather than insisting the schedule be built here. Home picks the map
+  // and away picks the side, so home lands on side A.
+  const pastedSchedule = useMemo(
+    () => (simPaste.trim() ? parseSchedulePaste(simPaste, units) : null),
+    [simPaste, units]
+  );
+
+  const pastedAudit = useMemo(() => {
+    if (!pastedSchedule) return null;
+    return auditSchedule(pastedSchedule.rows, tokenUnits, {
+      mode: simLeadMode,
+      homePerUnit: simHomePerUnit,
+      awayPerUnit: simAwayPerUnit,
+      splitAcrossRounds: simSplitRounds,
+    });
+  }, [pastedSchedule, tokenUnits, simLeadMode, simHomePerUnit, simAwayPerUnit, simSplitRounds]);
+
+  const applyPastedSchedule = () => {
+    if (!pastedSchedule || pastedSchedule.rows.length === 0) return;
+    const drafts = scheduleWeeks(pastedSchedule.rows, simLeadMode);
+    const lastWeek = weeks[weeks.length - 1];
+    const inheritedUnitPlayerCounts = lastWeek?.unitPlayerCounts ?? unitPlayerCounts;
+    const stamp = Date.now();
+    const newWeeks = drafts.map((d, i) => ({
+      id: stamp + i,
+      name: d.name,
+      teamA: d.teamA,
+      teamB: d.teamB,
+      round1Winner: null,
+      round2Winner: null,
+      round1Draw: false,
+      round2Draw: false,
+      round1Map: null,
+      round2Map: null,
+      round1Flipped: false,
+      round2Flipped: false,
+      leadA: d.leadA,
+      leadB: d.leadB,
+      isPlayoffs: false,
+      isSingleRoundLeads: d.isSingleRoundLeads,
+      isFunRound: false,
+      leadA_r1: d.leadA_r1,
+      leadB_r1: d.leadB_r1,
+      leadA_r2: d.leadA_r2,
+      leadB_r2: d.leadB_r2,
+      r1CasualtiesA: 0,
+      r1CasualtiesB: 0,
+      r2CasualtiesA: 0,
+      r2CasualtiesB: 0,
+      unitPlayerCounts: { ...inheritedUnitPlayerCounts },
+      weeklyCasualties: {
+        [teamNames.A]: { r1: {}, r2: {} },
+        [teamNames.B]: { r1: {}, r2: {} }
+      },
+      roundSwaps: { r1: [], r2: [] },
+      companyConfig: {
+        r1: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } },
+        r2: { A: { ...DEFAULT_COMPANY_SIDE }, B: { ...DEFAULT_COMPANY_SIDE } }
+      }
+    }));
+    setWeeks([...weeks, ...newWeeks]);
+    setSimPaste('');
+      };
+
   const simulateSeason = () => {
     if (units.length === 0) {
       alert('Please add units before simulating a season.');
@@ -3457,8 +3542,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
 
     setWeeks([...weeks, ...simulatedWeeks]);
-    setShowSimulateModal(false);
-    setSimulationAnalytics({
+        setSimulationAnalytics({
       scheduleOnly: simScheduleOnly,
       splitLeads,
       spacing: summarizeLeadSpacing(simulatedWeeks, tokenUnits),
@@ -4007,6 +4091,49 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return bracket;
   };
 
+  /** The drawn bracket, as slots the Playoffs screen can render. */
+  const playoffBracketSlots = useMemo(() => {
+    const b = generatePlayoffBracket();
+    if (!b || !Array.isArray(b.rounds)) return [];
+    const out = [];
+    b.rounds.forEach((rd, ri) => {
+      (rd.matchups || []).forEach(m => {
+        if (!m.team1 && !m.team2) return;
+        const wk = weeks.filter(w => w.isPlayoffs)[ri];
+        const rounds = (side) => {
+          if (!wk) return 0;
+          return (wk.round1Winner === side ? 1 : 0) + (wk.round2Winner === side ? 1 : 0);
+        };
+        out.push({
+          stage: rd.name || (ri === b.rounds.length - 1 ? 'Final' : `Round ${ri + 1}`),
+          night: wk?.name ?? 'unscheduled',
+          a: m.team1?.unit ?? m.slot1Label ?? 'TBD',
+          b: m.team2?.unit ?? m.slot2Label ?? (m.bye ? 'Bye' : 'TBD'),
+          roundsA: rounds('A'),
+          roundsB: rounds('B'),
+          map1: wk?.round1Map ?? null,
+          map2: wk?.round2Map ?? null,
+        });
+      });
+    });
+    return out;
+  }, [weeks, playoffConfig, appState]);
+
+  /** Formats the planner rates, as the screen's cards. */
+  const playoffFormatOptions = useMemo(() => playoffSuggestions.map(plan => ({
+    field: plan.field?.qualifiers ?? plan.placed,
+    series: plan.stages.reduce((n, st) => n + (st.matchups ?? 0), 0),
+    style: plan.label ?? 'Knockout',
+    entry: plan.config.useDivisions
+      ? `Top ${plan.config.teamsPerDivision} per division`
+      : `Top ${plan.placed} on the table`,
+    bestOf: `${plan.minRounds}–${plan.maxRounds} rounds`,
+    nights: plan.maxNights,
+    share: Math.round((plan.qualifyRate ?? 0) * 100),
+    plan,
+  })), [playoffSuggestions]);
+
+
   // Optional per-formation casualty inputs (In Formation / Skirmish / Out of
   // Line) for one round + side. Writes r{N}CasualtiesForm{A|B} as an object;
   // auto-fill from scoreboard import populates the same fields.
@@ -4020,7 +4147,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const morale = selectedWeek?.[moraleField] || '';
     return (
       <>
-        <div className="grid grid-cols-3 gap-1 mt-1">
+        <div className="kpis" style={{ marginTop: 5 }}>
           {fields.map(([k, label]) => (
             <div key={k}>
               <label className="block text-[10px] text-text-muted mb-0.5">{label}</label>
@@ -4029,7 +4156,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 min="0"
                 value={form[k] || 0}
                 onChange={(e) => setF(k, e.target.value)}
-                className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                className="fld-i sm"
               />
             </div>
           ))}
@@ -4039,7 +4166,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           <select
             value={morale}
             onChange={(e) => updateWeek(selectedWeek.id, { [moraleField]: e.target.value || null })}
-            className="w-full px-1.5 py-1 bg-bg-input rounded border border-border-default text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+            className="fld-i sm"
           >
             <option value="">—</option>
             {MORALE_STATES.map((m) => (
@@ -4062,71 +4189,71 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return (
       <>
         {overall.totalRounds > 0 && (
-          <div className="mb-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-inset rounded p-3">
+          <div style={{ marginBottom: 18 }}>
+            <div className="kpis">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">USA Overall</div>
-                <div className="text-lg font-bold text-blue-400">
+                <div className="text-lg font-bold f-usa">
                   {pct(overall.usaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaWins}/{overall.totalRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">CSA Overall</div>
-                <div className="text-lg font-bold text-red-400">
+                <div className="text-lg font-bold c-danger">
                   {pct(overall.csaWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaWins}/{overall.totalRounds})</span>
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-inset rounded p-3">
+            <div className="kpis">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
-                <div className="text-lg font-bold text-indigo-400">
+                <div className="text-lg font-bold c-accent">
                   {pct(overall.attackerWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.attackerWins}/{overall.totalRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">Defenders Won</div>
-                <div className="text-lg font-bold text-green-400">
+                <div className="text-lg font-bold c-ok">
                   {pct(overall.defenderWins, overall.totalRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.defenderWins}/{overall.totalRounds})</span>
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="bg-bg-inset rounded p-2">
+            <div className="kpis">
+              <div className="row">
                 <div className="text-xs text-text-secondary">USA Attack</div>
-                <div className="text-sm font-semibold text-blue-400">
+                <div className="text-sm font-semibold f-usa">
                   {pct(overall.usaAttackWins, overall.usaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaAttackWins}/{overall.usaAttackRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">USA Defense</div>
-                <div className="text-sm font-semibold text-blue-400">
+                <div className="text-sm font-semibold f-usa">
                   {pct(overall.usaDefenseWins, overall.usaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.usaDefenseWins}/{overall.usaDefenseRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">CSA Attack</div>
-                <div className="text-sm font-semibold text-red-400">
+                <div className="text-sm font-semibold c-danger">
                   {pct(overall.csaAttackWins, overall.csaAttackRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaAttackWins}/{overall.csaAttackRounds})</span>
                 </div>
               </div>
-              <div className="bg-bg-inset rounded p-2">
+              <div className="row">
                 <div className="text-xs text-text-secondary">CSA Defense</div>
-                <div className="text-sm font-semibold text-red-400">
+                <div className="text-sm font-semibold c-danger">
                   {pct(overall.csaDefenseWins, overall.csaDefenseRounds)}% <span className="text-xs font-normal text-text-secondary">({overall.csaDefenseWins}/{overall.csaDefenseRounds})</span>
                 </div>
               </div>
             </div>
             {overall.totalCasualties > 0 && (
-              <div className="bg-bg-inset rounded p-3">
+              <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-2">Casualties &amp; formation makeup</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="cols">
                   {[
-                    { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'text-blue-400' },
-                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'text-red-400' },
+                    { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'f-usa' },
+                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'c-danger' },
                     { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: 'text-text-primary' },
                   ].map(({ label, total, form, color }) => (
-                    <div key={label} className="bg-bg-card rounded p-2">
+                    <div key={label} className="panel pb">
                       <div className={`font-semibold ${color}`}>{label}: {total}</div>
                       {overall.hasFormation && (
                         <div className="text-text-secondary mt-0.5">
@@ -4147,28 +4274,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
             .slice(0, 5);
           if (top5.length === 0) return null;
           return (
-            <div className="bg-bg-inset rounded-lg p-3 mb-2">
+            <div className="panel pb mb-2">
               <div className="text-xs text-text-secondary uppercase tracking-wider mb-2 font-semibold">Most Played Maps</div>
-              <table className="w-full text-xs">
+              <table>
                 <thead>
-                  <tr className="text-text-secondary border-b border-border-default">
-                    <th className="text-left py-1 px-1">#</th>
-                    <th className="text-left py-1 px-1">Map</th>
-                    <th className="text-center py-1 px-1">Rounds</th>
-                    <th className="text-center py-1 px-1">USA Win%</th>
-                    <th className="text-center py-1 px-1">CSA Win%</th>
-                    <th className="text-center py-1 px-1">Avg Cas</th>
+                  <tr>
+                    <th >#</th>
+                    <th >Map</th>
+                    <th className="num">Rounds</th>
+                    <th className="num">USA Win%</th>
+                    <th className="num">CSA Win%</th>
+                    <th className="num">Avg Cas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {top5.map(([name, s], i) => (
-                    <tr key={name} className={i % 2 === 0 ? 'bg-bg-card' : ''}>
-                      <td className="py-1 px-1 text-text-secondary">{i + 1}</td>
-                      <td className="py-1 px-1 font-medium">{name}</td>
-                      <td className="text-center py-1 px-1">{s.plays}</td>
-                      <td className="text-center py-1 px-1 text-blue-400">{pct(s.usaWins, s.plays)}%</td>
-                      <td className="text-center py-1 px-1 text-red-400">{pct(s.csaWins, s.plays)}%</td>
-                      <td className="text-center py-1 px-1 text-text-secondary">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
+                    <tr key={name} >
+                      <td className="num" style={{ color: 'var(--ink-3)' }}>{i + 1}</td>
+                      <td className="wor-name">{name}</td>
+                      <td className="num">{s.plays}</td>
+                      <td className="num f-usa">{pct(s.usaWins, s.plays)}%</td>
+                      <td className="num f-csa">{pct(s.csaWins, s.plays)}%</td>
+                      <td className="num" style={{ color: 'var(--ink-2)' }}>{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4177,17 +4304,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
           );
         })()}
 
-        <div className="space-y-2">
+        <div >
           {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
             const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             const playedMaps = areaMaps.filter(m => byMap[m]);
             if (playedMaps.length === 0) return null;
             const sectionKey = `${keyPrefix}_${areaKey}`;
             return (
-              <div key={areaKey} className="bg-bg-inset rounded-lg overflow-hidden">
+              <div key={areaKey} className="panel">
                 <button
                   onClick={() => toggleSection(sectionKey)}
-                  className="w-full flex items-center justify-between bg-bg-inset px-3 py-2 hover:bg-border-subtle transition"
+                  className="ph area-h" style={{ width: '100%', textAlign: 'left' }}
                 >
                   <span className="font-semibold text-text-secondary">{areaName} ({playedMaps.length})</span>
                   {expandedSections[sectionKey] ? (
@@ -4197,28 +4324,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                 </button>
                 {expandedSections[sectionKey] && (
-                  <div className="p-2 space-y-2">
+                  <div className="pb">
                     {playedMaps
                       .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
                       .map(mapName => {
                         const s = byMap[mapName];
                         const avgCas = s.plays > 0 ? (s.totalCasualties / s.plays).toFixed(0) : 0;
                         return (
-                          <div key={mapName} className="bg-bg-card rounded p-2">
+                          <div key={mapName} className="panel pb">
                             <div className="flex justify-between items-center mb-1">
                               <span className="text-sm font-medium">{mapName}</span>
                               <span className="text-xs text-text-secondary">{s.plays} rounds</span>
                             </div>
-                            <div className="text-xs space-y-0.5">
+                            <div className="note">
                               <div>
-                                <span className="text-blue-300">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
+                                <span className="f-usa">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
                                 <span className="text-text-secondary mx-2">|</span>
-                                <span className="text-red-300">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
+                                <span className="c-danger">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
                               </div>
                               <div className="text-text-secondary">
-                                Avg losses: <span className="text-blue-300">USA {s.avgLossesUsa}</span>
+                                Avg losses: <span className="f-usa">USA {s.avgLossesUsa}</span>
                                 <span className="mx-1">·</span>
-                                <span className="text-red-300">CSA {s.avgLossesCsa}</span>
+                                <span className="c-danger">CSA {s.avgLossesCsa}</span>
                                 <span className="text-text-muted"> (total {s.totalCasualties}, {avgCas}/rd)</span>
                               </div>
                               {s.hasFormation && (
@@ -4233,9 +4360,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               )}
                               {s.hasMorale && (
                                 <div className="text-text-secondary">
-                                  Avg morale: <span className="text-blue-300">USA {s.avgMoraleUsa || '—'}</span>
+                                  Avg morale: <span className="f-usa">USA {s.avgMoraleUsa || '—'}</span>
                                   <span className="mx-1">·</span>
-                                  <span className="text-red-300">CSA {s.avgMoraleCsa || '—'}</span>
+                                  <span className="c-danger">CSA {s.avgMoraleCsa || '—'}</span>
                                 </div>
                               )}
                             </div>
@@ -4250,7 +4377,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
         </div>
 
         {Object.keys(byMap).length === 0 && (
-          <p className="text-text-secondary text-center py-4">No map data available</p>
+          <p className="note">No map data available</p>
         )}
       </>
     );
@@ -4282,275 +4409,639 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   return (
-    <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
-      <div className="max-w-7xl mx-auto">
+    <Shell
+      nav={RAIL_NAV}
+      screen={screen}
+      onScreen={goScreen}
+      title="Season Tracker"
+      subtitle={`${activeEvent.name} · ${activeSeason.name}`}
+      crumb={
+        <>
+          <span className="cap">Event</span>
+          <select
+            value={appState.activeEventId}
+            onChange={(e) => setAppState(prev => setActiveEvent(prev, e.target.value))}
+            aria-label="Active event"
+          >
+            {appState.events.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <select
+            value={appState.activeSeasonId}
+            onChange={(e) => setAppState(prev => setActiveSeason(prev, e.target.value))}
+            aria-label="Active season"
+          >
+            {activeEvent.seasons.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <button className="gh" onClick={() => goScreen('events')} title="Events, seasons and what they hold">
+            Manage
+          </button>
+          {/* Scope only changes what the stats screens mean, so it only shows there. */}
+          {STATS_SCREENS.has(screen) && (
+            <div className="sc" role="group" aria-label="Stats scope">
+              <button aria-pressed={!statsAllSeasons} onClick={() => setStatsAllSeasons(false)}>
+                {activeSeason.name}
+              </button>
+              <button aria-pressed={statsAllSeasons} onClick={() => setStatsAllSeasons(true)}>
+                All seasons
+              </button>
+            </div>
+          )}
+        </>
+      }
+    >
         <div>
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4 gap-3">
-            <h1 className="text-xl font-semibold flex items-center gap-2 shrink-0">
-              <Trophy className="w-5 h-5 text-indigo-500" />
-              <span className="hidden sm:inline">Season Tracker</span>
-              <span className="sm:hidden">Tracker</span>
-            </h1>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowStatsModal(!showStatsModal)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Stats</span>
-              </button>
-              <button
-                onClick={shareSeason}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                title="Copy share link to clipboard"
-              >
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Share</span>
-              </button>
-              <button
-                onClick={() => {
-                  const name = window.prompt('New event name:', 'New Event');
-                  if (!name) return;
-                  setAppState(prev => addEvent(prev, name.trim() || 'New Event'));
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                title="Add a new event (separate ladder, separate registry)"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Event</span>
-              </button>
-              {/* Overflow Menu */}
-              <div className="relative" ref={overflowMenuRef}>
-                <button
-                  onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                  title="More actions"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-                {showOverflowMenu && (
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-bg-card border border-border-default rounded-lg shadow-lg z-50 py-1">
-                    <button
-                      onClick={() => { exportData(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Download className="w-4 h-4" /> Export JSON
-                    </button>
-                    <button
-                      onClick={() => { exportToCSV(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Download className="w-4 h-4" /> Export CSV
-                    </button>
-                    <button
-                      onClick={() => { shareStats(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                      title="Copy a link to a read-only, stats-only view of this event's player stats"
-                    >
-                      <Share2 className="w-4 h-4" /> Share Player Stats
-                    </button>
-                    <label className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition cursor-pointer">
-                      <Upload className="w-4 h-4" /> Import
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={(e) => { importData(e); setShowOverflowMenu(false); }}
-                        className="hidden"
-                      />
-                    </label>
-                    <button
-                      onClick={() => { setShowSettings(!showSettings); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Settings className="w-4 h-4" /> Settings
-                    </button>
-                    <button
-                      onClick={() => { setShowSimulateModal(true); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-bg-inset transition text-left"
-                    >
-                      <Zap className="w-4 h-4" /> Simulate
-                    </button>
-                    <div className="border-t border-border-default my-1" />
-                    <button
-                      onClick={() => { newSeason(); setShowOverflowMenu(false); }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-red-500/20 text-red-500 transition text-left"
-                      title="Wipe ALL data (every event, every season)"
-                    >
-                      <Trash2 className="w-4 h-4" /> Wipe Everything
-                    </button>
-                  </div>
-                )}
+          {screen === 'splitter' && <CompanySplitter />}
+
+          {/* Events & seasons — what the header strip used to carry. */}
+          {screen === 'events' && (
+            <>
+              <div className="panel">
+                <header className="ph">
+                  <h2>Events</h2>
+                  <span className="rule" />
+                  <button className="gh" onClick={() => {
+                    const name = window.prompt('New event name:', 'New Event');
+                    if (!name) return;
+                    setAppState(prev => addEvent(prev, name.trim() || 'New Event'));
+                  }}>New event</button>
+                </header>
+                <div className="pb flush">
+                  <table>
+                    <thead><tr><th>Event</th><th className="num">Seasons</th><th className="num">Units</th><th /></tr></thead>
+                    <tbody>
+                      {appState.events.map(ev => (
+                        <tr key={ev.id} className={ev.id === appState.activeEventId ? '' : 'click'}
+                            onClick={() => ev.id !== appState.activeEventId && setAppState(prev => setActiveEvent(prev, ev.id))}>
+                          <td className="wor-name">
+                            {ev.id === appState.activeEventId && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {ev.name}
+                          </td>
+                          <td className="num">{ev.seasons.length}</td>
+                          <td className="num">{Object.keys(ev.unitRegistry || {}).length}</td>
+                          <td className="num">
+                            <button className="gh" onClick={(e) => {
+                              e.stopPropagation();
+                              const name = window.prompt('Rename event:', ev.name);
+                              if (!name || !name.trim() || name.trim() === ev.name) return;
+                              setAppState(prev => renameActiveEvent(setActiveEvent(prev, ev.id), name.trim()));
+                            }}>Rename</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              {/* Theme: Modern | Classic family switch (light/dark toggle below) */}
-              <ThemeControls showMode={false} />
-              {/* Light/Dark Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-              >
-                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
+
+              <div className="panel">
+                <header className="ph">
+                  <h2>Seasons</h2>
+                  <span className="rule" />
+                  <span className="meta wor-name">{activeEvent.name}</span>
+                  <button className="gh" onClick={() => {
+                    const name = window.prompt('New season name:', `Season ${activeEvent.seasons.length + 1}`);
+                    if (!name) return;
+                    setAppState(prev => addSeasonToActiveEvent(prev, name.trim()));
+                  }}>New season</button>
+                </header>
+                <div className="pb flush">
+                  <table>
+                    <thead><tr><th>Season</th><th className="num">Weeks</th><th className="num">Units</th><th /></tr></thead>
+                    <tbody>
+                      {activeEvent.seasons.map(se => (
+                        <tr key={se.id} className={se.id === appState.activeSeasonId ? '' : 'click'}
+                            onClick={() => se.id !== appState.activeSeasonId && setAppState(prev => setActiveSeason(prev, se.id))}>
+                          <td className="wor-name">
+                            {se.id === appState.activeSeasonId && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {se.name}
+                          </td>
+                          <td className="num">{(se.weeks || []).length}</td>
+                          <td className="num">{(se.units || []).length}</td>
+                          <td className="num">
+                            <button className="gh" onClick={(e) => {
+                              e.stopPropagation();
+                              const name = window.prompt('Rename season:', se.name);
+                              if (!name || !name.trim() || name.trim() === se.name) return;
+                              setAppState(prev => renameActiveSeason(setActiveSeason(prev, se.id), name.trim()));
+                            }}>Rename</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="panel">
+                <header className="ph"><h2>What lives where</h2><span className="rule" /></header>
+                <div className="pb flush">
+                  <div className="cols">
+                    <div className="col">
+                      <span className="cap">An event</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        Its own unit registry, its own Elo ladder and its own imported rounds. Two leagues that
+                        share players but not standings are two events.
+                      </p>
+                    </div>
+                    <div className="col">
+                      <span className="cap">A season</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        Weeks, rosters, points and results. Elo carries across the seasons of one event; points
+                        do not.
+                      </p>
+                    </div>
+                    <div className="col">
+                      <span className="cap">Identity</span>
+                      <p className="note" style={{ marginTop: 6 }}>
+                        A rename on the identity screen sweeps every season of the event — rosters, leads, swaps
+                        and casualties all follow it.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Season → Overview, Standings, Schedule, to the prototype's spec.
+              Map statistics used to be duplicated here; it is the whole of the
+              Maps screen, so it is not repeated. The casualty totals became
+              KPIs, and the per-unit figures moved to Units, where units are. */}
+
+          {/* How the event's seasons compare — read where the seasons are. */}
+          {screen === 'events' && (<>
+          {(() => {
+            // Event-wide aggregates: walk every season's rounds.
+            const seasons = activeEvent.seasons;
+            const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
+
+            // Cross-season unit record (rounds-as-lead/assist won/lost) +
+            // event-wide casualties (per side + per unit).
+            const unitRecord = {};
+            let usaCasTotal = 0, csaCasTotal = 0;
+            let totalRoundsWithResult = 0;
+            const ensure = (u) => unitRecord[u] ||= {
+              rounds: 0, leadWins: 0, leadLosses: 0,
+              assistWins: 0, assistLosses: 0,
+              sweeps: 0, casualtiesTaken: 0,
+            };
+
+            for (const season of seasons) {
+              for (const week of season.weeks || []) {
+                const isPlayoffs = !!week.isPlayoffs;
+                const isSingleRoundLeads = !!week.isSingleRoundLeads;
+                const teamA = week.teamA || [];
+                const teamB = week.teamB || [];
+
+                // Sweep tally
+                if (week.round1Winner && week.round1Winner === week.round2Winner) {
+                  const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
+                  sweepTeam.forEach(u => ensure(u).sweeps += 1);
+                }
+
+                for (const roundNum of [1, 2]) {
+                  const winner = week[`round${roundNum}Winner`];
+                  if (!winner) continue;
+                  totalRoundsWithResult += 1;
+
+                  // Effective rosters (per-round swaps)
+                  const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+                  const eA = swaps.size === 0 ? teamA :
+                    teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
+                  const eB = swaps.size === 0 ? teamB :
+                    teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
+
+                  const winningTeam = winner === 'A' ? eA : eB;
+                  const losingTeam = winner === 'A' ? eB : eA;
+                  const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
+                  const leadW = week[`lead${winner}${leadKey}`];
+                  const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
+
+                  winningTeam.forEach(u => {
+                    const r = ensure(u); r.rounds += 1;
+                    if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
+                  });
+                  losingTeam.forEach(u => {
+                    const r = ensure(u); r.rounds += 1;
+                    if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
+                  });
+
+                  // Side-aware casualty bucket
+                  const flipped = !!week[`round${roundNum}Flipped`];
+                  const usaSide = flipped ? 'B' : 'A';
+                  const casA = week[`r${roundNum}CasualtiesA`] || 0;
+                  const casB = week[`r${roundNum}CasualtiesB`] || 0;
+                  if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
+                  else                 { usaCasTotal += casB; csaCasTotal += casA; }
+
+                  // Per-unit casualties (lost) from weeklyCasualties
+                  const wc = week.weeklyCasualties || {};
+                  for (const sideKey of Object.keys(wc)) {
+                    const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
+                    for (const [u, n] of Object.entries(byUnit)) {
+                      ensure(u).casualtiesTaken += Number(n) || 0;
+                    }
+                  }
+                }
+              }
+            }
+
+            const eventElo = calculateEloRatings();
+            const ladder = Object.entries(unitRecord)
+              .map(([unit, r]) => ({
+                unit, ...r,
+                wins: r.leadWins + r.assistWins,
+                losses: r.leadLosses + r.assistLosses,
+                winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
+                elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
+              }))
+              .filter(r => r.rounds > 0)
+              .sort((a, b) => b.elo - a.elo);
+
+            const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
+
+            return (
+              <>
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Event at a glance</h2>
+                    <span className="rule" />
+                    <span className="meta wor-name">{activeEvent.name}</span>
+                  </header>
+                  <div className="pb flush">
+                    <div className="kpis">
+                      <div className="kpi">
+                        <div className="cap">Seasons</div><div className="v">{seasons.length}</div>
+                        <div className="h">{totalWeeks} nights across them</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Nights</div><div className="v">{totalWeeks}</div>
+                        <div className="h">of {totalWeeks * 2} scheduled rounds</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Rounds played</div><div className="v">{totalRoundsWithResult}</div>
+                        <div className="h">with a result recorded</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Registry units</div>
+                        <div className="v">{Object.keys(activeEvent.unitRegistry).length}</div>
+                        <div className="h">known to this event</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per-season cards — surfaces playoff status and the
+                   champion when playoffs occurred (based on the latest
+                   playoff week's result). */}
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Season by season</h2>
+                    <span className="rule" />
+                    <span className="meta">click one to make it active</span>
+                  </header>
+                  <div className="pb flush scroll-x">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Season</th><th />
+                          <th className="num">Nights</th><th className="num">Rounds</th><th className="num">Units</th>
+                          <th>Champion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                    {seasons.map(season => {
+                      const seasonWeeks = season.weeks || [];
+                      const weekCount = seasonWeeks.length;
+                      let roundCount = 0;
+                      let playoffsScheduled = false;
+                      for (const w of seasonWeeks) {
+                        if (w.round1Winner || w.round1Draw) roundCount += 1;
+                        if (w.round2Winner || w.round2Draw) roundCount += 1;
+                        if (w.isPlayoffs) playoffsScheduled = true;
+                      }
+                      const rosterSize = (season.units || []).length;
+                      const isActive = season.id === activeSeason.id;
+                      const champion = seasonChampion(season);
+                      return (
+                        <tr
+                          key={season.id}
+                          className={isActive ? undefined : 'click'}
+                          onClick={() => !isActive && setAppState(prev => setActiveSeason(prev, season.id))}
+                        >
+                          <td className="wor-name">
+                            {isActive && <span className="tag" style={{ marginRight: 7 }}>Active</span>}
+                            {season.name}
+                          </td>
+                          <td>{playoffsScheduled && <span className="tag q">Playoffs</span>}</td>
+                          <td className="num">{weekCount}</td>
+                          <td className="num">{roundCount}</td>
+                          <td className="num">{rosterSize}</td>
+                          <td className="wor-name">
+                            {champion ? (
+                              <>
+                                {champion.lead || '—'}
+                                <span style={{ color: 'var(--ink-3)' }}> · {champion.weekName} R{champion.finalRound}</span>
+                              </>
+                            ) : (
+                              <span style={{ color: 'var(--ink-3)' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Cross-season unit record</h2>
+                    <span className="rule" />
+                    <span className="meta">every season in this event, rolled together</span>
+                  </header>
+                  <div className="pb flush scroll-x">
+                    {ladder.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>No completed rounds yet.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th />
+                            <th>Unit</th>
+                            <th className="num">Elo</th>
+                            <th className="num" title="Total rounds played across every season in this event">Rounds</th>
+                            <th className="num">W–L</th>
+                            <th className="num" title="Win percentage across all rounds">Win %</th>
+                            <th className="num" title="Rounds won while leading">Lead W</th>
+                            <th className="num">Sweeps</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ladder.map((r, idx) => (
+                            <tr key={r.unit}>
+                              <td><span className={`pos${idx < 3 ? ' q' : ''}`}>{idx + 1}</span></td>
+                              <td className="wor-name">{r.unit}</td>
+                              <td className="num" style={{ fontWeight: 600 }}>{Math.round(r.elo)}</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.rounds}</td>
+                              <td className="num">{r.wins}–{r.losses}</td>
+                              <td className="num">{r.winPct.toFixed(1)}%</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.leadWins}</td>
+                              <td className="num" style={{ color: 'var(--ink-2)' }}>{r.sweeps}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={8}>
+                              Elo carries across seasons within an event — it is the one figure that does.
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Cross-season casualties</h2>
+                    <span className="rule" />
+                    <span className="meta">{(usaCasTotal + csaCasTotal).toLocaleString()} men lost</span>
+                  </header>
+                  <div className="pb flush">
+                    <div className="kpis">
+                      <div className="kpi">
+                        <div className="cap">USA</div>
+                        <div className="v f-usa">{usaCasTotal.toLocaleString()}</div>
+                        <div className="h">{usaCasTotal + csaCasTotal > 0 ? Math.round((usaCasTotal / (usaCasTotal + csaCasTotal)) * 100) : 0}% of the total</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">CSA</div>
+                        <div className="v f-csa">{csaCasTotal.toLocaleString()}</div>
+                        <div className="h">{usaCasTotal + csaCasTotal > 0 ? Math.round((csaCasTotal / (usaCasTotal + csaCasTotal)) * 100) : 0}% of the total</div>
+                      </div>
+                      <div className="kpi">
+                        <div className="cap">Combined</div>
+                        <div className="v">{(usaCasTotal + csaCasTotal).toLocaleString()}</div>
+                        <div className="h">across {totalRoundsWithResult} rounds</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Per-unit player stats</h2>
+                    <span className="rule" />
+                    <span className="meta">full event</span>
+                  </header>
+                  <div className="pb flush scroll-x">
+                    {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Maps, event-wide</h2>
+                    <span className="rule" />
+                    <span className="meta">every season's rounds together</span>
+                  </header>
+                  <div className="pb">
+                    {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                  </div>
+                </div>
+
+                <div className="panel">
+                  <div className="ctl">
+                    <span className="cap">Pairings</span>
+                    <button className="gh live" onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}>
+                      Open cross-season pairings
+                    </button>
+                    <span className="rule" />
+                    <span className="meta">how often each pair has been on the same side, across every season</span>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+          </>)}
+
+          {/* Share & export — the overflow menu, unpacked onto a page. */}
+          {screen === 'share' && (
+            <div className="panel">
+              <header className="ph"><h2>Share &amp; export</h2><span className="rule" /></header>
+              <div className="pb flush">
+                <div className="cols">
+                  <div className="col">
+                    <span className="cap">Take it with you</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      A JSON export is the whole event — every season, week and setting. The CSV is the
+                      schedule and results only, for a spreadsheet.
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="gh" onClick={exportData}>Export JSON</button>
+                      <button className="gh" onClick={exportToCSV}>Export CSV</button>
+                      <label className="gh" style={{ cursor: 'pointer' }}>
+                        Import JSON
+                        <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="col">
+                    <span className="cap">Send someone a link</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      Both links are read-only and carry their data in the URL — nothing is uploaded anywhere.
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="gh" onClick={shareSeason}>Share the season</button>
+                      <button className="gh" onClick={shareStats}>Share player stats</button>
+                    </div>
+                  </div>
+                  <div className="col">
+                    <span className="cap">Start over</span>
+                    <p className="note" style={{ margin: '6px 0 9px' }}>
+                      Wipes every event and season in this browser. Export first.
+                    </p>
+                    <button className="gh danger" onClick={newSeason}>Wipe everything</button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Event + Season Nav */}
-          <div className="bg-bg-card border border-border-default rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
-            {/* Event picker */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-text-secondary">Event</span>
-              <select
-                value={appState.activeEventId}
-                onChange={(e) => setAppState(prev => setActiveEvent(prev, e.target.value))}
-                className="px-2 py-1.5 bg-bg-input rounded-md border border-border-default text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {appState.events.map(e => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => {
-                  const name = window.prompt('Rename event:', activeEvent.name);
-                  if (!name || !name.trim() || name.trim() === activeEvent.name) return;
-                  setAppState(prev => renameActiveEvent(prev, name.trim()));
-                }}
-                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Rename event"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                disabled={appState.events.length <= 1}
-                onClick={() => {
-                  if (!confirm(`Delete event "${activeEvent.name}" and all its seasons? This cannot be undone.`)) return;
-                  setAppState(prev => removeActiveEvent(prev));
-                }}
-                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                title={appState.events.length <= 1 ? 'Cannot delete the last event' : 'Delete event'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+
+
+          {/* The whole week goes across as `weeks`, not just id/name/flip: the
+              Nights tab reads a night's result, leads and rosters as a matchup. */}
+          {/* Per-unit figures from the tracker's own casualty records, under
+              Units — the scoreboard-derived table above answers the same
+              question from the other direction. */}
+          {screen === 'stats-regiments' && (<>
+            {/* Per-unit player stats — derived from assigned scoreboards,
+                cumulative through the selected week. */}
+            <div className="panel">
+              <header className="ph">
+                <h2>Per-unit player stats</h2>
+                <span className="rule" />
+                {selectedWeek && <span className="meta">as of {selectedWeek.name}</span>}
+              </header>
+              <div className="pb flush scroll-x">
+                {(() => {
+                  const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                  return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
+                })()}
+              </div>
             </div>
 
-            <div className="h-6 w-px bg-border-default" />
+            {/* Teammate Impact Index — a cross-unit ranking, so it belongs on
+                the units screen rather than on any one unit's card. */}
+            {(() => {
+              const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+              const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
+              const tableData = Object.entries(impactStats)
+                .map(([unit, data]) => ({ unit, ...data, totalGames: data.leadGames + data.assistGames }))
+                .filter(row => row.totalGames > 0)
+                .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
 
-            {/* Season tabs */}
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-xs uppercase tracking-wide text-text-secondary mr-1">Seasons</span>
-              {activeEvent.seasons.map(s => {
-                // In the stats view, Overall steals the highlight from the
-                // active season; otherwise the active season is highlighted.
-                const highlighted = (viewMode === 'stats' && statsAllSeasons)
-                  ? false
-                  : s.id === appState.activeSeasonId;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      // In the stats view, picking a season exits Overall and
-                      // narrows player-stats to it. In the tracker view it's just
-                      // the normal active-season switch — leave Overall untouched.
-                      if (viewMode === 'stats') setStatsAllSeasons(false);
-                      setAppState(prev => setActiveSeason(prev, s.id));
-                    }}
-                    className={`px-2.5 py-1 text-sm rounded-md border transition ${
-                      highlighted
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'border-border-default hover:bg-bg-inset text-text-secondary'
-                    }`}
-                  >
-                    {s.name}
+              return (
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Teammate impact</h2>
+                    <span className="rule" />
+                    <span className="meta">how a side does with this unit in it</span>
+                  </header>
+                  <button className="gh" style={{ margin: '9px 13px' }}
+                          aria-pressed={tiiGloss} onClick={() => setTiiGloss(g => !g)}>
+                    What do these mean?
                   </button>
-                );
-              })}
-              {/* Overall — player-stats only: aggregate every season at once. */}
-              {viewMode === 'stats' && (
-                <button
-                  onClick={() => setStatsAllSeasons(true)}
-                  title="Player stats across all seasons combined"
-                  className={`px-2.5 py-1 text-sm rounded-md border transition ${
-                    statsAllSeasons
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'border-border-default hover:bg-bg-inset text-text-secondary'
-                  }`}
-                >
-                  Overall
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  const name = window.prompt(`New season name:`, `Season ${activeEvent.seasons.length + 1}`);
-                  if (name === null) return;
-                  setAppState(prev => addSeasonToActiveEvent(prev, (name && name.trim()) || undefined));
-                }}
-                className="p-1.5 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Add a new season to this event (inherits the current roster)"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              <div className="h-5 w-px bg-border-default mx-1" />
-              <button
-                onClick={() => {
-                  const name = window.prompt('Rename season:', activeSeason.name);
-                  if (!name || !name.trim() || name.trim() === activeSeason.name) return;
-                  setAppState(prev => renameActiveSeason(prev, name.trim()));
-                }}
-                className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                title="Rename current season"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                disabled={activeEvent.seasons.length <= 1}
-                onClick={() => {
-                  if (!confirm(`Delete season "${activeSeason.name}"? This cannot be undone.`)) return;
-                  setAppState(prev => removeActiveSeason(prev));
-                }}
-                className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                title={activeEvent.seasons.length <= 1 ? 'Cannot delete the last season' : 'Delete season'}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Registry summary — clickable to open the full editor */}
-            <button
-              onClick={() => setShowRegistryModal(true)}
-              className="ml-auto flex items-center gap-1.5 px-2 py-1 text-xs text-text-secondary hover:bg-bg-inset rounded-md transition"
-              title="Manage event-level unit registry"
-            >
-              <Users className="w-3.5 h-3.5" />
-              {Object.keys(activeEvent.unitRegistry).length} unit{Object.keys(activeEvent.unitRegistry).length === 1 ? '' : 's'} in registry
-            </button>
-          </div>
-
-          {/* Tracker | Player Stats | Company Splitter view toggle */}
-          <div className="flex items-center gap-1 mb-4 border border-border-default rounded-lg p-1 bg-bg-card w-fit">
-            {Object.entries(VIEW_MODES).map(([mode, label]) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 text-sm rounded-md transition ${viewMode === mode ? 'bg-indigo-600 text-white' : 'text-text-secondary hover:bg-bg-inset'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {viewMode === 'splitter' && <CompanySplitter />}
+                  {tiiGloss && (
+                    <div className="gloss">
+                      <dl><dt>Adj. TII</dt><dd>The ranking metric — original TII adjusted for how many players the unit brings.</dd></dl>
+                      <dl><dt>Orig. TII</dt><dd>1 − the average loss rate of this unit's teammates when it plays.</dd></dl>
+                      <dl><dt>Lead impact</dt><dd>Win rate in the rounds this unit led, with the round count beside it.</dd></dl>
+                      <dl><dt>Assist impact</dt><dd>Win rate in the rounds it did not lead.</dd></dl>
+                      <dl><dt>Δ vs avg</dt><dd>Teammate loss rate against the league's. Negative is good — sides with this unit lose fewer men.</dd></dl>
+                    </div>
+                  )}
+                  <div className="pb flush scroll-x">
+                    {tableData.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>No unit has played a round yet.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th />
+                            <th>Unit</th>
+                            <th className="num">Avg men</th>
+                            <th className="num" title="Adjusted TII — the ranking metric">Adj. TII</th>
+                            <th className="num" title="Original TII — teammate loss rate only">Orig. TII</th>
+                            <th className="num">Lead</th>
+                            <th className="num">Assist</th>
+                            <th className="num">Δ vs avg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tableData.map((row, idx) => {
+                            const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                            return (
+                              <tr key={row.unit}>
+                                <td><span className={`pos${idx < 3 ? ' q' : ''}`}>{idx + 1}</span></td>
+                                <td className="wor-name">{row.unit}</td>
+                                <td className="num" style={{ color: 'var(--ink-3)' }}>{Math.round(row.avgPlayers)}</td>
+                                <td className="num" style={{ fontWeight: 600 }}>{row.adjustedTiiScore.toFixed(3)}</td>
+                                <td className="num" style={{ color: 'var(--ink-2)' }}>{row.impactScore.toFixed(3)}</td>
+                                <td className="num">
+                                  {(row.leadImpact * 100).toFixed(1)}%
+                                  <span style={{ color: 'var(--ink-3)' }}> · {row.leadGames}</span>
+                                </td>
+                                <td className="num">
+                                  {(row.assistImpact * 100).toFixed(1)}%
+                                  <span style={{ color: 'var(--ink-3)' }}> · {row.assistGames}</span>
+                                </td>
+                                <td className="num" style={{ color: delta < 0 ? 'var(--ink)' : 'var(--ink-3)' }}>
+                                  {delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={8}>
+                              Δ compares this unit's teammates' loss rate to the league average of{' '}
+                              {(globalAvgLossRate * 100).toFixed(1)}% — negative means a side loses fewer men with it in.
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </>)}
 
           {viewMode === 'stats' && (
             <StatsArea
+              tab={STATS_TAB_OF[screen]}
+              onTab={(t) => {
+                const key = Object.keys(STATS_TAB_OF).find(k => STATS_TAB_OF[k] === t);
+                if (key) goScreen(key);
+              }}
               eventId={appState.activeEventId}
               eventName={activeEvent.name}
               registryUnits={registryUnitNames}
-              weeks={weeks.map(w => ({
-                id: String(w.id),
-                name: w.name,
-                round1Flipped: !!w.round1Flipped,
-                round2Flipped: !!w.round2Flipped,
-              }))}
+              weeks={weeks.map(w => ({ ...w, id: String(w.id) }))}
+              pointSystem={pointSystem}
+              tokenUnits={tokenUnits}
+              onEditNight={(weekId) => {
+                const w = weeks.find(x => String(x.id) === weekId);
+                if (!w) return;
+                setSelectedWeek(w);
+                goScreen('night');
+              }}
               seasons={statsSeasonRefs}
               seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
               teamNames={teamNames}
@@ -4563,86 +5054,87 @@ const SeasonTracker = ({ initialShareData = null }) => {
             />
           )}
 
-          {viewMode === 'tracker' && (<>
-          {/* Settings Panel */}
-          {showSettings && (
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 mb-4">
-              <h2 className="text-lg font-semibold mb-3">System Settings</h2>
+          {/* Season screens. Each guards on `screen`; the old viewMode wrapper
+              that used to enclose them is gone with the block that closed it. */}
+          {/* Settings — its own screen. */}
+          {screen === 'settings' && (
+            <div className="panel pb mb-4">
+              <h2 className="cap">System Settings</h2>
               
               {/* Point System Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2">Point System</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="fset">
+                <h3 className="cap">Point System</h3>
+                <div className="grid-f">
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Win Lead Points</label>
+                  <label className="cap">Win Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.winLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, winLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Win Assist Points</label>
+                  <label className="cap">Win Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.winAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, winAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Loss Lead Points</label>
+                  <label className="cap">Loss Lead Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossLead}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossLead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Loss Assist Points</label>
+                  <label className="cap">Loss Assist Points</label>
                   <input
                     type="number"
                     value={pointSystem.lossAssist}
                     onChange={(e) => setPointSystem({ ...pointSystem, lossAssist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Lead</label>
+                  <label className="cap">2-0 Bonus Lead</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Lead}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Lead: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">2-0 Bonus Assist</label>
+                  <label className="cap">2-0 Bonus Assist</label>
                   <input
                     type="number"
                     value={pointSystem.bonus2_0Assist}
                     onChange={(e) => setPointSystem({ ...pointSystem, bonus2_0Assist: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Balancer Points</label>
+                  <label className="cap">Balancer Points</label>
                   <input
                     type="number"
                     value={pointSystem.balancePoints}
                     onChange={(e) => setPointSystem({ ...pointSystem, balancePoints: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                 </div>
                 {pointSystem.balancePoints !== 0 && (
                 <div>
-                  <label className="block text-sm text-text-secondary mb-1">Balance Points Style</label>
+                  <label className="cap">Balance Points Style</label>
                   <select
                     value={pointSystem.balancePointsStyle || 'perNight'}
                     onChange={(e) => setPointSystem({ ...pointSystem, balancePointsStyle: e.target.value })}
-                    className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   >
                     <option value="perNight">Per Night</option>
                     <option value="perRound">Per Round</option>
@@ -4654,139 +5146,139 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Elo System Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <TrendingUp className="w-5 h-5" />
                   Elo Rating System
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Initial Elo</label>
+                    <label className="cap">Initial Elo</label>
                     <input
                       type="number"
                       value={eloSystem.initialElo}
                       onChange={(e) => setEloSystem({ ...eloSystem, initialElo: parseInt(e.target.value) || 1500 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Standard K-Factor</label>
+                    <label className="cap">Standard K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorStandard}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorStandard: parseInt(e.target.value) || 96 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Provisional K-Factor</label>
+                    <label className="cap">Provisional K-Factor</label>
                     <input
                       type="number"
                       value={eloSystem.kFactorProvisional}
                       onChange={(e) => setEloSystem({ ...eloSystem, kFactorProvisional: parseInt(e.target.value) || 128 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Provisional Rounds</label>
+                    <label className="cap">Provisional Rounds</label>
                     <input
                       type="number"
                       value={eloSystem.provisionalRounds}
                       onChange={(e) => setEloSystem({ ...eloSystem, provisionalRounds: parseInt(e.target.value) || 10 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Sweep Bonus (×)</label>
+                    <label className="cap">Sweep Bonus (×)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={eloSystem.sweepBonusMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, sweepBonusMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Lead Multiplier (×)</label>
+                    <label className="cap">Lead Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.1"
                       value={eloSystem.leadMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, leadMultiplier: parseFloat(e.target.value) || 2.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Size Influence</label>
+                    <label className="cap">Size Influence</label>
                     <input
                       type="number"
                       step="0.1"
                       value={eloSystem.sizeInfluence}
                       onChange={(e) => setEloSystem({ ...eloSystem, sizeInfluence: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Playoff Multiplier (×)</label>
+                    <label className="cap">Playoff Multiplier (×)</label>
                     <input
                       type="number"
                       step="0.05"
                       value={eloSystem.playoffMultiplier}
                       onChange={(e) => setEloSystem({ ...eloSystem, playoffMultiplier: parseFloat(e.target.value) || 1.25 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Map & Unit History Influence */}
-              <div className="mb-6">
+              <div className="fset">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary">Map &amp; Unit History Influence</h3>
+                  <h3 className="cap">Map &amp; Unit History Influence</h3>
                   <button
                     onClick={() => setEloConfig({
                       mapWeight: 1.0, unitWeight: 1.0, priorRounds: 10,
                       carryAlpha: eloConfig.carryAlpha ?? 0.5,
                       mapStatsScope: eloConfig.mapStatsScope ?? 'event',
                     })}
-                    className="text-xs text-text-secondary hover:text-indigo-400 underline transition"
+                    className="gh"
                     title="Reset weights and shrinkage to recommended defaults"
                   >
                     Reset to defaults
                   </button>
                 </div>
-                <p className="text-xs text-text-secondary mb-3">
+                <p className="note">
                   Map-side and per-unit-on-side outcome history feed expected win probability via Bayesian-shrunk Elo equivalents.
                   The engine uses <strong>every prior round</strong> in the event (and across events under <em>global</em> scope).
                   Confidence Samples controls regularization, not how much data is used: at <em>n</em> samples a rate reaches
                   <em> n / (n + samples)</em> of full strength, so a single 100% round can't slam ratings while a long pattern eventually approaches full influence.
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on the map-side history's Elo-equivalent contribution. 0 ignores it; 1 uses full Bayesian-shrunk strength.">Map Weight</label>
+                    <label className="cap" title="Multiplier on the map-side history's Elo-equivalent contribution. 0 ignores it; 1 uses full Bayesian-shrunk strength.">Map Weight</label>
                     <input
                       type="number"
                       step="0.05"
                       min="0"
                       value={eloConfig.mapWeight}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Multiplier on each unit's per-side record on the map. 0 ignores per-unit history; 1 uses full Bayesian-shrunk strength.">Unit Weight</label>
+                    <label className="cap" title="Multiplier on each unit's per-side record on the map. 0 ignores per-unit history; 1 uses full Bayesian-shrunk strength.">Unit Weight</label>
                     <input
                       type="number"
                       step="0.05"
                       min="0"
                       value={eloConfig.unitWeight}
                       onChange={(e) => setEloConfig({ ...eloConfig, unitWeight: Math.max(0, parseFloat(e.target.value) || 0) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
                     <label
-                      className="block text-sm text-text-secondary mb-1"
+                      className="cap"
                       title="Sample size at which the historical rate reaches half its full Elo-equivalent strength. The engine still uses ALL prior rounds — this only controls regularization. Lower = trust small samples sooner (noisier); higher = require more data before signals matter."
                     >
                       Confidence Samples
@@ -4797,15 +5289,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       min="1"
                       value={eloConfig.priorRounds}
                       onChange={(e) => setEloConfig({ ...eloConfig, priorRounds: Math.max(1, parseInt(e.target.value) || 10) })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1" title="Source of map history. 'Event only' uses just this event; 'All events (global)' folds in every prior event's rounds as a starting seed (unit-on-side history stays event-scoped since unit identity is per-event).">Map Stats Scope</label>
+                    <label className="cap" title="Source of map history. 'Event only' uses just this event; 'All events (global)' folds in every prior event's rounds as a starting seed (unit-on-side history stays event-scoped since unit identity is per-event).">Map Stats Scope</label>
                     <select
                       value={eloConfig.mapStatsScope}
                       onChange={(e) => setEloConfig({ ...eloConfig, mapStatsScope: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     >
                       <option value="event">Event only</option>
                       <option value="global">All events (global)</option>
@@ -4815,23 +5307,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Map Cooldown Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <Map className="w-5 h-5" />
                   Map Cooldown
                 </h3>
                 <div className="flex items-center gap-3">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Weeks Until Replayable</label>
+                    <label className="cap">Weeks Until Replayable</label>
                     <input
                       type="number"
                       min="0"
                       value={mapCooldown}
                       onChange={(e) => setMapCooldown(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
-                  <span className="text-xs text-text-secondary mt-5">
+                  <span className="note">
                     {mapCooldown === 0
                       ? 'Disabled — maps can be replayed immediately'
                       : `Maps played in the last ${mapCooldown} week${mapCooldown > 1 ? 's' : ''} will be marked on cooldown`}
@@ -4840,95 +5332,94 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Balancer Settings Section */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wide text-text-secondary mb-2 flex items-center gap-2">
+              <div className="fset">
+                <h3 className="cap">
                   <Target className="w-5 h-5" />
                   Team Balancer Weights
                 </h3>
-                <p className="text-xs text-text-secondary mb-3">
+                <p className="note">
                   Adjust the weights used in the composite score calculation. Higher weights increase the importance of that metric.
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid-f">
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Teammate History Weight</label>
+                    <label className="cap">Teammate History Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.teammateWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, teammateWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Avg Difference Weight</label>
+                    <label className="cap">Avg Difference Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.avgDiffWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, avgDiffWeight: parseFloat(e.target.value) || 1.0 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Regiment Count Weight</label>
+                    <label className="cap">Regiment Count Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.regimentCountWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, regimentCountWeight: parseFloat(e.target.value) || 0.75 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-text-secondary mb-1">Range Similarity Weight</label>
+                    <label className="cap">Range Similarity Weight</label>
                     <input
                       type="number"
                       step="0.1"
                       value={balancerSettings.rangeSimilarityWeight}
                       onChange={(e) => setBalancerSettings({ ...balancerSettings, rangeSimilarityWeight: parseFloat(e.target.value) || 0.50 })}
-                      className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   {divisions.length > 0 && (
                     <div>
-                      <label className="block text-sm text-text-secondary mb-1">Division Opposition Weight</label>
+                      <label className="cap">Division Opposition Weight</label>
                       <input
                         type="number"
                         step="0.1"
                         value={balancerSettings.divisionOppositionWeight}
                         onChange={(e) => setBalancerSettings({ ...balancerSettings, divisionOppositionWeight: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       />
                     </div>
                   )}
                   {playoffConfig.enabled && (
                     <div>
-                      <label className="block text-sm text-text-secondary mb-1">Post-Season Skill Weight</label>
+                      <label className="cap">Post-Season Skill Weight</label>
                       <input
                         type="number"
                         step="0.1"
                         value={balancerSettings.postSeasonSkillWeight ?? 0}
                         onChange={(e) => setBalancerSettings({ ...balancerSettings, postSeasonSkillWeight: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                        className="fld-i"
                       />
                     </div>
                   )}
                 </div>
                 <div className="mt-4">
-                  <label className="block text-sm text-text-secondary mb-1">Balance Options to Show</label>
+                  <label className="cap">Balance Options to Show</label>
                   <input
                     type="number"
                     min="1"
                     max="10"
                     value={balancerSettings.balanceOptionCount}
                     onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
-                    className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
-                  <span className="text-xs text-text-secondary ml-2">Number of balance options the balancer will return (1-10)</span>
+                  <div className="note">Balance options the balancer returns, 1 to 10.</div>
                 </div>
-                <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                  <p className="font-semibold text-text-secondary mb-2">💡 Weight Explanations:</p>
-                  <ul className="space-y-1 ml-4">
+                <div className="gloss" style={{ marginTop: 13, border: '1px solid var(--line)' }}>
+                  <ul className="note" style={{ margin: 0, paddingLeft: 16, gridColumn: '1 / -1', listStyle: 'disc' }}>
                     <li><strong>Teammate History:</strong> Penalizes units that have played together frequently</li>
                     <li><strong>Avg Difference:</strong> Minimizes the average player count difference between teams</li>
                     <li><strong>Regiment Count:</strong> Favors equal regiment counts per team (e.g., 8v8 over 11v5)</li>
@@ -4944,17 +5435,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
 
               {/* Division and Map Bias Management Buttons */}
-              <div className="mt-6 flex gap-4">
+              <div className="ctl" style={{ marginTop: 18, border: '1px solid var(--line)' }}>
                 <button
-                  onClick={() => setShowDivisionModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                  onClick={() => goScreen('divisions')}
+                  className="gh live"
                 >
                   <Users className="w-4 h-4" />
                   Manage Divisions
                 </button>
                 <button
                   onClick={() => setShowMapBiasModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 border border-border-default hover:bg-bg-inset rounded-lg transition"
+                  className="gh"
                 >
                   <Map className="w-4 h-4" />
                   Map History
@@ -4963,1722 +5454,186 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-            {/* Left Column - Weeks */}
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Calendar className="w-6 h-6" />
-                  Weeks ({weeks.length})
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => toggleEnlarge('weeks')}
-                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    title="Enlarge View"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={addWeek}
-                    className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition"
-                    title="Add Week"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
-                {weeks.map((week) => (
-                  <div
-                    key={week.id}
-                    className={`p-4 rounded-lg transition cursor-pointer ${
-                      selectedWeek?.id === week.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-bg-inset hover:bg-border-subtle'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      {editingWeek === week.id ? (
-                        <input
-                          type="text"
-                          defaultValue={week.name}
-                          onBlur={(e) => renameWeek(week.id, e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              renameWeek(week.id, e.target.value);
-                            }
-                          }}
-                          className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          onClick={() => setSelectedWeek(week)}
-                          className="flex-1"
-                        >
-                          <div className="font-semibold">{week.name}</div>
-                          <div className="text-sm opacity-75">
-                            {week.teamA.length + week.teamB.length} units assigned
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingWeek(week.id);
-                          }}
-                          className="p-1 rounded-md hover:bg-bg-inset transition"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeWeek(week.id);
-                          }}
-                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Middle Column - Units */}
-            <div
-              className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm"
-              onDragOver={handleMainDragOver}
-              onDrop={handleMainDropToUnassigned}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Users className="w-6 h-6" />
-                  {selectedWeek ? `Available Units (${getAvailableUnitsForWeek().length})` : `Units (${units.length})`}
-                </h2>
-                <button
-                  onClick={() => toggleEnlarge('units')}
-                  className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                  title="Enlarge View"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="mb-4 flex gap-2">
-                <input
-                  type="text"
-                  value={newUnitName}
-                  onChange={(e) => setNewUnitName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addUnit()}
-                  placeholder="Unit name..."
-                  className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                />
-                <button
-                  onClick={addUnit}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-              {selectedWeek && getAvailableUnitsForWeek().length > 0 && (
-                <div className="mb-2 text-xs text-text-muted bg-bg-inset rounded-md p-2">
-                  💡 Drag units to teams or use A/B buttons
-                </div>
-              )}
-              <div className="space-y-2 max-h-48 sm:max-h-72 overflow-y-auto">
-                {(selectedWeek ? getAvailableUnitsForWeek() : units).map((unit) => {
-                  const isNonToken = nonTokenUnits.includes(unit);
-                  return (
-                    <div
-                      key={unit}
-                      draggable={selectedWeek ? true : false}
-                      onDragStart={() => selectedWeek && handleMainDragStart(unit, null)}
-                      className={`flex justify-between items-center p-3 bg-bg-inset rounded-md ${
-                        selectedWeek ? 'cursor-move hover:bg-border-subtle' : ''
-                      } transition`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleNonTokenStatus(unit)}
-                          className={`px-2 py-1 rounded text-xs font-bold transition ${
-                            isNonToken
-                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                              : 'bg-bg-card hover:bg-border-subtle text-text-muted'
-                          }`}
-                          title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
-                        >
-                          {isNonToken ? '*' : '○'}
-                        </button>
-                        <span className={`font-medium ${isNonToken ? 'text-indigo-400' : ''}`}>
-                          {unit}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        {selectedWeek && (
-                          <>
-                            <button
-                              onClick={() => moveUnitToTeam(unit, 'A')}
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
-                              title={`Add to ${teamNames.A}`}
-                            >
-                              → A
-                            </button>
-                            <button
-                              onClick={() => moveUnitToTeam(unit, 'B')}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
-                              title={`Add to ${teamNames.B}`}
-                            >
-                              → B
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => renameUnit(unit)}
-                          className="p-1 rounded-md hover:bg-bg-inset text-text-secondary transition"
-                          title="Rename unit (updates everywhere in the event)"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => removeUnit(unit)}
-                          className="p-1 rounded-md hover:bg-red-500/20 text-red-500 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-             </div>
-            </div>
-
-            {/* Right Column - Standings */}
-            <div className="bg-bg-card border border-border-default rounded-lg p-4 shadow-sm sm:col-span-2 lg:col-span-1">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Award className="w-6 h-6" />
-                  Standings
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => toggleEnlarge('standings')}
-                    className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    title="Enlarge View"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setRankByElo(!rankByElo)}
-                    className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
-                    title={rankByElo ? "Rank by Points" : "Rank by Elo"}
-                  >
-                    <TrendingUp className="w-3 h-3" />
-                    {rankByElo ? "Elo" : "Points"}
-                  </button>
-                  {divisions && divisions.length > 0 && (
-                    <button
-                      onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                      className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
-                      title={showGroupedStandings ? "Show All" : "Group by Division"}
-                    >
-                      {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                      {showGroupedStandings ? "Grouped" : "All"}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
-                {showGroupedStandings && divisions && divisions.length > 0 ? (
-                  // Grouped view by division
-                  getGroupedStandings().map((group) => (
-                    <div key={group.name} className="mb-4">
-                      <h3 className="text-sm font-bold text-text-secondary mb-2 px-2 flex items-center gap-2">
-                        <Shield className="w-4 h-4" />
-                        {group.name}
-                      </h3>
-                      <div className="space-y-2">
-                        {group.units.map((stat) => {
-                          const isNonToken = nonTokenUnits.includes(stat.unit);
-                          return (
-                            <div
-                              key={stat.unit}
-                              className="bg-bg-inset rounded-md p-3"
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-indigo-400 font-bold text-lg">
-                                    #{stat.divisionRank || stat.currentRank}
-                                  </span>
-                                {stat.rankDelta !== null && stat.rankDelta !== undefined && (
-                                  <span className={`text-xs font-semibold ${
-                                    stat.rankDelta > 0 ? 'text-green-400' :
-                                    stat.rankDelta < 0 ? 'text-red-400' :
-                                    'text-text-secondary'
-                                  }`}>
-                                    {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
-                                     stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
-                                     '−'}
-                                  </span>
-                                )}
-                                <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
-                                  {isNonToken ? '*' : ''}{stat.unit}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1 text-xs">
-                                  {stat.eloDelta > 0 ? (
-                                    <TrendingUp className="w-3 h-3 text-blue-400" />
-                                  ) : stat.eloDelta < 0 ? (
-                                    <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
-                                  ) : (
-                                    <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
-                                  )}
-                                  <span className="text-indigo-400 font-semibold">
-                                    {Math.round(stat.elo)}
-                                  </span>
-                                  {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
-                                    <span className={`ml-1 ${
-                                      stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
-                                    }`}>
-                                      ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    const current = manualAdjustments[stat.unit] || 0;
-                                    const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
-                                    if (adjustment !== null) {
-                                      const newAdj = parseInt(adjustment) || 0;
-                                      setManualAdjustments({
-                                        ...manualAdjustments,
-                                        [stat.unit]: newAdj
-                                      });
-                                    }
-                                  }}
-                                  className="p-1 hover:bg-bg-inset rounded transition"
-                                  title="Adjust points"
-                                >
-                                  <Edit2 className="w-3 h-3 text-text-secondary" />
-                                </button>
-                                <span className="text-green-400 font-bold text-xl">
-                                  {stat.points}
-                                </span>
-                                {stat.pointsDelta !== 0 && (
-                                  <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                              <div>L-Wins: {stat.leadWins}</div>
-                              <div>L-Loss: {stat.leadLosses}</div>
-                              <div>A-Wins: {stat.assistWins}</div>
-                              <div>A-Loss: {stat.assistLosses}</div>
-                              <div className="col-span-2 text-indigo-400">
-                                Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
-                              </div>
-                            </div>
-                            {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                              <div className="mt-1 text-xs text-indigo-400">
-                                Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
-                              </div>
-                            )}
-                          </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  // Ungrouped view - all units with delta indicators
-                  getStandingsWithChanges().map((stat, index) => {
-                    const isNonToken = nonTokenUnits.includes(stat.unit);
-                    return (
-                      <div
-                        key={stat.unit}
-                        className="bg-bg-inset rounded-md p-3"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-indigo-400 font-bold text-lg">
-                              #{index + 1}
-                            </span>
-                          {stat.rankDelta !== null && stat.rankDelta !== undefined && (
-                            <span className={`text-xs font-semibold ${
-                              stat.rankDelta > 0 ? 'text-green-400' :
-                              stat.rankDelta < 0 ? 'text-red-400' :
-                              'text-text-secondary'
-                            }`}>
-                              {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
-                               stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
-                               '−'}
-                            </span>
-                          )}
-                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : ''}`}>
-                            {isNonToken ? '*' : ''}{stat.unit}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 text-xs">
-                            {stat.eloDelta > 0 ? (
-                              <TrendingUp className="w-3 h-3 text-blue-400" />
-                            ) : stat.eloDelta < 0 ? (
-                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
-                            ) : (
-                              <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
-                            )}
-                            <span className="text-indigo-400 font-semibold">
-                              {Math.round(stat.elo)}
-                            </span>
-                            {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
-                              <span className={`ml-1 ${
-                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
-                              }`}>
-                                ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              const current = manualAdjustments[stat.unit] || 0;
-                              const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
-                              if (adjustment !== null) {
-                                const newAdj = parseInt(adjustment) || 0;
-                                setManualAdjustments({
-                                  ...manualAdjustments,
-                                  [stat.unit]: newAdj
-                                });
-                              }
-                            }}
-                            className="p-1 hover:bg-bg-inset rounded transition"
-                            title="Adjust points"
-                          >
-                            <Edit2 className="w-3 h-3 text-text-secondary" />
-                          </button>
-                          <span className="text-green-400 font-bold text-xl">
-                            {stat.points}
-                          </span>
-                          {stat.pointsDelta !== 0 && (
-                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                        <div>L-Wins: {stat.leadWins}</div>
-                        <div>L-Loss: {stat.leadLosses}</div>
-                        <div>A-Wins: {stat.assistWins}</div>
-                        <div>A-Loss: {stat.assistLosses}</div>
-                        <div className="col-span-2 text-indigo-400">
-                          Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
-                        </div>
-                      </div>
-                      {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                        <div className="mt-1 text-xs text-indigo-400">
-                          Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
-                        </div>
-                      )}
-                    </div>
-                    );
-                  })
-               )}
-             </div>
-            </div>
-          </div>
-
-          {/* Week Details */}
-          {selectedWeek && (
-            <div className="mt-6 bg-bg-card border border-border-default rounded-lg p-4">
-              <h2 className="text-lg font-semibold mb-4">
-                {selectedWeek.name} - Team Rosters
-              </h2>
-              
-              {/* Team Balance Stats */}
-              {(() => {
-                const stats = calculateWeekTeamStats();
-                if (!stats) return null;
-                
-                return (
-                  <div className="mb-6 bg-bg-inset rounded-lg p-4">
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <Target className="w-5 h-5" />
-                      Team Balance Overview
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                        <div className="text-lg font-bold text-indigo-400">
-                          {stats.avgDiff.toFixed(1)}
-                        </div>
-                      </div>
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                        <div className="text-lg font-bold text-cyan-400">
-                          {stats.minDiff.toFixed(0)}
-                        </div>
-                      </div>
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                        <div className="text-lg font-bold text-purple-400">
-                          {stats.maxDiff.toFixed(0)}
-                        </div>
-                      </div>
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                        <div className="text-lg font-bold text-green-400">
-                          {stats.combinedAvgHistory.toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 mt-3">
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                        <div className="text-lg font-bold text-cyan-400">
-                          {stats.totalMin}
-                        </div>
-                      </div>
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                        <div className="text-lg font-bold text-purple-400">
-                          {stats.totalMax}
-                        </div>
-                      </div>
-                      <div className="bg-bg-inset rounded p-3">
-                        <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                        <div className="text-lg font-bold text-indigo-400">
-                          {stats.totalAvg.toFixed(1)}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Win Probability Bars */}
-                    {(stats.round1Probability || stats.round2Probability) && (
-                      <div className="mt-4 space-y-3">
-                        <h4 className="text-sm font-semibold flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" />
-                          Win Probability
-                        </h4>
-                        {[
-                          { label: 'Round 1', prob: stats.round1Probability, map: selectedWeek.round1Map },
-                          { label: 'Round 2', prob: stats.round2Probability, map: selectedWeek.round2Map }
-                        ].map(({ label, prob, map }) => {
-                          if (!prob) return null;
-                          return (
-                            <div key={label} className="bg-bg-inset rounded p-3">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
-                                <div className="flex gap-3 text-xs">
-                                  {prob.factors.elo && (
-                                    <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
-                                  )}
-                                  {prob.factors.globalMap && (
-                                    <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
-                                  )}
-                                  {prob.factors.unitMap && (
-                                    <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
-                                  <div
-                                    className="h-full transition-all duration-300"
-                                    style={{
-                                      width: `${prob.teamAProb}%`,
-                                      background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
-                                    }}
-                                  />
-                                  <div
-                                    className="h-full transition-all duration-300"
-                                    style={{
-                                      width: `${prob.teamBProb}%`,
-                                      background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      {/* Team A Stats */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold text-blue-400 mb-2">
-                          {teamNames.A} ({stats.teamA.length} units)
-                        </h4>
-                        <div className="text-text-secondary text-sm space-y-1">
-                          <p>Players: {stats.minA}-{stats.maxA} (avg: {stats.avgA.toFixed(1)})</p>
-                          <p className="text-xs">
-                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
-                          </p>
-                        </div>
-                      </div>
-                      {/* Team B Stats */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold text-red-400 mb-2">
-                          {teamNames.B} ({stats.teamB.length} units)
-                        </h4>
-                        <div className="text-text-secondary text-sm space-y-1">
-                          <p>Players: {stats.minB}-{stats.maxB} (avg: {stats.avgB.toFixed(1)})</p>
-                          <p className="text-xs">
-                            Avg Teammate History: <span className="text-cyan-400 font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {balancerSettings.divisionOppositionWeight > 0 && (() => {
-                      const matchups = getDivisionMatchups(stats.teamA, stats.teamB);
-                      if (matchups.length === 0) return null;
-                      return (
-                        <div className="mt-3 bg-bg-inset rounded p-3">
-                          <div className="text-xs text-text-secondary mb-2">
-                            Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
-                          </div>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
-                            {matchups.map((m, i) => (
-                              <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                <span className="text-blue-400">{m.unitA}</span>
-                                <span className="text-text-secondary">vs</span>
-                                <span className="text-red-400">{m.unitB}</span>
-                                <span className="text-indigo-400 ml-1">({m.division})</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    <p className="text-xs text-text-secondary mt-3 text-center">
-                      💡 Lower teammate history = better variety • Counts rounds played together before the current week.
-                    </p>
-                  </div>
-                );
-              })()}
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* Team A */}
-                <div
-                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
-                  onDragOver={handleMainDragOver}
-                  onDrop={() => handleMainDrop('A')}
-                >
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={teamNames.A}
-                      onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-                  {selectedWeek.teamA.length === 0 && (
-                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
-                      Drop units here or use → A button
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {selectedWeek.teamA.map((unit) => {
-                      // Calculate Elo and TII up to the week BEFORE this one
-                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                      const previousWeekIdx = currentWeekIdx - 1;
-                      
-                      // Get Elo from previous week (or initial if first week)
-                      const { eloRatings } = previousWeekIdx >= 0
-                        ? calculateEloRatings(previousWeekIdx)
-                        : { eloRatings: {} };
-                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
-                      
-                      // Get TII from previous week (or 0 if first week)
-                      const { impactStats } = previousWeekIdx >= 0
-                        ? calculateTeammateImpact(previousWeekIdx)
-                        : { impactStats: {} };
-                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
-                      
-                      // Get min/max for this unit
-                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
-                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                      
-                      return (
-                        <div
-                          key={unit}
-                          draggable
-                          onDragStart={() => handleMainDragStart(unit, 'A')}
-                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
-                        >
-                          <div className="flex flex-col flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium">{unit}</span>
-                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
-                            </div>
-                            <span className="text-xs text-text-secondary">
-                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeUnitFromTeam(unit, 'A')}
-                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
-                    <div className="mt-3">
-                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
-                      <select
-                        value={selectedWeek.leadA || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">Select lead...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Team B */}
-                <div
-                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
-                  onDragOver={handleMainDragOver}
-                  onDrop={() => handleMainDrop('B')}
-                >
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={teamNames.B}
-                      onChange={(e) => setTeamNames({ ...teamNames, B: e.target.value })}
-                      className="w-full px-3 py-2 bg-bg-input text-center font-bold text-lg rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-                  {selectedWeek.teamB.length === 0 && (
-                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
-                      Drop units here or use → B button
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {selectedWeek.teamB.map((unit) => {
-                      // Calculate Elo and TII up to the week BEFORE this one
-                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                      const previousWeekIdx = currentWeekIdx - 1;
-                      
-                      // Get Elo from previous week (or initial if first week)
-                      const { eloRatings } = previousWeekIdx >= 0
-                        ? calculateEloRatings(previousWeekIdx)
-                        : { eloRatings: {} };
-                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
-                      
-                      // Get TII from previous week (or 0 if first week)
-                      const { impactStats } = previousWeekIdx >= 0
-                        ? calculateTeammateImpact(previousWeekIdx)
-                        : { impactStats: {} };
-                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
-                      
-                      // Get min/max for this unit
-                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
-                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                      
-                      return (
-                        <div
-                          key={unit}
-                          draggable
-                          onDragStart={() => handleMainDragStart(unit, 'B')}
-                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
-                        >
-                          <div className="flex flex-col flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium">{unit}</span>
-                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
-                            </div>
-                            <span className="text-xs text-text-secondary">
-                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeUnitFromTeam(unit, 'B')}
-                            className="p-1 hover:bg-red-500/20 text-red-500 rounded transition ml-2"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
-                    <div className="mt-3">
-                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
-                      <select
-                        value={selectedWeek.leadB || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">Select lead...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Playoffs Toggle */}
-              <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isPlayoffs || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isPlayoffs: e.target.checked,
-                      ...(e.target.checked && { isSingleRoundLeads: false, isFunRound: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Star className="w-4 h-4" />
-                  <span className="font-semibold">Playoffs Week</span>
-                </label>
-              </div>
-
-              {/* Single Round Leads Toggle */}
-              <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isSingleRoundLeads || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isSingleRoundLeads: e.target.checked,
-                      ...(e.target.checked && { isPlayoffs: false, isFunRound: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Star className="w-4 h-4" />
-                  <span className="font-semibold">Single Round Leads</span>
-                </label>
-              </div>
-
-              {/* Fun Round Toggle */}
-              <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isFunRound || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isFunRound: e.target.checked,
-                      ...(e.target.checked && { isPlayoffs: false, isSingleRoundLeads: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Swords className="w-4 h-4" />
-                  <span className="font-semibold">Fun Round</span>
-                  <span className="text-xs text-text-secondary font-normal">— no points, no map cooldown, no Elo</span>
-                </label>
-              </div>
-
-              {/* Playoffs Lead Selection */}
-              {selectedWeek.isPlayoffs && (
-                <div className="mb-6 bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-bold mb-3">Playoff Round Leads</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Single Round Leads Lead Selection */}
-              {selectedWeek.isSingleRoundLeads && (
-                <div className="mb-6 bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-bold mb-3">Round Leads</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Round Results with Maps */}
-              {(() => {
-                const selectedWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                const cooldownMaps = getMapsOnCooldown(selectedWeekIdx);
-                return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* Round 1 */}
-                <div className="bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                    <Target className="w-4 h-4" />
-                    Round 1
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Map</label>
-                      <select
-                        value={selectedWeek.round1Map || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round1Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select map...</option>
-                        {ALL_MAPS.map((map) => (
-                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
-                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedWeek.round1Flipped || false}
-                          onChange={(e) => updateWeek(selectedWeek.id, { round1Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-border-default bg-bg-card"
-                        />
-                        <span className="text-sm">Flipped</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
-                      <select
-                        value={selectedWeek.round1Draw ? 'draw' : (selectedWeek.round1Winner || '')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateWeek(selectedWeek.id, v === 'draw'
-                            ? { round1Winner: null, round1Draw: true }
-                            : { round1Winner: v || null, round1Draw: false });
-                        }}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">No winner</option>
-                        <option value="A">{teamNames.A}</option>
-                        <option value="B">{teamNames.B}</option>
-                        {(mapMode(selectedWeek.round1Map) === 'conquest' || selectedWeek.round1Draw) && (
-                          <option value="draw">Draw</option>
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r1CasualtiesA || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(1, 'A')}
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r1CasualtiesB || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(1, 'B')}
-                    </div>
-                    {/* Round 1 Balance Swaps */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
-                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
-                          {[
-                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
-                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
-                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
-                            const swaps = selectedWeek.roundSwaps?.r1 || [];
-                            const isSwapped = swaps.includes(unit);
-                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
-                            return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isSwapped}
-                                  onChange={() => {
-                                    const current = selectedWeek.roundSwaps?.r1 || [];
-                                    const updated = isSwapped
-                                      ? current.filter(u => u !== unit)
-                                      : [...current, unit];
-                                    updateWeek(selectedWeek.id, {
-                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: updated }
-                                    });
-                                  }}
-                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
-                                />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
-                                  {unit}
-                                </span>
-                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
-                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {/* Round 1 Company Balancer */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r1')}
-                  </div>
-                </div>
-
-                {/* Round 2 */}
-                <div className="bg-bg-inset rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                    <Target className="w-4 h-4" />
-                    Round 2
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Map</label>
-                      <select
-                        value={selectedWeek.round2Map || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round2Map: e.target.value || null })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                      >
-                        <option value="">Select map...</option>
-                        {ALL_MAPS.map((map) => (
-                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
-                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedWeek.round2Flipped || false}
-                          onChange={(e) => updateWeek(selectedWeek.id, { round2Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-border-default bg-bg-card"
-                        />
-                        <span className="text-sm">Flipped</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
-                      <select
-                        value={selectedWeek.round2Draw ? 'draw' : (selectedWeek.round2Winner || '')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateWeek(selectedWeek.id, v === 'draw'
-                            ? { round2Winner: null, round2Draw: true }
-                            : { round2Winner: v || null, round2Draw: false });
-                        }}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">No winner</option>
-                        <option value="A">{teamNames.A}</option>
-                        <option value="B">{teamNames.B}</option>
-                        {(mapMode(selectedWeek.round2Map) === 'conquest' || selectedWeek.round2Draw) && (
-                          <option value="draw">Draw</option>
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r2CasualtiesA || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(2, 'A')}
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r2CasualtiesB || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(2, 'B')}
-                    </div>
-                    {/* Round 2 Balance Swaps */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
-                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
-                          {[
-                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
-                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
-                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
-                            const swaps = selectedWeek.roundSwaps?.r2 || [];
-                            const isSwapped = swaps.includes(unit);
-                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
-                            return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isSwapped}
-                                  onChange={() => {
-                                    const current = selectedWeek.roundSwaps?.r2 || [];
-                                    const updated = isSwapped
-                                      ? current.filter(u => u !== unit)
-                                      : [...current, unit];
-                                    updateWeek(selectedWeek.id, {
-                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: updated }
-                                    });
-                                  }}
-                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
-                                />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
-                                  {unit}
-                                </span>
-                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
-                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {/* Round 2 Company Balancer */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r2')}
-                  </div>
-                </div>
-              </div>
-                );
-              })()}
-
-              {/* Action Buttons */}
-              <div className="mt-4 space-y-2">
-                <button
-                  onClick={openBalancerModal}
-                  disabled={!selectedWeek}
-                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
-                    selectedWeek
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                      : 'bg-bg-inset text-text-muted cursor-not-allowed'
-                  }`}
-                >
-                  <Target className="w-5 h-5" />
-                  <span className="font-semibold">Team Balancer</span>
-                </button>
-                <button
-                  onClick={openCasualtyModal}
-                  disabled={!selectedWeek}
-                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
-                    selectedWeek
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-bg-inset text-text-secondary cursor-not-allowed'
-                  }`}
-                >
-                  <Flame className="w-5 h-5" />
-                  <span className="font-semibold">Input Casualties</span>
-                </button>
-              </div>
-            </div>
+          {/* Overview, Standings and Schedule, built to the prototype's spec.
+              The three-column card grid this replaces was the old dashboard;
+              the season reads as a glance, a table and a fixture list now. */}
+          {screen === 'dash' && (
+            <SeasonOverview
+              eventName={activeEvent.name}
+              seasonName={activeSeason.name}
+              kpis={seasonKpis}
+              standings={standingRows}
+              nights={nightRows}
+              pointSystem={pointSystem}
+              onOpenUnit={() => goScreen('stats-regiments')}
+              onOpenNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('week'); }}
+            />
           )}
-          </>)}
 
-          {/* Balancer Modal */}
-          {showBalancerModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Target className="w-6 h-6" />
-                      Team Balancer - {selectedWeek.name}
-                    </h2>
-                    <button
-                      onClick={closeBalancerModal}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {screen === 'standings' && (
+            <StandingsScreen
+              standings={standingRows}
+              divisions={divisions}
+              onOpenUnit={() => goScreen('stats-regiments')}
+            />
+          )}
 
-                  {!balancerResults || balancerResults.length === 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Left: Available Units */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold mb-3">Available Units Pool</h3>
-                        <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
-                          {(() => {
-                            const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
-                            const available = units.filter(u => !assignedUnits.has(u));
-                            return available.length > 0 ? (
-                              <div className="space-y-1">
-                                {available.map(unit => (
-                                  <div key={unit} className="text-sm py-1">
-                                    {unit}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-text-secondary text-sm">All units assigned</p>
-                            );
-                          })()}
-                        </div>
-                      </div>
+          {screen === 'schedule' && (
+            <ScheduleScreen
+              nights={nightRows}
+              onOpenNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('week'); }}
+              onEditNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('night'); }}
+              onNewNight={() => { addWeek(); goScreen('night'); }}
+              onGenerate={() => goScreen('simulator')}
+            />
+          )}
 
-                      {/* Right: Constraints */}
-                      <div className="space-y-4">
-                        {/* Max Player Difference */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <label className="block text-sm text-text-secondary mb-2">Max Player Difference</label>
-                          <input
-                            type="number"
-                            value={balancerMaxDiff}
-                            onChange={(e) => setBalancerMaxDiff(parseInt(e.target.value) || 1)}
-                            min="0"
-                            max="100"
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                          />
-                        </div>
 
-                        {/* Balance Options Count */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <label className="block text-sm text-text-secondary mb-2">Balance Options</label>
-                          <input
-                            type="number"
-                            value={balancerSettings.balanceOptionCount}
-                            onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
-                            min="1"
-                            max="10"
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                          />
-                          <p className="text-xs text-text-secondary mt-1">How many balance options to compare (1-10)</p>
-                        </div>
+          {/* Night builder, to the prototype's V.night: what kind of night it
+              is and what that costs, who is on each side and who leads, then
+              what happened in each round. */}
+          {screen === 'night' && (
+            <NightBuilder
+              weeks={weeks.map(w => ({ id: w.id, name: w.name }))}
+              week={selectedWeek && {
+                id: selectedWeek.id,
+                name: selectedWeek.name,
+                teamA: selectedWeek.teamA || [],
+                teamB: selectedWeek.teamB || [],
+                leadA: selectedWeek.leadA || null,
+                leadB: selectedWeek.leadB || null,
+                leadA_r1: selectedWeek.leadA_r1 || null,
+                leadB_r1: selectedWeek.leadB_r1 || null,
+                leadA_r2: selectedWeek.leadA_r2 || null,
+                leadB_r2: selectedWeek.leadB_r2 || null,
+                rounds: [1, 2].map(r => ({
+                  round: r,
+                  map: selectedWeek[`round${r}Map`] || null,
+                  winner: selectedWeek[`round${r}Winner`] || null,
+                  flipped: !!selectedWeek[`round${r}Flipped`],
+                  casualtiesA: selectedWeek[`r${r}CasualtiesA`] ?? null,
+                  casualtiesB: selectedWeek[`r${r}CasualtiesB`] ?? null,
+                  swaps: selectedWeek.roundSwaps?.[`r${r}`] || [],
+                })),
+              }}
+              type={nightBuilderType}
+              registry={units}
+              headcount={unitHeadcounts}
+              counts={selectedWeek?.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+                ? selectedWeek.unitPlayerCounts : unitPlayerCounts}
+              elo={Object.fromEntries(eloLadderRows.map(r => [r.unit, r.elo]))}
+              balancePoints={pointSystem.balancePoints || 0}
+              balancePointsStyle={pointSystem.balancePointsStyle || 'perNight'}
+              tokenUnits={tokenUnits}
+              maps={ALL_MAPS}
+              mapCooldown={mapCooldown}
+              onPickWeek={(id) => setSelectedWeek(weeks.find(w => String(w.id) === id) || null)}
+              onType={(t) => updateWeek(selectedWeek.id, ROUND_TYPE_FLAGS[t])}
+              onRename={(name) => updateWeek(selectedWeek.id, { name })}
+              onNewNight={() => addWeek()}
+              onDuplicate={duplicateSelectedWeek}
+              onMoveUnit={(unit, to) => moveUnitToTeam(unit, to)}
+              onClearSides={() => updateWeek(selectedWeek.id, { teamA: [], teamB: [] })}
+              onLead={(side, round, unit) => updateWeek(selectedWeek.id,
+                round === 0 ? { [`lead${side}`]: unit } : { [`lead${side}_r${round}`]: unit })}
+              onRound={(r, patch) => {
+                const u = {};
+                if ('map' in patch) u[`round${r}Map`] = patch.map;
+                if ('winner' in patch) u[`round${r}Winner`] = patch.winner;
+                if ('flipped' in patch) u[`round${r}Flipped`] = patch.flipped;
+                if ('casualtiesA' in patch) u[`r${r}CasualtiesA`] = patch.casualtiesA ?? 0;
+                if ('casualtiesB' in patch) u[`r${r}CasualtiesB`] = patch.casualtiesB ?? 0;
+                updateWeek(selectedWeek.id, u);
+              }}
+              onSwap={(r, unit, on) => {
+                const cur = selectedWeek.roundSwaps?.[`r${r}`] || [];
+                updateWeek(selectedWeek.id, {
+                  roundSwaps: {
+                    ...(selectedWeek.roundSwaps || { r1: [], r2: [] }),
+                    [`r${r}`]: on ? [...cur, unit] : cur.filter(x => x !== unit),
+                  },
+                });
+              }}
+              onBalancer={openBalancerModal}
+            />
+          )}
 
-                        {/* Unit Player Counts */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-lg font-semibold">Unit Player Counts</h3>
-                            <button
-                              onClick={openCoordPasteModal}
-                              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition"
-                            >
-                              <FileText className="w-3 h-3" />
-                              Paste from Coord Sheet
-                            </button>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto space-y-2">
-                            {units.map(unit => (
-                              <div key={unit} className="grid grid-cols-3 gap-2 items-center">
-                                <span className="text-sm truncate" title={unit}>{unit}</span>
-                                <input
-                                  type="number"
-                                  placeholder="Min"
-                                  value={balancerUnitCounts[unit]?.min ?? 0}
-                                  onChange={(e) => setBalancerUnitCounts({
-                                    ...balancerUnitCounts,
-                                    [unit]: {
-                                      ...balancerUnitCounts[unit],
-                                      min: parseInt(e.target.value) || 0
-                                    }
-                                  })}
-                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                />
-                                <input
-                                  type="number"
-                                  placeholder="Max"
-                                  value={balancerUnitCounts[unit]?.max ?? 0}
-                                  onChange={(e) => setBalancerUnitCounts({
-                                    ...balancerUnitCounts,
-                                    [unit]: {
-                                      ...balancerUnitCounts[unit],
-                                      max: parseInt(e.target.value) || 0
-                                    }
-                                  })}
-                                  className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Opposing Units */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-lg font-semibold mb-3">Opposing Units</h3>
-                          <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
-                            {balancerOpposingPairs.map((pair, idx) => (
-                              <div key={idx} className="flex justify-between items-center bg-bg-inset rounded p-2">
-                                <span className="text-sm">{pair[0]} vs {pair[1]}</span>
-                                <button
-                                  onClick={() => setBalancerOpposingPairs(balancerOpposingPairs.filter((_, i) => i !== idx))}
-                                  className="p-1 hover:bg-red-600 rounded transition"
-                                >
-                                  <X className="w-3 h-3 text-white" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <select
-                              id="opposing-unit-1"
-                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                            >
-                              <option value="">Select first unit...</option>
-                              {units.map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                            <select
-                              id="opposing-unit-2"
-                              className="px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                            >
-                              <option value="">Select second unit...</option>
-                              {units.map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const select1 = document.getElementById('opposing-unit-1');
-                              const select2 = document.getElementById('opposing-unit-2');
-                              const unit1 = select1.value;
-                              const unit2 = select2.value;
-                              
-                              if (!unit1 || !unit2) {
-                                alert('Please select both units');
-                                return;
-                              }
-                              if (unit1 === unit2) {
-                                alert('Please select different units');
-                                return;
-                              }
-                              
-                              setBalancerOpposingPairs([...balancerOpposingPairs, [unit1, unit2]]);
-                              select1.value = '';
-                              select2.value = '';
-                            }}
-                            className="w-full mt-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                          >
-                            Add Opposing Pair
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (() => {
-                    const activeResult = balancerResults[selectedBalanceIndex];
-                    return (
-                    /* Balance Results */
-                    <div>
-                      {/* Option Tabs */}
-                      {balancerResults.length > 1 && (
-                        <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                          {balancerResults.map((opt, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => setSelectedBalanceIndex(idx)}
-                              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                                idx === selectedBalanceIndex
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-bg-inset text-text-secondary hover:bg-border-subtle'
-                              }`}
-                            >
-                              {idx === 0 ? (
-                                <>
-                                  <Star className="w-3.5 h-3.5" />
-                                  Best Balance
-                                </>
-                              ) : (
-                                `Option ${idx + 1}`
-                              )}
-                              <span className={`text-xs ${idx === selectedBalanceIndex ? 'text-white' : 'text-text-secondary'}`}>
-                                (Diff: {opt.score.toFixed(1)})
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="text-center mb-6">
-                        <h3 className="text-xl font-bold text-green-400 mb-2">
-                          {selectedBalanceIndex === 0 ? 'Best Balance Found!' : `Option ${selectedBalanceIndex + 1}`}
-                        </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                            <div className="text-lg font-bold text-indigo-400">
-                              {activeResult.score.toFixed(1)}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                            <div className="text-lg font-bold text-cyan-400">
-                              {Math.abs(activeResult.minA - activeResult.minB).toFixed(0)}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                            <div className="text-lg font-bold text-purple-400">
-                              {Math.abs(activeResult.maxA - activeResult.maxB).toFixed(0)}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                            <div className="text-lg font-bold text-green-400">
-                              {activeResult.combinedAvgHistory?.toFixed(2) || '0.00'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                            <div className="text-lg font-bold text-cyan-400">
-                              {activeResult.minA + activeResult.minB}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                            <div className="text-lg font-bold text-purple-400">
-                              {activeResult.maxA + activeResult.maxB}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                            <div className="text-lg font-bold text-indigo-400">
-                              {((activeResult.minA + activeResult.maxA + activeResult.minB + activeResult.maxB) / 2).toFixed(1)}
-                            </div>
-                          </div>
-                        </div>
-                        {balancerSettings.divisionOppositionWeight > 0 && (() => {
-                          const matchups = getDivisionMatchups(activeResult.teamA, activeResult.teamB);
-                          if (matchups.length === 0) return null;
-                          return (
-                            <div className="mt-3 max-w-4xl mx-auto bg-bg-inset rounded p-3">
-                              <div className="text-xs text-text-secondary mb-2">
-                                Division Matchups: <span className="text-indigo-400 font-bold text-sm">{matchups.length}</span>
-                              </div>
-                              <div className="space-y-1 max-h-32 overflow-y-auto">
-                                {matchups.map((m, i) => (
-                                  <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                    <span className="text-blue-400">{m.unitA}</span>
-                                    <span className="text-text-secondary">vs</span>
-                                    <span className="text-red-400">{m.unitB}</span>
-                                    <span className="text-indigo-400 ml-1">({m.division})</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        {/* Win Probability Bars */}
-                        {(activeResult.round1Probability || activeResult.round2Probability) && (
-                          <div className="mt-4 max-w-4xl mx-auto space-y-3">
-                            <h4 className="text-sm font-semibold text-text-secondary flex items-center justify-center gap-2">
-                              <TrendingUp className="w-4 h-4" />
-                              Win Probability
-                            </h4>
-                            {[
-                              { label: 'Round 1', prob: activeResult.round1Probability, map: selectedWeek?.round1Map },
-                              { label: 'Round 2', prob: activeResult.round2Probability, map: selectedWeek?.round2Map }
-                            ].map(({ label, prob, map }) => {
-                              if (!prob) return null;
-                              return (
-                                <div key={label} className="bg-bg-inset rounded p-3">
-                                  <div className="flex justify-between items-center mb-2">
-                                    <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
-                                    <div className="flex gap-3 text-xs">
-                                      {prob.factors.elo && (
-                                        <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
-                                      )}
-                                      {prob.factors.globalMap && (
-                                        <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
-                                      )}
-                                      {prob.factors.unitMap && (
-                                        <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-blue-400 w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                    <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
-                                      <div
-                                        className="h-full transition-all duration-300"
-                                        style={{
-                                          width: `${prob.teamAProb}%`,
-                                          background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
-                                        }}
-                                      />
-                                      <div
-                                        className="h-full transition-all duration-300"
-                                        style={{
-                                          width: `${prob.teamBProb}%`,
-                                          background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
-                                        }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-bold text-red-400 w-16">{prob.teamBProb}% {teamNames.B}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <p className="text-text-secondary text-sm mt-3">
-                          💡 Drag units between teams to adjust balance • Lower teammate history = better variety
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Team A Results */}
-                        <div
-                          className="bg-bg-inset rounded-lg p-4"
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop('A')}
-                        >
-                          <h4 className="text-lg font-semibold text-blue-400 mb-3">
-                            Team A ({activeResult.teamA.length} units)
-                          </h4>
-                          <div className="text-text-secondary text-sm mb-3 space-y-1">
-                            <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
-                            <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
-                            </p>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
-                            <div className="space-y-1">
-                              {activeResult.teamA.sort().map(unit => {
-                                const counts = balancerUnitCounts[unit];
-                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                                return (
-                                  <div
-                                    key={unit}
-                                    draggable
-                                    onDragStart={() => handleDragStart(unit, 'A')}
-                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-text-muted" />
-                                      {unit}
-                                    </div>
-                                    <span className="text-xs text-text-secondary">{minMax}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Team B Results */}
-                        <div
-                          className="bg-bg-inset rounded-lg p-4"
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop('B')}
-                        >
-                          <h4 className="text-lg font-semibold text-red-400 mb-3">
-                            Team B ({activeResult.teamB.length} units)
-                          </h4>
-                          <div className="text-text-secondary text-sm mb-3 space-y-1">
-                            <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
-                            <p className="text-xs">
-                              Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
-                            </p>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
-                            <div className="space-y-1">
-                              {activeResult.teamB.sort().map(unit => {
-                                const counts = balancerUnitCounts[unit];
-                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                                return (
-                                  <div
-                                    key={unit}
-                                    draggable
-                                    onDragStart={() => handleDragStart(unit, 'B')}
-                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-text-muted" />
-                                      {unit}
-                                    </div>
-                                    <span className="text-xs text-text-secondary">{minMax}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })()}
-
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-between items-center mt-6 pt-4 border-t border-border-default">
-                    <div className="text-text-secondary text-sm">
-                      {balancerStatus}
-                    </div>
-                    <div className="flex gap-2">
-                      {!balancerResults || balancerResults.length === 0 ? (
-                        <>
-                          <button
-                            onClick={closeBalancerModal}
-                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                          >
-                            Close
-                          </button>
-                          <button
-                            onClick={runBalancer}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                          >
-                            <Target className="w-4 h-4" />
-                            Balance!
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}
-                            className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                          >
-                            Back
-                          </button>
-                          <button
-                            onClick={applyBalancerResults}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                          >
-                            <Save className="w-4 h-4" />
-                            Apply to Week
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+          {/* Balancer, to the prototype's V.balancer: the pool, what must be
+              kept apart, the options, then the knobs that made them. */}
+          {screen === 'balancer' && (
+            selectedWeek ? (
+              <Balancer
+                view={{
+                  weekName: selectedWeek.name,
+                  roster: [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort(),
+                  sittingOut: balancerSatOut,
+                  headcount: unitHeadcounts,
+                  counts: balancerUnitCounts,
+                  pairs: balancerOpposingPairs,
+                  maxDiff: balancerMaxDiff,
+                  optionCount: balancerSettings.balanceOptionCount || 3,
+                  weights: {
+                    teammate: balancerSettings.teammateWeight,
+                    avgDiff: balancerSettings.avgDiffWeight,
+                    regimentCount: balancerSettings.regimentCountWeight,
+                    rangeSimilarity: balancerSettings.rangeSimilarityWeight,
+                    divisionOpposition: balancerSettings.divisionOppositionWeight,
+                    postSeasonSkill: balancerSettings.postSeasonSkillWeight || 0,
+                  },
+                  options: balancerResults || [],
+                  status: balancerStatus,
+                }}
+                onBack={() => goScreen('night')}
+                onToggleUnit={(u) => setBalancerSatOut(prev =>
+                  prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u])}
+                onPair={(idx, slot, unit) => setBalancerOpposingPairs(prev =>
+                  prev.map((p, k) => k === idx ? (slot === 0 ? [unit, p[1]] : [p[0], unit]) : p))}
+                onAddPair={() => {
+                  const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort();
+                  if (roster.length >= 2) setBalancerOpposingPairs(prev => [...prev, [roster[0], roster[1]]]);
+                }}
+                onRemovePair={(idx) => setBalancerOpposingPairs(prev => prev.filter((_, k) => k !== idx))}
+                onMaxDiff={setBalancerMaxDiff}
+                onOptionCount={(n) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, n)) })}
+                onWeight={(key, n) => setBalancerSettings({ ...balancerSettings, [BALANCER_WEIGHT_FIELD[key]]: n })}
+                onResetWeights={() => setBalancerSettings({ ...balancerSettings, ...getDefaultBalancerSettings() })}
+                onCount={(unit, which, n) => commitBalancerCounts({
+                  ...balancerUnitCounts,
+                  [unit]: { ...balancerUnitCounts[unit], [which]: n },
+                })}
+                onRun={runBalancer}
+                onApply={(option) => applyBalancerOption(option)}
+                onPasteCounts={openCoordPasteModal}
+                onPullCounts={pullLastNightCounts}
+                onSplitter={() => goScreen('splitter')}
+              />
+            ) : (
+              <div className="panel">
+                <header className="ph"><h2>Balancer</h2><span className="rule" /></header>
+                <div className="pb">
+                  <p className="note">Pick a night on the Schedule screen first — the balancer splits that night's units.</p>
                 </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Coord Sheet Paste Modal */}
           {showCoordPasteModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold">Paste from Coord Sheet</h2>
+                    <h2 className="cap">Paste from Coord Sheet</h2>
                     <button
                       onClick={() => { setShowCoordPasteModal(false); setCoordParsedRows([]); setCoordPasteText(''); }}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
                   {coordParsedRows.length === 0 ? (
-                    <div className="space-y-3">
+                    <div >
                       <p className="text-sm text-text-secondary">
                         Paste rows from your Google Sheets coord sheet. Expected format: tab-separated columns with regiment name, min, (optional column), max.
                       </p>
@@ -6687,24 +5642,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         onChange={(e) => setCoordPasteText(e.target.value)}
                         placeholder={"CQB (T)\t14\t\t16\nJD (T)\t35\t\t40\n..."}
                         rows={10}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm"
+                        className="fld-i"
                       />
                       <button
                         onClick={parseCoordPaste}
                         disabled={!coordPasteText.trim()}
-                        className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-bg-inset disabled:cursor-not-allowed text-white text-sm rounded-md transition font-semibold"
+                        className="gh live"
                       >
                         Parse
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div >
                       <p className="text-sm text-text-secondary mb-2">
                         Review matched regiments below. Adjust matches or choose to create / ignore unmatched ones.
                       </p>
-                      <div className="max-h-[50vh] overflow-y-auto space-y-2">
+                      <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                         {coordParsedRows.map((row, idx) => (
-                          <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
+                          <div key={idx} className={`panel pb ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
                             <div className="grid grid-cols-12 gap-2 items-center">
                               {/* Parsed name */}
                               <div className="col-span-3">
@@ -6720,7 +5675,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], min: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
+                                  className="fld-i" style={{ width: 56 }}
                                 />
                                 <input
                                   type="number"
@@ -6730,7 +5685,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], max: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
+                                  className="fld-i" style={{ width: 56 }}
                                 />
                               </div>
                               {/* Arrow */}
@@ -6751,7 +5706,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     }
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-full px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 >
                                   <optgroup label="Registered Units">
                                     {units.map(u => (
@@ -6777,7 +5732,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], newUnitName: e.target.value };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 />
                                 <label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer">
                                   <input
@@ -6788,7 +5743,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       updated[idx] = { ...updated[idx], newUnitIsToken: e.target.checked };
                                       setCoordParsedRows(updated);
                                     }}
-                                    className="rounded"
+                                    
                                   />
                                   Token unit
                                 </label>
@@ -6800,13 +5755,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="flex gap-2 mt-4">
                         <button
                           onClick={() => { setCoordParsedRows([]); }}
-                          className="flex-1 px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                          className="gh"
                         >
                           Back
                         </button>
                         <button
                           onClick={applyCoordPaste}
-                          className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition font-semibold"
+                          className="gh live"
                         >
                           <span className="flex items-center justify-center gap-2">
                             <CheckCircle2 className="w-4 h-4" />
@@ -6823,47 +5778,47 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Casualty Input Modal */}
           {showCasualtyModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal wide">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       <Flame className="w-6 h-6" />
                       Assign Player Stats - {selectedWeek.name}
                     </h2>
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
-                  <div className="text-xs text-text-secondary mb-4 bg-bg-inset rounded p-3 leading-relaxed">
+                  <div className="text-xs text-text-secondary mb-4 panel pb leading-relaxed">
                     Assign each token the scoreboard regiment(s) that played as it — for units that used a different in-game tag this event, or that fielded several regiments under one token. Stats are pulled from imported scoreboards and apply across every round we have data for.
                     {' '}These do <span className="font-semibold text-text-primary">not</span> change the round casualty totals (those stay on the per-side casualty inputs, which include untagged losses).
                     {sbStored.length === 0 && (
-                      <span className="block mt-1 text-amber-400">No scoreboards imported for this event yet — import them in the Player Stats view first.</span>
+                      <span className="block mt-1 c-warn">No scoreboards imported for this event yet — import them in the Player Stats view first.</span>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="cols">
                     {[teamNames.A, teamNames.B].map((teamName, teamIdx) => {
                       const teamId = teamIdx === 0 ? 'A' : 'B';
                       const rosterUnits = selectedWeek[`team${teamId}`] || [];
 
                       return (
-                        <div key={teamName} className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-lg font-semibold mb-4">{teamName} Units</h3>
-                          <div className="space-y-2">
+                        <div key={teamName} className="panel pb">
+                          <h3 className="cap">{teamName} Units</h3>
+                          <div >
                             {rosterUnits.length === 0 && (
-                              <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
+                              <p className="note">No units assigned</p>
                             )}
                             {rosterUnits.map(unit => {
                               const regs = tokenRegiments[unit] || [];
                               const snap = deriveTokenSnaps(eventRegBreakdown, { [unit]: regs })[unit];
                               return (
-                                <div key={unit} className="flex items-center gap-2 bg-bg-card rounded p-2">
+                                <div key={unit} className="flex items-center gap-2 panel pb">
                                   <div className="flex-1 min-w-0">
                                     <div className="text-sm font-medium truncate" title={unit}>{unit}</div>
                                     <div className="text-xs text-text-secondary truncate">
@@ -6873,7 +5828,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   </div>
                                   <button
                                     onClick={() => openAssign(unit)}
-                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded transition whitespace-nowrap"
+                                    className="gh live"
                                   >
                                     Assign stats
                                   </button>
@@ -6890,7 +5845,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                     <button
                       onClick={() => setShowCasualtyModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                      className="gh"
                     >
                       Close
                     </button>
@@ -6902,14 +5857,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Assign-stats sub-modal: toggle scoreboard regiments for one token */}
           {assignToken && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={() => setAssignToken(null)}>
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4">
+            <div className="modal-scrim" onClick={() => setAssignToken(null)}>
+              <div className="modal narrow" onClick={(e) => e.stopPropagation()}>
+                <div className="pb">
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="font-semibold truncate">Assign stats → {assignToken}</h3>
-                    <button onClick={() => setAssignToken(null)} className="p-1 rounded hover:bg-bg-inset"><X className="w-4 h-4 text-text-muted" /></button>
+                    <button onClick={() => setAssignToken(null)} className="ib"><X className="w-4 h-4 text-text-muted" /></button>
                   </div>
-                  <p className="text-xs text-text-secondary mb-3">
+                  <p className="note">
                     Toggle the scoreboard regiment(s) that played as <span className="font-semibold">{assignToken}</span>. Regiments already claimed by another token are locked.
                   </p>
 
@@ -6921,7 +5876,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <button
                             key={opt.id}
                             onClick={() => changeAssignScope(opt.id)}
-                            className={`px-2 py-1 rounded border transition ${assignScope === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-border-default text-text-secondary hover:bg-bg-inset'}`}
+                            className="chip"
+                          aria-pressed={assignScope === opt.id}
                           >
                             {opt.label}
                           </button>
@@ -6939,9 +5895,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const snap = deriveTokenSnaps(eventRegBreakdown, { [assignToken]: assignSel })[assignToken];
                     const kd = snap.deaths > 0 ? (snap.kills / snap.deaths).toFixed(2) : String(snap.kills);
                     return (
-                      <div className="text-xs bg-bg-inset rounded p-2 mb-3 flex flex-wrap gap-x-4 gap-y-1">
-                        <span className="text-green-400">{snap.kills}K</span>
-                        <span className="text-red-400">{snap.deaths}D</span>
+                      <div className="text-xs panel pb mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                        <span className="c-ok">{snap.kills}K</span>
+                        <span className="c-danger">{snap.deaths}D</span>
                         <span>K/D {kd}</span>
                         <span title={AVG_TD_LABEL}>×Td {formatAvgT(unitSnapAvgTd(snap))}</span>
                         <span title={AVG_TK_LABEL}>×Tk {formatAvgT(unitSnapAvgTk(snap))}</span>
@@ -6949,9 +5905,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     );
                   })()}
 
-                  <div className="space-y-1 max-h-[45vh] overflow-y-auto">
+                  <div style={{ maxHeight: '45vh', overflowY: 'auto' }}>
                     {availableRegiments.length === 0 && (
-                      <p className="text-text-secondary text-xs text-center py-3">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
+                      <p className="note">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
                     )}
                     {availableRegiments.map(reg => {
                       const owner = assignClaimedBy[reg];
@@ -6959,7 +5915,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <label
                           key={reg}
-                          className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${lockedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-inset cursor-pointer'}`}
+                          className={`row ${lockedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-inset cursor-pointer'}`}
                         >
                           <input type="checkbox" disabled={lockedByOther} checked={assignSel.includes(reg)} onChange={() => toggleAssignReg(reg)} />
                           <span className="flex-1 truncate">{reg}</span>
@@ -6971,7 +5927,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                   <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border-default">
                     <button onClick={() => setAssignToken(null)} className="px-3 py-1.5 border border-border-default hover:bg-bg-inset text-sm rounded">Cancel</button>
-                    <button onClick={saveAssign} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded flex items-center gap-1.5">
+                    <button onClick={saveAssign} className="gh live">
                       <Save className="w-4 h-4" /> Save
                     </button>
                   </div>
@@ -6981,1190 +5937,158 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {/* Statistics Modal */}
-          {showStatsModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowStatsModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <BarChart3 className="w-6 h-6" />
-                      Statistics — {activeEvent.name}
-                    </h2>
-                    <button
-                      onClick={() => setShowStatsModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
+          {/* Playoffs, to the prototype's V.playoffs: the bracket, who is
+              qualifying on the table as it sits, formats that fit the nights
+              left, and why the lengths are what they are. */}
+          {screen === 'playoffs' && (
+            <Playoffs
+              enabled={!!playoffConfig.enabled}
+              bracket={playoffBracketSlots}
+              standings={standingRows}
+              divisions={divisions}
+              qualifyPerDivision={playoffConfig.teamsPerDivision || 2}
+              nightsAvailable={weeks.filter(w => w.isPlayoffs).length || playoffNights}
+              formats={playoffFormatOptions}
+              onApplyFormat={(f) => f.plan && setPlayoffConfig({ ...f.plan.config })}
+              onSettings={() => goScreen('settings')}
+            />
+          )}
 
-                  {/* Tab toggle: per-season vs event-wide */}
-                  <div className="flex gap-1 mb-5 border-b border-border-default">
-                    <button
-                      onClick={() => setStatsTab('season')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'season'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Season — {activeSeason.name}
-                    </button>
-                    <button
-                      onClick={() => setStatsTab('event')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'event'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
-                    </button>
-                  </div>
-
-                  {statsTab === 'event' && (() => {
-                    // Event-wide aggregates: walk every season's rounds.
-                    const seasons = activeEvent.seasons;
-                    const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
-
-                    // Cross-season unit record (rounds-as-lead/assist won/lost) +
-                    // event-wide casualties (per side + per unit).
-                    const unitRecord = {};
-                    let usaCasTotal = 0, csaCasTotal = 0;
-                    let totalRoundsWithResult = 0;
-                    const ensure = (u) => unitRecord[u] ||= {
-                      rounds: 0, leadWins: 0, leadLosses: 0,
-                      assistWins: 0, assistLosses: 0,
-                      sweeps: 0, casualtiesTaken: 0,
-                    };
-
-                    for (const season of seasons) {
-                      for (const week of season.weeks || []) {
-                        const isPlayoffs = !!week.isPlayoffs;
-                        const isSingleRoundLeads = !!week.isSingleRoundLeads;
-                        const teamA = week.teamA || [];
-                        const teamB = week.teamB || [];
-
-                        // Sweep tally
-                        if (week.round1Winner && week.round1Winner === week.round2Winner) {
-                          const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
-                          sweepTeam.forEach(u => ensure(u).sweeps += 1);
-                        }
-
-                        for (const roundNum of [1, 2]) {
-                          const winner = week[`round${roundNum}Winner`];
-                          if (!winner) continue;
-                          totalRoundsWithResult += 1;
-
-                          // Effective rosters (per-round swaps)
-                          const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
-                          const eA = swaps.size === 0 ? teamA :
-                            teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
-                          const eB = swaps.size === 0 ? teamB :
-                            teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
-
-                          const winningTeam = winner === 'A' ? eA : eB;
-                          const losingTeam = winner === 'A' ? eB : eA;
-                          const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
-                          const leadW = week[`lead${winner}${leadKey}`];
-                          const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
-
-                          winningTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
-                          });
-                          losingTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
-                          });
-
-                          // Side-aware casualty bucket
-                          const flipped = !!week[`round${roundNum}Flipped`];
-                          const usaSide = flipped ? 'B' : 'A';
-                          const casA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casB = week[`r${roundNum}CasualtiesB`] || 0;
-                          if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
-                          else                 { usaCasTotal += casB; csaCasTotal += casA; }
-
-                          // Per-unit casualties (lost) from weeklyCasualties
-                          const wc = week.weeklyCasualties || {};
-                          for (const sideKey of Object.keys(wc)) {
-                            const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
-                            for (const [u, n] of Object.entries(byUnit)) {
-                              ensure(u).casualtiesTaken += Number(n) || 0;
-                            }
-                          }
-                        }
-                      }
-                    }
-
-                    const eventElo = calculateEloRatings();
-                    const ladder = Object.entries(unitRecord)
-                      .map(([unit, r]) => ({
-                        unit, ...r,
-                        wins: r.leadWins + r.assistWins,
-                        losses: r.leadLosses + r.assistLosses,
-                        winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
-                        elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
-                      }))
-                      .filter(r => r.rounds > 0)
-                      .sort((a, b) => b.elo - a.elo);
-
-                    const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
-
-                    return (
-                      <div className="space-y-4">
-                        {/* Event Overview */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Trophy className="w-5 h-5" />
-                            Overview
-                          </h3>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Seasons</div>
-                              <div className="text-2xl font-bold text-indigo-400">{seasons.length}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Weeks</div>
-                              <div className="text-2xl font-bold text-indigo-400">{totalWeeks}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
-                              <div className="text-2xl font-bold text-indigo-400">{totalRoundsWithResult}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Registry Units</div>
-                              <div className="text-2xl font-bold text-indigo-400">{Object.keys(activeEvent.unitRegistry).length}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Per-season cards — surfaces playoff status and the
-                           champion when playoffs occurred (based on the latest
-                           playoff week's result). */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Calendar className="w-5 h-5" />
-                            Per-Season Summary
-                          </h3>
-                          <div className="space-y-2">
-                            {seasons.map(season => {
-                              const seasonWeeks = season.weeks || [];
-                              const weekCount = seasonWeeks.length;
-                              let roundCount = 0;
-                              let playoffsScheduled = false;
-                              for (const w of seasonWeeks) {
-                                if (w.round1Winner || w.round1Draw) roundCount += 1;
-                                if (w.round2Winner || w.round2Draw) roundCount += 1;
-                                if (w.isPlayoffs) playoffsScheduled = true;
-                              }
-                              const rosterSize = (season.units || []).length;
-                              const isActive = season.id === activeSeason.id;
-                              const champion = seasonChampion(season);
-                              return (
-                                <button
-                                  key={season.id}
-                                  onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
-                                  className={`w-full text-left bg-bg-card rounded p-3 border transition ${
-                                    isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <div className="font-semibold flex items-center gap-2 flex-wrap">
-                                        {season.name}
-                                        {isActive && <span className="text-xs text-indigo-400">(active)</span>}
-                                        {playoffsScheduled && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                                            Playoffs
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-text-secondary mt-0.5">
-                                        {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
-                                      </div>
-                                      {champion && (
-                                        <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
-                                          <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
-                                          <span className="text-text-secondary">Champion:</span>
-                                          <span className="font-semibold text-text-primary">
-                                            {champion.lead || '—'}
-                                          </span>
-                                          <span className="text-text-muted">
-                                            ({champion.weekName} R{champion.finalRound})
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Cross-season unit ladder */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Award className="w-5 h-5" />
-                            Cross-Season Unit Record
-                          </h3>
-                          {ladder.length === 0 ? (
-                            <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-text-secondary border-b border-border-default">
-                                    <th className="text-left py-2 px-2">Unit</th>
-                                    <th className="text-center py-2 px-2">Elo</th>
-                                    <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
-                                    <th className="text-center py-2 px-2">W</th>
-                                    <th className="text-center py-2 px-2">L</th>
-                                    <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
-                                    <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
-                                    <th className="text-center py-2 px-2">Sweeps</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {ladder.map((r, idx) => (
-                                    <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                                      <td className="py-2 px-2 font-medium">{r.unit}</td>
-                                      <td className="text-indigo-400 text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
-                                      <td className="text-green-400 text-center py-2 px-2">{r.wins}</td>
-                                      <td className="text-red-400 text-center py-2 px-2">{r.losses}</td>
-                                      <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Cross-season casualties */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Flame className="w-5 h-5" />
-                            Cross-Season Casualties
-                          </h3>
-                          <div className="grid grid-cols-3 gap-3 mb-3">
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">USA Total</div>
-                              <div className="text-xl font-bold text-blue-400">{usaCasTotal}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">CSA Total</div>
-                              <div className="text-xl font-bold text-red-400">{csaCasTotal}</div>
-                            </div>
-                            <div className="bg-bg-card rounded p-3">
-                              <div className="text-xs text-text-secondary mb-1">Combined</div>
-                              <div className="text-xl font-bold text-indigo-400">{usaCasTotal + csaCasTotal}</div>
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
-                          </div>
-                        </div>
-
-                        {/* Aggregate map stats — same UI as the Season tab,
-                           sourced from event-wide history. */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
-                            <Map className="w-5 h-5" />
-                            Map Statistics (event-wide)
-                          </h3>
-                          {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
-                        </div>
-
-                        {/* Cross-season teammate heatmap — opens the existing
-                           heatmap modal in event scope (DRY: same modal, same
-                           render path). */}
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                            <Swords className="w-5 h-5" />
-                            Cross-Season Teammate Composition
-                          </h3>
-                          <p className="text-xs text-text-secondary mb-3">
-                            How often each pair of units has played as teammates across every season in this event.
-                          </p>
-                          <button
-                            onClick={() => { setHeatmapScope('event'); setShowHeatmapModal(true); }}
-                            className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
-                          >
-                            <Swords className="w-4 h-4" />
-                            Open Cross-Season Heatmap
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {statsTab === 'season' && <>
-
-                  {/* Map Statistics — active season only */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <Map className="w-5 h-5" />
-                      Map Statistics
-                    </h3>
-                    {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
-                  </div>
-
-                  {/* Casualties Summary */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <Flame className="w-5 h-5" />
-                      Total Casualties
-                    </h3>
-                    {(() => {
-                      // Calculate USA/CSA casualties based on map sides
-                      let usaCasualties = 0;
-                      let csaCasualties = 0;
-                      
-                      weeks.forEach(week => {
-                        [1, 2].forEach(roundNum => {
-                          const mapName = week[`round${roundNum}Map`];
-                          const flipped = week[`round${roundNum}Flipped`] || false;
-                          const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
-                          
-                          // Determine which side is USA based on map and flipped state
-                          // If not flipped: Team A = USA, Team B = CSA
-                          // If flipped: Team A = CSA, Team B = USA
-                          const usaSide = flipped ? 'B' : 'A';
-                          
-                          if (usaSide === 'A') {
-                            usaCasualties += casualtiesA;
-                            csaCasualties += casualtiesB;
-                          } else {
-                            usaCasualties += casualtiesB;
-                            csaCasualties += casualtiesA;
-                          }
-                        });
-                      });
-                      
-                      const totalCasualties = usaCasualties + csaCasualties;
-                      
-                      return (
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
-                            <div className="text-2xl font-bold text-blue-400">
-                              {usaCasualties}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
-                            <div className="text-2xl font-bold text-red-400">
-                              {csaCasualties}
-                            </div>
-                          </div>
-                          <div className="bg-bg-inset rounded p-3">
-                            <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
-                            <div className="text-2xl font-bold text-indigo-400">
-                              {totalCasualties}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Per-Unit Player Stats — derived from assigned scoreboards,
-                        cumulative through the selected week. */}
-                    <div className="bg-bg-inset rounded p-3 mt-4">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        Per-Unit Player Stats
-                        {selectedWeek && (
-                          <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
-                        )}
-                      </h4>
-                      {(() => {
-                        const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Teammate Impact Index (TII) */}
-                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5" />
-                      Teammate Impact Index (TII)
-                    </h3>
-                    {(() => {
-                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                      const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
-                      
-                      // Filter to only units that have played
-                      const tableData = Object.entries(impactStats)
-                        .map(([unit, data]) => ({
-                          unit,
-                          ...data,
-                          totalGames: data.leadGames + data.assistGames
-                        }))
-                        .filter(row => row.totalGames > 0)
-                        .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
-                      
-                      if (tableData.length === 0) {
-                        return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
-                      }
-                      
-                      return (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-text-secondary border-b border-border-default">
-                                <th className="text-left py-2 px-2">Unit (Avg Players)</th>
-                                <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
-                                <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
-                                <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
-                                <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
-                                <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tableData.map((row, idx) => {
-                                const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
-                                return (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
-                                    <td className="py-2 px-2">
-                                      {row.unit} ({Math.round(row.avgPlayers)})
-                                    </td>
-                                    <td className="text-indigo-400 text-center py-2 px-2 font-semibold">
-                                      {row.adjustedTiiScore.toFixed(3)}
-                                    </td>
-                                    <td className="text-cyan-400 text-center py-2 px-2">
-                                      {row.impactScore.toFixed(3)}
-                                    </td>
-                                    <td className="text-green-400 text-center py-2 px-2">
-                                      {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
-                                    </td>
-                                    <td className="text-blue-400 text-center py-2 px-2">
-                                      {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
-                                    </td>
-                                    <td className={`text-center py-2 px-2 ${delta < 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                      {(delta * 100).toFixed(1)}%
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                          <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                            <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
-                            <ul className="space-y-1 ml-4">
-                              <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
-                              <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
-                              <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
-                              <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
-                              <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
-                            </ul>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Playoffs Section */}
-                  <div className="bg-bg-inset rounded-lg p-4">
-                    <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                      <Trophy className="w-5 h-5" />
-                      Playoffs
-                    </h3>
-                    
-                    {/* Playoff Configuration */}
-                    <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                      <h4 className="font-semibold mb-3">Playoff Format Settings</h4>
-                      
-                      <div className="space-y-3">
-                        {/* Enable Playoffs */}
-                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={playoffConfig.enabled}
-                            onChange={(e) => setPlayoffConfig({ ...playoffConfig, enabled: e.target.checked })}
-                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <Star className="w-4 h-4" />
-                          <span className="font-semibold">Enable Playoff Tracking</span>
-                        </label>
-                        
-                        {playoffConfig.enabled && (
-                          <>
-                            {/* Bracket style */}
-                            <div className="ml-6">
-                              <label className="block text-sm text-text-secondary mb-1">Bracket Style</label>
-                              <div className="flex gap-2 flex-wrap">
-                                {[
-                                  {
-                                    value: 'knockout',
-                                    name: 'Seeded Knockout',
-                                    hint: 'Whole field seeded 1–N on points, paired 1-vs-N. Works with any number of groups.',
-                                  },
-                                  {
-                                    value: 'conference',
-                                    name: 'Conference',
-                                    hint: 'Splits the field between two conferences, each crowning a winner before the championship.',
-                                  },
-                                ].map(style => {
-                                  const active = (playoffConfig.bracketStyle || 'conference') === style.value;
-                                  return (
-                                    <button
-                                      key={style.value}
-                                      onClick={() => setPlayoffConfig({ ...playoffConfig, bracketStyle: style.value })}
-                                      title={style.hint}
-                                      className={`px-3 py-1 rounded text-sm transition ${
-                                        active
-                                          ? 'bg-indigo-600 text-white'
-                                          : 'bg-bg-input text-text-secondary hover:bg-bg-card border border-border-default'
-                                      }`}
-                                    >
-                                      {style.name}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-xs text-text-muted mt-1">
-                                {(playoffConfig.bracketStyle || 'conference') === 'knockout'
-                                  ? 'Every qualifier is reseeded on total points, so groups decide who gets in, not who plays whom.'
-                                  : 'Needs exactly two conferences — divisions are grouped by the first word of their name.'}
-                              </p>
-                            </div>
-
-                            {/* Use Divisions */}
-                            {divisions && divisions.length > 0 && (
-                              <label className="flex items-center gap-2 text-text-secondary cursor-pointer ml-6">
-                                <input
-                                  type="checkbox"
-                                  checked={playoffConfig.useDivisions}
-                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, useDivisions: e.target.checked })}
-                                  className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                                />
-                                <Shield className="w-4 h-4" />
-                                <span className="text-sm">Qualify Through Groups</span>
-                              </label>
-                            )}
-                            
-                            {/* Teams per Group */}
-                            {playoffConfig.useDivisions && (
-                              <div className="ml-6">
-                                <label className="block text-sm text-text-secondary mb-1">Top Teams per Group</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="4"
-                                  value={playoffConfig.teamsPerDivision}
-                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, teamsPerDivision: parseInt(e.target.value) || 1 })}
-                                  className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                />
-                              </div>
-                            )}
-
-                            {/* Wildcards, or the whole field when groups are off */}
-                            <div className="ml-6">
-                              <label className="block text-sm text-text-secondary mb-1">
-                                {!playoffConfig.useDivisions
-                                  ? 'Total Playoff Teams'
-                                  : (playoffConfig.bracketStyle || 'conference') === 'knockout'
-                                    ? 'Wildcard Teams (league-wide)'
-                                    : 'Wildcard Teams (per conference)'}
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="16"
-                                value={playoffConfig.wildcardTeams}
-                                onChange={(e) => setPlayoffConfig({ ...playoffConfig, wildcardTeams: parseInt(e.target.value) || 0 })}
-                                className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                              />
-                            </div>
-
-
-                            {/* Round Formats — labelled by the stages this
-                               config actually draws, so they read as the
-                               bracket will (Quarterfinals, Semifinals, ...). */}
-                            <div className="ml-6 bg-bg-card rounded p-3">
-                              <h5 className="text-sm font-semibold text-text-secondary mb-2">Rounds per Playoff Stage</h5>
-                              {playoffAudit?.stages?.length ? (
-                                <div className="grid grid-cols-2 gap-3">
-                                  {playoffAudit.stages.map(stagePlan => (
-                                    <div key={stagePlan.key}>
-                                      <label className="block text-xs text-text-secondary mb-1">
-                                        {stagePlan.name}
-                                        <span className="text-text-muted"> ({stagePlan.matchups} match{stagePlan.matchups === 1 ? '' : 'es'})</span>
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        max="3"
-                                        value={playoffConfig.roundFormats[stagePlan.key]}
-                                        onChange={(e) => setPlayoffConfig({
-                                          ...playoffConfig,
-                                          roundFormats: {
-                                            ...playoffConfig.roundFormats,
-                                            [stagePlan.key]: parseInt(e.target.value) || 1,
-                                          },
-                                        })}
-                                        className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-text-secondary">
-                                  These settings draw no bracket yet — the planner below says why.
-                                </p>
-                              )}
-                              <p className="text-xs text-text-muted mt-2">
-                                A stage set to N rounds resolves as first to (N ÷ 2) + 1 wins, so 2 and 3 are the same
-                                series — both need two wins, and both can run to a third round.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Format Planner — what the settings above actually build,
-                       and the formats worth considering instead. */}
-                    {playoffConfig.enabled && playoffAudit && (
-                      <div className="bg-bg-inset rounded-lg p-4 mb-4">
-                        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                          <h4 className="font-semibold flex items-center gap-2">
-                            <Zap className="w-4 h-4" />
-                            Format Planner
-                          </h4>
-                          <label className="flex items-center gap-2 text-sm text-text-secondary">
-                            Playoff nights available
-                            <input
-                              type="number"
-                              min="1"
-                              max="12"
-                              value={playoffNights}
-                              onChange={(e) => setPlayoffNights(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                            />
-                          </label>
-                        </div>
-                        <p className="text-xs text-text-muted mb-3">
-                          A round hosts one matchup and a night is {ROUNDS_PER_NIGHT} rounds, so two matchups fit in a
-                          night. That is what decides how long a bracket takes.
-                        </p>
-
-                        {/* What the current settings build */}
-                        <div className="bg-bg-card rounded p-3 mb-3">
-                          <h5 className="text-sm font-semibold text-text-secondary mb-2">Your current settings</h5>
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-semibold text-sm">{playoffAudit.label}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${playoffAudit.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
-                              {formatNights(playoffAudit.minNights, playoffAudit.maxNights)}
-                            </span>
-                          </div>
-                          <p className="text-sm text-text-secondary">{playoffAudit.summary}</p>
-                          {playoffAudit.stages.length > 0 && (
-                            <div className="text-xs text-text-muted mt-2">
-                              {playoffAudit.stages.map(s => (
-                                `${s.name}: ${s.matchups} match${s.matchups === 1 ? '' : 'es'} × ${s.roundsPerMatch} round${s.roundsPerMatch === 1 ? '' : 's'}`
-                              )).join(' · ')}
-                            </div>
-                          )}
-                          {playoffAudit.defects.map((defect, i) => (
-                            <p
-                              key={i}
-                              className={`text-xs mt-2 ${defect.severity === 'blocker' ? 'text-red-400' : 'text-amber-400'}`}
-                            >
-                              {defect.severity === 'blocker' ? '✕' : '!'} {defect.message}
-                            </p>
-                          ))}
-                          {playoffAudit.notes.map((note, i) => (
-                            <p key={i} className="text-xs text-text-muted mt-2">{note}</p>
-                          ))}
-                        </div>
-
-                        {/* Formats worth considering */}
-                        <h5 className="text-sm font-semibold text-text-secondary mb-2">Recommended formats</h5>
-                        {playoffSuggestions.length === 0 ? (
-                          <p className="text-sm text-text-secondary bg-bg-card rounded p-3">
-                            No bracket can be built from this league yet — add token units, or check the notes below.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {playoffSuggestions.map((plan, idx) => {
-                              const applied = isPlayoffFormatApplied(plan);
-                              return (
-                                <div key={idx} className="bg-bg-card rounded p-3">
-                                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                                    <div className="flex-1 min-w-[16rem]">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-semibold text-sm">{plan.label}</span>
-                                        {idx === 0 && (
-                                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
-                                            Best fit
-                                          </span>
-                                        )}
-                                        <span className={`text-xs px-2 py-0.5 rounded ${plan.fitsCalendar ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}`}>
-                                          {formatNights(plan.minNights, plan.maxNights)}
-                                        </span>
-                                      </div>
-                                      <p className="text-sm text-text-secondary mt-1">{plan.summary}</p>
-                                      <div className="text-xs text-text-muted mt-1">
-                                        {plan.stages.map(s => (
-                                          `${s.name}: ${s.matchups} × ${s.roundsPerMatch}r`
-                                        )).join(' · ')}
-                                      </div>
-                                      {plan.defects.map((defect, i) => (
-                                        <p key={i} className="text-xs text-amber-400 mt-1">! {defect.message}</p>
-                                      ))}
-                                    </div>
-                                    <button
-                                      onClick={() => setPlayoffConfig({ ...playoffConfig, ...plan.config })}
-                                      disabled={applied}
-                                      className={`px-3 py-1 rounded text-sm transition shrink-0 ${
-                                        applied
-                                          ? 'bg-bg-inset text-text-muted cursor-default'
-                                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                      }`}
-                                    >
-                                      {applied ? 'In use' : 'Apply'}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Things no single format can fix */}
-                        {playoffAdvice.length > 0 && (
-                          <div className="mt-3 bg-bg-card rounded p-3">
-                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Worth knowing</h5>
-                            <ul className="list-disc list-inside space-y-1 text-xs text-text-secondary">
-                              {playoffAdvice.map((note, i) => <li key={i}>{note}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-
-                    {/* Playoff Picture */}
-                    {playoffConfig.enabled && (() => {
-                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                      const bracket = generatePlayoffBracket(currentWeekIdx);
-                      
-                      if (!bracket || bracket.teams.length === 0) {
-                        return (
-                          <div className="bg-bg-inset rounded-lg p-4 text-center">
-                            <p className="text-text-secondary text-sm">
-                              Not enough teams for playoffs. Configure playoff settings above.
-                            </p>
-                          </div>
-                        );
-                      }
-                      
-                      return (
-                        <div className="bg-bg-inset rounded-lg p-4">
-                          <h4 className="font-semibold mb-3 flex items-center gap-2">
-                            <Target className="w-4 h-4" />
-                            Playoff Picture
-                            {selectedWeek && (
-                              <span className="text-xs text-text-secondary font-normal">
-                                (as of {selectedWeek.name})
-                              </span>
-                            )}
-                          </h4>
-
-                          {/* Seeding */}
-                          <div className="mb-4 bg-bg-card rounded p-3">
-                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Playoff Seeds</h5>
-                            {playoffConfig.useDivisions && bracket.teams.some(t => t.conference) ? (
-                              // Conference-based seeding display
-                              (() => {
-                                const conferences = {};
-                                bracket.teams.forEach(team => {
-                                  const conf = team.conference || 'Unknown';
-                                  if (!conferences[conf]) conferences[conf] = [];
-                                  conferences[conf].push(team);
-                                });
-                                
-                                return (
-                                  <div className="space-y-3">
-                                    {Object.entries(conferences).map(([confName, confTeams]) => (
-                                      <div key={confName} className="bg-bg-inset rounded p-2">
-                                        <h6 className="text-xs font-bold text-cyan-300 mb-2">{confName} Conference</h6>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          {confTeams.map((team) => (
-                                            <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                              <span className="text-indigo-400 font-bold">#{team.conferenceSeed}</span>
-                                              <span>{team.unit}</span>
-                                              <span className="text-text-secondary text-xs">
-                                                ({team.points} pts{team.isWildcard ? ', WC' : ''})
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              // Simple seeding display — for a knockout this is
-                              // the whole story, so it also shows how each unit
-                              // got in: its group, or a wildcard.
-                              <div className="grid grid-cols-2 gap-2">
-                                {bracket.teams.map((team) => (
-                                  <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                    <span className="text-indigo-400 font-bold">#{team.seed}</span>
-                                    <span>{team.unit}</span>
-                                    <span className="text-text-secondary text-xs">({team.points} pts)</span>
-                                    {team.isWildcard && (
-                                      <span className="text-purple-400 text-xs font-bold">WC</span>
-                                    )}
-                                    {team.division && !team.isWildcard && (
-                                      <span className="text-cyan-400 text-xs">{team.division}</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Bracket Rounds */}
-                          <div className="space-y-3">
-                            {bracket.rounds.map((round, roundIdx) => (
-                              <div key={roundIdx} className="bg-bg-card rounded p-3">
-                                <h5 className="text-sm font-semibold text-text-secondary mb-2 flex items-center gap-2">
-                                  <Swords className="w-4 h-4" />
-                                  {round.name}
-                                  <span className="text-xs text-text-secondary font-normal">
-                                    ({round.roundsPerMatch} round{round.roundsPerMatch > 1 ? 's' : ''} per match)
-                                  </span>
-                                </h5>
-                                <div className="space-y-2">
-                                  {round.matchups.map((matchup, matchIdx) => {
-                                    // Show conference name if present
-                                    const confLabel = matchup.conference && matchup.conference !== 'Championship'
-                                      ? `[${matchup.conference}] `
-                                      : '';
-                                    const team1IsWinner = matchup.winner && matchup.team1 && matchup.winner.unit === matchup.team1.unit;
-                                    const team2IsWinner = matchup.winner && matchup.team2 && matchup.winner.unit === matchup.team2.unit;
-                                    const team1Class = team1IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
-                                    const team2Class = team2IsWinner ? 'text-green-400 font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
-
-                                    return (
-                                      <div key={matchIdx} className="bg-bg-inset rounded p-2">
-                                        {confLabel && (
-                                          <div className="text-xs text-cyan-400 font-semibold mb-1">{confLabel}</div>
-                                        )}
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-2 flex-1">
-                                            {matchup.team1 ? (
-                                              <>
-                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed1}</span>
-                                                <span className={`text-sm ${team1Class}`}>{matchup.team1.unit}</span>
-                                                {matchup.team1.isWildcard && (
-                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
-                                                )}
-                                                {team1IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                                                )}
-                                              </>
-                                            ) : matchup.slot1Label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.slot1Label}</span>
-                                            ) : matchup.label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
-                                            ) : (
-                                              <span className="text-text-secondary text-sm italic">Seed #{matchup.seed1}</span>
-                                            )}
-                                          </div>
-                                          <span className="text-text-secondary text-xs font-bold mx-2">VS</span>
-                                          <div className="flex items-center gap-2 flex-1 justify-end">
-                                            {matchup.team2 ? (
-                                              <>
-                                                {team2IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                                                )}
-                                                {matchup.team2.isWildcard && (
-                                                  <span className="text-purple-400 text-xs font-bold">WC</span>
-                                                )}
-                                                <span className={`text-sm ${team2Class}`}>{matchup.team2.unit}</span>
-                                                <span className="text-indigo-400 font-bold text-xs">#{matchup.seed2}</span>
-                                              </>
-                                            ) : matchup.bye ? (
-                                              <span className="text-text-secondary text-sm italic">Bye — advances</span>
-                                            ) : matchup.slot2Label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.slot2Label}</span>
-                                            ) : matchup.label && !matchup.team1 ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
-                                            ) : (
-                                              <span className="text-text-secondary text-sm italic">
-                                                {matchup.seed2 === 'WC1' || matchup.seed2 === 'WC2' ? 'Wildcard Winner' : `Seed #${matchup.seed2}`}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Unit Interactions */}
-                  <div className="bg-bg-inset rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-base font-semibold flex items-center gap-2">
-                        <Users className="w-5 h-5" />
-                        Unit Interactions
-                      </h3>
-                      <button
-                        onClick={() => setShowHeatmapModal(true)}
-                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
-                        title="View Teammate Composition Heatmap"
-                      >
-                        <Swords className="w-4 h-4" />
-                        Heatmap
-                      </button>
-                    </div>
-                    <div className="space-y-3">
-                      {(() => {
-                        const { teammate, opponent } = computeStats();
-                        const interactions = getDetailedInteractions();
-                        
-                        // Get top teammate pairs
-                        const teammatePairs = [];
-                        Object.entries(teammate).forEach(([unit1, partners]) => {
-                          Object.entries(partners).forEach(([unit2, count]) => {
-                            if (unit1 < unit2) { // Avoid duplicates
-                              const details = interactions[unit1]?.[unit2];
-                              teammatePairs.push({
-                                unit1,
-                                unit2,
-                                count,
-                                rounds: details?.teammateRounds || []
-                              });
-                            }
-                          });
-                        });
-                        teammatePairs.sort((a, b) => b.count - a.count);
-                        
-                        // Get top opponent pairs
-                        const opponentPairs = [];
-                        Object.entries(opponent).forEach(([unit1, opponents]) => {
-                          Object.entries(opponents).forEach(([unit2, count]) => {
-                            if (unit1 < unit2) { // Avoid duplicates
-                              const details = interactions[unit1]?.[unit2];
-                              opponentPairs.push({
-                                unit1,
-                                unit2,
-                                count,
-                                rounds: details?.opponentRounds || []
-                              });
-                            }
-                          });
-                        });
-                        opponentPairs.sort((a, b) => b.count - a.count);
-                        
-                        return (
-                          <>
-                            <div className="bg-bg-inset rounded p-3">
-                              <h4 className="font-semibold mb-2">Most Frequent Teammates</h4>
-                              <div className="space-y-1">
-                                {teammatePairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                                    <span>{pair.unit1} & {pair.unit2}</span>
-                                    <span className="text-indigo-400">{pair.count} rounds</span>
-                                  </div>
-                                ))}
-                                {teammatePairs.length === 0 && (
-                                  <p className="text-xs text-text-secondary">No teammate data yet</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="bg-bg-inset rounded p-3">
-                              <h4 className="font-semibold mb-2">Most Frequent Opponents</h4>
-                              <div className="space-y-1">
-                                {opponentPairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                                    <span>{pair.unit1} vs {pair.unit2}</span>
-                                    <span className="text-red-400">{pair.count} rounds</span>
-                                  </div>
-                                ))}
-                                {opponentPairs.length === 0 && (
-                                  <p className="text-xs text-text-secondary">No opponent data yet</p>
-                                )}
-                              </div>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                  </>}
-                </div>
-              </div>
-            </div>
+          {screen === 'elo' && (
+            <>
+                <EloLadder
+                  rows={eloLadderRows}
+                  settings={eloSystem}
+                  nights={weeks.length}
+                  onOpenUnit={() => goScreen('stats-regiments')}
+                />
+            </>
           )}
 
           {/* Division Management Modal */}
-          {showDivisionModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Users className="w-6 h-6" />
-                      Division Management
-                    </h2>
-                    <button
-                      onClick={() => setShowDivisionModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Left: Unassigned Units */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <h3 className="text-lg font-semibold mb-3">Unassigned Units</h3>
-                      <div className="bg-bg-inset rounded p-3 max-h-96 overflow-y-auto">
-                        {getUnassignedUnits().length > 0 ? (
-                          <div className="space-y-1">
-                            {getUnassignedUnits().map(unit => (
-                              <div key={unit} className="text-sm py-1">
-                                {unit}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-text-secondary text-sm">All units assigned to divisions</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right: Divisions */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-lg font-semibold">Divisions</h3>
-                        <button
-                          onClick={addDivision}
-                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {divisions.map((division) => (
-                          <div key={division.name} className="bg-bg-inset rounded-lg p-3">
-                            <div className="flex justify-between items-center mb-2">
-                              <input
-                                type="text"
-                                value={division.name}
-                                onChange={(e) => renameDivision(division.name, e.target.value)}
-                                className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm font-semibold"
-                              />
-                              <button
-                                onClick={() => deleteDivision(division.name)}
-                                className="ml-2 p-1 hover:bg-red-600 rounded transition"
-                              >
-                                <Trash2 className="w-4 h-4 text-white" />
-                              </button>
-                            </div>
-                            <div className="space-y-1">
-                              {division.units.map(unit => (
-                                <div key={unit} className="flex justify-between items-center text-xs">
-                                  <span>{unit}</span>
-                                  <button
-                                    onClick={() => removeUnitFromDivision(division.name, unit)}
-                                    className="p-1 hover:bg-red-600 rounded transition"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              ))}
-                              {division.units.length === 0 && (
-                                <p className="text-text-secondary text-xs">No units in this division</p>
-                              )}
-                            </div>
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  addUnitToDivision(division.name, e.target.value);
-                                  e.target.value = '';
-                                }
-                              }}
-                              className="w-full mt-2 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-xs"
-                            >
-                              <option value="">Add unit...</option>
-                              {getUnassignedUnits().map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
-                        {divisions.length === 0 && (
-                          <p className="text-text-secondary text-sm text-center py-4">No divisions created yet</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowDivisionModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Close
-                    </button>
-                  </div>
+          {screen === 'divisions' && (
+            <>
+              <div className="panel">
+                <div className="ctl">
+                  <span className="cap">Divisions</span>
+                  <button className="gh live" onClick={addDivision}>
+                    <Plus className="w-3 h-3" /> New division
+                  </button>
+                  <span className="rule" />
+                  <span className="meta">
+                    {divisions.length} division{divisions.length === 1 ? '' : 's'} ·{' '}
+                    {getUnassignedUnits().length} unit{getUnassignedUnits().length === 1 ? '' : 's'} unassigned
+                  </span>
                 </div>
               </div>
-            </div>
+
+              <div className="panel">
+                <header className="ph">
+                  <h2>Unassigned</h2>
+                  <span className="rule" />
+                  <span className="meta">a unit outside a division still plays — it just has no group to top</span>
+                </header>
+                <div className="pb">
+                  {getUnassignedUnits().length > 0 ? (
+                    <div className="rl">
+                      {getUnassignedUnits().map(unit => (
+                        <span key={unit} className="tag q">{unit}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="note">Every unit belongs to a division.</p>
+                  )}
+                </div>
+              </div>
+
+              {divisions.map((division) => (
+                <div className="panel" key={division.name}>
+                  <div className="ctl">
+                    <span className="cap">Name</span>
+                    <input
+                      className="fld-i"
+                      type="text"
+                      value={division.name}
+                      onChange={(e) => renameDivision(division.name, e.target.value)}
+                      aria-label="Division name"
+                    />
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          addUnitToDivision(division.name, e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                      aria-label={`Add a unit to ${division.name}`}
+                    >
+                      <option value="">Add a unit…</option>
+                      {getUnassignedUnits().map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
+                    <span className="rule" />
+                    <span className="meta">{division.units.length} unit{division.units.length === 1 ? '' : 's'}</span>
+                    <button className="gh c-danger" onClick={() => deleteDivision(division.name)}>
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  </div>
+                  <div className="pb flush">
+                    {division.units.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>Nobody in this division yet.</p>
+                    ) : (
+                      <table>
+                        <tbody>
+                          {division.units.map(unit => (
+                            <tr key={unit}>
+                              <td className="wor-name">{unit}</td>
+                              <td className="num">
+                                <button className="gh" onClick={() => removeUnitFromDivision(division.name, unit)}>
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {divisions.length === 0 && (
+                <div className="panel">
+                  <div className="pb">
+                    <p className="note">
+                      No divisions yet. A division groups units so the standings can be read within it and the
+                      playoff bracket can seed from each one's top two.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Map History Viewer Modal — derived from outcome history (no manual bias) */}
           {showMapBiasModal && (() => {
             const { byMap } = calculateMapStats();
             return (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
-                  <div className="p-4 sm:p-6">
+              <div className="modal-scrim">
+                <div className="modal">
+                  <div className="pb">
                     <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-lg font-semibold flex items-center gap-2">
+                      <h2 className="cap">
                         <Map className="w-6 h-6" />
                         Map History
                       </h2>
                       <button
                         onClick={() => setShowMapBiasModal(false)}
-                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                        className="ib"
                       >
                         <X className="w-5 h-5 text-text-muted" />
                       </button>
                     </div>
 
-                    <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <p className="text-sm text-text-secondary">
                         Per-map outcome history. These numbers feed Elo expected-win-probability when{' '}
                         <strong>Map Weight</strong> in Settings is non-zero, with Bayesian shrinkage controlled by{' '}
@@ -8176,9 +6100,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div key={category} className="mb-4">
                         <button
                           onClick={() => toggleSection(category)}
-                          className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
+                          className="row click w-full flex items-center justify-between"
                         >
-                          <h3 className="text-lg font-semibold">
+                          <h3 className="cap">
                             {category.replace(/_/g, ' ').toUpperCase()}
                           </h3>
                           {expandedSections[category] ? (
@@ -8189,16 +6113,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </button>
 
                         {expandedSections[category] && (
-                          <div className="mt-2 bg-bg-inset rounded-lg p-4">
+                          <div className="panel pb">
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-text-secondary border-b border-border-default">
-                                  <th className="py-2 pr-2">Map</th>
-                                  <th className="py-2 pr-2 text-right">Plays</th>
-                                  <th className="py-2 pr-2 text-right">USA W</th>
-                                  <th className="py-2 pr-2 text-right">CSA W</th>
-                                  <th className="py-2 pr-2 text-right">USA Win %</th>
-                                  <th className="py-2 pr-2 text-right">Atk Win %</th>
+                                  <th>Map</th>
+                                  <th className="text-right">Plays</th>
+                                  <th className="text-right">USA W</th>
+                                  <th className="text-right">CSA W</th>
+                                  <th className="text-right">USA Win %</th>
+                                  <th className="text-right">Atk Win %</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -8207,8 +6131,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   if (!data) {
                                     return (
                                       <tr key={mapName} className="border-b border-border-default/40">
-                                        <td className="py-2 pr-2">{mapName}</td>
-                                        <td colSpan={5} className="py-2 pr-2 text-text-muted text-right">No plays</td>
+                                        <td >{mapName}</td>
+                                        <td colSpan={5} className="text-text-muted text-right">No plays</td>
                                       </tr>
                                     );
                                   }
@@ -8216,12 +6140,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   const atkPct = data.plays > 0 ? Math.round((data.attackerWins / data.plays) * 100) : 0;
                                   return (
                                     <tr key={mapName} className="border-b border-border-default/40">
-                                      <td className="py-2 pr-2">{mapName}</td>
-                                      <td className="py-2 pr-2 text-right">{data.plays}</td>
-                                      <td className="py-2 pr-2 text-right">{data.usaWins}</td>
-                                      <td className="py-2 pr-2 text-right">{data.csaWins}</td>
-                                      <td className="py-2 pr-2 text-right">{usaPct}%</td>
-                                      <td className="py-2 pr-2 text-right">{atkPct}%</td>
+                                      <td >{mapName}</td>
+                                      <td className="text-right">{data.plays}</td>
+                                      <td className="text-right">{data.usaWins}</td>
+                                      <td className="text-right">{data.csaWins}</td>
+                                      <td className="text-right">{usaPct}%</td>
+                                      <td className="text-right">{atkPct}%</td>
                                     </tr>
                                   );
                                 })}
@@ -8235,7 +6159,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
                       <button
                         onClick={() => setShowMapBiasModal(false)}
-                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
+                        className="gh"
                       >
                         Close
                       </button>
@@ -8249,7 +6173,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Unit Registry Editor Modal — event-level identity for every unit
              ever associated with this event. Renames sweep all rosters; hard
              delete is gated on whether the unit has any roster appearance. */}
-          {showRegistryModal && (() => {
+          {screen === 'identity' && (() => {
             const registryEntries = Object.entries(activeEvent.unitRegistry)
               .map(([id, entry]) => ({ id, name: entry.name }))
               .sort((a, b) => a.name.localeCompare(b.name));
@@ -8267,40 +6191,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
             }
 
             return (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-                   onClick={() => setShowRegistryModal(false)}>
-                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
-                     onClick={(e) => e.stopPropagation()}>
-                  <div className="p-4 sm:p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <Users className="w-6 h-6" />
-                        Unit Registry — {activeEvent.name}
-                      </h2>
-                      <button
-                        onClick={() => setShowRegistryModal(false)}
-                        className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                      >
-                        <X className="w-5 h-5 text-text-muted" />
-                      </button>
-                    </div>
-
-                    <div className="mb-4 bg-bg-inset rounded-lg p-3">
-                      <p className="text-xs text-text-secondary">
-                        Every unit ever associated with this event. Renaming here propagates to all seasons (rosters, leads, swaps, casualties).
-                        Hard-delete is only available when a unit has no roster appearance anywhere in the event.
-                      </p>
-                    </div>
-
+              <div className="panel">
+                <header className="ph">
+                  <h2>Unit &amp; player identity</h2>
+                  <span className="rule" />
+                  <span className="meta wor-name">{activeEvent.name}</span>
+                </header>
+                  <div className="pb flush scroll-x">
                     {registryEntries.length === 0 ? (
-                      <div className="text-center text-text-muted py-8">No units in this event yet.</div>
+                      <p className="note" style={{ padding: 13 }}>No units in this event yet.</p>
                     ) : (
-                      <table className="w-full text-sm">
+                      <table>
                         <thead>
-                          <tr className="text-left text-text-secondary border-b border-border-default">
-                            <th className="py-2 pr-2">Unit</th>
-                            <th className="py-2 pr-2">In seasons</th>
-                            <th className="py-2 pr-2 text-right">Actions</th>
+                          <tr>
+                            <th>Unit</th>
+                            <th>In seasons</th>
+                            <th className="num">Rename</th>
+                            <th className="num">Delete</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -8308,515 +6215,136 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             const seasons = seasonsByUnit[name] || [];
                             const inUse = seasons.length > 0;
                             return (
-                              <tr key={id} className="border-b border-border-default/40">
-                                <td className="py-2 pr-2 font-medium">{name}</td>
-                                <td className="py-2 pr-2 text-xs text-text-secondary">
-                                  {seasons.length === 0 ? <span className="text-text-muted italic">unused</span> : seasons.join(', ')}
+                              <tr key={id}>
+                                <td className="wor-name">{name}</td>
+                                <td style={{ color: 'var(--ink-2)' }}>
+                                  {seasons.length === 0
+                                    ? <span style={{ color: 'var(--ink-3)' }}>never rostered</span>
+                                    : seasons.join(' \u00b7 ')}
                                 </td>
-                                <td className="py-2 pr-2">
-                                  <div className="flex gap-1 justify-end">
-                                    <button
-                                      onClick={() => {
-                                        const newName = window.prompt(`Rename "${name}" to:`, name);
-                                        if (newName == null) return;
-                                        const trimmed = newName.trim();
-                                        if (!trimmed || trimmed === name) return;
-                                        setAppState(prev => renameUnitInEvent(prev, name, trimmed));
-                                      }}
-                                      className="p-1 rounded-md hover:bg-bg-inset text-text-secondary"
-                                      title="Rename (sweeps all seasons)"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      disabled={inUse}
-                                      onClick={() => {
-                                        if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearance anywhere.`)) return;
-                                        setAppState(prev => removeUnitFromRegistry(prev, name));
-                                      }}
-                                      className="p-1 rounded-md hover:bg-red-500/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                                      title={inUse ? 'Cannot hard-delete — unit appears in roster data. Remove from each season first.' : 'Hard-delete from registry'}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                <td className="num">
+                                  <button
+                                    className="gh"
+                                    onClick={() => {
+                                      const newName = window.prompt(`Rename "${name}" to:`, name);
+                                      if (newName == null) return;
+                                      const trimmed = newName.trim();
+                                      if (!trimmed || trimmed === name) return;
+                                      setAppState(prev => renameUnitInEvent(prev, name, trimmed));
+                                    }}
+                                    title="Sweeps every season \u2014 rosters, leads, swaps, playoffs and the registry"
+                                  >
+                                    Rename
+                                  </button>
+                                </td>
+                                <td className="num">
+                                  <button
+                                    className="gh c-danger"
+                                    disabled={inUse}
+                                    onClick={() => {
+                                      if (!confirm(`Hard-delete "${name}" from the registry? This is only safe because it has no roster appearances.`)) return;
+                                      setAppState(prev => removeUnitFromRegistry(prev, name));
+                                    }}
+                                    title={inUse ? 'Appears in roster data \u2014 remove it from each season first' : 'Hard-delete from the registry'}
+                                  >
+                                    Delete
+                                  </button>
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={4}>
+                              Renaming propagates to every season. Deleting is only offered when a unit has never
+                              been rostered anywhere in the event.
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
                     )}
-
-                    <div className="flex justify-end mt-6 pt-4 border-t border-border-default">
-                      <button
-                        onClick={() => setShowRegistryModal(false)}
-                        className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                      >
-                        Close
-                      </button>
-                    </div>
                   </div>
-                </div>
               </div>
             );
           })()}
 
-          {/* Teammate Composition Heatmap Modal */}
-          {showHeatmapModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowHeatmapModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Swords className="w-6 h-6" />
-                      Teammate Composition Heatmap
-                    </h2>
-                    <button
-                      onClick={() => setShowHeatmapModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
-
-                  {/* Scope toggle — same UI as the stats modal tab strip */}
-                  <div className="flex gap-1 mb-4 border-b border-border-default">
-                    <button
-                      onClick={() => setHeatmapScope('season')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        heatmapScope === 'season'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Season — {activeSeason.name}
-                    </button>
-                    <button
-                      onClick={() => setHeatmapScope('event')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        heatmapScope === 'event'
-                          ? 'border-indigo-500 text-indigo-400'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
-                    </button>
-                  </div>
-
-                  <div className="mb-4 bg-bg-inset rounded-lg p-4">
-                    <p className="text-sm text-text-secondary">
-                      How often units have played together as teammates per round, accounting for balance swaps.
-                      50% means they were teammates in half of the rounds where both units were present.
-                      {heatmapScope === 'event' && ' Aggregated across every season in this event.'}
-                    </p>
-                  </div>
-
-                  {(() => {
-                    const seasonsToScan = heatmapScope === 'event'
-                      ? activeEvent.seasons
-                      : (activeSeason ? [activeSeason] : []);
-                    const { heatmapData, activeUnits, unitActiveWeeks } = calculateTeammateHeatmapForSeasons(seasonsToScan);
-                    
-                    if (activeUnits.length === 0) {
-                      return (
-                        <div className="text-center text-text-secondary py-12">
-                          <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                          <p>No teammate data available yet</p>
-                        </div>
-                      );
-                    }
-
-                    // Helper to get color intensity based on percentage of rounds both units were active
-                    // Creates a smooth gradient from blue (0%) -> purple -> orange -> red (100%)
-                    const getHeatColor = (count, bothActiveRounds) => {
-                      if (bothActiveRounds === 0) return 'bg-bg-inset';
-                      const percentage = (count / bothActiveRounds) * 100;
-                      
-                      // Calculate RGB values for smooth gradient
-                      // 0% = sky blue (135, 206, 235), 100% = red (220, 38, 38)
-                      let r, g, b;
-                      
-                      if (percentage <= 50) {
-                        // Sky Blue to purple (0-50%)
-                        const t = percentage / 50;
-                        r = Math.round(135 + (147 - 135) * t);    // 135 -> 147
-                        g = Math.round(206 - (206 - 51) * t);   // 206 -> 51
-                        b = Math.round(235 - (235 - 235) * t);  // 235 -> 235
-                      } else {
-                        // Purple to red (50-100%)
-                        const t = (percentage - 50) / 50;
-                        r = Math.round(147 + (220 - 147) * t);  // 147 -> 220
-                        g = Math.round(51 - (51 - 38) * t);     // 51 -> 38
-                        b = Math.round(235 - (235 - 38) * t);   // 235 -> 38
-                      }
-                      
-                      return `rgb(${r}, ${g}, ${b})`;
-                    };
-
-                    // Helper to get percentage display
-                    const getPercentage = (count, bothActiveRounds) => {
-                      if (bothActiveRounds === 0) return '';
-                      return Math.round((count / bothActiveRounds) * 100);
-                    };
-
-                    // Calculate dynamic cell size based on number of units
-                    const unitCount = activeUnits.length;
-                    const cellSize = Math.max(24, Math.min(48, Math.floor(800 / unitCount)));
-                    const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
-                    
-                    return (
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <div className="w-full">
-                          <table className="w-full border-collapse table-fixed">
-                            <thead>
-                              <tr style={{ height: '80px' }}>
-                                <th className="p-1 text-xs font-semibold text-text-secondary bg-bg-inset z-10" style={{ width: '120px' }}></th>
-                                {activeUnits.map(unit => (
-                                  <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-text-secondary relative`} style={{ height: '80px' }}>
-                                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/6 -rotate-45 origin-bottom-left whitespace-nowrap" style={{ maxWidth: `${cellSize * 2}px` }} title={unit}>
-                                      <span className="truncate block">{unit}</span>
-                                    </div>
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {activeUnits.map(unit1 => (
-                                <tr key={unit1}>
-                                  <td className={`p-1 ${fontSize} font-semibold text-text-secondary bg-bg-inset z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
-                                    {unit1}
-                                  </td>
-                                  {activeUnits.map(unit2 => {
-                                    if (unit1 === unit2) {
-                                      return (
-                                        <td key={unit2} className="p-0.5">
-                                          <div className="w-full bg-bg-card rounded flex items-center justify-center" style={{ height: `${cellSize}px` }}>
-                                            <span className={`${fontSize} text-text-muted`}>-</span>
-                                          </div>
-                                        </td>
-                                      );
-                                    }
-                                    
-                                    const data = heatmapData.find(d =>
-                                      (d.unit1 === unit1 && d.unit2 === unit2) ||
-                                      (d.unit1 === unit2 && d.unit2 === unit1)
-                                    );
-                                    const count = data?.count || 0;
-                                    const bothActiveWeeks = data?.bothActiveWeeks || 0;
-                                    const bothActiveRounds = data?.bothActiveRounds || 0;
-                                    const percentage = getPercentage(count, bothActiveRounds);
-
-                                    const bgColor = getHeatColor(count, bothActiveRounds);
-                                    const isSlateGray = bgColor === 'bg-bg-inset';
-                                    
-                                    return (
-                                      <td key={unit2} className="p-0.5">
-                                        <div
-                                          className={`w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition ${isSlateGray ? bgColor : ''}`}
-                                          style={{
-                                            height: `${cellSize}px`,
-                                            backgroundColor: isSlateGray ? undefined : bgColor
-                                          }}
-                                          title={`${unit1} & ${unit2}: ${count} rounds together (${percentage}% of ${bothActiveRounds} rounds) — ${bothActiveWeeks} weeks both active`}
-                                        >
-                                          <span className={`${fontSize} font-semibold text-white`}>
-                                            {percentage !== '' ? `${percentage}%` : ''}
-                                          </span>
-                                        </div>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Legend */}
-                        <div className="mt-6">
-                          <div className="text-sm text-text-secondary text-center mb-2">
-                            Percentage of Weeks Both Units Active
-                          </div>
-                          <div className="flex items-center justify-center gap-3">
-                            <span className="text-xs text-text-secondary">0%</span>
-                            <div className="relative w-64 h-6 rounded overflow-hidden">
-                              <div
-                                className="absolute inset-0"
-                                style={{
-                                  background: 'linear-gradient(to right, rgb(135, 206, 235) 0%, rgb(147, 51, 235) 50%, rgb(220, 38, 38) 100%)'
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs text-text-secondary">100%</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-8 mt-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(135, 206, 235)' }}></div>
-                              <span className="text-xs text-text-secondary">Low</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(147, 51, 235)' }}></div>
-                              <span className="text-xs text-text-secondary">Mid</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(220, 38, 38)' }}></div>
-                              <span className="text-xs text-text-secondary">High</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowHeatmapModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Pairings — the matrix, in the prototype's single-hue ramp. */}
+          {screen === 'heat' && (
+            <PairingsScreen
+              map={pairHeatmapData}
+              mode={heatmapMode}
+              onMode={setHeatmapMode}
+              scope={heatmapScope}
+              onScope={setHeatmapScope}
+              seasonName={activeSeason?.name || 'This season'}
+              seasonCount={activeEvent?.seasons?.length || 1}
+            />
           )}
 
           {/* Simulation Modal */}
-          {showSimulateModal && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
-              onClick={() => setShowSimulateModal(false)}
-            >
-              <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="p-4 sm:p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                      <Zap className="w-6 h-6" />
-                      Simulate Season
-                    </h2>
-                    <button
-                      onClick={() => setShowSimulateModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
-                    >
-                      <X className="w-5 h-5 text-text-muted" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {/* Info Box */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <p className="text-sm text-text-secondary mb-2">
-                        This will simulate a season by generating weeks with {simScheduleOnly ? 'scheduled leads' : 'randomized'}:
-                      </p>
-                      <ul className="text-sm text-text-secondary list-disc list-inside space-y-1 ml-2">
-                        {!simScheduleOnly ? (
-                          <>
-                            <li>Team assignments (leads and supporting units)</li>
-                            <li>Map selections for both rounds</li>
-                            <li>Round results (50/50 chance per team)</li>
-                          </>
-                        ) : (
-                          <>
-                            <li>Week creation with assigned leads only</li>
-                            <li>Teams stay at the leads until you fill them in</li>
-                            <li>No maps or outcomes generated</li>
-                          </>
-                        )}
-                        <li>
-                          {simLeadMode === 'rounds'
-                            ? 'Four different units lead each night — two per round, never both rounds'
-                            : 'Two units lead each night, both rounds each'}
-                        </li>
-                        <li>Lead nights spread as evenly as the numbers allow, with no repeat lead matchups</li>
-                      </ul>
-                      <p className="text-sm text-text-secondary mt-3">
-                        💡 Simulated weeks will be added to your existing weeks.
-                      </p>
-                    </div>
-
-                    {/* Settings */}
-                    <div className="bg-bg-inset rounded-lg p-4 space-y-4">
-                      <h3 className="text-lg font-semibold mb-3">Simulation Settings</h3>
-
-                      {/* Schedule Only Toggle */}
-                      <div className="bg-bg-inset rounded-lg p-3">
-                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={simScheduleOnly}
-                            onChange={(e) => setSimScheduleOnly(e.target.checked)}
-                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <Calendar className="w-4 h-4" />
-                          <span className="font-semibold">Schedule Only</span>
-                        </label>
-                        <p className="text-xs text-text-secondary mt-2 ml-6">
-                          {simScheduleOnly
-                            ? "Generate weeks with leads assigned but no teams, maps, or outcomes"
-                            : "Generate complete weeks with teams, maps, and simulated outcomes"}
-                        </p>
-                      </div>
-
-                      {/* Lead Nights Per Unit */}
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-2">
-                          # of Lead Nights per Token Unit
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="20"
-                          value={simLeadNightsPerUnit}
-                          onChange={(e) => setSimLeadNightsPerUnit(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                        />
-                        <p className="text-xs text-text-secondary mt-1">
-                          {simLeadMode === 'rounds'
-                            ? `Each token unit leads one round on ${simLeadNightsPerUnit} night(s), spread evenly across the season. `
-                            : `Each token unit leads both rounds on ${simLeadNightsPerUnit} night(s), spread evenly across the season. `}
-                          {`${tokenUnits.length} units × ${simLeadNightsPerUnit} nights ÷ ${simPreview.leadsPerNight} leads a night = ${simPreview.nights} weeks (${simPreview.rounds} rounds)`}
-                        </p>
-                        {simPreview.leftover > 0 && (
-                          <p className="text-xs text-yellow-500 mt-1">
-                            {simPreview.leftover} lead slot(s) are left over — that many units will lead one night fewer.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Lead Mode Selection */}
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-2">
-                          Lead Assignment Mode
-                        </label>
-                        <div className="space-y-2">
-                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
-                            <input
-                              type="radio"
-                              name="simLeadMode"
-                              value="fullWeeks"
-                              checked={simLeadMode === 'fullWeeks'}
-                              onChange={(e) => setSimLeadMode(e.target.value)}
-                              className="mt-1"
-                            />
-                            <div>
-                              <div className="text-sm">Full Lead Weeks</div>
-                              <div className="text-xs text-text-secondary">One unit leads both rounds each night</div>
-                            </div>
-                          </label>
-                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
-                            <input
-                              type="radio"
-                              name="simLeadMode"
-                              value="rounds"
-                              checked={simLeadMode === 'rounds'}
-                              onChange={(e) => setSimLeadMode(e.target.value)}
-                              className="mt-1"
-                            />
-                            <div>
-                              <div className="text-sm">Lead Rounds</div>
-                              <div className="text-xs text-text-secondary">Four units lead per night — one per side, per round</div>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Division Lead Nights */}
-                      {divisions && divisions.length > 0 && (
-                        <div>
-                          <label className="block text-sm text-text-secondary mb-2">
-                            # of Lead Nights within Division
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={simLeadNightsPerUnit}
-                            value={simLeadNightsInDivision}
-                            onChange={(e) => setSimLeadNightsInDivision(Math.min(parseInt(e.target.value) || 0, simLeadNightsPerUnit))}
-                            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                          />
-                          <p className="text-xs text-text-secondary mt-1">
-                            {simLeadNightsInDivision === 0
-                              ? "0 = Any matchup is fine (no division requirement)" 
-                              : `Each unit must lead ${simLeadNightsInDivision} week(s) against opponents in their division`}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Unit Summary */}
-                      <div className="bg-bg-inset rounded p-3">
-                        <h4 className="text-sm font-semibold mb-2">Current Units</h4>
-                        <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                          <div>Token Units: {units.filter(u => !nonTokenUnits.includes(u)).length}</div>
-                          <div>Non-Token Units: {nonTokenUnits.length}</div>
-                          <div className="col-span-2">Total Units: {units.length}</div>
-                          {divisions && divisions.length > 0 && (
-                            <div className="col-span-2">Divisions: {divisions.length}</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bottom Buttons */}
-                  <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border-default">
-                    <button
-                      onClick={() => setShowSimulateModal(false)}
-                      className="px-4 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={simulateSeason}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
-                    >
-                      {simScheduleOnly ? <Calendar className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
-                      {simScheduleOnly ? 'Generate Schedule' : 'Simulate Season'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {screen === 'simulator' && (
+            <ScheduleMaker
+              source={simSource}
+              onSource={setSimSource}
+              leadMode={simLeadMode}
+              onLeadMode={setSimLeadMode}
+              scheduleOnly={simScheduleOnly}
+              onScheduleOnly={setSimScheduleOnly}
+              leadNightsPerUnit={simLeadNightsPerUnit}
+              onLeadNightsPerUnit={setSimLeadNightsPerUnit}
+              leadNightsInDivision={simLeadNightsInDivision}
+              onLeadNightsInDivision={setSimLeadNightsInDivision}
+              homePerUnit={simHomePerUnit}
+              onHomePerUnit={setSimHomePerUnit}
+              awayPerUnit={simAwayPerUnit}
+              onAwayPerUnit={setSimAwayPerUnit}
+              splitRounds={simSplitRounds}
+              onSplitRounds={setSimSplitRounds}
+              paste={simPaste}
+              onPaste={setSimPaste}
+              preview={simPreview}
+              parsed={pastedSchedule}
+              audit={pastedAudit}
+              describeProblem={describeScheduleProblem}
+              onApplyPaste={applyPastedSchedule}
+              onGenerate={simulateSeason}
+              tokenUnitCount={tokenUnits.length}
+              nonTokenUnitCount={nonTokenUnits.length}
+              unitCount={units.length}
+              divisionCount={divisions?.length || 0}
+              teamAName={teamNames.A}
+            />
           )}
 
           {/* Simulation Analytics Modal */}
           {showAnalyticsModal && simulationAnalytics && (
             <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
+              className="modal-scrim"
               onClick={() => setShowAnalyticsModal(false)}
             >
               <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
+                className="modal"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-4 sm:p-6">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       <TrendingUp className="w-6 h-6" />
                       Simulation Summary
                     </h2>
                     <button
                       onClick={() => setShowAnalyticsModal(false)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
                   </div>
 
-                  <div className="space-y-6">
+                  <div >
                     {/* Success Message */}
-                    <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
-                      <p className="text-green-400 font-semibold flex items-center gap-2">
+                    <div className="panel pb">
+                      <p className="c-ok font-semibold flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
                         Added {simulationAnalytics.spacing.nights} weeks ({simulationAnalytics.spacing.rounds} rounds) to the season
                       </p>
@@ -8828,15 +6356,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
 
                     {/* Lead Spread */}
-                    <div className="bg-bg-inset rounded-lg p-4">
-                      <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
+                    <div className="panel pb">
+                      <h3 className="text-lg font-semibold c-warn mb-3 flex items-center gap-2">
                         <Clock className="w-5 h-5" />
                         Lead Spread
                       </h3>
                       <p className="text-xs text-text-secondary mb-4">
                         Nights between a unit's {simulationAnalytics.splitLeads ? 'lead rounds' : 'lead weeks'}, across {simulationAnalytics.spacing.leadingUnits} leading units
                       </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="kpis">
                         <SimStat
                           label="Season Length"
                           value={`${simulationAnalytics.spacing.nights} wks`}
@@ -8858,35 +6386,35 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           hint={`rounds over ${oneDecimal(simulationAnalytics.spacing.avgLeadNights)} nights`}
                         />
                       </div>
-                      <div className={`grid ${simulationAnalytics.splitLeads ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mt-3 text-xs`}>
-                        <div className={`rounded p-2 bg-bg-inset ${simulationAnalytics.spacing.backToBack > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                      <div className="kpis" style={{ marginTop: 13 }}>
+                        <div className={`kpi ${simulationAnalytics.spacing.backToBack > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
                           Leads on back-to-back nights: <span className="font-bold">{simulationAnalytics.spacing.backToBack}</span>
                         </div>
                         {simulationAnalytics.splitLeads && (
-                          <div className={`rounded p-2 bg-bg-inset ${simulationAnalytics.spacing.doubleNights > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                          <div className={`kpi ${simulationAnalytics.spacing.doubleNights > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
                             Units leading both rounds of a night: <span className="font-bold">{simulationAnalytics.spacing.doubleNights}</span>
                           </div>
                         )}
                       </div>
-                      <div className="mt-3 max-h-56 overflow-y-auto rounded bg-bg-inset">
-                        <table className="w-full text-xs">
+                      <div style={{ marginTop: 13, maxHeight: 224, overflowY: 'auto' }}>
+                        <table>
                           <thead className="text-text-secondary">
                             <tr className="border-b border-border-default">
-                              <th className="text-left p-2">Unit</th>
-                              <th className="text-right p-2">Lead Rounds</th>
-                              <th className="text-right p-2">Lead Nights</th>
-                              <th className="text-right p-2">Avg Gap</th>
-                              <th className="text-right p-2">Min / Max</th>
+                              <th >Unit</th>
+                              <th className="num">Lead Rounds</th>
+                              <th className="num">Lead Nights</th>
+                              <th className="num">Avg Gap</th>
+                              <th className="num">Min / Max</th>
                             </tr>
                           </thead>
                           <tbody>
                             {simulationAnalytics.spacing.perUnit.map(entry => (
                               <tr key={entry.unit} className="border-b border-border-default/50 last:border-0">
-                                <td className="p-2">{entry.unit}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.leadRounds}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.leadNights}</td>
-                                <td className="p-2 text-right tabular-nums">{oneDecimal(entry.avgGap)}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.minGap ?? '—'} / {entry.maxGap ?? '—'}</td>
+                                <td >{entry.unit}</td>
+                                <td className="num">{entry.leadRounds}</td>
+                                <td className="num">{entry.leadNights}</td>
+                                <td className="num">{oneDecimal(entry.avgGap)}</td>
+                                <td className="num">{entry.minGap ?? '—'} / {entry.maxGap ?? '—'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -8895,22 +6423,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </div>
 
                     {/* Schedule Export */}
-                    <div className="bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <h3 className="cap">
                           <FileText className="w-5 h-5" />
                           Matchup Sheet Export
                         </h3>
                         <div className="flex gap-2">
                           <button
                             onClick={copyScheduleToClipboard}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-md transition flex items-center gap-2"
+                            className="gh live"
                           >
                             <Copy className="w-4 h-4" /> {scheduleCopied ? 'Copied!' : 'Copy'}
                           </button>
                           <button
                             onClick={downloadSchedule}
-                            className="px-3 py-1.5 border border-border-default hover:bg-bg-card text-xs rounded-md transition flex items-center gap-2"
+                            className="gh"
                           >
                             <Download className="w-4 h-4" /> CSV
                           </button>
@@ -8924,57 +6452,57 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         value={toTsv(simulationAnalytics.rows)}
                         onFocus={(e) => e.target.select()}
                         rows={6}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-xs font-mono whitespace-pre"
+                        className="fld-i" style={{ whiteSpace: 'pre' }}
                       />
                     </div>
 
                     {simulationAnalytics.points && (
                       <>
                       {/* Point System Summary */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="cap">
                           <Settings className="w-5 h-5" />
                           Current Point System
                         </h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div className="bg-bg-inset rounded p-3">
+                        <div className="grid-f text-sm">
+                          <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Lead Points</div>
-                            <div className="space-y-1 text-text-secondary">
-                              <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winLead}</span></div>
-                              <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossLead}</span></div>
-                              <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Lead}</span></div>
+                            <div className="note">
+                              <div>Win: <span className="c-accent font-semibold">{pointSystem.winLead}</span></div>
+                              <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossLead}</span></div>
+                              <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Lead}</span></div>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Assist Points</div>
-                            <div className="space-y-1 text-text-secondary">
-                              <div>Win: <span className="text-indigo-400 font-semibold">{pointSystem.winAssist}</span></div>
-                              <div>Loss: <span className="text-indigo-400 font-semibold">{pointSystem.lossAssist}</span></div>
-                              <div>Sweep: <span className="text-indigo-400 font-semibold">{pointSystem.bonus2_0Assist}</span></div>
+                            <div className="note">
+                              <div>Win: <span className="c-accent font-semibold">{pointSystem.winAssist}</span></div>
+                              <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossAssist}</span></div>
+                              <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Assist}</span></div>
                             </div>
                           </div>
                         </div>
                       </div>
 
                       {/* Theoretical Analysis */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="text-lg font-semibold f-usa mb-3 flex items-center gap-2">
                           <FileText className="w-5 h-5" />
                           Theoretical Distribution (Per Token Unit)
                         </h3>
                         <p className="text-xs text-text-secondary mb-4">
                           Maximum possible points per token unit (winning every round and sweep)
                         </p>
-                        <div className="space-y-3">
-                          <div className="bg-bg-inset rounded p-3">
+                        <div >
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Season)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{simulationAnalytics.points.theoretical.leadPoints.toFixed(1)}</span>
+                              <span className="c-accent font-bold">{simulationAnalytics.points.theoretical.leadPoints.toFixed(1)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{simulationAnalytics.points.theoretical.assistPoints.toFixed(1)}</span>
+                              <span className="f-usa font-bold">{simulationAnalytics.points.theoretical.assistPoints.toFixed(1)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8982,15 +6510,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{simulationAnalytics.points.theoretical.totalPoints.toFixed(1)}</span>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Per Round)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{(simulationAnalytics.points.theoretical.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="c-accent font-bold">{(simulationAnalytics.points.theoretical.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{(simulationAnalytics.points.theoretical.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="f-usa font-bold">{(simulationAnalytics.points.theoretical.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -8998,13 +6526,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{(simulationAnalytics.points.theoretical.totalPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
-                              <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
+                          <div className="kpis">
+                            <div className="kpi">
+                              <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
-                            <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
-                              <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.points.theoretical.assistPercentage.toFixed(1)}%</div>
+                            <div className="kpi">
+                              <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.theoretical.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
                           </div>
@@ -9012,24 +6540,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </div>
 
                       {/* Simulated Results */}
-                      <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="text-lg font-semibold c-ok mb-3 flex items-center gap-2">
                           <BarChart3 className="w-5 h-5" />
                           Simulated Results (Per Token Unit Average)
                         </h3>
                         <p className="text-xs text-text-secondary mb-4">
                           Actual points averaged across all token units from the simulation
                         </p>
-                        <div className="space-y-3">
-                          <div className="bg-bg-inset rounded p-3">
+                        <div >
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Season Totals (Average)</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{simulationAnalytics.points.simulated.leadPoints.toFixed(1)}</span>
+                              <span className="c-accent font-bold">{simulationAnalytics.points.simulated.leadPoints.toFixed(1)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{simulationAnalytics.points.simulated.assistPoints.toFixed(1)}</span>
+                              <span className="f-usa font-bold">{simulationAnalytics.points.simulated.assistPoints.toFixed(1)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -9037,15 +6565,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{simulationAnalytics.points.simulated.totalPoints.toFixed(1)}</span>
                             </div>
                           </div>
-                          <div className="bg-bg-inset rounded p-3">
+                          <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Per Round Average</div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Lead Points</span>
-                              <span className="text-indigo-400 font-bold">{(simulationAnalytics.points.simulated.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="c-accent font-bold">{(simulationAnalytics.points.simulated.leadPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center mb-2">
                               <span className="text-text-secondary font-semibold">Assist Points</span>
-                              <span className="text-blue-400 font-bold">{(simulationAnalytics.points.simulated.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
+                              <span className="f-usa font-bold">{(simulationAnalytics.points.simulated.assistPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                             <div className="border-t border-border-default my-2"></div>
                             <div className="flex justify-between items-center">
@@ -9053,16 +6581,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{(simulationAnalytics.points.simulated.totalPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="text-xs text-text-secondary bg-bg-inset rounded p-2">
+                          <div className="text-xs text-text-secondary panel pb">
                             All token units combined: {simulationAnalytics.points.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.points.simulated.totalAssistPoints.toFixed(0)} assist points
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
-                              <div className="text-indigo-400 text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
+                          <div className="kpis">
+                            <div className="kpi">
+                              <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
-                            <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
-                              <div className="text-blue-400 text-2xl font-bold">{simulationAnalytics.points.simulated.assistPercentage.toFixed(1)}%</div>
+                            <div className="kpi">
+                              <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.simulated.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
                           </div>
@@ -9070,22 +6598,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </div>
 
                       {/* Comparison */}
-                      <div className="bg-indigo-900/20 border border-indigo-700 rounded-lg p-4">
-                        <h3 className="text-lg font-semibold text-indigo-400 mb-3 flex items-center gap-2">
+                      <div className="panel pb">
+                        <h3 className="text-lg font-semibold c-accent mb-3 flex items-center gap-2">
                           <TrendingUp className="w-5 h-5" />
                           Comparison
                         </h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid-f text-sm">
                           <div>
                             <div className="text-text-secondary mb-1">Lead Point Variance</div>
-                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage) < 2 ? 'c-ok' : 'text-yellow-400'}`}>
                               {(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage > 0 ? '+' : '')}
                               {(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage).toFixed(1)}%
                             </div>
                           </div>
                           <div>
                             <div className="text-text-secondary mb-1">Assist Point Variance</div>
-                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage) < 2 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage) < 2 ? 'c-ok' : 'text-yellow-400'}`}>
                               {(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage > 0 ? '+' : '')}
                               {(simulationAnalytics.points.simulated.assistPercentage - simulationAnalytics.points.theoretical.assistPercentage).toFixed(1)}%
                             </div>
@@ -9102,7 +6630,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end">
                       <button
                         onClick={() => setShowAnalyticsModal(false)}
-                        className="px-6 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition font-semibold"
+                        className="gh"
                       >
                         Close
                       </button>
@@ -9115,11 +6643,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Enlarged Section Modal */}
           {enlargedSection && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default w-full max-w-6xl max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal wide">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <h2 className="cap">
                       {enlargedSection === 'weeks' && (
                         <>
                           <Calendar className="w-6 h-6" />
@@ -9141,7 +6669,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </h2>
                     <button
                       onClick={() => setEnlargedSection(null)}
-                      className="p-1.5 rounded-md hover:bg-bg-inset transition"
+                      className="ib"
                     >
                       <X className="w-5 h-5 text-text-muted" />
                     </button>
@@ -9153,21 +6681,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div className="mb-4 flex justify-end">
                         <button
                           onClick={addWeek}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
+                          className="gh live"
                         >
                           <Plus className="w-4 h-4" />
                           Add Week
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="mapgrid">
                         {weeks.map((week) => (
                           <div
                             key={week.id}
-                            className={`p-4 rounded-lg transition cursor-pointer ${
-                              selectedWeek?.id === week.id
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-bg-inset hover:bg-border-subtle'
-                            }`}
+                            className={`row click${selectedWeek?.id === week.id ? ' on' : ''}`}
                           >
                             <div className="flex justify-between items-center">
                               {editingWeek === week.id ? (
@@ -9180,7 +6704,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       renameWeek(week.id, e.target.value);
                                     }
                                   }}
-                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
+                                  className="fld-i"
                                   autoFocus
                                 />
                               ) : (
@@ -9200,7 +6724,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     e.stopPropagation();
                                     setEditingWeek(week.id);
                                   }}
-                                  className="p-1 hover:bg-bg-inset rounded transition"
+                                  className="ib"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
@@ -9209,7 +6733,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     e.stopPropagation();
                                     removeWeek(week.id);
                                   }}
-                                  className="p-1 hover:bg-red-600 rounded transition"
+                                  className="ib danger"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -9231,37 +6755,37 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onChange={(e) => setNewUnitName(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && addUnit()}
                           placeholder="Unit name..."
-                          className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                          className="fld-i"
                         />
                         <button
                           onClick={addUnit}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition flex items-center gap-2"
+                          className="gh live"
                         >
                           <Plus className="w-4 h-4" />
                           Add Unit
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="mapgrid">
                         {units.map((unit) => {
                           const isNonToken = nonTokenUnits.includes(unit);
                           return (
                             <div
                               key={unit}
-                              className="flex justify-between items-center p-3 bg-bg-inset rounded-lg"
+                              className="row flex justify-between items-center"
                             >
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => toggleNonTokenStatus(unit)}
-                                  className={`px-2 py-1 rounded text-xs font-bold transition ${
+                                  className={`gh ${
                                     isNonToken
-                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                      : 'bg-bg-card hover:bg-bg-inset text-text-secondary'
+                                      ? 'gh live'
+                                      : ''
                                   }`}
                                   title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
                                 >
                                   {isNonToken ? '*' : '○'}
                                 </button>
-                                <span className={`font-medium ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                <span className={`font-medium ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                   {unit}
                                 </span>
                               </div>
@@ -9270,14 +6794,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   <>
                                     <button
                                       onClick={() => moveUnitToTeam(unit, 'A')}
-                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                                      className="gh live"
                                       title={`Add to ${teamNames.A}`}
                                     >
                                       → A
                                     </button>
                                     <button
                                       onClick={() => moveUnitToTeam(unit, 'B')}
-                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                                      className="gh c-danger"
                                       title={`Add to ${teamNames.B}`}
                                     >
                                       → B
@@ -9286,7 +6810,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 )}
                                 <button
                                   onClick={() => removeUnit(unit)}
-                                  className="p-1 hover:bg-red-600 rounded transition"
+                                  className="ib danger"
                                 >
                                   <Trash2 className="w-4 h-4 text-white" />
                                 </button>
@@ -9313,7 +6837,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         {divisions && divisions.length > 0 && (
                           <button
                             onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition flex items-center gap-1"
+                            className="gh live"
                             title={showGroupedStandings ? "Show All" : "Group by Division"}
                           >
                             {showGroupedStandings ? <Users className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
@@ -9321,31 +6845,31 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </button>
                         )}
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="mapgrid">
                         {showGroupedStandings && divisions && divisions.length > 0 ? (
                           getGroupedStandings().map((group) => (
-                            <div key={group.name} className="bg-bg-inset rounded-lg p-4">
-                              <h3 className="text-sm font-bold text-text-secondary mb-3 px-2 flex items-center gap-2">
+                            <div key={group.name} className="panel pb">
+                              <h3 className="cap">
                                 <Shield className="w-4 h-4" />
                                 {group.name}
                               </h3>
-                              <div className="space-y-2">
+                              <div >
                                 {group.units.map((stat) => {
                                   const isNonToken = nonTokenUnits.includes(stat.unit);
                                   return (
                                     <div
                                       key={stat.unit}
-                                      className="bg-bg-inset rounded-lg p-3"
+                                      className="panel pb"
                                     >
                                       <div className="flex justify-between items-center mb-2">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-indigo-400 font-bold text-lg">
+                                          <span className="c-accent font-bold text-lg">
                                             #{stat.divisionRank || stat.currentRank}
                                           </span>
                                           {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                             <span className={`text-xs font-semibold ${
-                                              stat.rankDelta > 0 ? 'text-green-400' :
-                                              stat.rankDelta < 0 ? 'text-red-400' :
+                                              stat.rankDelta > 0 ? 'c-ok' :
+                                              stat.rankDelta < 0 ? 'c-danger' :
                                               'text-text-secondary'
                                             }`}>
                                               {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -9353,46 +6877,46 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                                '−'}
                                             </span>
                                           )}
-                                          <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                          <span className={`font-semibold ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                             {isNonToken ? '*' : ''}{stat.unit}
                                           </span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                           <div className="flex items-center gap-1 text-xs">
                                             {stat.eloDelta > 0 ? (
-                                              <TrendingUp className="w-3 h-3 text-blue-400" />
+                                              <TrendingUp className="w-3 h-3 f-usa" />
                                             ) : stat.eloDelta < 0 ? (
-                                              <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                              <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                                             ) : (
                                               <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                             )}
-                                            <span className="text-cyan-400 font-semibold">
+                                            <span className="c-accent font-semibold">
                                               {Math.round(stat.elo)}
                                             </span>
                                             {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                                               <span className={`ml-1 ${
-                                                stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                                stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                                               }`}>
                                                 ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                                               </span>
                                             )}
                                           </div>
-                                          <span className="text-green-400 font-bold text-xl">
+                                          <span className="c-ok font-bold text-xl">
                                             {stat.points}
                                           </span>
                                           {stat.pointsDelta !== 0 && (
-                                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                                               ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                                             </span>
                                           )}
                                         </div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+                                      <div className="grid-f text-xs text-text-secondary">
                                         <div>L-Wins: {stat.leadWins}</div>
                                         <div>L-Loss: {stat.leadLosses}</div>
                                         <div>A-Wins: {stat.assistWins}</div>
                                         <div>A-Loss: {stat.assistLosses}</div>
-                                        <div className="col-span-2 text-cyan-300">
+                                        <div className="col-span-2 c-accent">
                                           Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                                         </div>
                                       </div>
@@ -9408,17 +6932,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             return (
                               <div
                                 key={stat.unit}
-                                className="bg-bg-inset rounded-lg p-3"
+                                className="panel pb"
                               >
                                 <div className="flex justify-between items-center mb-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-indigo-400 font-bold text-lg">
+                                    <span className="c-accent font-bold text-lg">
                                       #{index + 1}
                                     </span>
                                     {stat.rankDelta !== null && stat.rankDelta !== undefined && (
                                       <span className={`text-xs font-semibold ${
-                                        stat.rankDelta > 0 ? 'text-green-400' :
-                                        stat.rankDelta < 0 ? 'text-red-400' :
+                                        stat.rankDelta > 0 ? 'c-ok' :
+                                        stat.rankDelta < 0 ? 'c-danger' :
                                         'text-text-secondary'
                                       }`}>
                                         {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
@@ -9426,46 +6950,46 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                          '−'}
                                       </span>
                                     )}
-                                    <span className={`font-semibold ${isNonToken ? 'text-indigo-400' : 'text-text-primary'}`}>
+                                    <span className={`font-semibold ${isNonToken ? 'c-accent' : 'text-text-primary'}`}>
                                       {isNonToken ? '*' : ''}{stat.unit}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-1 text-xs">
                                       {stat.eloDelta > 0 ? (
-                                        <TrendingUp className="w-3 h-3 text-blue-400" />
+                                        <TrendingUp className="w-3 h-3 f-usa" />
                                       ) : stat.eloDelta < 0 ? (
-                                        <TrendingUp className="w-3 h-3 text-red-400 transform rotate-180" />
+                                        <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
                                       ) : (
                                         <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
                                       )}
-                                      <span className="text-cyan-400 font-semibold">
+                                      <span className="c-accent font-semibold">
                                         {Math.round(stat.elo)}
                                       </span>
                                       {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
                                         <span className={`ml-1 ${
-                                          stat.eloDelta > 0 ? 'text-green-400' : 'text-red-400'
+                                          stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
                                         }`}>
                                           ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
                                         </span>
                                       )}
                                     </div>
-                                    <span className="text-green-400 font-bold text-xl">
+                                    <span className="c-ok font-bold text-xl">
                                       {stat.points}
                                     </span>
                                     {stat.pointsDelta !== 0 && (
-                                      <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
                                         ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
                                       </span>
                                     )}
                                   </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+                                <div className="grid-f text-xs text-text-secondary">
                                   <div>L-Wins: {stat.leadWins}</div>
                                   <div>L-Loss: {stat.leadLosses}</div>
                                   <div>A-Wins: {stat.assistWins}</div>
                                   <div>A-Loss: {stat.assistLosses}</div>
-                                  <div className="col-span-2 text-cyan-300">
+                                  <div className="col-span-2 c-accent">
                                     Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
                                   </div>
                                 </div>
@@ -9483,30 +7007,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Empty State */}
           {viewMode === 'tracker' && weeks.length === 0 && (
-            <div className="text-center text-text-secondary py-12 mt-6">
+            <div className="panel pb">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg">Add a week to get started</p>
             </div>
           )}
         </div>
-      </div>
 
       {/* Generic Choice Dialog — replaces window.prompt() for action picks */}
       {choiceDialog && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          className="modal-scrim"
           onClick={choiceDialog.onClose}
         >
           <div
-            className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full"
+            className="modal narrow"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-5">
+            <div className="pb">
               <div className="flex justify-between items-start gap-3 mb-2">
-                <h2 className="text-base font-semibold">{choiceDialog.title}</h2>
+                <h2 className="cap">{choiceDialog.title}</h2>
                 <button
                   onClick={choiceDialog.onClose}
-                  className="p-1 rounded-md hover:bg-bg-inset transition shrink-0"
+                  className="ib"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4 text-text-muted" />
@@ -9519,15 +7042,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 {choiceDialog.choices.map((c, idx) => {
                   const variant = c.variant || 'secondary';
                   const cls =
-                    variant === 'primary'   ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
-                  : variant === 'danger'    ? 'bg-red-600/90 hover:bg-red-600 text-white border-red-600'
-                  : variant === 'cancel'    ? 'bg-transparent hover:bg-bg-inset text-text-secondary border-border-default'
-                  :                           'bg-bg-inset hover:bg-border-subtle text-text-primary border-border-default';
+                    variant === 'primary'   ? 'gh live'
+                  : variant === 'danger'    ? 'gh c-danger'
+                  :                           'gh';
                   return (
                     <button
                       key={idx}
                       onClick={() => choiceDialog.onChoose(c.value)}
-                      className={`text-left px-4 py-2.5 rounded-md border transition ${cls}`}
+                      className={cls}
+                      style={{ textAlign: 'left', padding: '7px 11px' }}
                     >
                       <div className="text-sm font-medium">{c.label}</div>
                       {c.description && (
@@ -9543,7 +7066,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
           </div>
         </div>
       )}
-    </div>
+    </Shell>
   );
 };
 

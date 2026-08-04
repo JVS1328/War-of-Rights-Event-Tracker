@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
-/** Titled section, optionally collapsible with localStorage-persisted state. */
+/**
+ * A ledger panel: a header band with the title, a rule, and whatever sits at
+ * the end, then the body. Optionally collapsible with localStorage-persisted
+ * state.
+ */
 export function Panel({
   title,
   right,
   children,
   className = '',
+  flush = false,
   collapsible = false,
   defaultOpen = true,
   storageKey,
@@ -16,11 +21,11 @@ export function Panel({
   right?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Drop the body padding — for tables and column grids that rule themselves. */
+  flush?: boolean;
   collapsible?: boolean;
   defaultOpen?: boolean;
-  /** If provided, persists collapse state to localStorage. */
   storageKey?: string;
-  /** When this changes to a non-null value, force the panel open (e.g. focus nav). */
   openSignal?: unknown;
 }) {
   const [open, setOpen] = useState<boolean>(defaultOpen);
@@ -38,54 +43,30 @@ export function Panel({
 
   const toggle = () => {
     if (!collapsible) return;
-    setOpen((prev) => {
-      const next = !prev;
-      if (storageKey) window.localStorage.setItem(storageKey, next ? '1' : '0');
-      return next;
-    });
+    const next = !open;
+    setOpen(next);
+    if (storageKey) window.localStorage.setItem(storageKey, next ? '1' : '0');
   };
 
   return (
-    <section
-      className={`border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] flex flex-col ${className}`}
-    >
-      <header
-        className={`flex items-center justify-between border-b border-[color:var(--color-border)] px-3 py-1.5 bg-[color:var(--color-bg-2)] ${
-          collapsible ? 'cursor-pointer select-none hover:bg-[color:var(--color-bg-3)]' : ''
-        }`}
-        onClick={collapsible ? toggle : undefined}
-        role={collapsible ? 'button' : undefined}
-        tabIndex={collapsible ? 0 : undefined}
-        onKeyDown={
-          collapsible
-            ? (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggle();
-                }
-              }
-            : undefined
-        }
-      >
-        <h2 className="text-sm uppercase tracking-wider text-[color:var(--color-text-1)] font-mono flex items-center gap-2">
-          {collapsible && (
-            <span className="text-[color:var(--color-text-2)] inline-block w-3">
-              {open ? '▼' : '▶'}
-            </span>
-          )}
-          {title}
-        </h2>
-        {right && (
-          <div
-            className="text-xs text-[color:var(--color-text-2)] font-mono"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
+    <div className={`panel ${className}`}>
+      <header className="ph">
+        {collapsible ? (
+          <button
+            onClick={toggle}
+            aria-expanded={open}
+            style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7 }}
           >
-            {right}
-          </div>
+            <span style={{ color: 'var(--ink-3)', fontSize: 10 }}>{open ? '▾' : '▸'}</span>
+            <h2>{title}</h2>
+          </button>
+        ) : (
+          <h2>{title}</h2>
         )}
+        <span className="rule" />
+        {right}
       </header>
-      {open && <div className="flex-1 min-h-0 overflow-auto">{children}</div>}
-    </section>
+      {open && <div className={flush ? 'pb flush' : 'pb'}>{children}</div>}
+    </div>
   );
 }

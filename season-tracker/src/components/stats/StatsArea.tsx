@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Trash2, Pencil, X, GitMerge, Layers, ChevronDown, ChevronRight } from 'lucide-react';
-import { Panel, Tile, Pill, DataTable, EmptyHint } from '../ui';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Upload, Trash2, Pencil, X, GitMerge, Layers } from 'lucide-react';
+import { Panel, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
 import {
@@ -16,29 +16,45 @@ import {
   resolveFor,
   withAliasLayer,
 } from '../../stats/statsEngine';
-import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare, TicketContextShare } from '../../stats/statsEngine';
+import type { PlayerType } from '../../stats/statsEngine';
+import { CAVALRY_REGIMENTS } from '../../stats/branch';
+import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare, TicketContextShare } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
 import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
-import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
 import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, scopedMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
+import { CompareView } from './CompareView';
+import { StatsOverview } from './StatsOverview';
+import { MapsScreen } from './MapsScreen';
+import { NightMatchup } from './NightMatchup';
+import type { NightWeek, PointSystem } from '../../stats/nightMatchup';
 import { TicketPct } from './drawerPrimitives';
 
-export interface WeekRef {
+/**
+ * A week, as the stats side reads it. The binding panel only needs id/name/flip,
+ * but the Nights tab reads the whole result — so this is {@link NightWeek} with
+ * a string id, and the tracker hands its week straight in.
+ */
+export interface WeekRef extends NightWeek {
   id: string;
-  name: string;
-  round1Flipped?: boolean;
-  round2Flipped?: boolean;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'maps' | 'rounds' | 'import';
-const TABS: SubTab[] = ['overview', 'players', 'regiments', 'maps', 'rounds', 'import'];
+type SubTab = 'overview' | 'players' | 'regiments' | 'nights' | 'compare' | 'maps' | 'rounds' | 'import';
+const TABS: SubTab[] = ['overview', 'players', 'regiments', 'nights', 'compare', 'maps', 'rounds', 'import'];
 
-const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
+const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
+
+/** Arm-of-service filter buttons for the player leaderboard and the card. */
+const ARM_FILTERS: { key: PlayerType; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'inf', label: 'Infantry' },
+  { key: 'cav', label: 'Cavalry' },
+  { key: 'arty', label: 'Artillery' },
+];
 
 function fmtDuration(sec: number | null): string {
   if (sec == null) return '—';
@@ -73,9 +89,9 @@ function Pager({
 }) {
   if (pageCount <= 1) return null;
   const btn =
-    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40';
+    '';
   return (
-    <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+    <div className="pager">
       <span className="tabular-nums">
         {offset + 1}–{offset + shown} of {total} {noun}
       </span>
@@ -83,7 +99,7 @@ function Pager({
         <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} aria-label="Previous page" className={btn}>
           ‹
         </button>
-        <span className="px-1 tabular-nums">
+        <span>
           {page + 1}/{pageCount}
         </span>
         <button onClick={() => onPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1} aria-label="Next page" className={btn}>
@@ -105,6 +121,18 @@ interface StatsAreaProps {
   validMaps?: string[];
   /** Writes auto-filled round fields back into the tracker's week. */
   onApplyRound?: (weekId: string, updates: Record<string, unknown>) => void;
+  /** The season's point system, so the Nights tab can price a night. */
+  pointSystem?: PointSystem;
+  /** Units holding a standings token — anyone else scores nothing. */
+  tokenUnits?: string[];
+  /** Opens the tracker's night builder for a week, from the Nights tab. */
+  onEditNight?: (weekId: string) => void;
+  /**
+   * Which sub-tab to show. When given, the panel is driven from outside (the
+   * tracker's rail) and hides its own tab strip — the rail is the navigation.
+   */
+  tab?: SubTab;
+  onTab?: (tab: SubTab) => void;
   /**
    * All seasons (id, name, weekIds) for the season/Overall stats filter. A
    * scoreboard belongs to a season when its `binding.weekId` is in that
@@ -147,6 +175,11 @@ export function StatsPanel({
   teamNames = { A: 'USA', B: 'CSA' },
   validMaps = [],
   onApplyRound,
+  pointSystem,
+  tokenUnits,
+  onEditNight,
+  tab: tabProp,
+  onTab,
   seasons = [],
   seasonScope = OVERALL_SCOPE,
   onSeasonScope,
@@ -154,15 +187,21 @@ export function StatsPanel({
   stats,
   readOnly = false,
 }: StatsAreaProps & { stats: UseStats; readOnly?: boolean }) {
-  const [tab, setTab] = useState<SubTab>('overview');
+  const [ownTab, setOwnTab] = useState<SubTab>('overview');
+  const railDriven = tabProp != null;
+  const tab: SubTab = tabProp ?? ownTab;
+  const setTab = (t: SubTab) => (onTab ? onTab(t) : setOwnTab(t));
   // Regiment-list textarea starts empty — it's a manual override, no longer
   // pre-filled from the event unit registry. (Registry-based matching still
   // happens automatically via `opts` below.)
   const [listText, setListText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'inf' | 'arty'>('all');
+  const [typeFilter, setTypeFilter] = useState<PlayerType>('all');
+  const [glossary, setGlossary] = useState(false);
+  /** A pair sent over from the Units screen's "Open comparison" control. */
+  const [compareUnits, setCompareUnits] = useState<[string, string] | null>(null);
   const [playerKey, setPlayerKey] = useState<string | null>(null);
-  const [playerType, setPlayerType] = useState<'all' | 'inf' | 'arty'>('all');
+  const [playerType, setPlayerType] = useState<PlayerType>('all');
   const [scoreboardId, setScoreboardId] = useState<string | null>(null);
   // Regiments-tab focus navigation (from the Players-tab regiment link).
   const [focusRegiment, setFocusRegiment] = useState<string | null>(null);
@@ -230,6 +269,19 @@ export function StatsPanel({
     () => computePlayerLeaderboard(sbs, overallAssignments, { ...opts, type: typeFilter }),
     [sbs, overallAssignments, opts, typeFilter],
   );
+  // Counts sit on the branch buttons, so each says how much it would leave.
+  // Computed per arm rather than by filtering `players`, because the filter is
+  // per player-round: someone who rode one round and marched the next belongs
+  // to both counts and to neither exclusively.
+  const branchCounts = useMemo(() => {
+    const out = {} as Record<PlayerType, number>;
+    for (const { key } of ARM_FILTERS) {
+      out[key] = key === typeFilter
+        ? players.length
+        : computePlayerLeaderboard(sbs, overallAssignments, { ...opts, type: key }).length;
+    }
+    return out;
+  }, [sbs, overallAssignments, opts, players.length, typeFilter]);
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentContext = useMemo(() => computeRegimentContextStats(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentTicketShares = useMemo(
@@ -301,6 +353,22 @@ export function StatsPanel({
     clear: () => setCombineLabels([]),
   };
 
+  // Rank is the player's place in the list as currently filtered, and the bars
+  // are scaled to that same set — so both answer "against who is on screen".
+  const playerRank = useMemo(() => {
+    const order = [...players].sort((a, b) => b.kills - a.kills);
+    return new Map(order.map((p, i) => [p.key, i + 1]));
+  }, [players]);
+  const rankOfPlayer = (p: PlayerStatRow) => playerRank.get(p.key) ?? 0;
+  const playerMax = useMemo(
+    () => ({
+      kills: players.reduce((m, p) => Math.max(m, p.kills), 0),
+      kd: players.reduce((m, p) => Math.max(m, p.kd), 0),
+    }),
+    [players],
+  );
+  const maxOfPlayer = (k: 'kills' | 'kd') => playerMax[k];
+
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const playerDetail = useMemo(
@@ -325,25 +393,24 @@ export function StatsPanel({
 
   const hasData = sbs.length > 0;
   // Shared/read-only views drop the Import tab — there's nothing to import into.
-  const visibleTabs = readOnly ? TABS.filter((t) => t !== 'import') : TABS;
+  const visibleTabs = TABS.filter(
+    (t) => (t !== 'import' || !readOnly) && (t !== 'nights' || weeks.length > 0),
+  );
 
   return (
-    <div className="space-y-3">
+    <div>
       {/* Season / Overall filter — rendered only when this panel owns the
           control (the shared view). The live tracker drives `seasonScope` from
           its own season nav, so it passes no handler and this row stays hidden. */}
-      {onSeasonScope && seasons.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
-          <span className="px-2 text-[color:var(--color-text-2)]">Season</span>
+      {!railDriven && onSeasonScope && seasons.length > 0 && (
+        <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 18 }}>
+          <span className="cap">Season</span>
           {seasons.map((s) => (
             <button
               key={s.id}
               onClick={() => onSeasonScope(s.id)}
-              className={`px-3 py-1.5 transition ${
-                seasonScope === s.id
-                  ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-                  : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-              }`}
+              className="gh"
+              aria-pressed={seasonScope === s.id}
             >
               {s.name}
             </button>
@@ -351,58 +418,83 @@ export function StatsPanel({
           <button
             onClick={() => onSeasonScope(OVERALL_SCOPE)}
             title="All seasons combined"
-            className={`px-3 py-1.5 transition ${
-              seasonScope === OVERALL_SCOPE
-                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-            }`}
+            className="gh"
+            aria-pressed={seasonScope === OVERALL_SCOPE}
           >
             Overall
           </button>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
-        {visibleTabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 transition ${
-              tab === t ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-        <span className="px-3 text-[color:var(--color-text-2)]">{eventName}</span>
+      {!railDriven && (
+      <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 18 }}>
+        <div className="seg">
+          {visibleTabs.map((t) => (
+            <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}>{t}</button>
+          ))}
+        </div>
+        <span className="rule" />
+        <span className="meta wor-name">{eventName}</span>
       </div>
+      )}
 
       {tab === 'overview' && (
-        <div className="space-y-3">
-          <OverviewTab o={overview} hasData={hasData} rounds={rounds} onOpenRound={openRound} />
-          <CombatTab combat={combat} hasData={hasData} />
-        </div>
+        <StatsOverview
+          o={overview}
+          players={players}
+          rounds={rounds}
+          combat={combat}
+          hasData={hasData}
+          scopeName={seasons.find((s) => s.id === seasonScope)?.name ?? eventName}
+          onOpenRound={openRound}
+          onOpenPlayer={openPlayer}
+        />
       )}
 
       {tab === 'players' && (
-        <>
-          <div className="flex items-center gap-2 font-mono text-sm uppercase tracking-wider">
-            <span className="text-[color:var(--color-text-2)]">Class</span>
-            {(['all', 'inf', 'arty'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setTypeFilter(f)}
-                className={`border border-[color:var(--color-border)] px-2 py-1 ${
-                  typeFilter === f ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-            <Pill tone={typeFilter === 'arty' ? 'warn' : typeFilter === 'inf' ? 'neutral' : 'accent'}>
-              {typeFilter === 'all' ? 'All (combined)' : typeFilter === 'inf' ? 'Infantry' : 'Artillery'}
-            </Pill>
+        <div className="panel">
+          <header className="ph">
+            <h2>Player leaderboard</h2>
+            <span className="rule" />
+            <span className="meta">{players.length} player{players.length === 1 ? '' : 's'}</span>
+          </header>
+          <div className="ctl">
+            <span className="cap">Branch</span>
+            <div className="seg" role="group" aria-label="Arm of service">
+              {ARM_FILTERS.map(({ key, label }) => (
+                <button key={key} onClick={() => setTypeFilter(key)} aria-pressed={typeFilter === key}>
+                  {label} <span style={{ opacity: 0.6 }}>{branchCounts[key]}</span>
+                </button>
+              ))}
+            </div>
+            <button className="gh" aria-pressed={glossary} onClick={() => setGlossary((g) => !g)}>
+              What do these mean?
+            </button>
+            <span className="rule" />
+            <span
+              className="meta"
+              title={`Read from the in-game regiment each round. Cavalry: ${CAVALRY_REGIMENTS.join(', ')}.`}
+            >
+              branch comes from the in-game regiment
+            </span>
           </div>
-          <Panel title={`Player Leaderboard (${players.length})`}>
+          {glossary && (
+            <div className="gloss">
+              <dl><dt>K/D</dt><dd>Kills ÷ deaths over every imported round.</dd></dl>
+              <dl>
+                <dt>Cost per death <span style={{ color: 'var(--ink-3)' }}>(×Td)</span></dt>
+                <dd>Tickets each death cost the team. In formation 1, skirmishing 3, out of line 5. Lower is better.</dd>
+              </dl>
+              <dl>
+                <dt>Value per kill <span style={{ color: 'var(--ink-3)' }}>(×Tk)</span></dt>
+                <dd>Tickets each kill drained, weighted by where the victim died. Higher is better.</dd>
+              </dl>
+              <dl>
+                <dt>Cavalry</dt>
+                <dd>Anyone whose in-game regiment is {CAVALRY_REGIMENTS.join(', ')}. Artillery is any battery.</dd>
+              </dl>
+            </div>
+          )}
+          <div className="pb">
             {players.length === 0 ? (
               <EmptyHint>
                 {typeFilter === 'all' ? 'Import a scoreboard to see player stats' : `No ${typeFilter} player-rounds`}
@@ -413,13 +505,13 @@ export function StatsPanel({
                 getRowKey={(p) => p.key}
                 initialSortKey="kills"
                 pageSize={25}
-                searchValue={(p) => `${p.name} ${p.regiment} ${p.steamId ?? ''}`}
-                searchPlaceholder="Search players, regiments, or steam id…"
-                columns={playerColumns(goToRegiment, openPlayer)}
+                searchValue={(p) => `${p.name} ${p.regiment} ${p.steamId ?? ''} ${p.inGameRegiment ?? ''} ${p.branch}`}
+                searchPlaceholder="player, unit, steam id or in-game regiment"
+                columns={playerColumns(goToRegiment, openPlayer, rankOfPlayer, maxOfPlayer)}
               />
             )}
-          </Panel>
-        </>
+          </div>
+        </div>
       )}
 
       {tab === 'regiments' && (
@@ -436,10 +528,33 @@ export function StatsPanel({
           seasonScope={seasonScope}
           seasonName={seasons.find((s) => s.id === seasonScope)?.name ?? null}
           combine={combine}
+          onCompare={(a, b) => { setCompareUnits([a, b]); setTab('compare'); }}
         />
       )}
 
-      {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} scoreboardMapStats={scoreboardMapStats} />}
+      {tab === 'nights' && (
+        <NightMatchup
+          weeks={weeks}
+          stored={stats.stored}
+          pointSystem={pointSystem}
+          tokenUnits={tokenUnits}
+          assignments={overallAssignments}
+          options={{ regimentList, aliasMap: overallAlias }}
+          onOpenRound={openRound}
+          onEditNight={onEditNight}
+        />
+      )}
+
+      {tab === 'compare' && (
+        <CompareView
+          players={players}
+          regiments={regiments}
+          initialUnit={compareUnits?.[0] ?? null}
+          initialUnitB={compareUnits?.[1] ?? null}
+        />
+      )}
+
+      {tab === 'maps' && <MapsScreen trackerMapStats={trackerMapStats} scoreboardMapStats={scoreboardMapStats} />}
 
       {tab === 'rounds' && <RoundsTab rounds={rounds} openRound={openRound} />}
 
@@ -462,6 +577,7 @@ export function StatsPanel({
         onOpenRound={openRound}
         type={playerType}
         onType={setPlayerType}
+        field={players}
       />
       <ScoreboardDrawer
         open={scoreboardId != null}
@@ -480,88 +596,37 @@ export function StatsPanel({
   );
 }
 
-// ── Overview ─────────────────────────────────────────────────────────────────
-
-function OverviewTab({
-  o,
-  hasData,
-  rounds,
-  onOpenRound,
-}: {
-  o: ReturnType<typeof computeOverview>;
-  hasData: boolean;
-  rounds: RoundSummary[];
-  onOpenRound: (filename: string) => void;
-}) {
-  if (!hasData) {
-    return (
-      <Panel title="Overview">
-        <EmptyHint>Import scoreboards to see event totals</EmptyHint>
-      </Panel>
-    );
-  }
-  const recent = rounds.slice(0, 2);
-  return (
-    <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px">
-        <Tile label="Rounds" value={o.totalRounds} />
-        <Tile label="USA Wins" value={o.usaWins} />
-        <Tile label="CSA Wins" value={o.csaWins} />
-        <Tile label="Total Kills" value={o.totalKills.toLocaleString()} />
-        <Tile label="USA Casualties" value={o.usaCasualties.toLocaleString()} />
-        <Tile label="CSA Casualties" value={o.csaCasualties.toLocaleString()} />
-        <Tile label="Players" value={o.distinctPlayers} hint="unique by steam id" />
-        <Tile label="Regiments" value={o.distinctRegiments} />
-        <Tile label="Avg Peak Pop" value={o.avgPeakPop ?? '—'} hint="avg across rounds" />
-      </div>
-      {recent.length > 0 && (
-        <Panel title="Most Recent Rounds">
-          <table className="w-full border-collapse font-mono text-sm">
-            <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                <th className="px-2 py-1 text-left">When</th>
-                <th className="px-2 py-1 text-left">Map</th>
-                <th className="px-2 py-1 text-left">Winner</th>
-                <th className="px-2 py-1 text-right">Dur</th>
-                <th className="px-2 py-1 text-right">Players</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((r) => (
-                <tr
-                  key={r.sourceFilename}
-                  onClick={() => onOpenRound(r.sourceFilename)}
-                  className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-                >
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(r.recordedAt)}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-0)]">
-                    {r.map}
-                    {r.area ? ` · ${r.area}` : ''}
-                  </td>
-                  <td className="px-2 py-1">{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{fmtDuration(r.durationSeconds)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{r.players}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      )}
-    </>
-  );
-}
-
 // ── Players (no Team column — event context) ────────────────────────────────
 
-function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: string) => void): Column<PlayerStatRow>[] {
+function playerColumns(
+  goToRegiment: (label: string) => void,
+  openPlayer: (key: string) => void,
+  rankOf: (p: PlayerStatRow) => number,
+  max: (key: 'kills' | 'kd') => number,
+): Column<PlayerStatRow>[] {
+  /** Inline bar against the field's best, so the gap is visible, not inferred. */
+  const withBar = (value: string, share: number) => (
+    <span className="inline-flex items-center justify-end gap-2">
+      <span className="inline-block h-1 w-10 bg-[color:var(--color-bg-2)] align-middle">
+        <span className="block h-1 bg-[color:var(--color-text-0)]" style={{ width: `${share * 100}%` }} />
+      </span>
+      {value}
+    </span>
+  );
   return [
+    {
+      key: 'rank',
+      header: '#',
+      align: 'right',
+      render: (p) => <span className="text-[color:var(--color-text-2)]">{rankOf(p)}</span>,
+    },
     {
       key: 'name',
       header: 'Player',
       sortable: true,
       sortValue: (p) => p.name.toLowerCase(),
       render: (p) => (
-        <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+        <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
           {p.name}
         </button>
       ),
@@ -574,7 +639,7 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
       render: (p) => (
         <button
           onClick={() => goToRegiment(p.regiment)}
-          className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)]"
+          className="wor-name underline decoration-dotted underline-offset-2 hover:text-[color:var(--color-accent)]"
           title="Open this regiment in the Regiments tab"
         >
           {p.regiment}
@@ -582,11 +647,62 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
       ),
     },
     { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
-    { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
-    { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
-    { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
-    { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (p) => p.avgTd ?? -1, render: (p) => formatAvgT(p.avgTd) },
-    { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (p) => p.avgTk ?? -1, render: (p) => formatAvgT(p.avgTk) },
+    {
+      key: 'kills',
+      header: 'Kills',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.kills,
+      render: (p) => withBar(String(p.kills), max('kills') > 0 ? p.kills / max('kills') : 0),
+    },
+    { key: 'deaths', header: 'Deaths', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
+    {
+      key: 'kd',
+      header: 'K/D',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.kd,
+      render: (p) => withBar(p.kd.toFixed(2), max('kd') > 0 ? p.kd / max('kd') : 0),
+    },
+    {
+      key: 'kpr',
+      header: 'K / round',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => (p.rounds > 0 ? p.kills / p.rounds : 0),
+      render: (p) => (p.rounds > 0 ? (p.kills / p.rounds).toFixed(1) : '—'),
+    },
+    {
+      key: 'avgTd',
+      header: <span title={AVG_TD_LABEL}>Cost / death</span>,
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.avgTd ?? -1,
+      render: (p) => formatAvgT(p.avgTd),
+      className: 'text-[color:var(--color-text-1)]',
+    },
+    {
+      key: 'avgTk',
+      header: <span title={AVG_TK_LABEL}>Value / kill</span>,
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.avgTk ?? -1,
+      render: (p) => formatAvgT(p.avgTk),
+      className: 'text-[color:var(--color-text-1)]',
+    },
+    {
+      // The unit a player is scored under and the regiment they were actually
+      // sat in are different facts, and only this column shows the second one.
+      key: 'inGame',
+      header: 'In game',
+      sortable: true,
+      sortValue: (p) => `${p.branch} ${p.inGameRegiment ?? ''}`,
+      render: (p) => (
+        <span style={{ color: 'var(--ink-2)' }}>
+          <span className="tag q">{p.branch}</span> {p.inGameRegiment ?? '—'}
+        </span>
+      ),
+    },
   ];
 }
 
@@ -597,19 +713,15 @@ function Bars({ data, showPct = false }: { data: [string, number][]; showPct?: b
   const total = data.reduce((s, [, v]) => s + v, 0);
   if (data.length === 0 || max === 0) return <EmptyHint>No data</EmptyHint>;
   return (
-    <div className="space-y-1 font-mono text-sm">
+    <div>
       {data.map(([label, count]) => (
-        <div key={label} className="flex items-center gap-2">
-          <span className="w-28 shrink-0 capitalize text-[color:var(--color-text-1)]">{label}</span>
-          <div className="flex-1 bg-[color:var(--color-bg-2)] h-3">
-            <div className="h-3 bg-[color:var(--color-accent)]/40" style={{ width: `${(count / max) * 100}%` }} />
-          </div>
-          <span className="w-10 text-right tabular-nums text-[color:var(--color-text-0)]">{count}</span>
-          {showPct && (
-            <span className="w-10 text-right tabular-nums text-[color:var(--color-text-2)]">
-              {total ? `${Math.round((count / total) * 100)}%` : ''}
-            </span>
-          )}
+        <div key={label} className="hb">
+          <span className="nm" style={{ textTransform: 'capitalize' }}>{label}</span>
+          <span className="t"><i style={{ width: `${(count / max) * 100}%` }} /></span>
+          <span className="n">
+            {count}
+            {showPct && <span style={{ color: 'var(--ink-3)' }}> · {total ? Math.round((count / total) * 100) : 0}%</span>}
+          </span>
         </div>
       ))}
     </div>
@@ -630,14 +742,14 @@ function BreakdownGroup({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-[color:var(--color-accent)] font-mono mb-1.5">{heading}</div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By formation</div>
+      <div className="cap" style={{ color: 'var(--live)', marginBottom: 7 }}>{heading}</div>
+      <div className="cols">
+        <div className="col">
+          <div className="cap">By formation</div>
           <Bars data={form} showPct />
         </div>
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By cause</div>
+        <div className="col">
+          <div className="cap">By cause</div>
           {cause.length === 0 ? <EmptyHint>No killfeed data</EmptyHint> : <Bars data={cause} showPct />}
         </div>
       </div>
@@ -758,6 +870,7 @@ function RegimentsTab({
   seasonScope,
   seasonName,
   combine,
+  onCompare,
 }: {
   regiments: RegimentStatRow[];
   regimentContext: Record<string, RegimentContextStats>;
@@ -775,6 +888,8 @@ function RegimentsTab({
   seasonName: string | null;
   /** Temporary "read these units as one" preview — see {@link CombineState}. */
   combine: CombineState;
+  /** Open two units side by side on the Compare screen. */
+  onCompare?: (a: string, b: string) => void;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [pending, setPending] = useState<Record<string, string>>({});
@@ -785,6 +900,16 @@ function RegimentsTab({
     () => regiments.map((r) => r.regiment).sort((a, b) => a.localeCompare(b)),
     [regiments],
   );
+
+  // Two units, side by side. Seeded to the first pair so the control is usable
+  // without a click, and clamped when the roster changes underneath it.
+  const [cmpA, setCmpA] = useState('');
+  const [cmpB, setCmpB] = useState('');
+  useEffect(() => {
+    if (allRegiments.length === 0) return;
+    if (!allRegiments.includes(cmpA)) setCmpA(allRegiments[0]);
+    if (!allRegiments.includes(cmpB)) setCmpB(allRegiments[1] ?? allRegiments[0]);
+  }, [allRegiments, cmpA, cmpB]);
 
   const [sortKey, setSortKey] = useState<RegSort>('kills');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -933,47 +1058,60 @@ function RegimentsTab({
   }
 
   return (
-    <div className="space-y-3 pb-16">
+    <div>
       {/* Edit toolbar — hidden in read-only/shared views (no mutations). */}
-      {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
-          <button
-            onClick={() => (editMode ? exitEdit() : setEditMode(true))}
-            className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
-              editMode ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
-            }`}
-          >
-            <Pencil size={12} /> {editMode ? 'Done editing' : 'Edit assignments'}
+      <div className="panel">
+        <div className="ctl">
+          <span className="cap">Compare two units</span>
+          <select value={cmpA} onChange={(e) => setCmpA(e.target.value)} aria-label="First unit">
+            {allRegiments.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={cmpB} onChange={(e) => setCmpB(e.target.value)} aria-label="Second unit">
+            {allRegiments.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <button className="gh" onClick={() => onCompare?.(cmpA, cmpB)} disabled={cmpA === cmpB}>
+            Open comparison
           </button>
-          {editMode && (
-            <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-              Pick a regiment per player, or check several and move them together. Pins apply on Save; rename/merge apply immediately — both{' '}
-              <span className="text-[color:var(--color-text-1)]">
-                {seasonScope === OVERALL_SCOPE ? 'to all seasons' : `to ${seasonName ?? 'this season'} only`}
-              </span>
-              .
-            </span>
-          )}
+          <span className="rule" />
+          <span className="meta">{regiments.length} matched · sortable below</span>
         </div>
-      )}
+        {!readOnly && (
+          <div className="ctl">
+            <button className="gh" aria-pressed={editMode} onClick={() => (editMode ? exitEdit() : setEditMode(true))}>
+              <Pencil size={12} /> {editMode ? 'Done editing' : 'Edit assignments'}
+            </button>
+            <button className="gh" aria-pressed={combine.on} onClick={() => combine.setOn(!combine.on)}
+                    title="Preview two or more units as one — nothing is saved">
+              <Layers size={12} /> {combine.on ? 'Done combining' : 'Combine units'}
+            </button>
+            <span className="rule" />
+            <span className="meta">
+              {editMode
+                ? `pins apply on Save · rename and merge apply immediately, ${seasonScope === OVERALL_SCOPE ? 'to all seasons' : `to ${seasonName ?? 'this season'} only`}`
+                : combine.on
+                  ? 'tick two or more units to read them as one — nothing is saved'
+                  : 'click a unit for its roster and its whole record'}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Active renames/merges — current scope's own edits plus inherited Overall ones. */}
       {editMode && aliasEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges / removals:</span>
+          <span className="cap">Active renames, merges and removals</span>
           {aliasEntries.map(({ from, to, scope, inherited }) => (
             <span
               key={`${scope}:${from}`}
-              className={`flex items-center gap-1 border border-[color:var(--color-border)] px-1.5 py-0.5 ${
-                inherited ? 'bg-[color:var(--color-bg-1)] opacity-80' : 'bg-[color:var(--color-bg-2)]'
-              }`}
+              className="tag q"
+              style={inherited ? { opacity: 0.75 } : undefined}
             >
-              <span className="text-[color:var(--color-text-1)]">{from} → {to}</span>
-              {inherited && <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">all</span>}
+              {from} → {to}
+              {inherited && <span style={{ color: 'var(--ink-3)', marginLeft: 5 }}>all</span>}
               <button
                 onClick={() => void stats.removeAlias(from, scope)}
                 title={inherited ? 'Undo (affects all seasons)' : 'Undo'}
-                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+                style={{ marginLeft: 5, color: 'var(--ink-3)' }}
               >
                 <X size={11} />
               </button>
@@ -982,41 +1120,20 @@ function RegimentsTab({
         </div>
       )}
 
-      {/* Temporary combine — tick units to read them as one, saving nothing. */}
-      <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
-        <button
-          onClick={() => combine.setOn(!combine.on)}
-          title="Preview two or more units as one — nothing is saved"
-          className={`flex items-center gap-1.5 border border-[color:var(--color-border)] px-2 py-1 ${
-            combine.on
-              ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-              : 'text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]'
-          }`}
-        >
-          <Layers size={12} /> {combine.on ? 'Done combining' : 'Combine units'}
-        </button>
-        {combine.on && (
-          <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-            Tick two or more units to see their combined stats. This is a temporary view —{' '}
-            <span className="text-[color:var(--color-text-1)]">nothing is merged or saved</span>.
-          </span>
-        )}
-      </div>
-
       {/* Ticked units, so a selection stays manageable across pages and searches. */}
       {combine.on && combine.labels.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Combining:</span>
+          <span className="cap">Combining</span>
           {combine.labels.map((label) => (
             <span
               key={label}
-              className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5"
+              className="tag q"
             >
-              <span className="text-[color:var(--color-text-1)]">{label}</span>
+              {label}
               <button
                 onClick={() => combine.toggle(label)}
                 title={`Drop ${label} from the combined view`}
-                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+                style={{ marginLeft: 5, color: 'var(--ink-3)' }}
               >
                 <X size={11} />
               </button>
@@ -1024,7 +1141,7 @@ function RegimentsTab({
           ))}
           <button
             onClick={combine.clear}
-            className="uppercase tracking-wider text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]"
+            className="gh"
           >
             Clear
           </button>
@@ -1061,33 +1178,29 @@ function RegimentsTab({
       )}
 
       {/* Sort the regiment panels by any column, and search the roster. */}
-      <div className="flex flex-wrap items-center gap-3 font-mono text-xs uppercase tracking-wider">
-        <span className="text-[color:var(--color-text-2)]">Sort</span>
-        {REG_SORTS.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => onSort(s.key)}
-            title={s.title}
-            className={
-              sortKey === s.key
-                ? 'text-[color:var(--color-accent)]'
-                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]'
-            }
-          >
-            {s.label}
-            {sortKey === s.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
-          </button>
-        ))}
-        <input
-          type="text"
-          placeholder="search regiment / player / id…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(0);
-          }}
-          className="ml-auto w-56 max-w-full bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-2 py-1 font-mono text-xs text-[color:var(--color-text-0)] normal-case tracking-normal focus:outline-none focus:border-[color:var(--color-accent)]"
-        />
+      <div className="panel">
+        <div className="ctl">
+          <span className="cap">Sort</span>
+          {REG_SORTS.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => onSort(c.key)}
+              title={c.title}
+              className="gh"
+              aria-pressed={sortKey === c.key}
+            >
+              {c.label}
+              {sortKey === c.key ? (sortDir === 'asc' ? ' ▴' : ' ▾') : ''}
+            </button>
+          ))}
+          <span className="rule" />
+          <input
+            type="search"
+            placeholder="unit, player or steam id"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          />
+        </div>
       </div>
 
       {filteredRegiments.length === 0 ? (
@@ -1104,6 +1217,7 @@ function RegimentsTab({
             edit={edit}
             focusActive={focusRegiment === r.regiment}
             focusNonce={focusNonce}
+            field={regiments}
             combineTick={
               combine.on
                 ? { checked: combine.labels.includes(r.regiment), onToggle: () => combine.toggle(r.regiment) }
@@ -1115,7 +1229,7 @@ function RegimentsTab({
 
       {/* Panel-list pager (search + sort narrow first). */}
       {regPageCount > 1 && (
-        <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+        <div className="pager">
           <span className="tabular-nums">
             {regPage * PAGE + 1}–{regPage * PAGE + pageRegiments.length} of {filteredRegiments.length} regiments
           </span>
@@ -1124,18 +1238,16 @@ function RegimentsTab({
               onClick={() => setPage(Math.max(0, regPage - 1))}
               disabled={regPage === 0}
               aria-label="Previous page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               ‹
             </button>
-            <span className="px-1 tabular-nums">
+            <span>
               {regPage + 1}/{regPageCount}
             </span>
             <button
               onClick={() => setPage(Math.min(regPageCount - 1, regPage + 1))}
               disabled={regPage >= regPageCount - 1}
               aria-label="Next page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               ›
             </button>
@@ -1145,14 +1257,13 @@ function RegimentsTab({
 
       {/* Sticky action bar */}
       {editMode && (pendingCount > 0 || selected.size > 0) && (
-        <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-bg-2)] px-3 py-2 font-mono text-sm">
+        <div className="ctl" style={{ position: 'sticky', bottom: 0, zIndex: 10, border: '1px solid var(--live)' }}>
           {selected.size > 0 && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[color:var(--color-text-1)]">{selected.size} selected →</span>
+              <span className="cap">{selected.size} selected</span>
               <select
                 value={moveTarget}
                 onChange={(e) => setMoveTarget(e.target.value)}
-                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
               >
                 <option value="">move to…</option>
                 {allRegiments.map((label) => (
@@ -1162,21 +1273,22 @@ function RegimentsTab({
               <button
                 onClick={() => moveSelectedTo(moveTarget)}
                 disabled={!moveTarget}
-                className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] enabled:hover:bg-[color:var(--color-bg-3)] disabled:opacity-40"
+                className="gh"
               >
                 Stage move
               </button>
             </div>
           )}
           <div className="flex-1" />
-          <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">{pendingCount} pending change{pendingCount === 1 ? '' : 's'}</span>
-          <button onClick={reset} className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+          <span className="rule" />
+          <span className="meta">{pendingCount} pending change{pendingCount === 1 ? '' : 's'}</span>
+          <button onClick={reset} className="gh">
             Discard
           </button>
           <button
             onClick={() => void save()}
             disabled={pendingCount === 0}
-            className="border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] px-3 py-0.5 uppercase tracking-wider text-[color:var(--color-bg-0)] disabled:opacity-40"
+            className="gh live"
           >
             Save
           </button>
@@ -1203,7 +1315,7 @@ function ContextSlicePanel({ label, slice, ticket }: { label: string; slice: Con
       collapsible
       defaultOpen={false}
       right={
-        <span className="font-mono text-xs text-[color:var(--color-text-2)]">
+        <span className="meta" style={{ whiteSpace: 'normal' }}>
           {slice.rounds}rd · {slice.players}p · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)}
           {' · '}<span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(slice.killRate)}</span>
           {' · '}<span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
@@ -1218,8 +1330,9 @@ function ContextSlicePanel({ label, slice, ticket }: { label: string; slice: Con
         </span>
       }
     >
-      <div className="p-2 space-y-2">
+      <div className="pb">
         <BreakdownGroup heading="Casualties suffered" form={formOf(slice.casualtiesByFormation)} cause={byCause(slice.casualtiesByCause)} />
+        <div style={{ height: 14 }} />
         <BreakdownGroup heading="Casualties inflicted" form={formOf(slice.killsByFormation)} cause={byCause(slice.killsByCause)} />
       </div>
     </Panel>
@@ -1243,8 +1356,8 @@ function RegimentRoundBreakdown({
   onOpenRound: () => void;
 }) {
   return (
-    <div className="space-y-2 font-mono">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--color-text-2)]">
+    <div>
+      <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 13 }}>
         <span className="cursor-help" title={TICKET_INFLICTED_LABEL}>
           TDI <TicketPct share={share?.pctInflicted ?? null} shareTitle={TICKET_INFLICTED_LABEL} />
         </span>
@@ -1255,12 +1368,52 @@ function RegimentRoundBreakdown({
         <span title={AVG_TK_LABEL}>×Tk {formatAvgT(rr.avgTk)}</span>
         <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(rr.killRate)}</span>
         <span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(rr.lossRate)}</span>
-        <button onClick={onOpenRound} className="ml-auto text-[color:var(--color-accent)] hover:underline">
-          Open round drawer »
-        </button>
+        <span className="rule" />
+        <button onClick={onOpenRound} className="gh live">Open the scoreboard</button>
       </div>
       <BreakdownGroup heading="Casualties suffered" form={formOf(rr.casualtiesByFormation)} cause={byCause(rr.casualtiesByCause)} />
+      <div style={{ height: 14 }} />
       <BreakdownGroup heading="Casualties inflicted" form={formOf(rr.killsByFormation)} cause={byCause(rr.killsByCause)} />
+    </div>
+  );
+}
+
+const ordinal = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+};
+
+/** Where a unit sits in the field on one figure. Nulls sort last either way. */
+function rankIn(
+  field: RegimentStatRow[],
+  reg: RegimentStatRow,
+  k: 'kd' | 'killRate' | 'lossRate' | 'avgTd' | 'avgTk' | 'avgPlayers',
+  low = false,
+): number | null {
+  const val = (r: RegimentStatRow) => (r[k] ?? (low ? Infinity : -1)) as number;
+  const sorted = [...field].sort((a, b) => (low ? val(a) - val(b) : val(b) - val(a)));
+  const i = sorted.findIndex((r) => r.regiment === reg.regiment);
+  return i < 0 ? null : i + 1;
+}
+
+/**
+ * A unit's headline figure with its place in the field. The bar is the
+ * percentile, not the value — 0.94 K/D means nothing until you know whether
+ * that is 2nd of 18 or 17th.
+ */
+function RegRanked({
+  head, value, rank, total, hint,
+}: { head: string; value: ReactNode; rank: number | null; total: number; hint: string }) {
+  return (
+    <div className="kpi">
+      <div className="cap">{head}</div>
+      <div className="v">{value}</div>
+      <div className="h">
+        {rank != null && <><b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ordinal(rank)}</b> of {total} · </>}
+        {hint}
+      </div>
+      {rank != null && <div className="pctbar"><i style={{ width: `${(1 - (rank - 1) / total) * 100}%` }} /></div>}
     </div>
   );
 }
@@ -1276,6 +1429,7 @@ function RegimentPanel({
   focusNonce,
   combineTick,
   combined = false,
+  field = [],
 }: {
   reg: RegimentStatRow;
   contextStats?: RegimentContextStats;
@@ -1293,6 +1447,8 @@ function RegimentPanel({
    * tools — there's no stored unit behind it to rename, merge, or remove.
    */
   combined?: boolean;
+  /** Every unit in view, so each figure can carry its rank in the field. */
+  field?: RegimentStatRow[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1360,46 +1516,61 @@ function RegimentPanel({
           </>
         }
       >
-      <div className="p-3 space-y-3">
+      {!combined && field.length > 1 && (
+        <div className="kpis" style={{ borderBottom: '1px solid var(--line)' }}>
+          <RegRanked head="K/D" value={reg.kd.toFixed(2)} rank={rankIn(field, reg, 'kd')} total={field.length}
+                     hint={`${reg.kills} kills · ${reg.deaths} lost`} />
+          <RegRanked head="Kills per man" value={formatRate(reg.killRate)} rank={rankIn(field, reg, 'killRate')} total={field.length}
+                     hint="size-normalised output" />
+          <RegRanked head="Losses per man" value={formatRate(reg.lossRate)} rank={rankIn(field, reg, 'lossRate', true)} total={field.length}
+                     hint="lower is better" />
+          <RegRanked head="Cost per death" value={formatAvgT(reg.avgTd)} rank={rankIn(field, reg, 'avgTd', true)} total={field.length}
+                     hint="tickets · ×Td · lower is better" />
+          <RegRanked head="Value per kill" value={formatAvgT(reg.avgTk)} rank={rankIn(field, reg, 'avgTk')} total={field.length}
+                     hint="tickets · ×Tk" />
+          <RegRanked head="Men fielded" value={Math.round(reg.avgPlayers)} rank={rankIn(field, reg, 'avgPlayers')} total={field.length}
+                     hint={`${reg.players} seen across ${reg.rounds} rounds`} />
+        </div>
+      )}
+      <div className="pb">
         {combined && (
-          <div className="border-b border-[color:var(--color-border)] pb-2 font-mono text-xs text-[color:var(--color-text-2)]">
+          <p className="note" style={{ borderBottom: '1px solid var(--line)', paddingBottom: 9, marginBottom: 13 }}>
             Temporary view of {reg.regiment} read as one unit — every stat below is recomputed over their
             combined player-rounds. The units themselves are untouched.
-          </div>
+          </p>
         )}
         {edit.editMode && !isUntagged && (
-          <div className="flex flex-wrap items-center gap-2 font-mono text-sm border-b border-[color:var(--color-border)] pb-2">
-            <button onClick={() => edit.rename(reg.regiment)} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+          <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 13 }}>
+            <button className="gh" onClick={() => edit.rename(reg.regiment)}>
               <Pencil size={11} /> Rename
             </button>
-            <span className="flex items-center gap-1 text-[color:var(--color-text-2)]">
-              <GitMerge size={12} />
-              <select
-                defaultValue=""
-                onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; edit.merge(reg.regiment, v); }}
-                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
-              >
-                <option value="">Merge into…</option>
-                {mergeTargets.map((label) => (
-                  <option key={label} value={label}>{label}</option>
-                ))}
-              </select>
-            </span>
-            <button onClick={() => edit.removeRegiment(reg.regiment)} title={`Move all players to ${UNTAGGED}`} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)] hover:text-[color:var(--color-danger)]">
+            <span className="cap"><GitMerge size={12} /></span>
+            <select
+              defaultValue=""
+              onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; edit.merge(reg.regiment, v); }}
+              aria-label={`Merge ${reg.regiment} into another unit`}
+            >
+              <option value="">Merge into…</option>
+              {mergeTargets.map((label) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
+            </select>
+            <button className="gh c-danger" onClick={() => edit.removeRegiment(reg.regiment)} title={`Move all players to ${UNTAGGED}`}>
               <Trash2 size={11} /> Remove
             </button>
+            <span className="rule" />
+            <span className="meta">rename and merge apply immediately · pins apply on save</span>
           </div>
         )}
 
-        <div className="space-y-3">
-          <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
-          <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
-        </div>
+        <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
+        <div style={{ height: 16 }} />
+        <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
 
         {/* Faction & role context breakdowns */}
         {contextStats && (
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mt-2 mb-1">Breakdown by faction & role</div>
+          <div style={{ marginTop: 18 }}>
+            <div className="cap" style={{ marginBottom: 7 }}>Splits — the same breakdowns, sliced by context</div>
             <ContextSlicePanel label="As USA" slice={contextStats.asUSA} ticket={ticketShare?.asUSA} />
             <ContextSlicePanel label="As CSA" slice={contextStats.asCSA} ticket={ticketShare?.asCSA} />
             <ContextSlicePanel label="As Attacker" slice={contextStats.asAttacker} ticket={ticketShare?.asAttacker} />
@@ -1407,9 +1578,11 @@ function RegimentPanel({
           </div>
         )}
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">
-            Round-by-round <span className="text-[color:var(--color-text-2)] normal-case">— row to expand this round's breakdown</span>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+            <span className="cap">Round by round</span>
+            <span className="rule" />
+            <span className="cap">click a round for its breakdown</span>
           </div>
           <DataTable<RegimentRoundRow>
             rows={reg.perRound}
@@ -1462,8 +1635,12 @@ function RegimentPanel({
           />
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Players</div>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+            <span className="cap">Roster</span>
+            <span className="rule" />
+            <span className="cap">{reg.players} seen in this unit</span>
+          </div>
           {edit.editMode ? (
             <EditablePlayers reg={reg} openPlayer={openPlayer} edit={edit} />
           ) : (
@@ -1479,7 +1656,7 @@ function RegimentPanel({
                   key: 'name',
                   header: 'Player',
                   render: (p) => (
-                    <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+                    <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
                       {p.name}
                     </button>
                   ),
@@ -1512,14 +1689,14 @@ function EditablePlayers({
   edit: RegEdit;
 }) {
   return (
-    <table className="w-full font-mono text-sm">
+    <table>
       <thead>
-        <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-          <th className="px-2 py-1 w-6" />
-          <th className="px-2 py-1 text-left">Player</th>
-          <th className="px-2 py-1 text-left">Move to</th>
-          <th className="px-2 py-1 text-right">K</th>
-          <th className="px-2 py-1 text-right">D</th>
+        <tr>
+          <th style={{ width: 24 }} />
+          <th>Player</th>
+          <th>Move to</th>
+          <th className="num">K</th>
+          <th className="num">D</th>
         </tr>
       </thead>
       <tbody>
@@ -1529,8 +1706,8 @@ function EditablePlayers({
           const value = staged ?? reg.regiment;
           const moved = staged != null && staged !== reg.regiment;
           return (
-            <tr key={p.key} className={`border-b border-[color:var(--color-border)] ${moved ? 'bg-[color:var(--color-accent-soft)]' : ''}`}>
-              <td className="px-2 py-1">
+            <tr key={p.key} style={moved ? { background: 'var(--sunken)' } : undefined}>
+              <td>
                 <input
                   type="checkbox"
                   disabled={!pinnable}
@@ -1538,30 +1715,29 @@ function EditablePlayers({
                   onChange={() => pinnable && edit.toggleSelect(p.steamId!)}
                 />
               </td>
-              <td className="px-2 py-1">
-                <button onClick={() => openPlayer(p.key)} className="text-left hover:text-[color:var(--color-accent)]">
+              <td>
+                <button onClick={() => openPlayer(p.key)} className="wor-name" style={{ textAlign: 'left' }}>
                   {p.name}
                 </button>
-                {moved && <span className="text-[color:var(--color-text-2)]"> → {staged}</span>}
+                {moved && <span style={{ color: 'var(--ink-3)' }}> → {staged}</span>}
               </td>
-              <td className="px-2 py-1">
+              <td>
                 {pinnable ? (
                   <select
                     value={value}
                     onChange={(e) => edit.stageMove(p.steamId!, e.target.value)}
-                    className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
-                  >
+                      >
                     {!edit.allRegiments.includes(value) && <option value={value}>{value}</option>}
                     {edit.allRegiments.map((label) => (
                       <option key={label} value={label}>{label}</option>
                     ))}
                   </select>
                 ) : (
-                  <span className="text-[color:var(--color-text-2)]" title="No steam id — cannot reassign individually">—</span>
+                  <span style={{ color: 'var(--ink-3)' }} title="No steam id — cannot reassign individually">—</span>
                 )}
               </td>
-              <td className="px-2 py-1 text-right tabular-nums">{p.kills}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{p.deaths}</td>
+              <td className="num">{p.kills}</td>
+              <td className="num">{p.deaths}</td>
             </tr>
           );
         })}
@@ -1596,35 +1772,26 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
   const offset = current * PAGE;
   const pageDates = byDate.slice(offset, offset + PAGE);
   return (
-    <div className="space-y-3">
+    <div>
       {pageDates.map(([date, list]) => (
-        <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`}>
-          <table className="w-full border-collapse font-mono text-sm">
+        <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`} flush>
+          <table>
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                <th className="px-2 py-1 text-left">Time</th>
-                <th className="px-2 py-1 text-left">Map</th>
-                <th className="px-2 py-1 text-left">Mode</th>
-                <th className="px-2 py-1 text-left">Area</th>
-                <th className="px-2 py-1 text-left">Winner</th>
-                <th className="px-2 py-1 text-right">Dur</th>
-                <th className="px-2 py-1 text-right">Players</th>
+              <tr>
+                <th>Time</th><th>Map</th><th>Mode</th><th>Area</th><th>Winner</th>
+                <th className="num">Length</th><th className="num">Players</th>
               </tr>
             </thead>
             <tbody>
               {list.map((r) => (
-                <tr
-                  key={r.sourceFilename}
-                  onClick={() => openRound(r.sourceFilename)}
-                  className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-                >
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)]">{timeOf(r.recordedAt)}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-0)]">{r.map}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-1)]">{r.mode}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)]">{r.area ?? '—'}</td>
-                  <td className="px-2 py-1">{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{fmtDuration(r.durationSeconds)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{r.players}</td>
+                <tr key={r.sourceFilename} className="click" onClick={() => openRound(r.sourceFilename)}>
+                  <td style={{ color: 'var(--ink-3)' }}>{timeOf(r.recordedAt)}</td>
+                  <td className="wor-name">{r.map}</td>
+                  <td style={{ color: 'var(--ink-2)' }}>{r.mode}</td>
+                  <td style={{ color: 'var(--ink-3)' }}>{r.area ?? '—'}</td>
+                  <td>{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
+                  <td className="num">{fmtDuration(r.durationSeconds)}</td>
+                  <td className="num" style={{ color: 'var(--ink-3)' }}>{r.players}</td>
                 </tr>
               ))}
             </tbody>
@@ -1632,274 +1799,6 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
         </Panel>
       ))}
       <Pager page={current} pageCount={pageCount} onPage={setPage} offset={offset} shown={pageDates.length} total={byDate.length} noun="dates" />
-    </div>
-  );
-}
-
-// ── Combat ───────────────────────────────────────────────────────────────────
-
-function CombatTab({ combat, hasData }: { combat: ReturnType<typeof computeCombatTotals>; hasData: boolean }) {
-  if (!hasData) {
-    return (
-      <Panel title="Combat">
-        <EmptyHint>Import a scoreboard to see weapon &amp; casualty breakdowns</EmptyHint>
-      </Panel>
-    );
-  }
-  const weaponsFor = (team: Team) =>
-    Object.entries(combat.deathsByWeapon[team]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  const stanceFor = (team: Team): [string, number][] => {
-    const c = combat.casualties[team];
-    return [
-      [FORMATION_LABEL.in_form, c.inForm],
-      [FORMATION_LABEL.skirm, c.skirm],
-      [FORMATION_LABEL.oob, c.oob],
-    ];
-  };
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      {(['USA', 'CSA'] as Team[]).map((team) => (
-        <Panel key={`w-${team}`} title={`${team} — deaths by weapon`} right={`${combat.casualties[team].total} total`}>
-          <div className="p-3">
-            <Bars data={weaponsFor(team)} />
-          </div>
-        </Panel>
-      ))}
-      {(['USA', 'CSA'] as Team[]).map((team) => (
-        <Panel key={`c-${team}`} title={`${team} — casualties by stance`}>
-          <div className="p-3">
-            <Bars data={stanceFor(team)} />
-          </div>
-        </Panel>
-      ))}
-    </div>
-  );
-}
-
-// ── Maps ────────────────────────────────────────────────────────────────────
-
-function MapsTab({
-  trackerMapStats,
-  scoreboardMapStats,
-}: {
-  trackerMapStats?: TrackerMapStats;
-  scoreboardMapStats?: TrackerMapStats;
-}) {
-  const trackerRounds = trackerMapStats?.overall.totalRounds ?? 0;
-  const scoreboardRounds = scoreboardMapStats?.overall.totalRounds ?? 0;
-  // Default to the tracker's stats when it has any; otherwise fall back to the
-  // scoreboard-derived stats so the tab isn't empty just because nothing is
-  // bound to a week yet.
-  const [source, setSource] = useState<'tracker' | 'scoreboard'>(trackerRounds > 0 ? 'tracker' : 'scoreboard');
-  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
-  const toggleArea = (key: string) =>
-    setOpenAreas((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-
-  const sourceToggle = (
-    <div className="flex items-center gap-1 font-mono text-xs uppercase tracking-wider">
-      <span className="text-[color:var(--color-text-2)]" title="Tracker: rounds bound to a week. Scoreboards: every imported round, bound or not.">
-        Source
-      </span>
-      {([
-        ['tracker', 'Tracker', trackerRounds],
-        ['scoreboard', 'Scoreboards', scoreboardRounds],
-      ] as const).map(([key, label, n]) => (
-        <button
-          key={key}
-          onClick={() => setSource(key)}
-          className={`border border-[color:var(--color-border)] px-2 py-0.5 ${
-            source === key ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
-          }`}
-        >
-          {label} <span className="tabular-nums opacity-60">({n})</span>
-        </button>
-      ))}
-    </div>
-  );
-
-  const stats = source === 'tracker' ? trackerMapStats : scoreboardMapStats;
-
-  if (!stats || stats.overall.totalRounds === 0) {
-    return (
-      <div className="space-y-3">
-        {sourceToggle}
-        <Panel title="Maps">
-          <EmptyHint>
-            {source === 'tracker'
-              ? 'No tracker map data — bind rounds to weeks, or switch to Scoreboards'
-              : 'No scoreboard map data — import scoreboards to populate it'}
-          </EmptyHint>
-        </Panel>
-      </div>
-    );
-  }
-
-  const { overall, byMap } = stats;
-
-  const pct = (wins: number, total: number) => (total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0');
-  const allMapNames = Object.keys(byMap);
-  // Attacker/defender denominator excludes Conquest/Contention (no attacker).
-  // Falls back for bundles shared before attackerRounds existed.
-  const atkRounds = overall.attackerRounds ?? (overall.attackerWins + overall.defenderWins);
-
-  return (
-    <div className="space-y-3">
-      {sourceToggle}
-      <div className="grid grid-cols-2 gap-px">
-        <Tile label="USA Overall" value={`${pct(overall.usaWins, overall.totalRounds)}%`} hint={`${overall.usaWins}/${overall.totalRounds}`} />
-        <Tile label="CSA Overall" value={`${pct(overall.csaWins, overall.totalRounds)}%`} hint={`${overall.csaWins}/${overall.totalRounds}`} />
-      </div>
-      <div className="grid grid-cols-2 gap-px">
-        <Tile label="Attackers Won" value={`${pct(overall.attackerWins, atkRounds)}%`} hint={`${overall.attackerWins}/${atkRounds}`} />
-        <Tile label="Defenders Won" value={`${pct(overall.defenderWins, atkRounds)}%`} hint={`${overall.defenderWins}/${atkRounds}`} />
-      </div>
-
-      {overall.totalCasualties > 0 && (
-        <Panel title="Casualties & formation makeup">
-          <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-sm">
-            {([
-              { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation },
-              { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation },
-              { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal },
-            ] as const).map(({ label, total, form }) => (
-              <div key={label} className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2">
-                <div className="text-[color:var(--color-text-0)] font-semibold">{label}: {total.toLocaleString()}</div>
-                {overall.hasFormation && (
-                  <div className="text-xs text-[color:var(--color-text-2)] mt-0.5">
-                    {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {(() => {
-        const top5 = Object.entries(byMap)
-          .sort(([, a], [, b]) => b.plays - a.plays)
-          .slice(0, 5);
-        if (top5.length === 0) return null;
-        return (
-          <Panel title="Most Played Maps">
-            <table className="w-full font-mono text-sm">
-              <thead>
-                <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                  <th className="px-2 py-1 text-left w-6">#</th>
-                  <th className="px-2 py-1 text-left">Map</th>
-                  <th className="px-2 py-1 text-right">Rounds</th>
-                  <th className="px-2 py-1 text-right">USA Win%</th>
-                  <th className="px-2 py-1 text-right">CSA Win%</th>
-                  <th className="px-2 py-1 text-right">Avg Cas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {top5.map(([name, s], i) => (
-                  <tr key={name} className="border-b border-[color:var(--color-border)]">
-                    <td className="px-2 py-1 text-[color:var(--color-text-2)]">{i + 1}</td>
-                    <td className="px-2 py-1 text-[color:var(--color-text-0)]">{name}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{s.plays}</td>
-                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-ok)]">{pct(s.usaWins, s.plays)}%</td>
-                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-accent)]">{pct(s.csaWins, s.plays)}%</td>
-                    <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Panel>
-        );
-      })()}
-
-      {Object.entries(MAP_AREAS).map(([areaKey, areaMaps]) => {
-        const played = areaMaps.filter((m) => byMap[m]);
-        if (played.length === 0) return null;
-        const open = openAreas.has(areaKey);
-        const Chevron = open ? ChevronDown : ChevronRight;
-        return (
-          <Panel key={areaKey} title="">
-            <button
-              type="button"
-              onClick={() => toggleArea(areaKey)}
-              className="w-full flex items-center justify-between px-3 py-2 hover:bg-[color:var(--color-bg-3)] transition"
-            >
-              <span className="font-mono text-sm uppercase tracking-wider text-[color:var(--color-text-0)]">
-                {prettyArea(areaKey)} ({played.length})
-              </span>
-              <Chevron size={14} className="text-[color:var(--color-text-2)]" />
-            </button>
-            {open && (
-              <div className="p-2 space-y-2">
-                {played
-                  .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
-                  .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
-              </div>
-            )}
-          </Panel>
-        );
-      })}
-
-      {allMapNames.filter((m) => !areaOf(m)).length > 0 && (
-        <Panel title="Other">
-          <div className="p-2 space-y-2">
-            {allMapNames
-              .filter((m) => !areaOf(m))
-              .sort((a, b) => (byMap[b]?.plays ?? 0) - (byMap[a]?.plays ?? 0))
-              .map((mapName) => <MapCard key={mapName} name={mapName} s={byMap[mapName]} pct={pct} />)}
-          </div>
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: number, t: number) => string }) {
-  return (
-    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-[color:var(--color-text-0)]">{name}</span>
-        <span className="text-xs text-[color:var(--color-text-2)]">{s.plays} rounds</span>
-      </div>
-      <div className="text-xs space-y-0.5 text-[color:var(--color-text-2)]">
-        <div>
-          <span className="text-[color:var(--color-ok)]">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
-          <span className="mx-2">|</span>
-          <span className="text-[color:var(--color-accent)]">CSA: {s.csaWins} ({pct(s.csaWins, s.plays)}%)</span>
-          {s.draws > 0 && (
-            <>
-              <span className="mx-2">|</span>
-              <span>Draw: {s.draws} ({pct(s.draws, s.plays)}%)</span>
-            </>
-          )}
-        </div>
-        <div>
-          Avg losses: <span className="text-[color:var(--color-ok)]">USA {s.avgLossesUsa}</span>
-          <span className="mx-1">·</span>
-          <span className="text-[color:var(--color-accent)]">CSA {s.avgLossesCsa}</span>
-          <span className="text-[color:var(--color-text-2)]"> (total {s.totalCasualties.toLocaleString()}, {s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}/rd)</span>
-        </div>
-        {s.hasFormation && (
-          <>
-            <div>
-              Avg formation USA: {s.avgFormationUsa.in_form} IF · {s.avgFormationUsa.skirm} Sk · {s.avgFormationUsa.oob} OoL
-            </div>
-            <div>
-              Avg formation CSA: {s.avgFormationCsa.in_form} IF · {s.avgFormationCsa.skirm} Sk · {s.avgFormationCsa.oob} OoL
-            </div>
-          </>
-        )}
-        {s.hasMorale && (
-          <div>
-            Avg morale: <span className="text-[color:var(--color-ok)]">USA {s.avgMoraleUsa || '—'}</span>
-            <span className="mx-1">·</span>
-            <span className="text-[color:var(--color-accent)]">CSA {s.avgMoraleCsa || '—'}</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -1934,34 +1833,23 @@ function ImportTab({
   const importOffset = importPage * PAGE;
   const importItems = sortedStored.slice(importOffset, importOffset + PAGE);
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <Panel title="Import Scoreboards">
-        <div className="p-3 space-y-3">
-          <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1.5 border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider hover:bg-[color:var(--color-accent-soft)]"
-          >
-            <Upload size={13} /> Choose scoreboard CSV(s)
-          </button>
-          {importMsg && <div className="text-sm font-mono text-[color:var(--color-text-1)]">{importMsg}</div>}
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono pt-2">
-            Regiment list (optional override)
-          </div>
-          <textarea
-            value={listText}
-            onChange={(e) => setListText(e.target.value)}
-            placeholder={'One per line. e.g.\n51stNY\nII Corps = II-, II'}
-            rows={6}
-            className="w-full bg-[color:var(--color-bg-2)] border border-[color:var(--color-border)] p-2 font-mono text-sm text-[color:var(--color-text-0)] outline-none focus:border-[color:var(--color-accent)]"
-          />
-          <button
-            onClick={() => void stats.applyRegimentList(listText)}
-            className="border border-[color:var(--color-border)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]"
-          >
-            Apply &amp; persist to all players
-          </button>
-        </div>
+    <div className="cols">
+      <Panel title="Import scoreboards">
+        <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
+        <button className="gh live" onClick={() => fileRef.current?.click()}>
+          <Upload size={12} /> Choose scoreboard CSVs
+        </button>
+        {importMsg && <p className="note" style={{ marginTop: 9 }}>{importMsg}</p>}
+        <div className="cap" style={{ margin: '18px 0 5px' }}>Regiment list — optional override</div>
+        <textarea
+          value={listText}
+          onChange={(e) => setListText(e.target.value)}
+          placeholder={'One per line. e.g.\n51stNY\nII Corps = II-, II'}
+          rows={6}
+        />
+        <button className="gh" style={{ marginTop: 9 }} onClick={() => void stats.applyRegimentList(listText)}>
+          Apply and persist to all players
+        </button>
       </Panel>
 
       <Panel title={`Imported (${stats.stored.length})`}>
@@ -1969,26 +1857,38 @@ function ImportTab({
           <EmptyHint>No scoreboards imported yet</EmptyHint>
         ) : (
           <>
-            <div className="divide-y divide-[color:var(--color-border)]">
-              {importItems.map((s) => (
-                <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
-                  <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
-                    <span className="text-[color:var(--color-text-2)] w-48 shrink-0">
+            <table>
+              <tbody>
+                {importItems.map((s) => (
+                  <tr key={s.id} className="click" onClick={() => onOpenScoreboard(s.id)} title="View the full scoreboard">
+                    <td style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
                       {s.scoreboard.recordedAt
-                        ? `${dateOf(s.scoreboard.recordedAt)} @ ${timeOf(s.scoreboard.recordedAt)}`
+                        ? `${dateOf(s.scoreboard.recordedAt)} ${timeOf(s.scoreboard.recordedAt)}`
                         : s.scoreboard.sourceFilename}
-                    </span>
-                    <span className="text-[color:var(--color-text-0)]">{s.scoreboard.meta.map}</span>
-                    <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.mode}</span>
-                    {s.scoreboard.meta.area && <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.area}</span>}
-                    {s.scoreboard.meta.winner && <Pill tone={s.scoreboard.meta.winner === 'USA' ? 'ok' : 'accent'}>{s.scoreboard.meta.winner}</Pill>}
-                  </button>
-                  <button onClick={() => void stats.remove(s.id)} className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]" title="Delete">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
+                    </td>
+                    <td className="wor-name">{s.scoreboard.meta.map}</td>
+                    <td style={{ color: 'var(--ink-2)' }}>
+                      {s.scoreboard.meta.mode}
+                      {s.scoreboard.meta.area && <span style={{ color: 'var(--ink-3)' }}> · {s.scoreboard.meta.area}</span>}
+                    </td>
+                    <td>
+                      {s.scoreboard.meta.winner && (
+                        <Pill tone={teamTone(s.scoreboard.meta.winner)}>{s.scoreboard.meta.winner}</Pill>
+                      )}
+                    </td>
+                    <td className="num">
+                      <button
+                        className="gh c-danger"
+                        onClick={(e) => { e.stopPropagation(); void stats.remove(s.id); }}
+                        title="Delete this scoreboard"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             <Pager
               page={importPage}
               pageCount={importPageCount}

@@ -48,7 +48,7 @@ import {
 const UNTAGGED_KEY = '__untagged__';
 const groupKey = (team: Team, regiment: string | null) => `${team}::${regiment ?? UNTAGGED_KEY}`;
 
-const teamTone = (t: Team) => (t === 'USA' ? 'ok' : 'accent');
+const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
 
 /** `×N.N` or `—` (no `×` prefix — the surrounding label supplies it). */
 function formatTicket(avg: number | null): string {
@@ -133,38 +133,25 @@ export function PlayersTab({
   const allEmpty = !anyMatch;
 
   return (
-    <section className="p-2">
-      <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wider font-mono mb-2 px-2">
-        <span className="text-[color:var(--color-text-2)]">sort</span>
-        {(['unit', 'name', 'kills', 'deaths', 'kd'] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setSortBy(s)}
-            className={
-              sortBy === s
-                ? 'text-[color:var(--color-accent)]'
-                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]'
-            }
-          >
-            {s}
-          </button>
-        ))}
+    <section>
+      <div className="ctl">
+        <span className="cap">Sort</span>
+        <div className="seg">
+          {(['unit', 'name', 'kills', 'deaths', 'kd'] as const).map((s) => (
+            <button key={s} onClick={() => setSortBy(s)} aria-pressed={sortBy === s}>{s}</button>
+          ))}
+        </div>
         <input
-          type="text"
-          placeholder="name / steam id / unit…"
+          type="search"
+          placeholder="name, steam id or unit"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="ml-3 bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-sm font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)] normal-case tracking-normal w-32"
         />
-        <span className="text-[color:var(--color-text-2)] ml-auto">★ = officer</span>
-        <span className="text-[color:var(--color-text-2)] normal-case tracking-normal">
-          click a faction header to hide it
-        </span>
+        <span className="rule" />
+        <span className="meta">★ = officer · click a faction to hide it</span>
       </div>
       {allEmpty && searchTrimmed ? (
-        <div className="px-3 py-6 text-center text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
-          no players match "{searchTrimmed}"
-        </div>
+        <p className="note" style={{ padding: 13 }}>No players match "{searchTrimmed}".</p>
       ) : (
         (['USA', 'CSA'] as Team[]).map((team) => {
           const rows = team === 'USA' ? usa : csa;
@@ -257,18 +244,14 @@ function TeamBlock({
         onClick={onToggleTeam}
         aria-expanded={!collapsed}
         title={collapsed ? `Show ${team}` : `Hide ${team}`}
-        className="w-full flex items-center justify-between gap-3 text-left px-2 py-1 bg-[color:var(--color-bg-2)] border-y border-[color:var(--color-border)] hover:bg-[color:var(--color-bg-3)]"
+        className="ph area-h"
+        style={{ width: '100%', textAlign: 'left' }}
       >
-        <span className="flex items-center gap-2">
-          <TeamChevron size={12} className="shrink-0 text-[color:var(--color-text-2)]" />
-          <Pill tone={teamTone(team)}>{team}</Pill>
-          <span className="text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
-            {visible.length} player{visible.length === 1 ? '' : 's'}
-          </span>
-        </span>
-        <span className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] uppercase tracking-wider">
-          team total · {totals.kills} kills · {totals.deaths} deaths
-        </span>
+        <TeamChevron size={12} style={{ flex: 'none', color: 'var(--ink-3)' }} />
+        <Pill tone={teamTone(team)}>{team}</Pill>
+        <span className="meta">{visible.length} player{visible.length === 1 ? '' : 's'}</span>
+        <span className="rule" />
+        <span className="meta">team total · {totals.kills} kills · {totals.deaths} deaths</span>
       </button>
       {collapsed ? null : showUnitGroups ? (
         <div>
@@ -389,18 +372,18 @@ function RegimentGroup({
   const showStats = regiment != null;
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
-    <div className="border-t border-[color:var(--color-border)]">
+    <div style={{ borderTop: '1px solid var(--line)' }}>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="w-full px-3 py-1 bg-[color:var(--color-bg-1)] text-xs uppercase tracking-wider font-mono flex justify-between items-start gap-3 flex-wrap text-left hover:bg-[color:var(--color-bg-2)]"
+        className="ph area-h"
+        style={{ width: '100%', textAlign: 'left', background: 'var(--surface)' }}
       >
-        <span className="flex items-center gap-1 text-[color:var(--color-text-0)] pt-px">
-          <Chevron size={11} className="shrink-0 text-[color:var(--color-text-2)]" />
-          {regiment ?? 'Untagged'}
-        </span>
-        <span className="flex items-start gap-x-4 gap-y-1 flex-wrap text-[color:var(--color-text-2)] tabular-nums">
+        <Chevron size={11} style={{ flex: 'none', color: 'var(--ink-3)' }} />
+        <span className="wor-name">{regiment ?? 'Untagged'}</span>
+        <span className="rule" />
+        <span className="meta" style={{ display: 'flex', gap: 13, flexWrap: 'wrap', whiteSpace: 'normal' }}>
           {showStats && (
             <>
               <HeaderStat
@@ -479,13 +462,13 @@ function RegimentGroup({
       {open && (
         <>
           {showStats && (unitKilledWith.length > 0 || unitDiedTo.length > 0) && (
-            <div className="border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-3 py-1.5 text-2xs font-mono text-[color:var(--color-text-2)] space-y-0.5">
+            <div className="note" style={{ borderTop: '1px solid var(--line)', background: 'var(--surface)', padding: '7px 13px' }}>
               <div>
-                <span className="uppercase tracking-wider">unit killed with </span>
+                <span className="cap">unit killed with </span>
                 {unitKilledWith.length > 0 ? <CauseInline data={unitKilledWith} /> : <span>—</span>}
               </div>
               <div>
-                <span className="uppercase tracking-wider">unit died to </span>
+                <span className="cap">unit died to </span>
                 {unitDiedTo.length > 0 ? <CauseInline data={unitDiedTo} /> : <span>—</span>}
               </div>
             </div>
@@ -541,72 +524,56 @@ function PlayerCardList({
         return (
           <li
             key={playerKey(p)}
-            className={`border-t border-[color:var(--color-border)] py-2 ${indent ? 'pl-6 pr-3' : 'px-3'}`}
+            style={{
+              borderTop: '1px solid var(--line)',
+              padding: indent ? '7px 13px 7px 26px' : '7px 13px',
+            }}
           >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="flex items-center gap-1 min-w-0">
-                {isOfficer(p.name) && (
-                  <span className="text-[color:var(--color-warn)] text-xs shrink-0" title="officer">
-                    ★
-                  </span>
-                )}
-                <button
-                  onClick={() => onOpenPlayer(playerKey(p))}
-                  className="truncate text-left text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
-                >
-                  {p.name}
-                </button>
-              </span>
-              <span className="font-mono tabular-nums text-xs uppercase tracking-wider text-[color:var(--color-text-2)] shrink-0 flex gap-2">
-                <span>
-                  <span>K/D </span>
-                  <span className="text-[color:var(--color-text-0)]">{p.kd.toFixed(2)}</span>
-                </span>
-                <span title={AVG_TD_LABEL} className="cursor-help">
-                  <span>×Td </span>
-                  <span className="text-[color:var(--color-text-0)]">
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              {isOfficer(p.name) && (
+                <span style={{ color: 'var(--live)', flex: 'none' }} title="officer">★</span>
+              )}
+              <button onClick={() => onOpenPlayer(playerKey(p))} className="wor-name" style={{ textAlign: 'left' }}>
+                {p.name}
+              </button>
+              <span className="rule" />
+              <span className="meta" style={{ display: 'flex', gap: 10, flex: 'none' }}>
+                <span>K/D <b style={{ color: 'var(--ink)', fontWeight: 400 }}>{p.kd.toFixed(2)}</b></span>
+                <span title={AVG_TD_LABEL} style={{ cursor: 'help' }}>
+                  ×Td <b style={{ color: 'var(--ink)', fontWeight: 400 }}>
                     {formatTicket(avgTicketCost(p.deathsInForm, p.deathsSkirm, p.deathsOob))}
-                  </span>
+                  </b>
                 </span>
-                <span title={AVG_TK_LABEL} className="cursor-help">
-                  <span>×Tk </span>
-                  <span className="text-[color:var(--color-text-0)]">
+                <span title={AVG_TK_LABEL} style={{ cursor: 'help' }}>
+                  ×Tk <b style={{ color: 'var(--ink)', fontWeight: 400 }}>
                     {formatTicket(avgTicketCost(ks.inForm, ks.skirm, ks.oob))}
-                  </span>
+                  </b>
                 </span>
               </span>
             </div>
-            {role && <div className="text-xs font-mono text-[color:var(--color-text-2)] mt-0.5">{role}</div>}
-            <div className="text-sm font-mono tabular-nums text-[color:var(--color-text-1)] mt-0.5">
+            {role && <div className="note" style={{ marginTop: 3 }}>{role}</div>}
+            <div style={{ marginTop: 3, color: 'var(--ink-2)' }}>
               {p.kills} kills · {p.deaths} deaths
             </div>
-            <div className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] mt-0.5">
-              <span>d: </span>
-              <span className="text-[color:var(--color-text-1)]">{p.deathsInForm}</span>
-              <span> form · </span>
-              <span className="text-[color:var(--color-text-1)]">{p.deathsSkirm}</span>
-              <span> skirm · </span>
-              <span className="text-[color:var(--color-text-1)]">{p.deathsOob}</span>
-              <span> ool</span>
+            <div className="note" style={{ marginTop: 3 }}>
+              d: <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsInForm}</b> form ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsSkirm}</b> skirm ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsOob}</b> ool
             </div>
-            <div className="text-xs font-mono tabular-nums text-[color:var(--color-text-2)] mt-0.5">
-              <span>k: </span>
-              <span className="text-[color:var(--color-text-1)]">{ks.inForm}</span>
-              <span> form · </span>
-              <span className="text-[color:var(--color-text-1)]">{ks.skirm}</span>
-              <span> skirm · </span>
-              <span className="text-[color:var(--color-text-1)]">{ks.oob}</span>
-              <span> ool</span>
+            <div className="note" style={{ marginTop: 3 }}>
+              k: <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ks.inForm}</b> form ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ks.skirm}</b> skirm ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ks.oob}</b> ool
             </div>
             {killedWith.length > 0 && (
-              <div className="text-2xs font-mono text-[color:var(--color-text-2)] mt-0.5">
-                <span className="uppercase tracking-wider">killed with </span>
+              <div className="note" style={{ marginTop: 3 }}>
+                <span className="cap">killed with </span>
                 <CauseInline data={killedWith} />
               </div>
             )}
             {diedTo.length > 0 && (
-              <div className="text-2xs font-mono text-[color:var(--color-text-2)] mt-0.5">
-                <span className="uppercase tracking-wider">died to </span>
+              <div className="note" style={{ marginTop: 3 }}>
+                <span className="cap">died to </span>
                 <CauseInline data={diedTo} />
               </div>
             )}
@@ -628,9 +595,9 @@ function CauseInline({ data }: { data: [string, number][] }) {
     <span>
       {data.map(([cause, n], i) => (
         <span key={cause}>
-          {i > 0 && <span className="text-[color:var(--color-text-2)]"> · </span>}
-          <span className="capitalize text-[color:var(--color-text-1)]">{cause}</span>
-          {n > 1 && <span className="tabular-nums text-[color:var(--color-text-2)]"> ×{n}</span>}
+          {i > 0 && ' · '}
+          <span style={{ textTransform: 'capitalize', color: 'var(--ink-2)' }}>{cause}</span>
+          {n > 1 && <span style={{ color: 'var(--ink-3)' }}> ×{n}</span>}
         </span>
       ))}
     </span>
