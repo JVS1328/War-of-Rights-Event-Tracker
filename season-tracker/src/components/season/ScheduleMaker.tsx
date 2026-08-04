@@ -255,9 +255,13 @@ export function ScheduleMaker({
             <p className="note" style={{ color: 'var(--live)' }}>
               This paste carries <b>two different lead pairs a night</b> — that is a single-round-leads schedule.
               Under full lead weeks a night has one lead a side for both rounds, so only the first pair of each
-              night would be used and half the leads would be dropped. Switch the style back, or paste a
-              one-pair-per-night schedule.
+              night would be used and half the leads would be dropped.
             </p>
+            <div style={{ display: 'flex', gap: 6, marginTop: 11, flexWrap: 'wrap' }}>
+              <button className="gh live" onClick={() => onLeadMode('rounds')}>
+                Read it as single round leads
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -320,7 +324,26 @@ export function ScheduleMaker({
         </div>
       )}
 
-      {source === 'paste' && parsed && (
+      {source === 'paste' && parsed && styleMismatch && (
+        <div className="panel">
+          <header className="ph">
+            <h2>Constraint report</h2><span className="rule" />
+            <span className="meta">held until the style matches the paste</span>
+          </header>
+          <div className="pb">
+            <p className="note">
+              Not run. Every count in it would be measured against a reading of this paste that drops half its
+              leads
+              {audit && audit.problems.length > 0
+                ? `, so it would report ${audit.problems.length} problems that are really one`
+                : ''}
+              . Switch the style above and the report comes back.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {source === 'paste' && parsed && !styleMismatch && (
         <>
           <div className="panel">
             <header className="ph">
@@ -411,11 +434,16 @@ export function ScheduleMaker({
             </div>
           )}
 
+        </>
+      )}
+
+      {source === 'paste' && parsed && (
           <div className="panel">
             <header className="ph">
               <h2>Parsed schedule</h2><span className="rule" />
               <span className="meta">
-                {parsed.rows.length} {ST.splitRounds ? 'rounds' : 'pairings'} across {parsed.weeks.length} night
+                {parsed.rows.length} {ST.splitRounds || styleMismatch ? 'rounds' : 'pairings'} across{' '}
+                {parsed.weeks.length} night
                 {parsed.weeks.length === 1 ? '' : 's'}
               </span>
             </header>
@@ -431,7 +459,9 @@ export function ScheduleMaker({
                   {parsed.rows.map((r, i) => (
                     <tr key={`${r.week}-${r.round}-${i}`}>
                       <td style={{ color: 'var(--ink-3)' }}>{r.week}</td>
-                      <td className="num">{ST.splitRounds ? `R${r.round}` : '—'}</td>
+                      <td className="num" style={styleMismatch ? { color: 'var(--live)' } : undefined}>
+                        {ST.splitRounds || styleMismatch ? `R${r.round}` : '—'}
+                      </td>
                       <td className="wor-name">{r.home}</td>
                       <td className="wor-name">{r.away}</td>
                       <td style={{ color: 'var(--ink-2)' }}>{r.date || '—'}</td>
@@ -444,16 +474,22 @@ export function ScheduleMaker({
               </table>
             </div>
             <div className="ctl" style={{ borderBottom: 0, borderTop: '1px solid var(--line)' }}>
-              <button className="gh live" onClick={onApplyPaste} disabled={parsed.rows.length === 0}>
+              <button
+                className="gh live"
+                onClick={onApplyPaste}
+                disabled={parsed.rows.length === 0 || styleMismatch}
+                title={styleMismatch ? 'Switch the lead style first — writing now would drop half the leads' : undefined}
+              >
                 Write {parsed.weeks.length} night{parsed.weeks.length === 1 ? '' : 's'} into the schedule
               </button>
               <span className="rule" />
               <span className="meta">
-                round type {ST.splitRounds ? 'single round leads' : 'regular'} · nights with results are left alone
+                {styleMismatch
+                  ? 'held — the style would drop half these leads'
+                  : `round type ${ST.splitRounds ? 'single round leads' : 'regular'} · nights with results are left alone`}
               </span>
             </div>
           </div>
-        </>
       )}
     </>
   );

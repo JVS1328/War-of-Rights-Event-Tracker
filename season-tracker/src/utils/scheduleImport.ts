@@ -4,7 +4,10 @@
  * Leagues plan their fixtures in a spreadsheet long before the tracker sees
  * them, so the schedule maker takes a paste rather than insisting the schedule
  * be built here. Columns are Week, Round, Home, Away, Date, in any order, with
- * or without a header row, tab- or comma-separated.
+ * or without a header row, tab- or comma-separated — or, when a paste has lost
+ * its tabs on the way through a chat window or a rich-text field, separated by
+ * nothing but spaces. That last case is ambiguous and is recovered separately;
+ * see {@link parseLooseRow}.
  *
  * Home picks the map and away picks the side, so home is side A and away is
  * side B — which makes the paste a lead assignment, not just a fixture list.
@@ -77,15 +80,31 @@ const normalize = (s: string) =>
  * sheet importer uses, so a name that works in one works in the other.
  */
 export function matchUnit(name: string, registry: string[]): string | null {
+  return matchUnitScored(name, registry).unit;
+}
+
+/**
+ * The same match, with how sure it is: 3 exact, 2 equal once spacing and
+ * punctuation are ignored, 1 one contains the other, 0 no match.
+ *
+ * The confidence is what makes a whitespace paste recoverable. "8th" alone
+ * substring-matches "8th OH", so a first-match-wins split of "8th OH II Corps"
+ * would happily read it as "8th" versus "OH II Corps". Scoring the candidate
+ * splits and taking the most confident one gets the right answer instead.
+ */
+export function matchUnitScored(
+  name: string,
+  registry: string[],
+): { unit: string | null; score: number } {
   const raw = name.trim();
-  if (!raw) return null;
+  if (!raw) return { unit: null, score: 0 };
   const exact = registry.find((u) => u === raw);
-  if (exact) return exact;
+  if (exact) return { unit: exact, score: 3 };
   const n = normalize(raw);
   const norm = registry.find((u) => normalize(u) === n);
-  if (norm) return norm;
+  if (norm) return { unit: norm, score: 2 };
   const sub = registry.find((u) => normalize(u).includes(n) || n.includes(normalize(u)));
-  return sub ?? null;
+  return sub ? { unit: sub, score: 1 } : { unit: null, score: 0 };
 }
 
 /** "Week 12", "W12", "12" → 12. Null when there is no number in it. */
@@ -106,6 +125,69 @@ function readHeader(cells: string[]): Column[] | null {
 
 const DEFAULT_ORDER: Column[] = ['week', 'round', 'home', 'away', 'date'];
 
+/** 8/5/2026, 2026-08-05, 5.8.26 — enough to tell a date from a unit name. */
+const DATE_LIKE = /^\d{1,4}[/.-]\d{1,2}([/.-]\d{2,4})?$/;
+/** R1, R2, 1, 2, Rd1 — a round label, as distinct from part of a unit name. */
+const ROUND_LIKE = /^(r|rd|round)?[.\s]*[12]$/i;
+
+/**
+ * Recover a row from a paste that arrived with its tabs flattened to spaces —
+ * which is what happens whenever a spreadsheet is copied through a chat window,
+ * an issue tracker, or anything else that treats a tab as whitespace.
+ *
+ * Whitespace alone cannot be split on, because unit names contain spaces:
+ * "1 R1 8th OH II Corps 8/5/2026" has four tokens in the middle and two units
+ * in it, and nothing about the text says where one ends. So the row is read
+ * from its ends inward — the week leads, a round label may follow it, a
+ * date-shaped token may trail — and the registry decides where what is left
+ * divides. Every split is tried and the most confident one wins.
+ *
+ * Returns null when the middle cannot be divided into two known units, so the
+ * caller can report the row rather than invent a fixture from it.
+ */
+function parseLooseRow(
+  raw: string,
+  registry: string[],
+  hasRound: boolean,
+): { week: number; round: 1 | 2; home: string; away: string; date: string; middle: string } | null {
+  const tok = raw.trim().split(/\s+/).filter(Boolean);
+  if (tok.length < 3) return null;
+
+  let i = 0;
+  const week = readNumber(tok[i] ?? '');
+  if (week == null) return null;
+  i += 1;
+
+  // A round label only counts when there is still enough left for two names.
+  let round: 1 | 2 = 1;
+  if ((hasRound || ROUND_LIKE.test(tok[i] ?? '')) && ROUND_LIKE.test(tok[i] ?? '') && tok.length - i > 2) {
+    round = readNumber(tok[i]) === 2 ? 2 : 1;
+    i += 1;
+  }
+
+  let end = tok.length;
+  let date = '';
+  if (DATE_LIKE.test(tok[end - 1] ?? '') && end - i > 1) {
+    date = tok[end - 1];
+    end -= 1;
+  }
+
+  const middle = tok.slice(i, end);
+  if (middle.length < 2) return null;
+
+  // Every place the two names could divide, scored by how sure both halves are.
+  let best: { home: string; away: string; score: number } | null = null;
+  for (let cut = 1; cut < middle.length; cut += 1) {
+    const h = matchUnitScored(middle.slice(0, cut).join(' '), registry);
+    const a = matchUnitScored(middle.slice(cut).join(' '), registry);
+    if (!h.unit || !a.unit) continue;
+    const score = h.score + a.score;
+    if (!best || score > best.score) best = { home: h.unit, away: a.unit, score };
+  }
+  if (!best) return null;
+  return { week, round, home: best.home, away: best.away, date, middle: middle.join(' ') };
+}
+
 /**
  * Parse a pasted schedule. Rows that cannot be read are reported rather than
  * dropped silently, and unit names are matched against the registry so a
@@ -117,19 +199,42 @@ export function parseSchedulePaste(text: string, registry: string[]): ParsedSche
   const problems: ScheduleProblem[] = [];
   const unmatched = new Set<string>();
   let order: Column[] | null = null;
+  // Whether a header told us there is a round column. Only consulted on the
+  // whitespace path, where the columns cannot be counted.
+  let headerHasRound = true;
 
   lines.forEach((raw, i) => {
     const line = i + 1;
     if (!raw.trim()) return;
     const cells = splitCells(raw);
     if (!order) {
-      const header = readHeader(cells);
+      // A header may have lost its tabs along with the rows, so try the strict
+      // split first and fall back to whitespace before giving up on it.
+      const header = readHeader(cells) ?? readHeader(raw.trim().split(/\s+/));
       if (header) {
         order = header;
+        headerHasRound = header.includes('round');
         return;
       }
       order = DEFAULT_ORDER;
     }
+
+    // Fewer than three cells means the separators are gone; recover from the
+    // ends inward instead of reporting a row that is perfectly readable by eye.
+    if (cells.length < 3) {
+      const loose = parseLooseRow(raw, registry, headerHasRound);
+      if (!loose) {
+        problems.push({ kind: 'unparsable', line, text: raw.trim() });
+        return;
+      }
+      if (loose.home === loose.away) {
+        problems.push({ kind: 'self-match', line, unit: loose.home });
+        return;
+      }
+      rows.push({ line, week: loose.week, round: loose.round, home: loose.home, away: loose.away, date: loose.date });
+      return;
+    }
+
     const at = (col: Column) => {
       const idx = order!.indexOf(col);
       return idx >= 0 ? cells[idx] ?? '' : '';
