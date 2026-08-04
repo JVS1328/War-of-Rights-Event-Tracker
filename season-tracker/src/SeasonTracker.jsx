@@ -98,6 +98,23 @@ import {
   MODE_LABEL as HEAT_MODE_LABEL,
   MODE_BLURB as HEAT_MODE_BLURB,
 } from './utils/pairHeatmap';
+import { nightType, leadsPerNight } from './stats/nightMatchup';
+
+/**
+ * The four kinds of night, and the flags each one sets. Exclusive by
+ * construction: picking one clears the other two, so a week can never carry
+ * more than one kind.
+ */
+const NIGHT_TYPES = [
+  { key: 'Regular', label: 'Regular', hint: 'Two leads, each leading both rounds',
+    flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: false } },
+  { key: 'Single-round leads', label: 'Single-round leads', hint: 'Four leads — one per side, per round',
+    flags: { isPlayoffs: false, isSingleRoundLeads: true, isFunRound: false } },
+  { key: 'Playoffs', label: 'Playoffs', hint: 'Four leads, and no points awarded',
+    flags: { isPlayoffs: true, isSingleRoundLeads: false, isFunRound: false } },
+  { key: 'Fun round', label: 'Fun round', hint: 'Exhibition — no leads, no points, no Elo',
+    flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true } },
+];
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -5431,7 +5448,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     })}
                   </div>
-                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
+                  {leadsPerNight(nightType(selectedWeek)) === 2 && (
                     <div className="mt-3">
                       <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
                       <select
@@ -5515,7 +5532,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       );
                     })}
                   </div>
-                  {!selectedWeek.isPlayoffs && !selectedWeek.isSingleRoundLeads && (
+                  {leadsPerNight(nightType(selectedWeek)) === 2 && (
                     <div className="mt-3">
                       <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
                       <select
@@ -5533,56 +5550,38 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
 
-              {/* Playoffs Toggle */}
+              {/* Round type. The three used to be separate checkboxes that
+                  cleared each other on change; one control makes the exclusivity
+                  the shape of the thing rather than a rule to maintain, and says
+                  how many leads the night needs. */}
               <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isPlayoffs || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isPlayoffs: e.target.checked,
-                      ...(e.target.checked && { isSingleRoundLeads: false, isFunRound: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Star className="w-4 h-4" />
-                  <span className="font-semibold">Playoffs Week</span>
-                </label>
-              </div>
-
-              {/* Single Round Leads Toggle */}
-              <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isSingleRoundLeads || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isSingleRoundLeads: e.target.checked,
-                      ...(e.target.checked && { isPlayoffs: false, isFunRound: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Star className="w-4 h-4" />
-                  <span className="font-semibold">Single Round Leads</span>
-                </label>
-              </div>
-
-              {/* Fun Round Toggle */}
-              <div className="mb-4">
-                <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedWeek.isFunRound || false}
-                    onChange={(e) => updateWeek(selectedWeek.id, {
-                      isFunRound: e.target.checked,
-                      ...(e.target.checked && { isPlayoffs: false, isSingleRoundLeads: false })
-                    })}
-                    className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <Swords className="w-4 h-4" />
-                  <span className="font-semibold">Fun Round</span>
-                  <span className="text-xs text-text-secondary font-normal">— no points, no map cooldown, no Elo</span>
-                </label>
+                <label className="block text-sm text-text-secondary mb-2">Round Type</label>
+                <div className="flex flex-wrap gap-1 bg-bg-inset rounded-lg p-1">
+                  {NIGHT_TYPES.map(({ key, label, flags, hint }) => {
+                    const active = nightType(selectedWeek) === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => updateWeek(selectedWeek.id, flags)}
+                        title={hint}
+                        className={`px-3 py-1.5 text-sm rounded-md transition ${
+                          active ? 'bg-indigo-600 text-white' : 'text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-text-secondary mt-2">
+                  {(() => {
+                    const type = nightType(selectedWeek);
+                    const leads = leadsPerNight(type);
+                    if (leads === 0) return 'Fun rounds are exhibition — no leads, no points, no map cooldown, no Elo.';
+                    if (leads === 4) return `Four leads — one per side, per round.${type === 'Playoffs' ? ' Playoff nights record the result but award no points.' : ''}`;
+                    return 'Two leads — one per side, leading both rounds.';
+                  })()}
+                </p>
               </div>
 
               {/* Playoffs Lead Selection */}
