@@ -22,6 +22,8 @@ import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, Fo
 import type { Scoreboard, Team } from '../../stats/types';
 import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
 import { MAP_AREAS, areaOf, prettyArea } from '../../stats/mapAreas';
+import { mapAttacker } from '../../stats/mapCatalog';
+import { StanceBar } from '../ui/StanceBar';
 import { parseRegimentList, UNTAGGED } from '../../stats/regimentMatcher';
 import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding';
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
@@ -1810,10 +1812,19 @@ function MapsTab({
 }) {
   const trackerRounds = trackerMapStats?.overall.totalRounds ?? 0;
   const scoreboardRounds = scoreboardMapStats?.overall.totalRounds ?? 0;
-  // Default to the tracker's stats when it has any; otherwise fall back to the
-  // scoreboard-derived stats so the tab isn't empty just because nothing is
-  // bound to a week yet.
-  const [source, setSource] = useState<'tracker' | 'scoreboard'>(trackerRounds > 0 ? 'tracker' : 'scoreboard');
+  // Which source to prefer. Resolved per render rather than only at mount:
+  // the stats often arrive after the panel does, and a mount-time default left
+  // the tab reading "no data" while the other source had rounds all along.
+  const [preferred, setPreferred] = useState<'tracker' | 'scoreboard'>('tracker');
+  const source =
+    preferred === 'tracker'
+      ? trackerRounds > 0 || scoreboardRounds === 0
+        ? 'tracker'
+        : 'scoreboard'
+      : scoreboardRounds > 0 || trackerRounds === 0
+        ? 'scoreboard'
+        : 'tracker';
+  const setSource = setPreferred;
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (key: string) =>
     setOpenAreas((prev) => {
@@ -1981,6 +1992,10 @@ function MapsTab({
 }
 
 function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: number, t: number) => string }) {
+  // The catalog is keyed on the playable area, which is what a map name is here.
+  const attacker = s.hasAttacker === false ? null : mapAttacker(name);
+  // Attacker/defender rounds exclude draws, so they get their own denominator.
+  const decided = s.attackerWins + s.defenderWins;
   return (
     <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 font-mono text-sm">
       <div className="flex justify-between items-center mb-1">
@@ -2022,7 +2037,28 @@ function MapCard({ name, s, pct }: { name: string; s: TrackerMapEntry; pct: (w: 
             <span className="text-[color:var(--color-csa)]">CSA {s.avgMoraleCsa || '—'}</span>
           </div>
         )}
+        {/* Whether the assault carries this map is the figure a coordinator
+            wants, and it was collected but never shown. Conquest and Contention
+            have no attacker, so they get the reason instead of a blank. */}
+        {attacker ? (
+          <div>
+            {attacker} attacks ·{' '}
+            <span className="text-[color:var(--color-text-0)]">
+              attackers {s.attackerWins} ({pct(s.attackerWins, decided)}%)
+            </span>
+            <span className="mx-1">·</span>
+            defenders {s.defenderWins} ({pct(s.defenderWins, decided)}%)
+          </div>
+        ) : (
+          <div>No attacker — both sides hold ground on this one</div>
+        )}
       </div>
+      {s.hasFormation && (
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <StanceBar counts={s.avgFormationUsa} label="USA — average losses by stance" />
+          <StanceBar counts={s.avgFormationCsa} label="CSA — average losses by stance" />
+        </div>
+      )}
     </div>
   );
 }
