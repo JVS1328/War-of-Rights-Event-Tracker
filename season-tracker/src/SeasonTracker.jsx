@@ -57,6 +57,8 @@ import {
 import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 import { CompanyConfigFields, CompanyList } from './components/CompanyBalancer';
 import { BalanceSwaps } from './components/BalanceSwaps';
+import { EloLadder } from './components/EloLadder';
+import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
 import {
@@ -2935,6 +2937,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
     () => units.filter(u => !nonTokenUnits.includes(u)),
     [units, nonTokenUnits]
   );
+
+  /**
+   * Ratings after each week of the active season, so the ladder can draw a
+   * unit's whole run. One engine replay per week — the engine is pure and the
+   * season is a couple of dozen weeks, so this is cheap enough to memoize
+   * rather than cache.
+   */
+  const eloLadderRows = useMemo(() => {
+    const weekElo = weeks.map((_, i) => calculateEloRatings(i).eloRatings);
+    const { roundsPlayed } = weeks.length > 0
+      ? calculateEloRatings(weeks.length - 1)
+      : { roundsPlayed: {} };
+    return buildEloLadder({
+      units: tokenUnits,
+      initialElo: eloSystem.initialElo,
+      weekElo,
+      roundsPlayed,
+      provisionalRounds: eloSystem.provisionalRounds || 0,
+    });
+    // calculateEloRatings reads appState, so the season identity is the dependency.
+  }, [weeks, tokenUnits, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
+
 
   // The league as the playoff planner sees it: who can qualify, how they are
   // grouped, and how many nights the post-season has to work with.
@@ -7722,6 +7746,16 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </div>
                       );
                     })()}
+                  </div>
+
+                  {/* Elo ladder. Replays the engine once per week so a unit's
+                      whole season is on the row, not just where it ended. */}
+                  <div className="bg-bg-inset rounded-lg p-4 mb-4">
+                    <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+                      <TrendingUp className="w-5 h-5" />
+                      Elo Ladder
+                    </h3>
+                    <EloLadder rows={eloLadderRows} weeksLabel={`${weeks.length} week${weeks.length === 1 ? '' : 's'}`} />
                   </div>
 
                   {/* Unit Interactions */}
