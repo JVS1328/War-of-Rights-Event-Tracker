@@ -59,6 +59,7 @@ import { CompanyConfigFields, CompanyList } from './components/CompanyBalancer';
 import { BalanceSwaps } from './components/BalanceSwaps';
 import { EloLadder } from './components/EloLadder';
 import { Shell } from './components/Shell';
+import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
@@ -2993,6 +2994,89 @@ const SeasonTracker = ({ initialShareData = null }) => {
   );
 
   /**
+   * The season as the Overview, Standings and Schedule screens read it. One
+   * shape, three screens — the prototype's rows, not three ad-hoc projections.
+   */
+  const divisionOfUnit = useMemo(() => {
+    const m = {};
+    divisions.forEach(d => (d.units || []).forEach(u => { m[u] = d.name; }));
+    return m;
+  }, [divisions]);
+
+  const standingRows = useMemo(() => {
+    const stats = calculatePointsUpToWeek();
+    return Object.entries(stats)
+      .map(([unit, d]) => {
+        const w = (d.leadWins || 0) + (d.assistWins || 0);
+        const l = (d.leadLosses || 0) + (d.assistLosses || 0);
+        return {
+          unit,
+          division: divisionOfUnit[unit] ?? null,
+          points: d.points || 0,
+          leadWins: d.leadWins || 0,
+          leadLosses: d.leadLosses || 0,
+          assistWins: d.assistWins || 0,
+          assistLosses: d.assistLosses || 0,
+          w, l,
+          wr: w + l > 0 ? Math.round((w / (w + l)) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.points - a.points || a.unit.localeCompare(b.unit))
+      .map((r, i) => ({ ...r, pos: i + 1 }));
+    // calculatePointsUpToWeek reads the season off appState.
+  }, [weeks, divisionOfUnit, pointSystem, manualAdjustments, appState]);
+
+  const nightRows = useMemo(() => weeks.map((w, i) => {
+    const leads = w.isPlayoffs || w.isSingleRoundLeads
+      ? { a: w.leadA_r1 || w.leadA_r2, b: w.leadB_r1 || w.leadB_r2 }
+      : { a: w.leadA, b: w.leadB };
+    return {
+      index: i,
+      n: i + 1,
+      name: w.name,
+      leadA: leads.a || null,
+      leadB: leads.b || null,
+      map1: w.round1Map || null,
+      map2: w.round2Map || null,
+      sidesA: (w.teamA || []).length,
+      sidesB: (w.teamB || []).length,
+      r1: w.round1Winner || null,
+      r2: w.round2Winner || null,
+      played: !!(w.round1Winner || w.round2Winner || w.round1Draw || w.round2Draw),
+      playoffs: !!w.isPlayoffs,
+    };
+  }), [weeks]);
+
+  /** Season-at-a-glance figures. */
+  const seasonKpis = useMemo(() => {
+    let roundsPlayed = 0;
+    let regular = 0;
+    let usaCasualties = 0;
+    let csaCasualties = 0;
+    for (const w of weeks) {
+      if (w.round1Winner || w.round1Draw) roundsPlayed += 1;
+      if (w.round2Winner || w.round2Draw) roundsPlayed += 1;
+      if (!w.isPlayoffs) regular += 1;
+      // Which side is which faction flips per round, so read the flag first.
+      for (const r of [1, 2]) {
+        const a = w[`r${r}CasualtiesA`] || 0;
+        const b = w[`r${r}CasualtiesB`] || 0;
+        if (w[`round${r}Flipped`]) { usaCasualties += b; csaCasualties += a; }
+        else { usaCasualties += a; csaCasualties += b; }
+      }
+    }
+    const totalCasualties = usaCasualties + csaCasualties;
+    return [
+      { head: 'Units', value: units.length, hint: `${divisions.length} division${divisions.length === 1 ? '' : 's'}` },
+      { head: 'Nights', value: weeks.length, hint: `${regular} regular · ${weeks.length - regular} playoff` },
+      { head: 'Rounds played', value: roundsPlayed, hint: `of ${weeks.length * 2} scheduled` },
+      { head: 'Token units', value: tokenUnits.length, hint: `${units.length - tokenUnits.length} score nothing` },
+      { head: 'Casualties', value: totalCasualties.toLocaleString(), hint: `${usaCasualties.toLocaleString()} USA · ${csaCasualties.toLocaleString()} CSA` },
+    ];
+  }, [weeks, units, divisions, tokenUnits]);
+
+
+  /**
    * Ratings after each week of the active season, so the ladder can draw a
    * unit's whole run. One engine replay per week — the engine is pure and the
    * season is a couple of dozen weeks, so this is cheap enough to memoize
@@ -4333,175 +4417,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </>
           )}
 
-          {/* The season in numbers. These were buried in a dialog; an overview
-              is exactly where they belong. */}
-          {screen === 'dash' && (<>
-          {/* Map Statistics — active season only */}
-          <div className="panel pb">
-            <h3 className="cap">
-              <Map className="w-5 h-5" />
-              Map Statistics
-            </h3>
-            {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
-          </div>
-
-          {/* Casualties Summary */}
-          <div className="panel pb">
-            <h3 className="cap">
-              <Flame className="w-5 h-5" />
-              Total Casualties
-            </h3>
-            {(() => {
-              // Calculate USA/CSA casualties based on map sides
-              let usaCasualties = 0;
-              let csaCasualties = 0;
-              
-              weeks.forEach(week => {
-                [1, 2].forEach(roundNum => {
-                  const mapName = week[`round${roundNum}Map`];
-                  const flipped = week[`round${roundNum}Flipped`] || false;
-                  const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
-                  const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
-                  
-                  // Determine which side is USA based on map and flipped state
-                  // If not flipped: Team A = USA, Team B = CSA
-                  // If flipped: Team A = CSA, Team B = USA
-                  const usaSide = flipped ? 'B' : 'A';
-                  
-                  if (usaSide === 'A') {
-                    usaCasualties += casualtiesA;
-                    csaCasualties += casualtiesB;
-                  } else {
-                    usaCasualties += casualtiesB;
-                    csaCasualties += casualtiesA;
-                  }
-                });
-              });
-              
-              const totalCasualties = usaCasualties + csaCasualties;
-              
-              return (
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="panel pb">
-                    <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
-                    <div className="text-2xl font-bold f-usa">
-                      {usaCasualties}
-                    </div>
-                  </div>
-                  <div className="panel pb">
-                    <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
-                    <div className="text-2xl font-bold c-danger">
-                      {csaCasualties}
-                    </div>
-                  </div>
-                  <div className="panel pb">
-                    <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
-                    <div className="text-2xl font-bold c-accent">
-                      {totalCasualties}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Per-Unit Player Stats — derived from assigned scoreboards,
-                cumulative through the selected week. */}
-            <div className="bg-bg-inset rounded p-3 mt-4">
-              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                Per-Unit Player Stats
-                {selectedWeek && (
-                  <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
-                )}
-              </h4>
-              {(() => {
-                const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
-              })()}
-            </div>
-          </div>
-
-          {/* Teammate Impact Index (TII) */}
-          <div className="panel pb">
-            <h3 className="cap">
-              <TrendingUp className="w-5 h-5" />
-              Teammate Impact Index (TII)
-            </h3>
-            {(() => {
-              const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-              const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
-              
-              // Filter to only units that have played
-              const tableData = Object.entries(impactStats)
-                .map(([unit, data]) => ({
-                  unit,
-                  ...data,
-                  totalGames: data.leadGames + data.assistGames
-                }))
-                .filter(row => row.totalGames > 0)
-                .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
-              
-              if (tableData.length === 0) {
-                return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
-              }
-              
-              return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-text-secondary border-b border-border-default">
-                        <th className="text-left py-2 px-2">Unit (Avg Players)</th>
-                        <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
-                        <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
-                        <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
-                        <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
-                        <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableData.map((row, idx) => {
-                        const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
-                        return (
-                          <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
-                            <td className="py-2 px-2">
-                              {row.unit} ({Math.round(row.avgPlayers)})
-                            </td>
-                            <td className="c-accent text-center py-2 px-2 font-semibold">
-                              {row.adjustedTiiScore.toFixed(3)}
-                            </td>
-                            <td className="c-accent text-center py-2 px-2">
-                              {row.impactScore.toFixed(3)}
-                            </td>
-                            <td className="c-ok text-center py-2 px-2">
-                              {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
-                            </td>
-                            <td className="f-usa text-center py-2 px-2">
-                              {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
-                            </td>
-                            <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
-                              {(delta * 100).toFixed(1)}%
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                    <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
-                    <ul className="space-y-1 ml-4">
-                      <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
-                      <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
-                      <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
-                      <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
-                      <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
-                    </ul>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-
-          </>)}
+          {/* Season → Overview, Standings, Schedule, to the prototype's spec.
+              Map statistics used to be duplicated here; it is the whole of the
+              Maps screen, so it is not repeated. The casualty totals became
+              KPIs, and the per-unit figures moved to Units, where units are. */}
 
           {/* How the event's seasons compare — read where the seasons are. */}
           {screen === 'events' && (<>
@@ -4837,6 +4756,108 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* The whole week goes across as `weeks`, not just id/name/flip: the
               Nights tab reads a night's result, leads and rosters as a matchup. */}
+          {/* Per-unit figures from the tracker's own casualty records, under
+              Units — the scoreboard-derived table above answers the same
+              question from the other direction. */}
+          {screen === 'stats-regiments' && (<>
+            {/* Per-Unit Player Stats — derived from assigned scoreboards,
+                cumulative through the selected week. */}
+            <div className="bg-bg-inset rounded p-3 mt-4">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                Per-Unit Player Stats
+                {selectedWeek && (
+                  <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
+                )}
+              </h4>
+              {(() => {
+                const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
+              })()}
+            </div>
+
+          {/* Teammate Impact Index (TII) */}
+          <div className="panel pb">
+            <h3 className="cap">
+              <TrendingUp className="w-5 h-5" />
+              Teammate Impact Index (TII)
+            </h3>
+            {(() => {
+              const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+              const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
+              
+              // Filter to only units that have played
+              const tableData = Object.entries(impactStats)
+                .map(([unit, data]) => ({
+                  unit,
+                  ...data,
+                  totalGames: data.leadGames + data.assistGames
+                }))
+                .filter(row => row.totalGames > 0)
+                .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
+              
+              if (tableData.length === 0) {
+                return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
+              }
+              
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-text-secondary border-b border-border-default">
+                        <th className="text-left py-2 px-2">Unit (Avg Players)</th>
+                        <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
+                        <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
+                        <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
+                        <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
+                        <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableData.map((row, idx) => {
+                        const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                        return (
+                          <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
+                            <td className="py-2 px-2">
+                              {row.unit} ({Math.round(row.avgPlayers)})
+                            </td>
+                            <td className="c-accent text-center py-2 px-2 font-semibold">
+                              {row.adjustedTiiScore.toFixed(3)}
+                            </td>
+                            <td className="c-accent text-center py-2 px-2">
+                              {row.impactScore.toFixed(3)}
+                            </td>
+                            <td className="c-ok text-center py-2 px-2">
+                              {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
+                            </td>
+                            <td className="f-usa text-center py-2 px-2">
+                              {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
+                            </td>
+                            <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
+                              {(delta * 100).toFixed(1)}%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
+                    <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
+                    <ul className="space-y-1 ml-4">
+                      <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
+                      <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
+                      <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
+                      <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
+                      <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+
+          </>)}
+
           {viewMode === 'stats' && (
             <StatsArea
               tab={STATS_TAB_OF[screen]}
@@ -5268,437 +5289,40 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
-          {/* Main Content Grid */}
-          <div className={screen === 'dash' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start' : ''}>
-            {/* Left Column — Weeks. This column is also the whole of the
-                Schedule screen, so it is composed in rather than duplicated. */}
-            {(screen === 'dash' || screen === 'schedule') && (
-            <div className="panel pb">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="cap">
-                  <Calendar className="w-6 h-6" />
-                  Weeks ({weeks.length})
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => toggleEnlarge('weeks')}
-                    className="ib"
-                    title="Enlarge View"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={addWeek}
-                    className="gh live"
-                    title="Add Week"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="rows scroll-y">
-                {weeks.map((week) => (
-                  <div
-                    key={week.id}
-                    className={`row click${selectedWeek?.id === week.id ? ' on' : ''}`}
-                  >
-                    <div className="flex justify-between items-center">
-                      {editingWeek === week.id ? (
-                        <input
-                          type="text"
-                          defaultValue={week.name}
-                          onBlur={(e) => renameWeek(week.id, e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              renameWeek(week.id, e.target.value);
-                            }
-                          }}
-                          className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
-                          autoFocus
-                        />
-                      ) : (
-                        <div
-                          onClick={() => setSelectedWeek(week)}
-                          className="flex-1"
-                        >
-                          <div className="font-semibold">{week.name}</div>
-                          <div className="text-sm opacity-75">
-                            {week.teamA.length + week.teamB.length} units assigned
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingWeek(week.id);
-                          }}
-                          className="p-1 rounded-md hover:bg-bg-inset transition"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeWeek(week.id);
-                          }}
-                          className="p-1 rounded-md hover:bg-red-500/20 c-danger transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* Overview, Standings and Schedule, built to the prototype's spec.
+              The three-column card grid this replaces was the old dashboard;
+              the season reads as a glance, a table and a fixture list now. */}
+          {screen === 'dash' && (
+            <SeasonOverview
+              eventName={activeEvent.name}
+              seasonName={activeSeason.name}
+              kpis={seasonKpis}
+              standings={standingRows}
+              nights={nightRows}
+              pointSystem={pointSystem}
+              onOpenUnit={() => goScreen('stats-regiments')}
+              onOpenNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('week'); }}
+            />
+          )}
 
-            )}
-            {/* Middle Column — Units */}
-            {screen === 'dash' && (
-            <div
-              className="panel pb"
-              onDragOver={handleMainDragOver}
-              onDrop={handleMainDropToUnassigned}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="cap">
-                  <Users className="w-6 h-6" />
-                  {selectedWeek ? `Available Units (${getAvailableUnitsForWeek().length})` : `Units (${units.length})`}
-                </h2>
-                <button
-                  onClick={() => toggleEnlarge('units')}
-                  className="ib"
-                  title="Enlarge View"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="mb-4 flex gap-2">
-                <input
-                  type="text"
-                  value={newUnitName}
-                  onChange={(e) => setNewUnitName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addUnit()}
-                  placeholder="Unit name..."
-                  className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
-                />
-                <button
-                  onClick={addUnit}
-                  className="gh live"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-              {selectedWeek && getAvailableUnitsForWeek().length > 0 && (
-                <div className="mb-2 text-xs text-text-muted bg-bg-inset rounded-md p-2">
-                  💡 Drag units to teams or use A/B buttons
-                </div>
-              )}
-              <div className="rows scroll-y">
-                {(selectedWeek ? getAvailableUnitsForWeek() : units).map((unit) => {
-                  const isNonToken = nonTokenUnits.includes(unit);
-                  return (
-                    <div
-                      key={unit}
-                      draggable={selectedWeek ? true : false}
-                      onDragStart={() => selectedWeek && handleMainDragStart(unit, null)}
-                      className={`row flex justify-between items-center${selectedWeek ? ' click' : ''}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleNonTokenStatus(unit)}
-                          className={`px-2 py-1 rounded text-xs font-bold transition ${
-                            isNonToken
-                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                              : 'bg-bg-card hover:bg-border-subtle text-text-muted'
-                          }`}
-                          title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
-                        >
-                          {isNonToken ? '*' : '○'}
-                        </button>
-                        <span className={`font-medium ${isNonToken ? 'c-accent' : ''}`}>
-                          {unit}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        {selectedWeek && (
-                          <>
-                            <button
-                              onClick={() => moveUnitToTeam(unit, 'A')}
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
-                              title={`Add to ${teamNames.A}`}
-                            >
-                              → A
-                            </button>
-                            <button
-                              onClick={() => moveUnitToTeam(unit, 'B')}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
-                              title={`Add to ${teamNames.B}`}
-                            >
-                              → B
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => renameUnit(unit)}
-                          className="p-1 rounded-md hover:bg-bg-inset text-text-secondary transition"
-                          title="Rename unit (updates everywhere in the event)"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => removeUnit(unit)}
-                          className="p-1 rounded-md hover:bg-red-500/20 c-danger transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-             </div>
-            </div>
+          {screen === 'standings' && (
+            <StandingsScreen
+              standings={standingRows}
+              divisions={divisions}
+              onOpenUnit={() => goScreen('stats-regiments')}
+            />
+          )}
 
-            )}
-            {/* Right Column — Standings, and the whole of the Standings screen. */}
-            {(screen === 'dash' || screen === 'standings') && (
-            <div className="panel pb sm:col-span-2 lg:col-span-1">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="cap">
-                  <Award className="w-6 h-6" />
-                  Standings
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => toggleEnlarge('standings')}
-                    className="ib"
-                    title="Enlarge View"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setRankByElo(!rankByElo)}
-                    className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
-                    title={rankByElo ? "Rank by Points" : "Rank by Elo"}
-                  >
-                    <TrendingUp className="w-3 h-3" />
-                    {rankByElo ? "Elo" : "Points"}
-                  </button>
-                  {divisions && divisions.length > 0 && (
-                    <button
-                      onClick={() => setShowGroupedStandings(!showGroupedStandings)}
-                      className="px-2.5 py-1 border border-border-default hover:bg-bg-inset rounded-md text-sm transition flex items-center gap-1"
-                      title={showGroupedStandings ? "Show All" : "Group by Division"}
-                    >
-                      {showGroupedStandings ? <Users className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                      {showGroupedStandings ? "Grouped" : "All"}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="rows scroll-y">
-                {showGroupedStandings && divisions && divisions.length > 0 ? (
-                  // Grouped view by division
-                  getGroupedStandings().map((group) => (
-                    <div key={group.name} className="mb-4">
-                      <h3 className="text-sm font-bold text-text-secondary mb-2 px-2 flex items-center gap-2">
-                        <Shield className="w-4 h-4" />
-                        {group.name}
-                      </h3>
-                      <div className="space-y-2">
-                        {group.units.map((stat) => {
-                          const isNonToken = nonTokenUnits.includes(stat.unit);
-                          return (
-                            <div
-                              key={stat.unit}
-                              className="bg-bg-inset rounded-md p-3"
-                            >
-                              <div className="flex justify-between items-center mb-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="c-accent font-bold text-lg">
-                                    #{stat.divisionRank || stat.currentRank}
-                                  </span>
-                                {stat.rankDelta !== null && stat.rankDelta !== undefined && (
-                                  <span className={`text-xs font-semibold ${
-                                    stat.rankDelta > 0 ? 'c-ok' :
-                                    stat.rankDelta < 0 ? 'c-danger' :
-                                    'text-text-secondary'
-                                  }`}>
-                                    {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
-                                     stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
-                                     '−'}
-                                  </span>
-                                )}
-                                <span className={`font-semibold ${isNonToken ? 'c-accent' : ''}`}>
-                                  {isNonToken ? '*' : ''}{stat.unit}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1 text-xs">
-                                  {stat.eloDelta > 0 ? (
-                                    <TrendingUp className="w-3 h-3 f-usa" />
-                                  ) : stat.eloDelta < 0 ? (
-                                    <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
-                                  ) : (
-                                    <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
-                                  )}
-                                  <span className="c-accent font-semibold">
-                                    {Math.round(stat.elo)}
-                                  </span>
-                                  {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
-                                    <span className={`ml-1 ${
-                                      stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
-                                    }`}>
-                                      ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    const current = manualAdjustments[stat.unit] || 0;
-                                    const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
-                                    if (adjustment !== null) {
-                                      const newAdj = parseInt(adjustment) || 0;
-                                      setManualAdjustments({
-                                        ...manualAdjustments,
-                                        [stat.unit]: newAdj
-                                      });
-                                    }
-                                  }}
-                                  className="ib"
-                                  title="Adjust points"
-                                >
-                                  <Edit2 className="w-3 h-3 text-text-secondary" />
-                                </button>
-                                <span className="c-ok font-bold text-xl">
-                                  {stat.points}
-                                </span>
-                                {stat.pointsDelta !== 0 && (
-                                  <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
-                                    ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                              <div>L-Wins: {stat.leadWins}</div>
-                              <div>L-Loss: {stat.leadLosses}</div>
-                              <div>A-Wins: {stat.assistWins}</div>
-                              <div>A-Loss: {stat.assistLosses}</div>
-                              <div className="col-span-2 c-accent">
-                                Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
-                              </div>
-                            </div>
-                            {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                              <div className="mt-1 text-xs c-accent">
-                                Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
-                              </div>
-                            )}
-                          </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  // Ungrouped view - all units with delta indicators
-                  getStandingsWithChanges().map((stat, index) => {
-                    const isNonToken = nonTokenUnits.includes(stat.unit);
-                    return (
-                      <div
-                        key={stat.unit}
-                        className="bg-bg-inset rounded-md p-3"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="c-accent font-bold text-lg">
-                              #{index + 1}
-                            </span>
-                          {stat.rankDelta !== null && stat.rankDelta !== undefined && (
-                            <span className={`text-xs font-semibold ${
-                              stat.rankDelta > 0 ? 'c-ok' :
-                              stat.rankDelta < 0 ? 'c-danger' :
-                              'text-text-secondary'
-                            }`}>
-                              {stat.rankDelta > 0 ? `↑${stat.rankDelta}` :
-                               stat.rankDelta < 0 ? `↓${Math.abs(stat.rankDelta)}` :
-                               '−'}
-                            </span>
-                          )}
-                          <span className={`font-semibold ${isNonToken ? 'c-accent' : ''}`}>
-                            {isNonToken ? '*' : ''}{stat.unit}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-1 text-xs">
-                            {stat.eloDelta > 0 ? (
-                              <TrendingUp className="w-3 h-3 f-usa" />
-                            ) : stat.eloDelta < 0 ? (
-                              <TrendingUp className="w-3 h-3 c-danger transform rotate-180" />
-                            ) : (
-                              <span className="w-3 h-3 text-yellow-400 flex items-center justify-center text-lg leading-none">−</span>
-                            )}
-                            <span className="c-accent font-semibold">
-                              {Math.round(stat.elo)}
-                            </span>
-                            {stat.eloDelta !== undefined && stat.eloDelta !== 0 && (
-                              <span className={`ml-1 ${
-                                stat.eloDelta > 0 ? 'c-ok' : 'c-danger'
-                              }`}>
-                                ({stat.eloDelta > 0 ? '+' : ''}{Math.round(stat.eloDelta)})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              const current = manualAdjustments[stat.unit] || 0;
-                              const adjustment = prompt(`Manual adjustment for ${stat.unit}:`, current);
-                              if (adjustment !== null) {
-                                const newAdj = parseInt(adjustment) || 0;
-                                setManualAdjustments({
-                                  ...manualAdjustments,
-                                  [stat.unit]: newAdj
-                                });
-                              }
-                            }}
-                            className="ib"
-                            title="Adjust points"
-                          >
-                            <Edit2 className="w-3 h-3 text-text-secondary" />
-                          </button>
-                          <span className="c-ok font-bold text-xl">
-                            {stat.points}
-                          </span>
-                          {stat.pointsDelta !== 0 && (
-                            <span className={`text-xs ml-1 ${stat.pointsDelta > 0 ? 'c-ok' : 'c-danger'}`}>
-                              ({stat.pointsDelta > 0 ? '+' : ''}{stat.pointsDelta})
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                        <div>L-Wins: {stat.leadWins}</div>
-                        <div>L-Loss: {stat.leadLosses}</div>
-                        <div>A-Wins: {stat.assistWins}</div>
-                        <div>A-Loss: {stat.assistLosses}</div>
-                        <div className="col-span-2 c-accent">
-                          Elo: {Math.round(stat.elo)} ({stat.rounds} rounds)
-                        </div>
-                      </div>
-                      {manualAdjustments[stat.unit] != null && manualAdjustments[stat.unit] !== 0 && (
-                        <div className="mt-1 text-xs c-accent">
-                          Manual: {manualAdjustments[stat.unit] > 0 ? '+' : ''}{manualAdjustments[stat.unit]}
-                        </div>
-                      )}
-                    </div>
-                    );
-                  })
-               )}
-             </div>
-            </div>
-            )}
-          </div>
+          {screen === 'schedule' && (
+            <ScheduleScreen
+              nights={nightRows}
+              onOpenNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('week'); }}
+              onEditNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('night'); }}
+              onNewNight={() => { addWeek(); goScreen('night'); }}
+              onGenerate={() => goScreen('simulator')}
+            />
+          )}
+
 
           {/* Night builder. A screen you can arrive at cold, so it carries its
               own picker rather than assuming a week was clicked first. */}
