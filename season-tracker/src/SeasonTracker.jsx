@@ -267,7 +267,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [statsAllSeasons, setStatsAllSeasons] = useState(true);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
-  const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
   const [heatmapMode, setHeatmapMode] = useState('together'); // 'together' | 'against'
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
@@ -3004,15 +3003,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const { roundsPlayed } = weeks.length > 0
       ? calculateEloRatings(weeks.length - 1)
       : { roundsPlayed: {} };
+    const divisionOf = {};
+    divisions.forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
+    // Where each unit sits on points, so the ladder can show the two orderings
+    // side by side and say where they disagree.
+    const byPoints = Object.entries(calculatePointsUpToWeek())
+      .sort((a, b) => (b[1].points ?? 0) - (a[1].points ?? 0));
+    const pointsRank = {};
+    byPoints.forEach(([unit], i) => { pointsRank[unit] = i + 1; });
     return buildEloLadder({
       units: tokenUnits,
       initialElo: eloSystem.initialElo,
       weekElo,
       roundsPlayed,
       provisionalRounds: eloSystem.provisionalRounds || 0,
+      divisionOf,
+      pointsRank,
     });
     // calculateEloRatings reads appState, so the season identity is the dependency.
-  }, [weeks, tokenUnits, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
+  }, [weeks, tokenUnits, divisions, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
 
 
   // The league as the playoff planner sees it: who can qualify, how they are
@@ -4323,6 +4332,463 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
             </>
           )}
+
+          {/* The season in numbers. These were buried in a dialog; an overview
+              is exactly where they belong. */}
+          {screen === 'dash' && (<>
+          {/* Map Statistics — active season only */}
+          <div className="panel pb">
+            <h3 className="cap">
+              <Map className="w-5 h-5" />
+              Map Statistics
+            </h3>
+            {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
+          </div>
+
+          {/* Casualties Summary */}
+          <div className="panel pb">
+            <h3 className="cap">
+              <Flame className="w-5 h-5" />
+              Total Casualties
+            </h3>
+            {(() => {
+              // Calculate USA/CSA casualties based on map sides
+              let usaCasualties = 0;
+              let csaCasualties = 0;
+              
+              weeks.forEach(week => {
+                [1, 2].forEach(roundNum => {
+                  const mapName = week[`round${roundNum}Map`];
+                  const flipped = week[`round${roundNum}Flipped`] || false;
+                  const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
+                  const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
+                  
+                  // Determine which side is USA based on map and flipped state
+                  // If not flipped: Team A = USA, Team B = CSA
+                  // If flipped: Team A = CSA, Team B = USA
+                  const usaSide = flipped ? 'B' : 'A';
+                  
+                  if (usaSide === 'A') {
+                    usaCasualties += casualtiesA;
+                    csaCasualties += casualtiesB;
+                  } else {
+                    usaCasualties += casualtiesB;
+                    csaCasualties += casualtiesA;
+                  }
+                });
+              });
+              
+              const totalCasualties = usaCasualties + csaCasualties;
+              
+              return (
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="panel pb">
+                    <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
+                    <div className="text-2xl font-bold f-usa">
+                      {usaCasualties}
+                    </div>
+                  </div>
+                  <div className="panel pb">
+                    <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
+                    <div className="text-2xl font-bold c-danger">
+                      {csaCasualties}
+                    </div>
+                  </div>
+                  <div className="panel pb">
+                    <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
+                    <div className="text-2xl font-bold c-accent">
+                      {totalCasualties}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Per-Unit Player Stats — derived from assigned scoreboards,
+                cumulative through the selected week. */}
+            <div className="bg-bg-inset rounded p-3 mt-4">
+              <h4 className="font-semibold mb-3 flex items-center gap-2">
+                Per-Unit Player Stats
+                {selectedWeek && (
+                  <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
+                )}
+              </h4>
+              {(() => {
+                const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
+              })()}
+            </div>
+          </div>
+
+          {/* Teammate Impact Index (TII) */}
+          <div className="panel pb">
+            <h3 className="cap">
+              <TrendingUp className="w-5 h-5" />
+              Teammate Impact Index (TII)
+            </h3>
+            {(() => {
+              const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+              const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
+              
+              // Filter to only units that have played
+              const tableData = Object.entries(impactStats)
+                .map(([unit, data]) => ({
+                  unit,
+                  ...data,
+                  totalGames: data.leadGames + data.assistGames
+                }))
+                .filter(row => row.totalGames > 0)
+                .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
+              
+              if (tableData.length === 0) {
+                return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
+              }
+              
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-text-secondary border-b border-border-default">
+                        <th className="text-left py-2 px-2">Unit (Avg Players)</th>
+                        <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
+                        <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
+                        <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
+                        <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
+                        <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableData.map((row, idx) => {
+                        const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                        return (
+                          <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
+                            <td className="py-2 px-2">
+                              {row.unit} ({Math.round(row.avgPlayers)})
+                            </td>
+                            <td className="c-accent text-center py-2 px-2 font-semibold">
+                              {row.adjustedTiiScore.toFixed(3)}
+                            </td>
+                            <td className="c-accent text-center py-2 px-2">
+                              {row.impactScore.toFixed(3)}
+                            </td>
+                            <td className="c-ok text-center py-2 px-2">
+                              {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
+                            </td>
+                            <td className="f-usa text-center py-2 px-2">
+                              {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
+                            </td>
+                            <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
+                              {(delta * 100).toFixed(1)}%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
+                    <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
+                    <ul className="space-y-1 ml-4">
+                      <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
+                      <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
+                      <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
+                      <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
+                      <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+
+          </>)}
+
+          {/* How the event's seasons compare — read where the seasons are. */}
+          {screen === 'events' && (<>
+          {(() => {
+            // Event-wide aggregates: walk every season's rounds.
+            const seasons = activeEvent.seasons;
+            const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
+
+            // Cross-season unit record (rounds-as-lead/assist won/lost) +
+            // event-wide casualties (per side + per unit).
+            const unitRecord = {};
+            let usaCasTotal = 0, csaCasTotal = 0;
+            let totalRoundsWithResult = 0;
+            const ensure = (u) => unitRecord[u] ||= {
+              rounds: 0, leadWins: 0, leadLosses: 0,
+              assistWins: 0, assistLosses: 0,
+              sweeps: 0, casualtiesTaken: 0,
+            };
+
+            for (const season of seasons) {
+              for (const week of season.weeks || []) {
+                const isPlayoffs = !!week.isPlayoffs;
+                const isSingleRoundLeads = !!week.isSingleRoundLeads;
+                const teamA = week.teamA || [];
+                const teamB = week.teamB || [];
+
+                // Sweep tally
+                if (week.round1Winner && week.round1Winner === week.round2Winner) {
+                  const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
+                  sweepTeam.forEach(u => ensure(u).sweeps += 1);
+                }
+
+                for (const roundNum of [1, 2]) {
+                  const winner = week[`round${roundNum}Winner`];
+                  if (!winner) continue;
+                  totalRoundsWithResult += 1;
+
+                  // Effective rosters (per-round swaps)
+                  const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
+                  const eA = swaps.size === 0 ? teamA :
+                    teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
+                  const eB = swaps.size === 0 ? teamB :
+                    teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
+
+                  const winningTeam = winner === 'A' ? eA : eB;
+                  const losingTeam = winner === 'A' ? eB : eA;
+                  const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
+                  const leadW = week[`lead${winner}${leadKey}`];
+                  const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
+
+                  winningTeam.forEach(u => {
+                    const r = ensure(u); r.rounds += 1;
+                    if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
+                  });
+                  losingTeam.forEach(u => {
+                    const r = ensure(u); r.rounds += 1;
+                    if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
+                  });
+
+                  // Side-aware casualty bucket
+                  const flipped = !!week[`round${roundNum}Flipped`];
+                  const usaSide = flipped ? 'B' : 'A';
+                  const casA = week[`r${roundNum}CasualtiesA`] || 0;
+                  const casB = week[`r${roundNum}CasualtiesB`] || 0;
+                  if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
+                  else                 { usaCasTotal += casB; csaCasTotal += casA; }
+
+                  // Per-unit casualties (lost) from weeklyCasualties
+                  const wc = week.weeklyCasualties || {};
+                  for (const sideKey of Object.keys(wc)) {
+                    const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
+                    for (const [u, n] of Object.entries(byUnit)) {
+                      ensure(u).casualtiesTaken += Number(n) || 0;
+                    }
+                  }
+                }
+              }
+            }
+
+            const eventElo = calculateEloRatings();
+            const ladder = Object.entries(unitRecord)
+              .map(([unit, r]) => ({
+                unit, ...r,
+                wins: r.leadWins + r.assistWins,
+                losses: r.leadLosses + r.assistLosses,
+                winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
+                elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
+              }))
+              .filter(r => r.rounds > 0)
+              .sort((a, b) => b.elo - a.elo);
+
+            const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
+
+            return (
+              <div className="space-y-4">
+                {/* Event Overview */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Trophy className="w-5 h-5" />
+                    Overview
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">Seasons</div>
+                      <div className="text-2xl font-bold c-accent">{seasons.length}</div>
+                    </div>
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">Weeks</div>
+                      <div className="text-2xl font-bold c-accent">{totalWeeks}</div>
+                    </div>
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
+                      <div className="text-2xl font-bold c-accent">{totalRoundsWithResult}</div>
+                    </div>
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">Registry Units</div>
+                      <div className="text-2xl font-bold c-accent">{Object.keys(activeEvent.unitRegistry).length}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per-season cards — surfaces playoff status and the
+                   champion when playoffs occurred (based on the latest
+                   playoff week's result). */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Calendar className="w-5 h-5" />
+                    Per-Season Summary
+                  </h3>
+                  <div className="space-y-2">
+                    {seasons.map(season => {
+                      const seasonWeeks = season.weeks || [];
+                      const weekCount = seasonWeeks.length;
+                      let roundCount = 0;
+                      let playoffsScheduled = false;
+                      for (const w of seasonWeeks) {
+                        if (w.round1Winner || w.round1Draw) roundCount += 1;
+                        if (w.round2Winner || w.round2Draw) roundCount += 1;
+                        if (w.isPlayoffs) playoffsScheduled = true;
+                      }
+                      const rosterSize = (season.units || []).length;
+                      const isActive = season.id === activeSeason.id;
+                      const champion = seasonChampion(season);
+                      return (
+                        <button
+                          key={season.id}
+                          onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
+                          className={`w-full text-left bg-bg-card rounded p-3 border transition ${
+                            isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold flex items-center gap-2 flex-wrap">
+                                {season.name}
+                                {isActive && <span className="text-xs c-accent">(active)</span>}
+                                {playoffsScheduled && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 c-warn">
+                                    Playoffs
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-text-secondary mt-0.5">
+                                {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
+                              </div>
+                              {champion && (
+                                <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <Trophy className="w-3 h-3 c-warn shrink-0" />
+                                  <span className="text-text-secondary">Champion:</span>
+                                  <span className="font-semibold text-text-primary">
+                                    {champion.lead || '—'}
+                                  </span>
+                                  <span className="text-text-muted">
+                                    ({champion.weekName} R{champion.finalRound})
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Cross-season unit ladder */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Award className="w-5 h-5" />
+                    Cross-Season Unit Record
+                  </h3>
+                  {ladder.length === 0 ? (
+                    <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-text-secondary border-b border-border-default">
+                            <th className="text-left py-2 px-2">Unit</th>
+                            <th className="text-center py-2 px-2">Elo</th>
+                            <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
+                            <th className="text-center py-2 px-2">W</th>
+                            <th className="text-center py-2 px-2">L</th>
+                            <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
+                            <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
+                            <th className="text-center py-2 px-2">Sweeps</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ladder.map((r, idx) => (
+                            <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
+                              <td className="py-2 px-2 font-medium">{r.unit}</td>
+                              <td className="c-accent text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
+                              <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
+                              <td className="c-ok text-center py-2 px-2">{r.wins}</td>
+                              <td className="c-danger text-center py-2 px-2">{r.losses}</td>
+                              <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
+                              <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
+                              <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cross-season casualties */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Flame className="w-5 h-5" />
+                    Cross-Season Casualties
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">USA Total</div>
+                      <div className="text-xl font-bold f-usa">{usaCasTotal}</div>
+                    </div>
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">CSA Total</div>
+                      <div className="text-xl font-bold c-danger">{csaCasTotal}</div>
+                    </div>
+                    <div className="row">
+                      <div className="text-xs text-text-secondary mb-1">Combined</div>
+                      <div className="text-xl font-bold c-accent">{usaCasTotal + csaCasTotal}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
+                    {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
+                  </div>
+                </div>
+
+                {/* Aggregate map stats — same UI as the Season tab,
+                   sourced from event-wide history. */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Map className="w-5 h-5" />
+                    Map Statistics (event-wide)
+                  </h3>
+                  {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
+                </div>
+
+                {/* Cross-season teammate heatmap — opens the existing
+                   heatmap modal in event scope (DRY: same modal, same
+                   render path). */}
+                <div className="panel pb">
+                  <h3 className="cap">
+                    <Swords className="w-5 h-5" />
+                    Cross-Season Teammate Composition
+                  </h3>
+                  <p className="text-xs text-text-secondary mb-3">
+                    How often each pair of units has played as teammates across every season in this event.
+                  </p>
+                  <button
+                    onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}
+                    className="gh live"
+                  >
+                    <Swords className="w-4 h-4" />
+                    Open Cross-Season Pairings
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+          </>)}
 
           {/* Share & export — the overflow menu, unpacked onto a page. */}
           {screen === 'share' && (
@@ -7243,593 +7709,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
+          {/* Elo ladder — the ladder, and nothing but. This screen used to
+              carry the whole of the old stats dialog under a rail entry that
+              says Elo ladder, which is not what it said it was. */}
           {screen === 'elo' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Season analytics</h2>
-                <span className="rule" />
-              </header>
-              <div className="pb">
-
-                  {/* Tab toggle: per-season vs event-wide */}
-                  <div className="flex gap-1 mb-5 border-b border-border-default">
-                    <button
-                      onClick={() => setStatsTab('season')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'season'
-                          ? 'border-indigo-500 c-accent'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Season — {activeSeason.name}
-                    </button>
-                    <button
-                      onClick={() => setStatsTab('event')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        statsTab === 'event'
-                          ? 'border-indigo-500 c-accent'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
-                    </button>
-                  </div>
-
-                  {statsTab === 'event' && (() => {
-                    // Event-wide aggregates: walk every season's rounds.
-                    const seasons = activeEvent.seasons;
-                    const totalWeeks = seasons.reduce((n, s) => n + (s.weeks?.length || 0), 0);
-
-                    // Cross-season unit record (rounds-as-lead/assist won/lost) +
-                    // event-wide casualties (per side + per unit).
-                    const unitRecord = {};
-                    let usaCasTotal = 0, csaCasTotal = 0;
-                    let totalRoundsWithResult = 0;
-                    const ensure = (u) => unitRecord[u] ||= {
-                      rounds: 0, leadWins: 0, leadLosses: 0,
-                      assistWins: 0, assistLosses: 0,
-                      sweeps: 0, casualtiesTaken: 0,
-                    };
-
-                    for (const season of seasons) {
-                      for (const week of season.weeks || []) {
-                        const isPlayoffs = !!week.isPlayoffs;
-                        const isSingleRoundLeads = !!week.isSingleRoundLeads;
-                        const teamA = week.teamA || [];
-                        const teamB = week.teamB || [];
-
-                        // Sweep tally
-                        if (week.round1Winner && week.round1Winner === week.round2Winner) {
-                          const sweepTeam = week.round1Winner === 'A' ? teamA : teamB;
-                          sweepTeam.forEach(u => ensure(u).sweeps += 1);
-                        }
-
-                        for (const roundNum of [1, 2]) {
-                          const winner = week[`round${roundNum}Winner`];
-                          if (!winner) continue;
-                          totalRoundsWithResult += 1;
-
-                          // Effective rosters (per-round swaps)
-                          const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
-                          const eA = swaps.size === 0 ? teamA :
-                            teamA.filter(u => !swaps.has(u)).concat(teamB.filter(u => swaps.has(u)));
-                          const eB = swaps.size === 0 ? teamB :
-                            teamB.filter(u => !swaps.has(u)).concat(teamA.filter(u => swaps.has(u)));
-
-                          const winningTeam = winner === 'A' ? eA : eB;
-                          const losingTeam = winner === 'A' ? eB : eA;
-                          const leadKey = (isPlayoffs || isSingleRoundLeads) ? `_r${roundNum}` : '';
-                          const leadW = week[`lead${winner}${leadKey}`];
-                          const leadL = week[`lead${winner === 'A' ? 'B' : 'A'}${leadKey}`];
-
-                          winningTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadW) r.leadWins += 1; else r.assistWins += 1;
-                          });
-                          losingTeam.forEach(u => {
-                            const r = ensure(u); r.rounds += 1;
-                            if (u === leadL) r.leadLosses += 1; else r.assistLosses += 1;
-                          });
-
-                          // Side-aware casualty bucket
-                          const flipped = !!week[`round${roundNum}Flipped`];
-                          const usaSide = flipped ? 'B' : 'A';
-                          const casA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casB = week[`r${roundNum}CasualtiesB`] || 0;
-                          if (usaSide === 'A') { usaCasTotal += casA; csaCasTotal += casB; }
-                          else                 { usaCasTotal += casB; csaCasTotal += casA; }
-
-                          // Per-unit casualties (lost) from weeklyCasualties
-                          const wc = week.weeklyCasualties || {};
-                          for (const sideKey of Object.keys(wc)) {
-                            const byUnit = wc[sideKey]?.[`r${roundNum}`] || {};
-                            for (const [u, n] of Object.entries(byUnit)) {
-                              ensure(u).casualtiesTaken += Number(n) || 0;
-                            }
-                          }
-                        }
-                      }
-                    }
-
-                    const eventElo = calculateEloRatings();
-                    const ladder = Object.entries(unitRecord)
-                      .map(([unit, r]) => ({
-                        unit, ...r,
-                        wins: r.leadWins + r.assistWins,
-                        losses: r.leadLosses + r.assistLosses,
-                        winPct: r.rounds > 0 ? ((r.leadWins + r.assistWins) / r.rounds) * 100 : 0,
-                        elo: eventElo.eloRatings[unit] ?? eloSystem.initialElo,
-                      }))
-                      .filter(r => r.rounds > 0)
-                      .sort((a, b) => b.elo - a.elo);
-
-                    const totalCasUnits = ladder.reduce((s, r) => s + r.casualtiesTaken, 0);
-
-                    return (
-                      <div className="space-y-4">
-                        {/* Event Overview */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Trophy className="w-5 h-5" />
-                            Overview
-                          </h3>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">Seasons</div>
-                              <div className="text-2xl font-bold c-accent">{seasons.length}</div>
-                            </div>
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">Weeks</div>
-                              <div className="text-2xl font-bold c-accent">{totalWeeks}</div>
-                            </div>
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">Rounds Played</div>
-                              <div className="text-2xl font-bold c-accent">{totalRoundsWithResult}</div>
-                            </div>
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">Registry Units</div>
-                              <div className="text-2xl font-bold c-accent">{Object.keys(activeEvent.unitRegistry).length}</div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Per-season cards — surfaces playoff status and the
-                           champion when playoffs occurred (based on the latest
-                           playoff week's result). */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Calendar className="w-5 h-5" />
-                            Per-Season Summary
-                          </h3>
-                          <div className="space-y-2">
-                            {seasons.map(season => {
-                              const seasonWeeks = season.weeks || [];
-                              const weekCount = seasonWeeks.length;
-                              let roundCount = 0;
-                              let playoffsScheduled = false;
-                              for (const w of seasonWeeks) {
-                                if (w.round1Winner || w.round1Draw) roundCount += 1;
-                                if (w.round2Winner || w.round2Draw) roundCount += 1;
-                                if (w.isPlayoffs) playoffsScheduled = true;
-                              }
-                              const rosterSize = (season.units || []).length;
-                              const isActive = season.id === activeSeason.id;
-                              const champion = seasonChampion(season);
-                              return (
-                                <button
-                                  key={season.id}
-                                  onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
-                                  className={`w-full text-left bg-bg-card rounded p-3 border transition ${
-                                    isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <div className="font-semibold flex items-center gap-2 flex-wrap">
-                                        {season.name}
-                                        {isActive && <span className="text-xs c-accent">(active)</span>}
-                                        {playoffsScheduled && (
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 c-warn">
-                                            Playoffs
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-text-secondary mt-0.5">
-                                        {weekCount} week{weekCount === 1 ? '' : 's'} · {roundCount} round{roundCount === 1 ? '' : 's'} · {rosterSize} roster unit{rosterSize === 1 ? '' : 's'}
-                                      </div>
-                                      {champion && (
-                                        <div className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
-                                          <Trophy className="w-3 h-3 c-warn shrink-0" />
-                                          <span className="text-text-secondary">Champion:</span>
-                                          <span className="font-semibold text-text-primary">
-                                            {champion.lead || '—'}
-                                          </span>
-                                          <span className="text-text-muted">
-                                            ({champion.weekName} R{champion.finalRound})
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <ChevronRight className="w-4 h-4 text-text-secondary shrink-0" />
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Cross-season unit ladder */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Award className="w-5 h-5" />
-                            Cross-Season Unit Record
-                          </h3>
-                          {ladder.length === 0 ? (
-                            <p className="text-text-secondary text-center py-4 text-sm">No completed rounds yet</p>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-text-secondary border-b border-border-default">
-                                    <th className="text-left py-2 px-2">Unit</th>
-                                    <th className="text-center py-2 px-2">Elo</th>
-                                    <th className="text-center py-2 px-2" title="Total rounds played across all seasons in this event">Rounds</th>
-                                    <th className="text-center py-2 px-2">W</th>
-                                    <th className="text-center py-2 px-2">L</th>
-                                    <th className="text-center py-2 px-2" title="Win percentage across all rounds">Win %</th>
-                                    <th className="text-center py-2 px-2" title="Wins as lead / total leads taken">Lead W</th>
-                                    <th className="text-center py-2 px-2">Sweeps</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {ladder.map((r, idx) => (
-                                    <tr key={r.unit} className={idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'}>
-                                      <td className="py-2 px-2 font-medium">{r.unit}</td>
-                                      <td className="c-accent text-center py-2 px-2 font-semibold">{Math.round(r.elo)}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.rounds}</td>
-                                      <td className="c-ok text-center py-2 px-2">{r.wins}</td>
-                                      <td className="c-danger text-center py-2 px-2">{r.losses}</td>
-                                      <td className="text-center py-2 px-2">{r.winPct.toFixed(1)}%</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.leadWins}</td>
-                                      <td className="text-text-secondary text-center py-2 px-2">{r.sweeps}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Cross-season casualties */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Flame className="w-5 h-5" />
-                            Cross-Season Casualties
-                          </h3>
-                          <div className="grid grid-cols-3 gap-3 mb-3">
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">USA Total</div>
-                              <div className="text-xl font-bold f-usa">{usaCasTotal}</div>
-                            </div>
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">CSA Total</div>
-                              <div className="text-xl font-bold c-danger">{csaCasTotal}</div>
-                            </div>
-                            <div className="row">
-                              <div className="text-xs text-text-secondary mb-1">Combined</div>
-                              <div className="text-xl font-bold c-accent">{usaCasTotal + csaCasTotal}</div>
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <h4 className="font-semibold mb-2 text-sm">Per-Unit Player Stats (full event)</h4>
-                            {renderUnitStatsTable(tokenSnapsEventTotals(), eventRegBreakdown, regContextEventTotals, tokenRegimentsUnion, tokenTicketSharesEventTotals)}
-                          </div>
-                        </div>
-
-                        {/* Aggregate map stats — same UI as the Season tab,
-                           sourced from event-wide history. */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Map className="w-5 h-5" />
-                            Map Statistics (event-wide)
-                          </h3>
-                          {renderMapStatsBlock(calculateMapStats(), 'eventMapStats')}
-                        </div>
-
-                        {/* Cross-season teammate heatmap — opens the existing
-                           heatmap modal in event scope (DRY: same modal, same
-                           render path). */}
-                        <div className="panel pb">
-                          <h3 className="cap">
-                            <Swords className="w-5 h-5" />
-                            Cross-Season Teammate Composition
-                          </h3>
-                          <p className="text-xs text-text-secondary mb-3">
-                            How often each pair of units has played as teammates across every season in this event.
-                          </p>
-                          <button
-                            onClick={() => { setHeatmapScope('event'); goScreen('heat'); }}
-                            className="gh live"
-                          >
-                            <Swords className="w-4 h-4" />
-                            Open Cross-Season Pairings
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {statsTab === 'season' && <>
-
-                  {/* Map Statistics — active season only */}
-                  <div className="panel pb">
-                    <h3 className="cap">
-                      <Map className="w-5 h-5" />
-                      Map Statistics
-                    </h3>
-                    {renderMapStatsBlock(calculateSeasonMapStats(), 'seasonMapStats')}
-                  </div>
-
-                  {/* Casualties Summary */}
-                  <div className="panel pb">
-                    <h3 className="cap">
-                      <Flame className="w-5 h-5" />
-                      Total Casualties
-                    </h3>
-                    {(() => {
-                      // Calculate USA/CSA casualties based on map sides
-                      let usaCasualties = 0;
-                      let csaCasualties = 0;
-                      
-                      weeks.forEach(week => {
-                        [1, 2].forEach(roundNum => {
-                          const mapName = week[`round${roundNum}Map`];
-                          const flipped = week[`round${roundNum}Flipped`] || false;
-                          const casualtiesA = week[`r${roundNum}CasualtiesA`] || 0;
-                          const casualtiesB = week[`r${roundNum}CasualtiesB`] || 0;
-                          
-                          // Determine which side is USA based on map and flipped state
-                          // If not flipped: Team A = USA, Team B = CSA
-                          // If flipped: Team A = CSA, Team B = USA
-                          const usaSide = flipped ? 'B' : 'A';
-                          
-                          if (usaSide === 'A') {
-                            usaCasualties += casualtiesA;
-                            csaCasualties += casualtiesB;
-                          } else {
-                            usaCasualties += casualtiesB;
-                            csaCasualties += casualtiesA;
-                          }
-                        });
-                      });
-                      
-                      const totalCasualties = usaCasualties + csaCasualties;
-                      
-                      return (
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="panel pb">
-                            <div className="text-sm text-text-secondary mb-1">USA Casualties</div>
-                            <div className="text-2xl font-bold f-usa">
-                              {usaCasualties}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-sm text-text-secondary mb-1">CSA Casualties</div>
-                            <div className="text-2xl font-bold c-danger">
-                              {csaCasualties}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-sm text-text-secondary mb-1">Combined Casualties</div>
-                            <div className="text-2xl font-bold c-accent">
-                              {totalCasualties}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Per-Unit Player Stats — derived from assigned scoreboards,
-                        cumulative through the selected week. */}
-                    <div className="bg-bg-inset rounded p-3 mt-4">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        Per-Unit Player Stats
-                        {selectedWeek && (
-                          <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
-                        )}
-                      </h4>
-                      {(() => {
-                        const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                        return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Teammate Impact Index (TII) */}
-                  <div className="panel pb">
-                    <h3 className="cap">
-                      <TrendingUp className="w-5 h-5" />
-                      Teammate Impact Index (TII)
-                    </h3>
-                    {(() => {
-                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                      const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
-                      
-                      // Filter to only units that have played
-                      const tableData = Object.entries(impactStats)
-                        .map(([unit, data]) => ({
-                          unit,
-                          ...data,
-                          totalGames: data.leadGames + data.assistGames
-                        }))
-                        .filter(row => row.totalGames > 0)
-                        .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
-                      
-                      if (tableData.length === 0) {
-                        return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
-                      }
-                      
-                      return (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="text-text-secondary border-b border-border-default">
-                                <th className="text-left py-2 px-2">Unit (Avg Players)</th>
-                                <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
-                                <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
-                                <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
-                                <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
-                                <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tableData.map((row, idx) => {
-                                const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
-                                return (
-                                  <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
-                                    <td className="py-2 px-2">
-                                      {row.unit} ({Math.round(row.avgPlayers)})
-                                    </td>
-                                    <td className="c-accent text-center py-2 px-2 font-semibold">
-                                      {row.adjustedTiiScore.toFixed(3)}
-                                    </td>
-                                    <td className="c-accent text-center py-2 px-2">
-                                      {row.impactScore.toFixed(3)}
-                                    </td>
-                                    <td className="c-ok text-center py-2 px-2">
-                                      {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
-                                    </td>
-                                    <td className="f-usa text-center py-2 px-2">
-                                      {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
-                                    </td>
-                                    <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
-                                      {(delta * 100).toFixed(1)}%
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                          <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                            <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
-                            <ul className="space-y-1 ml-4">
-                              <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
-                              <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
-                              <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
-                              <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
-                              <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
-                            </ul>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-
-                  {/* Elo ladder. Replays the engine once per week so a unit's
-                      whole season is on the row, not just where it ended. */}
-                  <div className="panel pb">
-                    <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
-                      <TrendingUp className="w-5 h-5" />
-                      Elo Ladder
-                    </h3>
-                    <EloLadder rows={eloLadderRows} weeksLabel={`${weeks.length} week${weeks.length === 1 ? '' : 's'}`} />
-                  </div>
-
-                  {/* Unit Interactions */}
-                  <div className="panel pb">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="cap">
-                        <Users className="w-5 h-5" />
-                        Unit Interactions
-                      </h3>
-                      <button
-                        onClick={() => goScreen('heat')}
-                        className="gh live"
-                        title="Who has played alongside whom, and who against"
-                      >
-                        <Swords className="w-4 h-4" />
-                        Pairings
-                      </button>
-                    </div>
-                    <div className="space-y-3">
-                      {(() => {
-                        const { teammate, opponent } = computeStats();
-                        const interactions = getDetailedInteractions();
-                        
-                        // Get top teammate pairs
-                        const teammatePairs = [];
-                        Object.entries(teammate).forEach(([unit1, partners]) => {
-                          Object.entries(partners).forEach(([unit2, count]) => {
-                            if (unit1 < unit2) { // Avoid duplicates
-                              const details = interactions[unit1]?.[unit2];
-                              teammatePairs.push({
-                                unit1,
-                                unit2,
-                                count,
-                                rounds: details?.teammateRounds || []
-                              });
-                            }
-                          });
-                        });
-                        teammatePairs.sort((a, b) => b.count - a.count);
-                        
-                        // Get top opponent pairs
-                        const opponentPairs = [];
-                        Object.entries(opponent).forEach(([unit1, opponents]) => {
-                          Object.entries(opponents).forEach(([unit2, count]) => {
-                            if (unit1 < unit2) { // Avoid duplicates
-                              const details = interactions[unit1]?.[unit2];
-                              opponentPairs.push({
-                                unit1,
-                                unit2,
-                                count,
-                                rounds: details?.opponentRounds || []
-                              });
-                            }
-                          });
-                        });
-                        opponentPairs.sort((a, b) => b.count - a.count);
-                        
-                        return (
-                          <>
-                            <div className="panel pb">
-                              <h4 className="cap">Most Frequent Teammates</h4>
-                              <div className="space-y-1">
-                                {teammatePairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                                    <span>{pair.unit1} & {pair.unit2}</span>
-                                    <span className="c-accent">{pair.count} rounds</span>
-                                  </div>
-                                ))}
-                                {teammatePairs.length === 0 && (
-                                  <p className="text-xs text-text-secondary">No teammate data yet</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="panel pb">
-                              <h4 className="cap">Most Frequent Opponents</h4>
-                              <div className="space-y-1">
-                                {opponentPairs.slice(0, 5).map((pair, idx) => (
-                                  <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                                    <span>{pair.unit1} vs {pair.unit2}</span>
-                                    <span className="c-danger">{pair.count} rounds</span>
-                                  </div>
-                                ))}
-                                {opponentPairs.length === 0 && (
-                                  <p className="text-xs text-text-secondary">No opponent data yet</p>
-                                )}
-                              </div>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                  </>}
-              </div>
-            </div>
+            <>
+                <EloLadder
+                  rows={eloLadderRows}
+                  settings={eloSystem}
+                  nights={weeks.length}
+                  onOpenUnit={() => goScreen('stats-regiments')}
+                />
+            </>
           )}
 
           {/* Division Management Modal */}
@@ -8129,6 +8020,100 @@ const SeasonTracker = ({ initialShareData = null }) => {
               </div>
             );
           })()}
+
+          {screen === 'heat' && (<>
+          {/* Unit Interactions */}
+          <div className="panel pb">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="cap">
+                <Users className="w-5 h-5" />
+                Unit Interactions
+              </h3>
+              <button
+                onClick={() => goScreen('heat')}
+                className="gh live"
+                title="Who has played alongside whom, and who against"
+              >
+                <Swords className="w-4 h-4" />
+                Pairings
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(() => {
+                const { teammate, opponent } = computeStats();
+                const interactions = getDetailedInteractions();
+                
+                // Get top teammate pairs
+                const teammatePairs = [];
+                Object.entries(teammate).forEach(([unit1, partners]) => {
+                  Object.entries(partners).forEach(([unit2, count]) => {
+                    if (unit1 < unit2) { // Avoid duplicates
+                      const details = interactions[unit1]?.[unit2];
+                      teammatePairs.push({
+                        unit1,
+                        unit2,
+                        count,
+                        rounds: details?.teammateRounds || []
+                      });
+                    }
+                  });
+                });
+                teammatePairs.sort((a, b) => b.count - a.count);
+                
+                // Get top opponent pairs
+                const opponentPairs = [];
+                Object.entries(opponent).forEach(([unit1, opponents]) => {
+                  Object.entries(opponents).forEach(([unit2, count]) => {
+                    if (unit1 < unit2) { // Avoid duplicates
+                      const details = interactions[unit1]?.[unit2];
+                      opponentPairs.push({
+                        unit1,
+                        unit2,
+                        count,
+                        rounds: details?.opponentRounds || []
+                      });
+                    }
+                  });
+                });
+                opponentPairs.sort((a, b) => b.count - a.count);
+                
+                return (
+                  <>
+                    <div className="panel pb">
+                      <h4 className="cap">Most Frequent Teammates</h4>
+                      <div className="space-y-1">
+                        {teammatePairs.slice(0, 5).map((pair, idx) => (
+                          <div key={idx} className="text-xs text-text-secondary flex justify-between">
+                            <span>{pair.unit1} & {pair.unit2}</span>
+                            <span className="c-accent">{pair.count} rounds</span>
+                          </div>
+                        ))}
+                        {teammatePairs.length === 0 && (
+                          <p className="text-xs text-text-secondary">No teammate data yet</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="panel pb">
+                      <h4 className="cap">Most Frequent Opponents</h4>
+                      <div className="space-y-1">
+                        {opponentPairs.slice(0, 5).map((pair, idx) => (
+                          <div key={idx} className="text-xs text-text-secondary flex justify-between">
+                            <span>{pair.unit1} vs {pair.unit2}</span>
+                            <span className="c-danger">{pair.count} rounds</span>
+                          </div>
+                        ))}
+                        {opponentPairs.length === 0 && (
+                          <p className="text-xs text-text-secondary">No opponent data yet</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+          </>)}
 
           {/* Teammate Composition Heatmap Modal */}
           {screen === 'heat' && (

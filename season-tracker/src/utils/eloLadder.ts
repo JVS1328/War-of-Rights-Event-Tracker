@@ -20,6 +20,10 @@ export interface EloLadderInput {
   roundsPlayed?: Record<string, number>;
   /** Rounds below which a rating is still provisional. 0 disables the marker. */
   provisionalRounds?: number;
+  /** Division a unit belongs to, if the season uses them. */
+  divisionOf?: Record<string, string | undefined>;
+  /** Where each unit sits on points, so the two orderings can be compared. */
+  pointsRank?: Record<string, number>;
 }
 
 export interface EloLadderRow {
@@ -39,6 +43,16 @@ export interface EloLadderRow {
   series: number[];
   /** Places gained since the week before last. Null with fewer than two weeks. */
   rankChange: number | null;
+  /** Movement on the most recent night. */
+  lastNight: number;
+  division: string | null;
+  pointsRank: number | null;
+  /**
+   * Points rank minus ladder rank. Positive means the ladder rates the unit
+   * above its record does — it loses close rounds to strong sides and beats
+   * weak ones, which points do not reward and Elo does.
+   */
+  gap: number | null;
 }
 
 const rankOf = (elo: Record<string, number>, units: string[], initial: number): Record<string, number> => {
@@ -53,7 +67,8 @@ const rankOf = (elo: Record<string, number>, units: string[], initial: number): 
 };
 
 export function buildEloLadder(input: EloLadderInput): EloLadderRow[] {
-  const { units, initialElo, weekElo, roundsPlayed = {}, provisionalRounds = 0 } = input;
+  const { units, initialElo, weekElo, roundsPlayed = {}, provisionalRounds = 0,
+          divisionOf = {}, pointsRank = {} } = input;
   const last = weekElo[weekElo.length - 1] ?? {};
   const prev = weekElo[weekElo.length - 2] ?? null;
 
@@ -65,9 +80,16 @@ export function buildEloLadder(input: EloLadderInput): EloLadderRow[] {
     // change rather than as a flat line from nowhere.
     const series = [initialElo, ...weekElo.map((w) => w[unit] ?? initialElo)];
     const elo = series[series.length - 1];
+    const prevElo = series.length > 1 ? series[series.length - 2] : initialElo;
     const rounds = roundsPlayed[unit] ?? 0;
+    const pRank = pointsRank[unit] ?? null;
+    const eRank = nowRanks[unit] ?? units.length;
     return {
-      rank: nowRanks[unit] ?? units.length,
+      rank: eRank,
+      lastNight: elo - prevElo,
+      division: divisionOf[unit] ?? null,
+      pointsRank: pRank,
+      gap: pRank == null ? null : pRank - eRank,
       unit,
       elo,
       start: initialElo,

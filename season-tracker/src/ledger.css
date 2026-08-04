@@ -1,3 +1,57 @@
+/* ── The prototype's palette, verbatim ──────────────────────────────────────
+   These are the variable names and hex values from
+   docs/design/season-tracker-overhaul/prototype.html, unchanged. The app's own
+   --color-* tokens are mapped onto them below, so both naming schemes address
+   the same colours and nothing has to be kept in sync by hand.
+
+   Note the faction split the prototype makes and the app previously flattened:
+   --union / --reb are the INK a faction's figures are set in, while
+   --union-fill / --reb-fill are the ground a faction's tag is filled with.
+   Text and fill are different jobs and take different colours. */
+
+:root {
+  --ground:#e8e6e1; --surface:#f6f5f2; --raised:#ecebe6; --sunken:#dedbd4;
+  --line:#c9c5bc; --line-2:#a8a397; --line-3:#6f6a5f;
+  --ink:#1a1916; --ink-2:#55514a; --ink-3:#867f73;
+  --union:#2f6249; --union-fill:#1a6493; --union-wash:#2f624914;
+  --reb:#8c5c1e; --reb-fill:#b06a0a; --reb-wash:#8c5c1e14;
+  --st1:#3c5b6e; --st2:#7d6a3c; --st3:#9c4b25;
+  --live:#7a3b1c;
+}
+.dark {
+  --ground:#0a0b0a; --surface:#111312; --raised:#171a18; --sunken:#0d0f0e;
+  --line:#242826; --line-2:#39403c; --line-3:#5c655f;
+  --ink:#e7e5df; --ink-2:#9a978e; --ink-3:#67645c;
+  --union:#6faa87; --union-fill:#1b4a6e; --union-wash:#6faa871a;
+  --reb:#d3a163; --reb-fill:#7a5510; --reb-wash:#d3a1631a;
+  --st1:#6f93a8; --st2:#a08a56; --st3:#c4744a; --live:#d3814a;
+}
+
+/* The app's tokens, pointed at the above. */
+:root, .dark {
+  --color-bg-0: var(--ground);
+  --color-bg-1: var(--surface);
+  --color-bg-2: var(--raised);
+  --color-bg-3: var(--sunken);
+  --color-border: var(--line);
+  --color-border-strong: var(--line-2);
+  --color-text-0: var(--ink);
+  --color-text-1: var(--ink-2);
+  --color-text-2: var(--ink-3);
+  --color-accent: var(--live);
+  --color-usa: var(--union);
+  --color-csa: var(--reb);
+  --color-usa-soft: var(--union-wash);
+  --color-csa-soft: var(--reb-wash);
+  --color-stance-1: var(--st1);
+  --color-stance-2: var(--st2);
+  --color-stance-3: var(--st3);
+  --color-ok: var(--union);
+  --color-warn: var(--reb);
+  --color-danger: #8e3b3b;
+}
+.dark { --color-danger: #c07070; }
+
 /* ── The ledger: the design language from the prototype ────────────────────
    docs/design/season-tracker-overhaul/prototype.html, ported verbatim in
    spirit and re-expressed against the app's own tokens so both themes and
@@ -155,9 +209,9 @@
   font-weight: 600; background: var(--color-text-0); color: var(--color-bg-0);
   white-space: nowrap;
 }
-.tag.usa { background: var(--color-usa); color: #fff; }
-.tag.csa { background: var(--color-csa); color: #fff; }
-.tag.live { background: var(--color-accent); color: #fff; }
+.tag.usa { background: var(--union-fill); color: #fff; }
+.tag.csa { background: var(--reb-fill); color: #fff; }
+.tag.live { background: var(--live); color: #fff; }
 .tag.q {
   background: none; border: 1px solid var(--color-border-strong);
   color: var(--color-text-1); font-weight: 400; letter-spacing: 0.06em;
@@ -392,3 +446,20 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .panel.pb > .flex:first-child:has(> .cap) > .cap { color: var(--color-text-0); font-size: 11px; }
 .panel.pb > .cap:first-child svg,
 .panel.pb > .flex:first-child:has(> .cap) svg { width: 13px; height: 13px; }
+
+/* Rating trend line, and the signed bar the ladder uses for the points gap.
+   Polarity by direction around a centre rule, not by a second hue — the
+   faction colours are spoken for. */
+.spark { display: block; overflow: visible; }
+.sgn {
+  position: relative; display: inline-block; height: 9px;
+  vertical-align: middle; background: var(--sunken);
+}
+.sgn .ax { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-2); }
+.sgn .bar { position: absolute; top: 0; bottom: 0; background: var(--ink); }
+
+.panel tfoot td {
+  padding: 6px 9px; border-top: 2px solid var(--line-2); border-bottom: 0;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); line-height: 1.6;
+}
