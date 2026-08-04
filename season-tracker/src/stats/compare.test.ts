@@ -8,6 +8,8 @@ const player = (over: Partial<PlayerStatRow> = {}): PlayerStatRow => ({
   steamId: null,
   name: 'x',
   regiment: '1stTX',
+  inGameRegiment: null,
+  branch: 'Infantry',
   team: 'USA',
   rounds: 10,
   kills: 100,

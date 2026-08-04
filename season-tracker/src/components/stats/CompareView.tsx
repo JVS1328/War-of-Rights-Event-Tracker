@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Panel, Pill, EmptyHint } from '../ui';
 import { Spine } from '../ui/Spine';
 import { Scoreline } from '../ui/Scoreline';
@@ -20,18 +20,30 @@ export function CompareView({
   regiments,
   initialPlayerKey,
   initialUnit,
+  initialUnitB,
 }: {
   players: PlayerStatRow[];
   regiments: RegimentStatRow[];
   /** Open on this player, when arriving from a player card. */
   initialPlayerKey?: string | null;
   initialUnit?: string | null;
+  /** The other half of a pair sent over from the Units screen. */
+  initialUnitB?: string | null;
 }) {
   const [mode, setMode] = useState<Mode>(initialUnit ? 'units' : 'players');
   const [aKey, setAKey] = useState<string | null>(initialPlayerKey ?? null);
   const [bKey, setBKey] = useState<string | null>(null);
   const [aUnit, setAUnit] = useState<string | null>(initialUnit ?? null);
-  const [bUnit, setBUnit] = useState<string | null>(null);
+  const [bUnit, setBUnit] = useState<string | null>(initialUnitB ?? null);
+
+  // Arriving from the Units screen picks the pair; a later arrival overrides
+  // whatever was on screen, which is what "open comparison" means.
+  useEffect(() => {
+    if (!initialUnit) return;
+    setMode('units');
+    setAUnit(initialUnit);
+    if (initialUnitB) setBUnit(initialUnitB);
+  }, [initialUnit, initialUnitB]);
 
   // Fall back to the top two, so the view is never empty on arrival.
   const pA = players.find((p) => p.key === aKey) ?? players[0] ?? null;

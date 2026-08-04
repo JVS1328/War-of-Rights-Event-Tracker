@@ -97,15 +97,9 @@ import {
   scheduleWeeks,
   describeProblem as describeScheduleProblem,
 } from './utils/scheduleImport';
-import {
-  buildPairHeatmap,
-  findPair,
-  pairPct,
-  heatColor,
-  heatInk,
-  MODE_LABEL as HEAT_MODE_LABEL,
-  MODE_BLURB as HEAT_MODE_BLURB,
-} from './utils/pairHeatmap';
+import { buildPairHeatmap } from './utils/pairHeatmap';
+import { PairingsScreen } from './components/season/PairingsScreen';
+import { ScheduleMaker } from './components/season/ScheduleMaker';
 import { nightType, leadsPerNight } from './stats/nightMatchup';
 
 /**
@@ -291,6 +285,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
   const [heatmapMode, setHeatmapMode] = useState('together'); // 'together' | 'against'
+  const [tiiGloss, setTiiGloss] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [simulationAnalytics, setSimulationAnalytics] = useState(null);
   const [showGroupedStandings, setShowGroupedStandings] = useState(false);
@@ -337,6 +332,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [simLeadNightsInDivision, setSimLeadNightsInDivision] = useState(0);
   const [simScheduleOnly, setSimScheduleOnly] = useState(false);
   const [simLeadMode, setSimLeadMode] = useState('fullWeeks'); // 'fullWeeks' or 'rounds'
+  const [simSource, setSimSource] = useState('paste'); // 'paste' | 'generate'
   // Paste-a-schedule: the raw text plus the home/away plan it is checked against.
   const [simPaste, setSimPaste] = useState('');
   const [simHomePerUnit, setSimHomePerUnit] = useState(2);
@@ -3171,6 +3167,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
     ];
   }, [weeks, units, divisions, tokenUnits]);
 
+  /**
+   * The pairing grid. Scope decides whether it reads this season or every
+   * season in the event — a unit's history with another one does not reset in
+   * January, and the balancer's teammate weight is happy to read either.
+   */
+  const pairHeatmapData = useMemo(() => {
+    const scanned = heatmapScope === 'event'
+      ? (activeEvent?.seasons || [])
+      : (activeSeason ? [activeSeason] : []);
+    return buildPairHeatmap(scanned.flatMap(s => s.weeks || []));
+  }, [heatmapScope, activeEvent, activeSeason]);
 
   /**
    * Ratings after each week of the active season, so the ladder can draw a
@@ -4899,102 +4906,108 @@ const SeasonTracker = ({ initialShareData = null }) => {
               Units — the scoreboard-derived table above answers the same
               question from the other direction. */}
           {screen === 'stats-regiments' && (<>
-            {/* Per-Unit Player Stats — derived from assigned scoreboards,
+            {/* Per-unit player stats — derived from assigned scoreboards,
                 cumulative through the selected week. */}
-            <div className="bg-bg-inset rounded p-3 mt-4">
-              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                Per-Unit Player Stats
-                {selectedWeek && (
-                  <span className="text-xs text-text-secondary font-normal">(as of {selectedWeek.name})</span>
-                )}
-              </h4>
-              {(() => {
-                const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
-              })()}
+            <div className="panel">
+              <header className="ph">
+                <h2>Per-unit player stats</h2>
+                <span className="rule" />
+                {selectedWeek && <span className="meta">as of {selectedWeek.name}</span>}
+              </header>
+              <div className="pb flush scroll-x">
+                {(() => {
+                  const weekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+                  return renderUnitStatsTable(tokenSnapsAsOfWeek(weekIdx), regBreakdownAsOfWeek(weekIdx), regContextAsOfWeek(weekIdx), tokenRegiments, tokenTicketSharesAsOfWeek(weekIdx));
+                })()}
+              </div>
             </div>
 
-          {/* Teammate Impact Index (TII) */}
-          <div className="panel pb">
-            <h3 className="cap">
-              <TrendingUp className="w-5 h-5" />
-              Teammate Impact Index (TII)
-            </h3>
+            {/* Teammate Impact Index — a cross-unit ranking, so it belongs on
+                the units screen rather than on any one unit's card. */}
             {(() => {
               const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
               const { impactStats, globalAvgLossRate } = calculateTeammateImpact(currentWeekIdx);
-              
-              // Filter to only units that have played
               const tableData = Object.entries(impactStats)
-                .map(([unit, data]) => ({
-                  unit,
-                  ...data,
-                  totalGames: data.leadGames + data.assistGames
-                }))
+                .map(([unit, data]) => ({ unit, ...data, totalGames: data.leadGames + data.assistGames }))
                 .filter(row => row.totalGames > 0)
                 .sort((a, b) => b.adjustedTiiScore - a.adjustedTiiScore);
-              
-              if (tableData.length === 0) {
-                return <p className="text-text-secondary text-center py-4">No TII data available yet</p>;
-              }
-              
+
               return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-text-secondary border-b border-border-default">
-                        <th className="text-left py-2 px-2">Unit (Avg Players)</th>
-                        <th className="text-center py-2 px-2" title="Adjusted TII - Primary ranking metric">Adj. TII</th>
-                        <th className="text-center py-2 px-2" title="Original TII - Based purely on teammate win/loss">Orig. TII</th>
-                        <th className="text-center py-2 px-2" title="Win rate when leading">Lead Impact</th>
-                        <th className="text-center py-2 px-2" title="Win rate when assisting">Assist Impact</th>
-                        <th className="text-center py-2 px-2" title="Difference from league average">Δ vs Avg</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableData.map((row, idx) => {
-                        const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
-                        return (
-                          <tr key={row.unit} className={`${idx % 2 === 0 ? 'bg-bg-inset' : 'bg-bg-card'}`}>
-                            <td className="py-2 px-2">
-                              {row.unit} ({Math.round(row.avgPlayers)})
-                            </td>
-                            <td className="c-accent text-center py-2 px-2 font-semibold">
-                              {row.adjustedTiiScore.toFixed(3)}
-                            </td>
-                            <td className="c-accent text-center py-2 px-2">
-                              {row.impactScore.toFixed(3)}
-                            </td>
-                            <td className="c-ok text-center py-2 px-2">
-                              {(row.leadImpact * 100).toFixed(1)}% ({row.leadGames})
-                            </td>
-                            <td className="f-usa text-center py-2 px-2">
-                              {(row.assistImpact * 100).toFixed(1)}% ({row.assistGames})
-                            </td>
-                            <td className={`text-center py-2 px-2 ${delta < 0 ? 'c-ok' : 'c-danger'}`}>
-                              {(delta * 100).toFixed(1)}%
+                <div className="panel">
+                  <header className="ph">
+                    <h2>Teammate impact</h2>
+                    <span className="rule" />
+                    <span className="meta">how a side does with this unit in it</span>
+                  </header>
+                  <button className="gh" style={{ margin: '9px 13px' }}
+                          aria-pressed={tiiGloss} onClick={() => setTiiGloss(g => !g)}>
+                    What do these mean?
+                  </button>
+                  {tiiGloss && (
+                    <div className="gloss">
+                      <dl><dt>Adj. TII</dt><dd>The ranking metric — original TII adjusted for how many players the unit brings.</dd></dl>
+                      <dl><dt>Orig. TII</dt><dd>1 − the average loss rate of this unit's teammates when it plays.</dd></dl>
+                      <dl><dt>Lead impact</dt><dd>Win rate in the rounds this unit led, with the round count beside it.</dd></dl>
+                      <dl><dt>Assist impact</dt><dd>Win rate in the rounds it did not lead.</dd></dl>
+                      <dl><dt>Δ vs avg</dt><dd>Teammate loss rate against the league's. Negative is good — sides with this unit lose fewer men.</dd></dl>
+                    </div>
+                  )}
+                  <div className="pb flush scroll-x">
+                    {tableData.length === 0 ? (
+                      <p className="note" style={{ padding: 13 }}>No unit has played a round yet.</p>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th />
+                            <th>Unit</th>
+                            <th className="num">Avg men</th>
+                            <th className="num" title="Adjusted TII — the ranking metric">Adj. TII</th>
+                            <th className="num" title="Original TII — teammate loss rate only">Orig. TII</th>
+                            <th className="num">Lead</th>
+                            <th className="num">Assist</th>
+                            <th className="num">Δ vs avg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tableData.map((row, idx) => {
+                            const delta = row.avgTeammateLossRateWith - globalAvgLossRate;
+                            return (
+                              <tr key={row.unit}>
+                                <td><span className={`pos${idx < 3 ? ' q' : ''}`}>{idx + 1}</span></td>
+                                <td className="wor-name">{row.unit}</td>
+                                <td className="num" style={{ color: 'var(--ink-3)' }}>{Math.round(row.avgPlayers)}</td>
+                                <td className="num" style={{ fontWeight: 600 }}>{row.adjustedTiiScore.toFixed(3)}</td>
+                                <td className="num" style={{ color: 'var(--ink-2)' }}>{row.impactScore.toFixed(3)}</td>
+                                <td className="num">
+                                  {(row.leadImpact * 100).toFixed(1)}%
+                                  <span style={{ color: 'var(--ink-3)' }}> · {row.leadGames}</span>
+                                </td>
+                                <td className="num">
+                                  {(row.assistImpact * 100).toFixed(1)}%
+                                  <span style={{ color: 'var(--ink-3)' }}> · {row.assistGames}</span>
+                                </td>
+                                <td className="num" style={{ color: delta < 0 ? 'var(--ink)' : 'var(--ink-3)' }}>
+                                  {delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={8}>
+                              Δ compares this unit's teammates' loss rate to the league average of{' '}
+                              {(globalAvgLossRate * 100).toFixed(1)}% — negative means a side loses fewer men with it in.
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div className="mt-3 text-xs text-text-secondary bg-bg-inset rounded p-3">
-                    <p className="font-semibold text-text-secondary mb-2">📊 Metric Explanations:</p>
-                    <ul className="space-y-1 ml-4">
-                      <li><strong>Adj. TII:</strong> Primary metric - Original TII adjusted by player count impact</li>
-                      <li><strong>Orig. TII:</strong> 1 - (Avg teammate loss rate when this unit plays)</li>
-                      <li><strong>Lead Impact:</strong> Win rate when designated as lead unit</li>
-                      <li><strong>Assist Impact:</strong> Win rate when not the lead unit</li>
-                      <li><strong>Δ vs Avg:</strong> Negative is GOOD - teammates lose less than average</li>
-                    </ul>
+                        </tfoot>
+                      </table>
+                    )}
                   </div>
                 </div>
               );
             })()}
-          </div>
-
-
           </>)}
 
           {viewMode === 'stats' && (
@@ -6238,576 +6251,52 @@ const SeasonTracker = ({ initialShareData = null }) => {
             );
           })()}
 
-          {screen === 'heat' && (<>
-          {/* Unit Interactions */}
-          <div className="panel pb">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="cap">
-                <Users className="w-5 h-5" />
-                Unit Interactions
-              </h3>
-              <button
-                onClick={() => goScreen('heat')}
-                className="gh live"
-                title="Who has played alongside whom, and who against"
-              >
-                <Swords className="w-4 h-4" />
-                Pairings
-              </button>
-            </div>
-            <div className="space-y-3">
-              {(() => {
-                const { teammate, opponent } = computeStats();
-                const interactions = getDetailedInteractions();
-                
-                // Get top teammate pairs
-                const teammatePairs = [];
-                Object.entries(teammate).forEach(([unit1, partners]) => {
-                  Object.entries(partners).forEach(([unit2, count]) => {
-                    if (unit1 < unit2) { // Avoid duplicates
-                      const details = interactions[unit1]?.[unit2];
-                      teammatePairs.push({
-                        unit1,
-                        unit2,
-                        count,
-                        rounds: details?.teammateRounds || []
-                      });
-                    }
-                  });
-                });
-                teammatePairs.sort((a, b) => b.count - a.count);
-                
-                // Get top opponent pairs
-                const opponentPairs = [];
-                Object.entries(opponent).forEach(([unit1, opponents]) => {
-                  Object.entries(opponents).forEach(([unit2, count]) => {
-                    if (unit1 < unit2) { // Avoid duplicates
-                      const details = interactions[unit1]?.[unit2];
-                      opponentPairs.push({
-                        unit1,
-                        unit2,
-                        count,
-                        rounds: details?.opponentRounds || []
-                      });
-                    }
-                  });
-                });
-                opponentPairs.sort((a, b) => b.count - a.count);
-                
-                return (
-                  <>
-                    <div className="panel pb">
-                      <h4 className="cap">Most Frequent Teammates</h4>
-                      <div className="space-y-1">
-                        {teammatePairs.slice(0, 5).map((pair, idx) => (
-                          <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                            <span>{pair.unit1} & {pair.unit2}</span>
-                            <span className="c-accent">{pair.count} rounds</span>
-                          </div>
-                        ))}
-                        {teammatePairs.length === 0 && (
-                          <p className="text-xs text-text-secondary">No teammate data yet</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="panel pb">
-                      <h4 className="cap">Most Frequent Opponents</h4>
-                      <div className="space-y-1">
-                        {opponentPairs.slice(0, 5).map((pair, idx) => (
-                          <div key={idx} className="text-xs text-text-secondary flex justify-between">
-                            <span>{pair.unit1} vs {pair.unit2}</span>
-                            <span className="c-danger">{pair.count} rounds</span>
-                          </div>
-                        ))}
-                        {opponentPairs.length === 0 && (
-                          <p className="text-xs text-text-secondary">No opponent data yet</p>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-          </>)}
-
-          {/* Teammate Composition Heatmap Modal */}
+          {/* Pairings — the matrix, in the prototype's single-hue ramp. */}
           {screen === 'heat' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Unit pairings</h2>
-                <span className="rule" />
-              </header>
-              <div className="pb">
-
-                  {/* Scope toggle — same UI as the stats modal tab strip */}
-                  <div className="flex gap-1 mb-3 border-b border-border-default">
-                    <button
-                      onClick={() => setHeatmapScope('season')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        heatmapScope === 'season'
-                          ? 'border-indigo-500 c-accent'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Season — {activeSeason.name}
-                    </button>
-                    <button
-                      onClick={() => setHeatmapScope('event')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
-                        heatmapScope === 'event'
-                          ? 'border-indigo-500 c-accent'
-                          : 'border-transparent text-text-secondary hover:text-text-primary'
-                      }`}
-                    >
-                      Event ({activeEvent.seasons.length} season{activeEvent.seasons.length === 1 ? '' : 's'})
-                    </button>
-                  </div>
-
-                  {/* Together / against. Both read as a share of the rounds the
-                      pair were both on the field, so they add up to 100%. */}
-                  <div className="flex gap-2 mb-4">
-                    {(['together', 'against']).map(mode => (
-                      <button
-                        key={mode}
-                        onClick={() => setHeatmapMode(mode)}
-                        className={`px-3 py-1.5 text-sm rounded-md transition ${
-                          heatmapMode === mode
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-bg-inset text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        {HEAT_MODE_LABEL[mode]}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="panel pb">
-                    <p className="text-sm text-text-secondary">
-                      {HEAT_MODE_BLURB[heatmapMode]}
-                      {heatmapScope === 'event' && ' Aggregated across every season in this event.'}
-                    </p>
-                  </div>
-
-                  {(() => {
-                    const seasonsToScan = heatmapScope === 'event'
-                      ? activeEvent.seasons
-                      : (activeSeason ? [activeSeason] : []);
-                    const map = buildPairHeatmap((seasonsToScan || []).flatMap(s => s.weeks || []));
-
-                    if (map.units.length === 0) {
-                      return (
-                        <div className="text-center text-text-secondary py-12">
-                          <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                          <p>No pairing data available yet</p>
-                        </div>
-                      );
-                    }
-
-                    const cellSize = Math.max(24, Math.min(48, Math.floor(800 / map.units.length)));
-                    const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
-
-                    return (
-                      <div className="panel pb">
-                        <div className="w-full">
-                          <table className="w-full border-collapse table-fixed">
-                            <thead>
-                              <tr style={{ height: '80px' }}>
-                                <th className="p-1 text-xs font-semibold text-text-secondary bg-bg-inset z-10" style={{ width: '120px' }}></th>
-                                {map.units.map(unit => (
-                                  <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-text-secondary relative`} style={{ height: '80px' }}>
-                                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/6 -rotate-45 origin-bottom-left whitespace-nowrap" style={{ maxWidth: `${cellSize * 2}px` }} title={unit}>
-                                      <span className="truncate block">{unit}</span>
-                                    </div>
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {map.units.map(unit1 => (
-                                <tr key={unit1}>
-                                  <td className={`p-1 ${fontSize} font-semibold text-text-secondary bg-bg-inset z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
-                                    {unit1}
-                                  </td>
-                                  {map.units.map(unit2 => {
-                                    if (unit1 === unit2) {
-                                      return (
-                                        <td key={unit2} className="p-0.5">
-                                          <div className="w-full bg-bg-card rounded flex items-center justify-center" style={{ height: `${cellSize}px` }}>
-                                            <span className={`${fontSize} text-text-muted`}>-</span>
-                                          </div>
-                                        </td>
-                                      );
-                                    }
-                                    const cell = findPair(map, unit1, unit2);
-                                    const percentage = pairPct(cell, heatmapMode);
-                                    // A pair that never shared a round has no share
-                                    // to show — that is different from 0%, so it is
-                                    // left blank rather than coloured at the low end.
-                                    if (percentage === null) {
-                                      return (
-                                        <td key={unit2} className="p-0.5">
-                                          <div
-                                            className="w-full bg-bg-card rounded flex items-center justify-center"
-                                            style={{ height: `${cellSize}px` }}
-                                            title={`${unit1} & ${unit2}: never on the field in the same round`}
-                                          >
-                                            <span className={`${fontSize} text-text-muted`}>·</span>
-                                          </div>
-                                        </td>
-                                      );
-                                    }
-                                    const count = heatmapMode === 'together' ? cell.together : cell.against;
-                                    return (
-                                      <td key={unit2} className="p-0.5">
-                                        <div
-                                          className="w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition"
-                                          style={{ height: `${cellSize}px`, backgroundColor: heatColor(percentage) }}
-                                          title={`${unit1} & ${unit2}: ${count} of ${cell.bothActive} shared rounds ${heatmapMode === 'together' ? 'on the same side' : 'facing each other'} (${percentage}%)`}
-                                        >
-                                          <span className={`${fontSize} font-semibold`} style={{ color: heatInk(percentage) }}>
-                                            {percentage}%
-                                          </span>
-                                        </div>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Legend */}
-                        <div className="mt-6">
-                          <div className="text-sm text-text-secondary text-center mb-2">
-                            Share of the rounds both units were on the field
-                          </div>
-                          <div className="flex items-center justify-center gap-3">
-                            <span className="text-xs text-text-secondary">0%</span>
-                            <div className="relative w-64 h-6 rounded overflow-hidden">
-                              <div
-                                className="absolute inset-0"
-                                style={{
-                                  background: `linear-gradient(to right, ${heatColor(0)} 0%, ${heatColor(50)} 50%, ${heatColor(100)} 100%)`
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs text-text-secondary">100%</span>
-                          </div>
-                          <div className="text-xs text-text-secondary text-center mt-2">
-                            · marks a pair that has never been on the field in the same round · {map.rounds} rounds scanned
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-              </div>
-            </div>
+            <PairingsScreen
+              map={pairHeatmapData}
+              mode={heatmapMode}
+              onMode={setHeatmapMode}
+              scope={heatmapScope}
+              onScope={setHeatmapScope}
+              seasonName={activeSeason?.name || 'This season'}
+              seasonCount={activeEvent?.seasons?.length || 1}
+            />
           )}
 
           {/* Simulation Modal */}
           {screen === 'simulator' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Schedule maker</h2>
-                <span className="rule" />
-              </header>
-              <div className="pb">
-
-                  <div className="space-y-6">
-                    {/* Info Box */}
-                    <div className="panel pb">
-                      <p className="text-sm text-text-secondary mb-2">
-                        This will simulate a season by generating weeks with {simScheduleOnly ? 'scheduled leads' : 'randomized'}:
-                      </p>
-                      <ul className="text-sm text-text-secondary list-disc list-inside space-y-1 ml-2">
-                        {!simScheduleOnly ? (
-                          <>
-                            <li>Team assignments (leads and supporting units)</li>
-                            <li>Map selections for both rounds</li>
-                            <li>Round results (50/50 chance per team)</li>
-                          </>
-                        ) : (
-                          <>
-                            <li>Week creation with assigned leads only</li>
-                            <li>Teams stay at the leads until you fill them in</li>
-                            <li>No maps or outcomes generated</li>
-                          </>
-                        )}
-                        <li>
-                          {simLeadMode === 'rounds'
-                            ? 'Four different units lead each night — two per round, never both rounds'
-                            : 'Two units lead each night, both rounds each'}
-                        </li>
-                        <li>Lead nights spread as evenly as the numbers allow, with no repeat lead matchups</li>
-                      </ul>
-                      <p className="text-sm text-text-secondary mt-3">
-                        💡 Simulated weeks will be added to your existing weeks.
-                      </p>
-                    </div>
-
-                    {/* Settings */}
-                    <div className="bg-bg-inset rounded-lg p-4 space-y-4">
-                      <h3 className="cap">Simulation Settings</h3>
-
-                      {/* Schedule Only Toggle */}
-                      <div className="panel pb">
-                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={simScheduleOnly}
-                            onChange={(e) => setSimScheduleOnly(e.target.checked)}
-                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <Calendar className="w-4 h-4" />
-                          <span className="font-semibold">Schedule Only</span>
-                        </label>
-                        <p className="text-xs text-text-secondary mt-2 ml-6">
-                          {simScheduleOnly
-                            ? "Generate weeks with leads assigned but no teams, maps, or outcomes"
-                            : "Generate complete weeks with teams, maps, and simulated outcomes"}
-                        </p>
-                      </div>
-
-                      {/* Lead Nights Per Unit */}
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-2">
-                          # of Lead Nights per Token Unit
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="20"
-                          value={simLeadNightsPerUnit}
-                          onChange={(e) => setSimLeadNightsPerUnit(parseInt(e.target.value) || 1)}
-                          className="fld-i"
-                        />
-                        <p className="text-xs text-text-secondary mt-1">
-                          {simLeadMode === 'rounds'
-                            ? `Each token unit leads one round on ${simLeadNightsPerUnit} night(s), spread evenly across the season. `
-                            : `Each token unit leads both rounds on ${simLeadNightsPerUnit} night(s), spread evenly across the season. `}
-                          {`${tokenUnits.length} units × ${simLeadNightsPerUnit} nights ÷ ${simPreview.leadsPerNight} leads a night = ${simPreview.nights} weeks (${simPreview.rounds} rounds)`}
-                        </p>
-                        {simPreview.leftover > 0 && (
-                          <p className="text-xs text-yellow-500 mt-1">
-                            {simPreview.leftover} lead slot(s) are left over — that many units will lead one night fewer.
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Lead Mode Selection */}
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-2">
-                          Lead Assignment Mode
-                        </label>
-                        <div className="space-y-2">
-                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
-                            <input
-                              type="radio"
-                              name="simLeadMode"
-                              value="fullWeeks"
-                              checked={simLeadMode === 'fullWeeks'}
-                              onChange={(e) => setSimLeadMode(e.target.value)}
-                              className="mt-1"
-                            />
-                            <div>
-                              <div className="text-sm">Full Lead Weeks</div>
-                              <div className="text-xs text-text-secondary">One unit leads both rounds each night</div>
-                            </div>
-                          </label>
-                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer">
-                            <input
-                              type="radio"
-                              name="simLeadMode"
-                              value="rounds"
-                              checked={simLeadMode === 'rounds'}
-                              onChange={(e) => setSimLeadMode(e.target.value)}
-                              className="mt-1"
-                            />
-                            <div>
-                              <div className="text-sm">Lead Rounds</div>
-                              <div className="text-xs text-text-secondary">Four units lead per night — one per side, per round</div>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
-
-                      {/* Division Lead Nights */}
-                      {divisions && divisions.length > 0 && (
-                        <div>
-                          <label className="block text-sm text-text-secondary mb-2">
-                            # of Lead Nights within Division
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={simLeadNightsPerUnit}
-                            value={simLeadNightsInDivision}
-                            onChange={(e) => setSimLeadNightsInDivision(Math.min(parseInt(e.target.value) || 0, simLeadNightsPerUnit))}
-                            className="fld-i"
-                          />
-                          <p className="text-xs text-text-secondary mt-1">
-                            {simLeadNightsInDivision === 0
-                              ? "0 = Any matchup is fine (no division requirement)" 
-                              : `Each unit must lead ${simLeadNightsInDivision} week(s) against opponents in their division`}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Paste a schedule. The home/away plan below is what the
-                          paste is audited against, and the round-split rule only
-                          means anything when leads are set per round — so it
-                          appears with the lead mode, not beside it. */}
-                      <div className="border-t border-border-default pt-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileText className="w-4 h-4" />
-                          <h4 className="text-sm font-semibold">Paste a Schedule</h4>
-                        </div>
-                        <p className="text-xs text-text-secondary mb-2">
-                          Week, Round, Home, Away, Date — tabs or commas, header optional. Home picks the map and
-                          away picks the side, so home lands on {teamNames.A}.
-                        </p>
-                        <textarea
-                          value={simPaste}
-                          onChange={(e) => setSimPaste(e.target.value)}
-                          rows={5}
-                          spellCheck={false}
-                          placeholder={'Week\tRound\tHome\tAway\tDate\n1\t1\t1st Texas\t69th New York\t8/5/2026'}
-                          className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-xs font-mono"
-                        />
-
-                        <div className="grid grid-cols-2 gap-3 mt-3">
-                          <div>
-                            <label className="block text-xs text-text-secondary mb-1">Home lead rounds per unit</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={simHomePerUnit}
-                              onChange={(e) => setSimHomePerUnit(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="fld-i"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-text-secondary mb-1">Away lead rounds per unit</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={simAwayPerUnit}
-                              onChange={(e) => setSimAwayPerUnit(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="fld-i"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-xs text-text-secondary mt-1">
-                          0 turns a check off. {simLeadMode === 'rounds'
-                            ? `${simHomePerUnit + simAwayPerUnit} lead rounds a unit across the season.`
-                            : `${simHomePerUnit + simAwayPerUnit} lead nights a unit across the season — both rounds each.`}
-                        </p>
-
-                        {simLeadMode === 'rounds' && (
-                          <label className="flex items-start gap-2 text-text-secondary cursor-pointer mt-3">
-                            <input
-                              type="checkbox"
-                              checked={simSplitRounds}
-                              onChange={(e) => setSimSplitRounds(e.target.checked)}
-                              className="mt-1 w-4 h-4 rounded border-border-default bg-bg-card"
-                            />
-                            <div>
-                              <div className="text-sm">Split home and away across the rounds</div>
-                              <div className="text-xs text-text-secondary">
-                                Each unit's home leads spread over round 1 and round 2, and the same for its away
-                                leads — so nobody always leads the same round.
-                              </div>
-                            </div>
-                          </label>
-                        )}
-
-                        {pastedSchedule && (
-                          <div className="mt-3 bg-bg-inset rounded p-3 space-y-2">
-                            <div className="text-xs text-text-secondary">
-                              {pastedSchedule.rows.length} fixture{pastedSchedule.rows.length === 1 ? '' : 's'} over{' '}
-                              {pastedSchedule.weeks.length} week{pastedSchedule.weeks.length === 1 ? '' : 's'}
-                              {pastedAudit && (pastedAudit.ok
-                                ? ' · meets the plan'
-                                : ` · ${pastedAudit.problems.length} thing${pastedAudit.problems.length === 1 ? '' : 's'} to look at`)}
-                            </div>
-
-                            {(pastedSchedule.problems.length > 0 || (pastedAudit && pastedAudit.problems.length > 0)) && (
-                              <ul className="text-xs c-warn space-y-0.5 max-h-40 overflow-y-auto list-disc list-inside">
-                                {[...pastedSchedule.problems, ...(pastedAudit?.problems ?? [])].slice(0, 40).map((p, i) => (
-                                  <li key={i}>{describeScheduleProblem(p)}</li>
-                                ))}
-                              </ul>
-                            )}
-
-                            {pastedAudit && pastedAudit.tallies.some(t => t.total > 0) && (
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs">
-                                  <thead className="text-text-secondary">
-                                    <tr>
-                                      <th className="text-left py-1">Unit</th>
-                                      <th className="text-right py-1 px-2">Home</th>
-                                      <th className="text-right py-1 px-2">Away</th>
-                                      {simLeadMode === 'rounds' && <th className="text-right py-1 px-2">Home R1/R2</th>}
-                                      {simLeadMode === 'rounds' && <th className="text-right py-1 px-2">Away R1/R2</th>}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {pastedAudit.tallies.map(t => (
-                                      <tr key={t.unit} className="border-t border-border-default">
-                                        <td className="py-1">{t.unit}</td>
-                                        <td className={`text-right py-1 px-2 tabular-nums ${simHomePerUnit > 0 && t.home !== simHomePerUnit ? 'c-warn' : ''}`}>{t.home}</td>
-                                        <td className={`text-right py-1 px-2 tabular-nums ${simAwayPerUnit > 0 && t.away !== simAwayPerUnit ? 'c-warn' : ''}`}>{t.away}</td>
-                                        {simLeadMode === 'rounds' && (
-                                          <td className="text-right py-1 px-2 tabular-nums text-text-secondary">{t.homeR1}/{t.homeR2}</td>
-                                        )}
-                                        {simLeadMode === 'rounds' && (
-                                          <td className="text-right py-1 px-2 tabular-nums text-text-secondary">{t.awayR1}/{t.awayR2}</td>
-                                        )}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-
-                            <button
-                              onClick={applyPastedSchedule}
-                              disabled={pastedSchedule.rows.length === 0}
-                              className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded-md transition"
-                            >
-                              Create {pastedSchedule.weeks.length} week{pastedSchedule.weeks.length === 1 ? '' : 's'} from this schedule
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Unit Summary */}
-                      <div className="panel pb">
-                        <h4 className="cap">Current Units</h4>
-                        <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
-                          <div>Token Units: {units.filter(u => !nonTokenUnits.includes(u)).length}</div>
-                          <div>Non-Token Units: {nonTokenUnits.length}</div>
-                          <div className="col-span-2">Total Units: {units.length}</div>
-                          {divisions && divisions.length > 0 && (
-                            <div className="col-span-2">Divisions: {divisions.length}</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="ctl" style={{ marginTop: 13, marginLeft: -13, marginRight: -13, marginBottom: -13, borderBottom: 0, borderTop: '1px solid var(--color-border)' }}>
-                    <span className="rule" />
-                    <button className="gh live" onClick={simulateSeason}>
-                      {simScheduleOnly ? 'Generate schedule' : 'Simulate season'}
-                    </button>
-                  </div>
-              </div>
-            </div>
+            <ScheduleMaker
+              source={simSource}
+              onSource={setSimSource}
+              leadMode={simLeadMode}
+              onLeadMode={setSimLeadMode}
+              scheduleOnly={simScheduleOnly}
+              onScheduleOnly={setSimScheduleOnly}
+              leadNightsPerUnit={simLeadNightsPerUnit}
+              onLeadNightsPerUnit={setSimLeadNightsPerUnit}
+              leadNightsInDivision={simLeadNightsInDivision}
+              onLeadNightsInDivision={setSimLeadNightsInDivision}
+              homePerUnit={simHomePerUnit}
+              onHomePerUnit={setSimHomePerUnit}
+              awayPerUnit={simAwayPerUnit}
+              onAwayPerUnit={setSimAwayPerUnit}
+              splitRounds={simSplitRounds}
+              onSplitRounds={setSimSplitRounds}
+              paste={simPaste}
+              onPaste={setSimPaste}
+              preview={simPreview}
+              parsed={pastedSchedule}
+              audit={pastedAudit}
+              describeProblem={describeScheduleProblem}
+              onApplyPaste={applyPastedSchedule}
+              onGenerate={simulateSeason}
+              tokenUnitCount={tokenUnits.length}
+              nonTokenUnitCount={nonTokenUnits.length}
+              unitCount={units.length}
+              divisionCount={divisions?.length || 0}
+              teamAName={teamNames.A}
+            />
           )}
 
           {/* Simulation Analytics Modal */}

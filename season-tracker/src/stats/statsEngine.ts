@@ -42,6 +42,14 @@ export interface PlayerStatRow {
   avgTd: number | null;
   /** Avg ticket value per kill (×Tk); null when no killfeed kills. */
   avgTk: number | null;
+  /**
+   * The in-game regiment on their most recent round, and the arm of service it
+   * implies. Distinct from `regiment`, which is the league unit they were
+   * resolved to — a player can be pinned to a unit and still be sat in a
+   * battery, and only the in-game name says which.
+   */
+  inGameRegiment: string | null;
+  branch: Branch;
 }
 
 export type PlayerType = 'all' | 'inf' | 'cav' | 'arty';
@@ -213,6 +221,8 @@ function emptyPlayerRow(key: string, steamId: string | null, name: string, team:
     steamId,
     name,
     regiment: '',
+    inGameRegiment: null,
+    branch: 'Infantry',
     team,
     rounds: 0,
     kills: 0,
@@ -290,7 +300,10 @@ export function computePlayerLeaderboard(
 
   const rows = [...acc.values()];
   for (const r of rows) {
-    r.regiment = resolveRow(latest.get(r.key)!, r.steamId, r.name, assignments, options);
+    const sb = latest.get(r.key)!;
+    r.regiment = resolveRow(sb, r.steamId, r.name, assignments, options);
+    r.inGameRegiment = findRoster(sb, r.steamId, r.name, r.team)?.regiment ?? null;
+    r.branch = branchOf(r.inGameRegiment);
     finalizePlayerRow(r);
   }
   rows.sort((a, b) => b.kills - a.kills);

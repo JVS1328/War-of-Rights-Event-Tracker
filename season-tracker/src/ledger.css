@@ -285,6 +285,19 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .leg span { display: inline-flex; align-items: center; gap: 5px; }
 .leg i { width: 8px; height: 8px; display: inline-block; }
 
+/* A map, as a card. Enough of them fit that a grid beats a table — the figures
+   are heterogeneous (a split, three averages, a morale word) and columns would
+   be mostly blank. */
+.mapgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 11px; }
+.mapcard { border: 1px solid var(--line); background: var(--raised); padding: 11px; }
+.mapdl { margin: 9px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 11px; }
+.mapdl dt { color: var(--ink-3); white-space: nowrap; }
+.mapdl dd { margin: 0; color: var(--ink-2); line-height: 1.5; }
+
+/* A panel header that opens and closes what is under it. */
+.area-h { cursor: pointer; user-select: none; }
+.area-h:hover { background: var(--sunken); }
+
 /* ── controls ───────────────────────────────────────────────────────────── */
 
 .ctl {
@@ -292,6 +305,17 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
   padding: 9px 13px; border-bottom: 1px solid var(--color-border);
   background: var(--color-bg-2);
 }
+
+/* What a column means, on demand. Folded away by default because a table you
+   already understand should not have to carry its own footnotes. */
+.gloss {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(218px, 1fr));
+  gap: 11px 20px; padding: 13px;
+  border-bottom: 1px solid var(--line); background: var(--sunken);
+}
+.gloss dl { margin: 0; }
+.gloss dt { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+.gloss dd { margin: 0; font-size: 10.5px; color: var(--ink-2); line-height: 1.5; }
 
 .ledger input[type="search"], .ledger select,
 .crumb select, .ctl select, .ctl input[type="search"] {
@@ -470,6 +494,36 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
   font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--ink-3); line-height: 1.6;
 }
+
+/* Heatmap: one ramp, light to dark. A 2px gap of surface between cells is
+   what keeps a dense grid legible — a solid block of colour reads as one
+   shape, and this grid is meant to be read cell by cell. Every cell carries
+   its own number, which is what lets a three-stop ramp work at all. */
+table.hm { border-collapse: separate; border-spacing: 2px; width: auto; margin: 0; }
+table.hm th, table.hm td { border: none; }
+.hm-corner { background: none; border: none; }
+.hm-col {
+  background: none; border: none; padding: 0 0 6px; vertical-align: bottom;
+  text-align: center; font-size: 9.5px; letter-spacing: 0.04em;
+  text-transform: none; color: var(--ink-2); white-space: nowrap; font-weight: 400;
+}
+.hm-col span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); }
+.hm-row {
+  background: none; border: none; padding: 0 8px 0 0; text-align: right;
+  white-space: nowrap; font-size: 10.5px; letter-spacing: 0.02em;
+  text-transform: none; color: var(--ink-2); font-weight: 400;
+  font-family: var(--font-sans);
+}
+.hm-c {
+  width: 30px; height: 23px; padding: 0; border: none; text-align: center;
+  font-size: 10px; cursor: default; font-variant-numeric: tabular-nums;
+}
+.hm-c:hover, .hm-c:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.hm-x { background: var(--sunken); }
+.hm-legend { display: flex; align-items: center; gap: 4px; margin-bottom: 11px; flex-wrap: wrap; }
+.hm-legend .cap { margin: 0 4px; }
+.hm-ramp { display: flex; height: 10px; }
+.hm-ramp i { display: block; width: 14px; height: 100%; }
 
 /* A unit on a side: name left, head count and the move button right. */
 .bteam {
