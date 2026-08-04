@@ -61,6 +61,7 @@ import { EloLadder } from './components/EloLadder';
 import { Shell } from './components/Shell';
 import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
 import { NightBuilder, RT_RULES } from './components/season/NightBuilder';
+import { Balancer } from './components/season/Balancer';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
@@ -133,6 +134,16 @@ const ROUND_TYPE_FLAGS = {
   'Single round leads': { isPlayoffs: false, isSingleRoundLeads: true,  isFunRound: false },
   'Playoffs':           { isPlayoffs: true,  isSingleRoundLeads: false, isFunRound: false },
   'Fun round':          { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true },
+};
+
+/** Weight key on the balancer screen → the field the season stores it in. */
+const BALANCER_WEIGHT_FIELD = {
+  teammate: 'teammateWeight',
+  avgDiff: 'avgDiffWeight',
+  regimentCount: 'regimentCountWeight',
+  rangeSimilarity: 'rangeSimilarityWeight',
+  divisionOpposition: 'divisionOppositionWeight',
+  postSeasonSkill: 'postSeasonSkillWeight',
 };
 
 const RAIL_NAV = [
@@ -1564,9 +1575,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!selectedWeek) return;
     setBalancerStatus('Balancing...');
 
-    // Units not already placed on a side this week.
-    const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
-    const available = units.filter(u => !assignedUnits.has(u));
+    // The night's own roster is what gets split — the balancer re-splits the
+    // units playing tonight, it does not fill the sides from the bench. Units
+    // sat out on the pool row are excluded rather than balanced around.
+    const out = new Set(balancerSatOut);
+    const available = [...new Set([...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])])]
+      .filter(u => !out.has(u))
+      .sort();
 
     const maxDiff = parseInt(balancerMaxDiff);
     if (isNaN(maxDiff) || maxDiff < 0) {
@@ -1603,7 +1618,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
       elo,
     });
 
-    setBalancerSatOut(result.satOut);
     if (!result.ok) {
       setBalancerResults(null);
       setBalancerStatus(describeBalanceFailure(result.failure, maxDiff));
@@ -1626,10 +1640,45 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
     setBalancerResults(enriched);
     setSelectedBalanceIndex(0);
-    const sat = result.satOut.length ? ` · ${result.satOut.length} sitting out` : '';
+    const zero = result.satOut.filter(u => !out.has(u));
+    const sat = zero.length ? ` · ${zero.length} fielding nobody` : '';
     setBalancerStatus(
       `${enriched.length} option${enriched.length === 1 ? '' : 's'} · best average difference ${enriched[0].avgDiff.toFixed(1)}${sat}`
     );
+  };
+
+  /**
+   * The balancer is a screen you can walk onto from the rail, not just a dialog
+   * opened from a night — so its counts seed themselves from the night rather
+   * than relying on having been opened through openBalancerModal.
+   */
+  useEffect(() => {
+    if (screen !== 'balancer' || !selectedWeek) return;
+    const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])];
+    if (roster.every(u => balancerUnitCounts[u])) return;
+    const src = selectedWeek.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+      ? selectedWeek.unitPlayerCounts
+      : unitPlayerCounts;
+    const next = { ...balancerUnitCounts };
+    units.forEach(u => { next[u] = next[u] ?? { ...(src[u] ?? { min: 0, max: 0 }) }; });
+    setBalancerUnitCounts(next);
+  }, [screen, selectedWeek, units, unitPlayerCounts, balancerUnitCounts]);
+
+  /** Put one option's split onto the night. */
+  const applyBalancerOption = (option) => {
+    if (!selectedWeek || !option) return;
+    updateWeek(selectedWeek.id, { teamA: [...option.teamA], teamB: [...option.teamB] });
+    goScreen('night');
+  };
+
+  /** Carry the previous night's counts forward — most weeks barely move. */
+  const pullLastNightCounts = () => {
+    const idx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
+    for (let k = idx - 1; k >= 0; k--) {
+      const c = weeks[k]?.unitPlayerCounts;
+      if (c && Object.keys(c).length) { commitBalancerCounts({ ...balancerUnitCounts, ...c }); return; }
+    }
+    setBalancerStatus('No earlier night has player counts to pull.');
   };
 
   const applyBalancerResults = () => {
@@ -5435,495 +5484,63 @@ const SeasonTracker = ({ initialShareData = null }) => {
             />
           )}
 
-          {/* Balancer — a screen, not a dialog. */}
+          {/* Balancer, to the prototype's V.balancer: the pool, what must be
+              kept apart, the options, then the knobs that made them. */}
           {screen === 'balancer' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Balancer</h2>
-                <span className="rule" />
-                <span className="meta">{selectedWeek ? selectedWeek.name : 'no night selected'}</span>
-              </header>
-              {!selectedWeek ? (
-                <div className="pb"><p className="note">Pick a night on the Schedule screen first — the balancer splits that night's units.</p></div>
-              ) : (
+            selectedWeek ? (
+              <Balancer
+                view={{
+                  weekName: selectedWeek.name,
+                  roster: [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort(),
+                  sittingOut: balancerSatOut,
+                  headcount: unitHeadcounts,
+                  counts: balancerUnitCounts,
+                  pairs: balancerOpposingPairs,
+                  maxDiff: balancerMaxDiff,
+                  optionCount: balancerSettings.balanceOptionCount || 3,
+                  weights: {
+                    teammate: balancerSettings.teammateWeight,
+                    avgDiff: balancerSettings.avgDiffWeight,
+                    regimentCount: balancerSettings.regimentCountWeight,
+                    rangeSimilarity: balancerSettings.rangeSimilarityWeight,
+                    divisionOpposition: balancerSettings.divisionOppositionWeight,
+                    postSeasonSkill: balancerSettings.postSeasonSkillWeight || 0,
+                  },
+                  options: balancerResults || [],
+                  status: balancerStatus,
+                }}
+                onBack={() => goScreen('night')}
+                onToggleUnit={(u) => setBalancerSatOut(prev =>
+                  prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u])}
+                onPair={(idx, slot, unit) => setBalancerOpposingPairs(prev =>
+                  prev.map((p, k) => k === idx ? (slot === 0 ? [unit, p[1]] : [p[0], unit]) : p))}
+                onAddPair={() => {
+                  const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort();
+                  if (roster.length >= 2) setBalancerOpposingPairs(prev => [...prev, [roster[0], roster[1]]]);
+                }}
+                onRemovePair={(idx) => setBalancerOpposingPairs(prev => prev.filter((_, k) => k !== idx))}
+                onMaxDiff={setBalancerMaxDiff}
+                onOptionCount={(n) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, n)) })}
+                onWeight={(key, n) => setBalancerSettings({ ...balancerSettings, [BALANCER_WEIGHT_FIELD[key]]: n })}
+                onResetWeights={() => setBalancerSettings({ ...balancerSettings, ...getDefaultBalancerSettings() })}
+                onCount={(unit, which, n) => commitBalancerCounts({
+                  ...balancerUnitCounts,
+                  [unit]: { ...balancerUnitCounts[unit], [which]: n },
+                })}
+                onRun={runBalancer}
+                onApply={(option) => applyBalancerOption(option)}
+                onPasteCounts={openCoordPasteModal}
+                onPullCounts={pullLastNightCounts}
+                onSplitter={() => goScreen('splitter')}
+              />
+            ) : (
+              <div className="panel">
+                <header className="ph"><h2>Balancer</h2><span className="rule" /></header>
                 <div className="pb">
-
-                  {!balancerResults || balancerResults.length === 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Left: Available Units. A unit fielding nobody is shown
-                          struck through rather than silently dropped — it is
-                          left out of the split, and that should be visible
-                          before the balance runs, not discovered after. */}
-                      <div className="panel pb">
-                        {(() => {
-                          const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
-                          const available = units.filter(u => !assignedUnits.has(u));
-                          const satOut = new Set(sitOuts(available, balancerUnitCounts));
-                          const playing = available.filter(u => !satOut.has(u));
-                          return (<>
-                            <div className="flex items-baseline justify-between mb-3">
-                              <h3 className="cap">Available Units Pool</h3>
-                              <span className="text-xs text-text-secondary">
-                                {playing.length} playing{satOut.size > 0 ? ` · ${satOut.size} sitting out` : ''}
-                              </span>
-                            </div>
-                            <div className="rows scroll-y">
-                              {available.length === 0 ? (
-                                <p className="text-text-secondary text-sm">All units assigned</p>
-                              ) : (
-                                <div className="space-y-1">
-                                  {available.map(unit => {
-                                    const counts = balancerUnitCounts[unit];
-                                    const out = satOut.has(unit);
-                                    return (
-                                      <div key={unit} className="flex items-center justify-between gap-2 text-sm py-1">
-                                        <span className={out ? 'line-through text-text-secondary' : ''}>{unit}</span>
-                                        <span className="text-xs text-text-secondary tabular-nums">
-                                          {out ? 'fielding nobody' : `${counts?.min ?? 0}-${counts?.max ?? 0}`}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                            {satOut.size > 0 && (
-                              <p className="text-xs text-text-secondary mt-2">
-                                Units at 0 players are sat out of the split. Give one a count above to bring it back in.
-                              </p>
-                            )}
-                          </>);
-                        })()}
-                      </div>
-
-                      {/* Right: Constraints */}
-                      <div className="space-y-4">
-                        {/* Max Player Difference */}
-                        <div className="panel pb">
-                          <label className="block text-sm text-text-secondary mb-2">Max Player Difference</label>
-                          <input
-                            type="number"
-                            value={balancerMaxDiff}
-                            onChange={(e) => setBalancerMaxDiff(parseInt(e.target.value) || 1)}
-                            min="0"
-                            max="100"
-                            className="fld-i"
-                          />
-                        </div>
-
-                        {/* Balance Options Count */}
-                        <div className="panel pb">
-                          <label className="block text-sm text-text-secondary mb-2">Balance Options</label>
-                          <input
-                            type="number"
-                            value={balancerSettings.balanceOptionCount}
-                            onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
-                            min="1"
-                            max="10"
-                            className="fld-i"
-                          />
-                          <p className="text-xs text-text-secondary mt-1">How many balance options to compare (1-10)</p>
-                        </div>
-
-                        {/* Unit Player Counts */}
-                        <div className="panel pb">
-                          <div className="flex justify-between items-center mb-3">
-                            <h3 className="cap">Unit Player Counts</h3>
-                            <button
-                              onClick={openCoordPasteModal}
-                              className="gh"
-                            >
-                              <FileText className="w-3 h-3" />
-                              Paste from Coord Sheet
-                            </button>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto space-y-2">
-                            {units.map(unit => (
-                              <div key={unit} className="grid grid-cols-3 gap-2 items-center">
-                                <span className="text-sm truncate" title={unit}>{unit}</span>
-                                <input
-                                  type="number"
-                                  placeholder="Min"
-                                  value={balancerUnitCounts[unit]?.min ?? 0}
-                                  onChange={(e) => commitBalancerCounts({
-                                    ...balancerUnitCounts,
-                                    [unit]: { ...balancerUnitCounts[unit], min: parseInt(e.target.value) || 0 }
-                                  })}
-                                  className="fld-i"
-                                />
-                                <input
-                                  type="number"
-                                  placeholder="Max"
-                                  value={balancerUnitCounts[unit]?.max ?? 0}
-                                  onChange={(e) => commitBalancerCounts({
-                                    ...balancerUnitCounts,
-                                    [unit]: { ...balancerUnitCounts[unit], max: parseInt(e.target.value) || 0 }
-                                  })}
-                                  className="fld-i"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Opposing Units */}
-                        <div className="panel pb">
-                          <h3 className="cap">Opposing Units</h3>
-                          <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
-                            {balancerOpposingPairs.map((pair, idx) => (
-                              <div key={idx} className="flex justify-between items-center bg-bg-inset rounded p-2">
-                                <span className="text-sm">{pair[0]} vs {pair[1]}</span>
-                                <button
-                                  onClick={() => setBalancerOpposingPairs(balancerOpposingPairs.filter((_, i) => i !== idx))}
-                                  className="ib danger"
-                                >
-                                  <X className="w-3 h-3 text-white" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <select
-                              id="opposing-unit-1"
-                              className="fld-i"
-                            >
-                              <option value="">Select first unit...</option>
-                              {units.map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                            <select
-                              id="opposing-unit-2"
-                              className="fld-i"
-                            >
-                              <option value="">Select second unit...</option>
-                              {units.map(unit => (
-                                <option key={unit} value={unit}>{unit}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const select1 = document.getElementById('opposing-unit-1');
-                              const select2 = document.getElementById('opposing-unit-2');
-                              const unit1 = select1.value;
-                              const unit2 = select2.value;
-                              
-                              if (!unit1 || !unit2) {
-                                alert('Please select both units');
-                                return;
-                              }
-                              if (unit1 === unit2) {
-                                alert('Please select different units');
-                                return;
-                              }
-                              
-                              setBalancerOpposingPairs([...balancerOpposingPairs, [unit1, unit2]]);
-                              select1.value = '';
-                              select2.value = '';
-                            }}
-                            className="gh live"
-                          >
-                            Add Opposing Pair
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (() => {
-                    const activeResult = balancerResults[selectedBalanceIndex];
-                    return (
-                    /* Balance Results */
-                    <div>
-                      {/* Option Tabs */}
-                      {balancerResults.length > 1 && (
-                        <div className="flex flex-wrap gap-2 mb-4 justify-center">
-                          {balancerResults.map((opt, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => setSelectedBalanceIndex(idx)}
-                              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                                idx === selectedBalanceIndex
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-bg-inset text-text-secondary hover:bg-border-subtle'
-                              }`}
-                            >
-                              {idx === 0 ? (
-                                <>
-                                  <Star className="w-3.5 h-3.5" />
-                                  Best Balance
-                                </>
-                              ) : (
-                                `Option ${idx + 1}`
-                              )}
-                              <span className={`text-xs ${idx === selectedBalanceIndex ? 'text-white' : 'text-text-secondary'}`}>
-                                (Diff: {opt.score.toFixed(1)})
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="text-center mb-6">
-                        <h3 className="text-xl font-bold c-ok mb-2">
-                          {selectedBalanceIndex === 0 ? 'Best Balance Found!' : `Option ${selectedBalanceIndex + 1}`}
-                        </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 max-w-4xl mx-auto">
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                            <div className="text-lg font-bold c-accent">
-                              {activeResult.score.toFixed(1)}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                            <div className="text-lg font-bold c-accent">
-                              {Math.abs(activeResult.minA - activeResult.minB).toFixed(0)}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                            <div className="text-lg font-bold c-accent">
-                              {Math.abs(activeResult.maxA - activeResult.maxB).toFixed(0)}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                            <div className="text-lg font-bold c-ok">
-                              {activeResult.combinedAvgHistory?.toFixed(2) || '0.00'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                            <div className="text-lg font-bold c-accent">
-                              {activeResult.minA + activeResult.minB}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                            <div className="text-lg font-bold c-accent">
-                              {activeResult.maxA + activeResult.maxB}
-                            </div>
-                          </div>
-                          <div className="panel pb">
-                            <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                            <div className="text-lg font-bold c-accent">
-                              {((activeResult.minA + activeResult.maxA + activeResult.minB + activeResult.maxB) / 2).toFixed(1)}
-                            </div>
-                          </div>
-                        </div>
-                        {activeResult.avgEloA != null && activeResult.avgEloB != null && (
-                          <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
-                            <div className="panel pb">
-                              <div className="text-xs text-text-secondary mb-1">{teamNames.A} Avg Elo</div>
-                              <div className="text-lg font-bold f-usa">{Math.round(activeResult.avgEloA)}</div>
-                            </div>
-                            <div className="panel pb">
-                              <div className="text-xs text-text-secondary mb-1">Elo Difference</div>
-                              <div className="text-lg font-bold c-accent">
-                                {Math.abs(Math.round(activeResult.avgEloA - activeResult.avgEloB))}
-                              </div>
-                            </div>
-                            <div className="panel pb">
-                              <div className="text-xs text-text-secondary mb-1">{teamNames.B} Avg Elo</div>
-                              <div className="text-lg font-bold c-danger">{Math.round(activeResult.avgEloB)}</div>
-                            </div>
-                          </div>
-                        )}
-                        {balancerSatOut.length > 0 && (
-                          <p className="text-xs text-text-secondary mt-3 max-w-4xl mx-auto">
-                            Sat out (fielding nobody): {balancerSatOut.join(', ')}
-                          </p>
-                        )}
-                        {balancerSettings.divisionOppositionWeight > 0 && (() => {
-                          const matchups = getDivisionMatchups(activeResult.teamA, activeResult.teamB);
-                          if (matchups.length === 0) return null;
-                          return (
-                            <div className="mt-3 max-w-4xl mx-auto bg-bg-inset rounded p-3">
-                              <div className="text-xs text-text-secondary mb-2">
-                                Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
-                              </div>
-                              <div className="rows scroll-y">
-                                {matchups.map((m, i) => (
-                                  <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                    <span className="f-usa">{m.unitA}</span>
-                                    <span className="text-text-secondary">vs</span>
-                                    <span className="c-danger">{m.unitB}</span>
-                                    <span className="c-accent ml-1">({m.division})</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        {/* Win Probability Bars */}
-                        {(activeResult.round1Probability || activeResult.round2Probability) && (
-                          <div className="mt-4 max-w-4xl mx-auto space-y-3">
-                            <h4 className="text-sm font-semibold text-text-secondary flex items-center justify-center gap-2">
-                              <TrendingUp className="w-4 h-4" />
-                              Win Probability
-                            </h4>
-                            {[
-                              { label: 'Round 1', prob: activeResult.round1Probability, map: selectedWeek?.round1Map },
-                              { label: 'Round 2', prob: activeResult.round2Probability, map: selectedWeek?.round2Map }
-                            ].map(({ label, prob, map }) => {
-                              if (!prob) return null;
-                              return (
-                                <div key={label} className="panel pb">
-                                  <div className="flex justify-between items-center mb-2">
-                                    <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
-                                    <div className="flex gap-3 text-xs">
-                                      {prob.factors.elo && (
-                                        <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
-                                      )}
-                                      {prob.factors.globalMap && (
-                                        <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
-                                      )}
-                                      {prob.factors.unitMap && (
-                                        <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold f-usa w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                    <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
-                                      <div
-                                        className="h-full transition-all duration-300"
-                                        style={{
-                                          width: `${prob.teamAProb}%`,
-                                          background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
-                                        }}
-                                      />
-                                      <div
-                                        className="h-full transition-all duration-300"
-                                        style={{
-                                          width: `${prob.teamBProb}%`,
-                                          background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
-                                        }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-bold c-danger w-16">{prob.teamBProb}% {teamNames.B}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <p className="text-text-secondary text-sm mt-3">
-                          💡 Drag units between teams to adjust balance • Lower teammate history = better variety
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        {/* Team A Results */}
-                        <div
-                          className="panel pb"
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop('A')}
-                        >
-                          <h4 className="text-lg font-semibold f-usa mb-3">
-                            Team A ({activeResult.teamA.length} unit{activeResult.teamA.length === 1 ? '' : 's'})
-                          </h4>
-                          <div className="text-text-secondary text-sm mb-3 space-y-1">
-                            <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
-                            <p className="text-xs">
-                              Avg Teammate History: <span className="c-accent font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
-                            </p>
-                            {activeResult.avgEloA != null && (
-                              <p className="text-xs">
-                                Avg Elo: <span className="c-accent font-semibold">{Math.round(activeResult.avgEloA)}</span>
-                              </p>
-                            )}
-                          </div>
-                          <div className="rows scroll-y">
-                            <div className="space-y-1">
-                              {activeResult.teamA.sort().map(unit => {
-                                const counts = balancerUnitCounts[unit];
-                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                                return (
-                                  <div
-                                    key={unit}
-                                    draggable
-                                    onDragStart={() => handleDragStart(unit, 'A')}
-                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-text-muted" />
-                                      {unit}
-                                    </div>
-                                    <span className="text-xs text-text-secondary">{minMax}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Team B Results */}
-                        <div
-                          className="panel pb"
-                          onDragOver={handleDragOver}
-                          onDrop={() => handleDrop('B')}
-                        >
-                          <h4 className="text-lg font-semibold c-danger mb-3">
-                            Team B ({activeResult.teamB.length} unit{activeResult.teamB.length === 1 ? '' : 's'})
-                          </h4>
-                          <div className="text-text-secondary text-sm mb-3 space-y-1">
-                            <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
-                            <p className="text-xs">
-                              Avg Teammate History: <span className="c-accent font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
-                            </p>
-                            {activeResult.avgEloB != null && (
-                              <p className="text-xs">
-                                Avg Elo: <span className="c-accent font-semibold">{Math.round(activeResult.avgEloB)}</span>
-                              </p>
-                            )}
-                          </div>
-                          <div className="rows scroll-y">
-                            <div className="space-y-1">
-                              {activeResult.teamB.sort().map(unit => {
-                                const counts = balancerUnitCounts[unit];
-                                const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                                return (
-                                  <div
-                                    key={unit}
-                                    draggable
-                                    onDragStart={() => handleDragStart(unit, 'B')}
-                                    className="text-sm py-2 px-3 bg-bg-card rounded cursor-move hover:bg-bg-inset transition flex items-center justify-between gap-2"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Swords className="w-3 h-3 text-text-muted" />
-                                      {unit}
-                                    </div>
-                                    <span className="text-xs text-text-secondary">{minMax}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })()}
-
-                  {/* Bottom Buttons */}
-                  <div className="ctl" style={{ marginTop: 13, marginLeft: -13, marginRight: -13, marginBottom: -13, borderBottom: 0, borderTop: '1px solid var(--color-border)' }}>
-                    <span className="note">{balancerStatus}</span>
-                    <span className="rule" />
-                    {!balancerResults || balancerResults.length === 0 ? (
-                      <button className="gh live" onClick={runBalancer}>Balance</button>
-                    ) : (
-                      <>
-                        <button className="gh" onClick={() => { setBalancerResults(null); setSelectedBalanceIndex(0); }}>Back</button>
-                        <button className="gh live" onClick={applyBalancerResults}>Apply to the night</button>
-                      </>
-                    )}
-                  </div>
+                  <p className="note">Pick a night on the Schedule screen first — the balancer splits that night's units.</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )
           )}
 
           {/* Coord Sheet Paste Modal */}
