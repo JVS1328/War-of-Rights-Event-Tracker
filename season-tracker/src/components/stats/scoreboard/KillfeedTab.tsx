@@ -38,60 +38,35 @@ export function KillfeedTab({
   }, [sb.kills, team, weapon, query]);
 
   return (
-    <section className="p-2">
-      <div className="flex flex-wrap items-center gap-3 px-2 mb-2 text-xs uppercase tracking-wider font-mono">
-        <span className="text-[color:var(--color-text-2)]">team</span>
-        {(['all', 'USA', 'CSA'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTeam(t)}
-            className={
-              team === t
-                ? 'text-[color:var(--color-accent)]'
-                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]'
-            }
-          >
-            {t}
-          </button>
-        ))}
-        <span className="text-[color:var(--color-text-2)] ml-3">weapon</span>
-        <select
-          value={weapon}
-          onChange={(e) => setWeapon(e.target.value)}
-          className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-sm font-mono text-[color:var(--color-text-0)] focus:outline-none focus:border-[color:var(--color-accent)]"
-        >
+    <section>
+      <div className="ctl">
+        <span className="cap">Team</span>
+        <div className="seg">
+          {(['all', 'USA', 'CSA'] as const).map((t) => (
+            <button key={t} onClick={() => setTeam(t)} aria-pressed={team === t}>{t}</button>
+          ))}
+        </div>
+        <span className="cap">Weapon</span>
+        <select value={weapon} onChange={(e) => setWeapon(e.target.value)}>
           <option value="">all</option>
           {weapons.map((w) => (
-            <option key={w} value={w}>
-              {w}
-            </option>
+            <option key={w} value={w}>{w}</option>
           ))}
         </select>
-        <span className="text-[color:var(--color-text-2)] ml-3">player</span>
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="search killer or victim…"
-          className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1.5 py-0.5 text-sm font-mono normal-case tracking-normal text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] focus:outline-none focus:border-[color:var(--color-accent)]"
+          placeholder="killer or victim"
         />
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-1)]"
-          >
-            clear
-          </button>
-        )}
-        <span className="text-[color:var(--color-text-2)] ml-auto">{filtered.length} events</span>
+        <span className="rule" />
+        <span className="meta">{filtered.length} events</span>
       </div>
-      <div className="px-3 pb-2 text-xs font-mono text-[color:var(--color-text-2)] italic">
-        timestamps are in-round time as written by the game.
-      </div>
+      <p className="note" style={{ padding: '9px 13px 0' }}>
+        Timestamps are in-round time, as the game wrote them.
+      </p>
       {filtered.length === 0 ? (
-        <div className="px-3 py-6 text-center text-xs text-[color:var(--color-text-2)] font-mono uppercase tracking-wider">
-          no killfeed events
-        </div>
+        <p className="note" style={{ padding: 13 }}>No killfeed events.</p>
       ) : (
         <ul className="divide-y divide-[color:var(--color-border)]">
           {filtered.map((k, i) => (

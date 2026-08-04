@@ -25,30 +25,28 @@ export function Drawer({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50" />
+        <Dialog.Overlay className="drawer-scrim" />
         <Dialog.Content
-          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] shadow-2xl outline-none sm:w-[var(--drawer-w)]"
+          className="drawer"
           style={{ ['--drawer-w' as string]: `${width}px` }}
         >
-          <div className="flex items-center justify-between border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-2">
-            <div className="min-w-0">
-              <Dialog.Title className="wor-name truncate text-base font-mono text-[color:var(--color-text-0)]">
-                {title}
+          <div className="ph">
+            <div style={{ minWidth: 0 }}>
+              <Dialog.Title asChild>
+                <div className="mid wor-name" style={{ fontSize: 17 }}>{title}</div>
               </Dialog.Title>
               {subtitle && (
-                <Dialog.Description className="truncate text-xs font-mono uppercase tracking-wider text-[color:var(--color-text-2)]">
-                  {subtitle}
+                <Dialog.Description asChild>
+                  <div className="cap" style={{ marginTop: 4 }}>{subtitle}</div>
                 </Dialog.Description>
               )}
             </div>
-            <Dialog.Close
-              className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center text-[color:var(--color-text-2)] hover:bg-[color:var(--color-bg-3)] hover:text-[color:var(--color-text-0)]"
-              aria-label="Close"
-            >
-              <X size={14} />
+            <span className="rule" />
+            <Dialog.Close className="gh" aria-label="Close">
+              <X size={12} />
             </Dialog.Close>
           </div>
-          <div className="flex-1 min-h-0 overflow-auto">{children}</div>
+          <div className="drawer-b">{children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

@@ -67,6 +67,16 @@
    filled-accent button: the current thing inverts to ink-on-ground, and the
    accent is reserved for what is live. */
 
+/* Squared, everywhere. The prototype has no rounded corner anywhere in it, and
+   this is the one rule that holds that line across components not yet ported —
+   an unlayered declaration outranks Tailwind's layered `rounded-*` utilities,
+   so a stray radius cannot survive. Remove this only when nothing emits one. */
+.app, .app *, .drawer, .drawer * { border-radius: 0 !important; }
+
+/* Same for the soft-focus chrome: the ledger's focus state is a hairline, not
+   a glow, and its overlays are flat. */
+.app *, .drawer * { box-shadow: none !important; backdrop-filter: none !important; }
+
 /* ── ledger primitives ──────────────────────────────────────────────────── */
 
 .cap {
@@ -269,10 +279,11 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 
 /* ── bars ───────────────────────────────────────────────────────────────── */
 
-.hb { display: grid; grid-template-columns: 74px 1fr 38px; align-items: center; gap: 8px; font-size: 11.5px; margin-top: 5px; }
+.hb { display: grid; grid-template-columns: minmax(74px, 30%) 1fr auto; align-items: center; gap: 8px; font-size: 11.5px; margin-top: 5px; }
 .hb .t { height: 7px; background: var(--color-bg-3); }
 .hb .t i { display: block; height: 100%; background: var(--color-border-strong); }
-.hb .n { text-align: right; color: var(--color-text-1); }
+.hb .n { text-align: right; color: var(--color-text-1); white-space: nowrap; }
+.hb .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .stack { display: flex; height: 9px; background: var(--color-bg-3); }
 .stack i { display: block; height: 100%; }
@@ -297,6 +308,46 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 /* A panel header that opens and closes what is under it. */
 .area-h { cursor: pointer; user-select: none; }
 .area-h:hover { background: var(--sunken); }
+
+/* <details> as a panel: the marker is suppressed and the ▶/▼ comes from the
+   header's own ::before, so a native disclosure and a state-driven one look
+   identical. */
+details.panel > summary { list-style: none; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary.ph::before {
+  content: '▶'; font-size: 9px; color: var(--ink-3); width: 11px; flex: none;
+}
+details.panel[open] > summary.ph::before { content: '▼'; }
+
+/* A drawer: the same panel language, docked to the right and full height. On a
+   narrow screen it takes the whole width, because half a drawer is no drawer. */
+.drawer-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5); }
+.drawer {
+  position: fixed; inset-block: 0; right: 0; z-index: 50;
+  display: flex; flex-direction: column; width: 100%;
+  border-left: 1px solid var(--line); background: var(--surface);
+  outline: none;
+}
+@media (min-width: 640px) { .drawer { width: var(--drawer-w, 480px); } }
+.drawer > .ph { flex: none; }
+.drawer-b { flex: 1; min-height: 0; overflow: auto; }
+
+/* Position within a filtered, paged list. Below the rows, never above them —
+   the answer comes first and the navigation second. */
+.pager {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); border-top: 1px solid var(--line);
+  padding-top: 7px; margin-top: 9px;
+}
+.pager .pg { display: flex; align-items: center; gap: 5px; }
+.pager button {
+  border: 1px solid var(--line-2); padding: 1px 7px; color: var(--ink-2);
+  line-height: 1.4; background: none; cursor: pointer;
+  font: inherit; font-size: 10px; letter-spacing: inherit;
+}
+.pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.pager button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── controls ───────────────────────────────────────────────────────────── */
 

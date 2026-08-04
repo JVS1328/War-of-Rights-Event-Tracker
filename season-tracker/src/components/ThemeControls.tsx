@@ -52,7 +52,7 @@ export function ThemeControls({ showMode = true }: { showMode?: boolean }) {
             aria-pressed={family === f}
             className={`px-2.5 py-1 text-xs transition ${
               family === f
-                ? 'bg-indigo-600 text-white'
+                ? 'gh live'
                 : 'text-text-secondary hover:bg-bg-inset'
             }`}
           >

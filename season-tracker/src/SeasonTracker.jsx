@@ -4715,7 +4715,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           key={season.id}
                           onClick={() => setAppState(prev => setActiveSeason(prev, season.id))}
                           className={`w-full text-left bg-bg-card rounded p-3 border transition ${
-                            isActive ? 'border-indigo-500' : 'border-transparent hover:border-border-default'
+                            isActive ? 'border-[color:var(--color-accent)]' : 'border-transparent hover:border-border-default'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-3">
@@ -5307,7 +5307,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       min="0"
                       value={mapCooldown}
                       onChange={(e) => setMapCooldown(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                      className="fld-i"
                     />
                   </div>
                   <span className="text-xs text-text-secondary mt-5">
@@ -5401,7 +5401,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     max="10"
                     value={balancerSettings.balanceOptionCount}
                     onChange={(e) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, parseInt(e.target.value) || 3)) })}
-                    className="w-24 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                    className="fld-i"
                   />
                   <span className="text-xs text-text-secondary ml-2">Number of balance options the balancer will return (1-10)</span>
                 </div>
@@ -5630,12 +5630,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         onChange={(e) => setCoordPasteText(e.target.value)}
                         placeholder={"CQB (T)\t14\t\t16\nJD (T)\t35\t\t40\n..."}
                         rows={10}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm"
+                        className="fld-i"
                       />
                       <button
                         onClick={parseCoordPaste}
                         disabled={!coordPasteText.trim()}
-                        className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-bg-inset disabled:cursor-not-allowed text-white text-sm rounded-md transition font-semibold"
+                        className="gh live"
                       >
                         Parse
                       </button>
@@ -6509,11 +6509,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
+                            <div className="kpi">
                               <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
-                            <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="kpi">
                               <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.theoretical.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
@@ -6567,11 +6567,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             All token units combined: {simulationAnalytics.points.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.points.simulated.totalAssistPoints.toFixed(0)} assist points
                           </div>
                           <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-indigo-900/30 border border-indigo-700 rounded p-3 text-center">
+                            <div className="kpi">
                               <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
                             </div>
-                            <div className="bg-blue-900/30 border border-blue-700 rounded p-3 text-center">
+                            <div className="kpi">
                               <div className="f-usa text-2xl font-bold">{simulationAnalytics.points.simulated.assistPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Assist Points</div>
                             </div>
@@ -6580,7 +6580,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </div>
 
                       {/* Comparison */}
-                      <div className="bg-indigo-900/20 border border-indigo-700 rounded-lg p-4">
+                      <div className="panel pb">
                         <h3 className="text-lg font-semibold c-accent mb-3 flex items-center gap-2">
                           <TrendingUp className="w-5 h-5" />
                           Comparison
@@ -6737,7 +6737,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onChange={(e) => setNewUnitName(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && addUnit()}
                           placeholder="Unit name..."
-                          className="flex-1 px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                          className="fld-i"
                         />
                         <button
                           onClick={addUnit}
@@ -6760,7 +6760,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   onClick={() => toggleNonTokenStatus(unit)}
                                   className={`px-2 py-1 rounded text-xs font-bold transition ${
                                     isNonToken
-                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                      ? 'gh live'
                                       : 'bg-bg-card hover:bg-bg-inset text-text-secondary'
                                   }`}
                                   title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
@@ -7024,15 +7024,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 {choiceDialog.choices.map((c, idx) => {
                   const variant = c.variant || 'secondary';
                   const cls =
-                    variant === 'primary'   ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
-                  : variant === 'danger'    ? 'bg-red-600/90 hover:bg-red-600 text-white border-red-600'
-                  : variant === 'cancel'    ? 'bg-transparent hover:bg-bg-inset text-text-secondary border-border-default'
-                  :                           'bg-bg-inset hover:bg-border-subtle text-text-primary border-border-default';
+                    variant === 'primary'   ? 'gh live'
+                  : variant === 'danger'    ? 'gh c-danger'
+                  :                           'gh';
                   return (
                     <button
                       key={idx}
                       onClick={() => choiceDialog.onChoose(c.value)}
-                      className={`text-left px-4 py-2.5 rounded-md border transition ${cls}`}
+                      className={cls}
+                      style={{ textAlign: 'left', padding: '7px 11px' }}
                     >
                       <div className="text-sm font-medium">{c.label}</div>
                       {c.description && (

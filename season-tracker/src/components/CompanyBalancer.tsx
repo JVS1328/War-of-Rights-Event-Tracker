@@ -2,7 +2,7 @@ import { COMPANY_KINDS } from '../utils/companySplit';
 import type { Company, CompanySideConfig } from '../utils/companySplit';
 
 const INPUT_CLASS =
-  'w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none';
+  'fld-i';
 
 /**
  * The company-count inputs for one side: how many companies, how many of them

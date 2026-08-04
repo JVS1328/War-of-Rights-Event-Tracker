@@ -31,7 +31,7 @@ import type {
   NemesisRow,
 } from '../../../stats/roundAnalytics';
 
-const SECTION_HEAD = 'text-xs uppercase tracking-wider text-[color:var(--color-text-2)]';
+const SECTION_HEAD = 'cap';
 const PAGE_SIZE = 8;
 
 // Stable search-text accessors (module-level so PagedSection's filter memo
@@ -82,25 +82,23 @@ function PagedSection<T>({
 
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <div className={`${SECTION_HEAD} min-w-0 truncate`}>{title}</div>
-        <div className="flex shrink-0 items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-1.5 py-0.5">
-          <Search size={11} className="text-[color:var(--color-text-2)]" />
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(0);
-            }}
-            placeholder={searchPlaceholder}
-            className="w-24 bg-transparent text-xs text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] outline-none"
-          />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span className={SECTION_HEAD}>{title}</span>
+        <span className="rule" />
+        <Search size={11} style={{ color: 'var(--ink-3)', flex: 'none' }} />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(0);
+          }}
+          placeholder={searchPlaceholder}
+          style={{ width: 130 }}
+        />
       </div>
       {filtered.length === 0 ? (
-        <div className="py-3 text-center text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-          no matches for "{query.trim()}"
-        </div>
+        <p className="note">No matches for "{query.trim()}".</p>
       ) : (
         children(pageRows, offset, filtered)
       )}
@@ -136,23 +134,13 @@ function Pager({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  const btn =
-    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:opacity-40 disabled:cursor-not-allowed';
   return (
-    <div className="mt-1.5 flex items-center justify-between text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-      <span className="tabular-nums">
-        {offset + 1}–{offset + shown} of {total}
-      </span>
-      <span className="flex items-center gap-1">
-        <button onClick={onPrev} disabled={page === 0} className={btn} aria-label="Previous page">
-          ‹
-        </button>
-        <span className="px-1 tabular-nums">
-          {page + 1}/{pageCount}
-        </span>
-        <button onClick={onNext} disabled={page >= pageCount - 1} className={btn} aria-label="Next page">
-          ›
-        </button>
+    <div className="pager">
+      <span>{offset + 1}–{offset + shown} of {total}</span>
+      <span className="pg">
+        <button onClick={onPrev} disabled={page === 0} aria-label="Previous page">‹</button>
+        <span>{page + 1}/{pageCount}</span>
+        <button onClick={onNext} disabled={page >= pageCount - 1} aria-label="Next page">›</button>
       </span>
     </div>
   );
@@ -171,20 +159,20 @@ function IndividualRows({
 }) {
   const color = tone === 'ok' ? 'var(--color-ok)' : 'var(--color-danger)';
   return (
-    <table className="w-full text-sm">
+    <table>
       <tbody>
         {rows.map((r, i) => (
           <tr
             key={`${r.key}-${offset + i}`}
             onClick={() => onOpenPlayer(r.key)}
-            className="cursor-pointer border-b border-[color:var(--color-border)] hover:bg-[color:var(--color-bg-3)]"
+            className="click"
           >
-            <td className="w-6 px-1 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{offset + i + 1}</td>
-            <td className="px-1 py-0.5">
+            <td className="num" style={{ color: 'var(--ink-3)', width: 24 }}>{offset + i + 1}</td>
+            <td>
               <div className="truncate text-[color:var(--color-text-0)]">{r.name}</div>
-              {r.regiment && <div className="truncate text-2xs text-[color:var(--color-text-2)]">{r.regiment}</div>}
+              {r.regiment && <div className="cap">{r.regiment}</div>}
             </td>
-            <td className="px-1 py-0.5 text-right font-semibold tabular-nums whitespace-nowrap" style={{ color }}>
+            <td className="num" style={{ color, fontWeight: 600, whiteSpace: 'nowrap' }}>
               {r.value}
             </td>
           </tr>
@@ -211,7 +199,7 @@ function TicketRows({
 }) {
   const shareTitle = kind === 'inflicted' ? TICKET_INFLICTED_LABEL : TICKET_RECEIVED_LABEL;
   return (
-    <table className="w-full text-sm">
+    <table>
       <tbody>
         {rows.map((r, i) => (
           <tr
@@ -219,14 +207,14 @@ function TicketRows({
             onClick={onOpenPlayer ? () => onOpenPlayer(r.key) : undefined}
             className={`border-b border-[color:var(--color-border)] ${onOpenPlayer ? 'cursor-pointer hover:bg-[color:var(--color-bg-3)]' : ''}`}
           >
-            <td className="w-6 px-1 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{offset + i + 1}</td>
-            <td className="px-1 py-0.5">
+            <td className="num" style={{ color: 'var(--ink-3)', width: 24 }}>{offset + i + 1}</td>
+            <td>
               <div className="truncate text-[color:var(--color-text-0)]">{r.name}</div>
               {r.regiment && r.regiment !== r.name && (
-                <div className="truncate text-2xs text-[color:var(--color-text-2)]">{r.regiment}</div>
+                <div className="cap">{r.regiment}</div>
               )}
             </td>
-            <td className="px-1 py-0.5 text-right text-[color:var(--color-text-0)]">
+            <td className="num">
               <TicketPct share={r.share} shareTitle={shareTitle} />
             </td>
           </tr>
@@ -264,10 +252,10 @@ function RateRows({
                 {rate.toFixed(2)}
               </span>
             </div>
-            <div className="relative mt-0.5 h-1.5 bg-[color:var(--color-bg-2)]">
-              <div className="absolute left-0 top-0 h-full" style={{ width: `${(rate / max) * 100}%`, backgroundColor: color }} />
+            <div className="stack" style={{ marginTop: 3, height: 6 }}>
+              <i style={{ width: `${(rate / max) * 100}%`, background: color }} />
             </div>
-            <div className="text-2xs text-[color:var(--color-text-2)]">{detail}</div>
+            <div className="note">{detail}</div>
           </div>
         );
       })}
@@ -289,24 +277,19 @@ function DeathCard({
   if (!row) return null;
   const color = tone === 'ok' ? 'var(--color-ok)' : 'var(--color-danger)';
   return (
-    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-2 py-1.5">
-      <div className="text-xs uppercase tracking-wider" style={{ color }}>
-        {title}
-      </div>
-      <button
-        onClick={() => onOpenPlayer(row.victimKey)}
-        className="mt-0.5 block max-w-full truncate text-left text-base text-[color:var(--color-text-0)] hover:text-[color:var(--color-accent)]"
-      >
+    <div className="mapcard">
+      <div className="cap" style={{ color }}>{title}</div>
+      <button onClick={() => onOpenPlayer(row.victimKey)} className="wor-name" style={{ display: 'block', marginTop: 3, textAlign: 'left' }}>
         {row.victim}
       </button>
-      <div className="text-2xs text-[color:var(--color-text-2)]">
+      <div className="cap">
         {row.regiment ? `${row.regiment} · ` : ''}
         {row.ts || '—'}
       </div>
       {row.killer && (
-        <div className="mt-0.5 truncate text-xs text-[color:var(--color-text-1)]">
+        <div className="note" style={{ marginTop: 3 }}>
           by{' '}
-          <button onClick={() => row.killerKey && onOpenPlayer(row.killerKey)} className="hover:text-[color:var(--color-accent)]">
+          <button onClick={() => row.killerKey && onOpenPlayer(row.killerKey)} className="wor-name">
             {row.killer}
           </button>
           {row.cause ? ` · ${row.cause}` : ''}
@@ -341,7 +324,7 @@ function NemesisRows({
           </div>
           <span className="shrink-0 tabular-nums text-[color:var(--color-text-0)]">
             <span className="font-semibold">{r.count}</span>{' '}
-            <span className="text-2xs text-[color:var(--color-text-2)]">{r.count === 1 ? 'kill' : 'kills'}</span>
+            <span className="cap">{r.count === 1 ? 'kill' : 'kills'}</span>
           </span>
         </div>
       ))}
@@ -389,9 +372,9 @@ export function AnalyticsTab({
   if (!hasAny) return <EmptyHint>No killfeed data for round analytics</EmptyHint>;
 
   return (
-    <div className="space-y-3 p-3 font-mono">
+    <div className="pb">
       {(analytics.topKills.length > 0 || analytics.topDeaths.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="cols">
           <PagedSection title="Top kills" rows={analytics.topKills} searchText={individualSearch} searchPlaceholder="player…">
             {(pageRows, offset) => <IndividualRows rows={pageRows} offset={offset} tone="ok" onOpenPlayer={onOpenPlayer} />}
           </PagedSection>
@@ -402,7 +385,7 @@ export function AnalyticsTab({
       )}
 
       {(analytics.ticketInflictedPlayers.length > 0 || analytics.ticketReceivedPlayers.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="cols">
           <PagedSection
             title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted · players</span>}
             rows={analytics.ticketInflictedPlayers}
@@ -423,7 +406,7 @@ export function AnalyticsTab({
       )}
 
       {(analytics.ticketInflictedRegiments.length > 0 || analytics.ticketReceivedRegiments.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="cols">
           <PagedSection
             title={<span className="cursor-help" title={TICKET_INFLICTED_LABEL}>Ticket damage inflicted · regiments</span>}
             rows={analytics.ticketInflictedRegiments}
@@ -444,7 +427,7 @@ export function AnalyticsTab({
       )}
 
       {(analytics.lossRates.length > 0 || analytics.killRates.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="cols">
           <PagedSection title="Highest loss rates" rows={analytics.lossRates} searchText={rateSearch} searchPlaceholder="regiment…">
             {(pageRows, offset, filtered) => <RateRows rows={pageRows} offset={offset} kind="loss" max={rateMax(filtered, 'loss')} />}
           </PagedSection>
@@ -455,7 +438,7 @@ export function AnalyticsTab({
       )}
 
       {(analytics.firstDeath || analytics.lastDeath) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="cols">
           <DeathCard title="First death" row={analytics.firstDeath} tone="ok" onOpenPlayer={onOpenPlayer} />
           <DeathCard title="Last death" row={analytics.lastDeath} tone="danger" onOpenPlayer={onOpenPlayer} />
         </div>

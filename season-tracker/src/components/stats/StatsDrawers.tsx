@@ -5,7 +5,7 @@ import type { PlayerDetail, PlayerRoundRow, PlayerType } from '../../stats/stats
 import { splitPlayerRounds, SPLIT_LABELS } from '../../stats/playerSplits';
 import { StanceBar } from '../ui/StanceBar';
 import { Cell, CauseTable, kdStr, whenOf, teamTone, roleLine } from './drawerPrimitives';
-import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
+import { formatAvgT, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 
 /** Rounds most-recent first (undated rounds sort last). */
 function byRecentFirst(rounds: PlayerRoundRow[]): PlayerRoundRow[] {
@@ -29,24 +29,15 @@ function Pager({
   onPage: (p: number) => void;
 }) {
   if (pageCount <= 1) return null;
-  const btn =
-    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40';
   return (
-    <div className="mt-1.5 flex items-center justify-between text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-      <span className="tabular-nums">
-        {offset + 1}–{offset + shown} of {total}
-      </span>
-      <span className="flex items-center gap-1">
-        <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} className={btn} aria-label="Previous page">
-          ‹
-        </button>
-        <span className="px-1 tabular-nums">
-          {page + 1}/{pageCount}
-        </span>
+    <div className="pager">
+      <span>{offset + 1}–{offset + shown} of {total}</span>
+      <span className="pg">
+        <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} aria-label="Previous page">‹</button>
+        <span>{page + 1}/{pageCount}</span>
         <button
           onClick={() => onPage(Math.min(pageCount - 1, page + 1))}
           disabled={page >= pageCount - 1}
-          className={btn}
           aria-label="Next page"
         >
           ›
@@ -68,11 +59,12 @@ function RoundsPlayedSection({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]
   const pageRows = ordered.slice(offset, offset + PAGE);
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Rounds played</div>
-        <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)] tabular-nums">{ordered.length} total</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span className="cap">Rounds played</span>
+        <span className="rule" />
+        <span className="cap">{ordered.length} total</span>
       </div>
-      <div className="space-y-2">
+      <div className="mapgrid">
         {pageRows.map((r) => (
           <RecentRoundCard key={r.sourceFilename} r={r} onOpen={() => onOpenRound(r.sourceFilename)} />
         ))}
@@ -92,15 +84,15 @@ function RoundCauseLine({ label, data }: { label: string; data: Record<string, n
   const rows = Object.entries(data).sort((a, b) => b[1] - a[1]);
   return (
     <div>
-      <span className="uppercase tracking-wider">{label} </span>
+      <span className="cap">{label} </span>
       {rows.length === 0 ? (
-        <span className="text-[color:var(--color-text-2)]">—</span>
+        <span style={{ color: 'var(--ink-3)' }}>—</span>
       ) : (
         rows.map(([cause, count], i) => (
           <span key={cause}>
             {i > 0 ? ' · ' : ''}
-            <span className="capitalize text-[color:var(--color-text-1)]">{cause}</span>{' '}
-            <span className="text-[color:var(--color-text-1)]">{count}</span>
+            <span style={{ textTransform: 'capitalize', color: 'var(--ink-2)' }}>{cause}</span>{' '}
+            <span style={{ color: 'var(--ink)' }}>{count}</span>
           </span>
         ))
       )}
@@ -115,43 +107,41 @@ function RecentRoundCard({ r, onOpen }: { r: PlayerRoundRow; onOpen: () => void 
     <button
       type="button"
       onClick={onOpen}
-      className="w-full text-left border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-2 hover:bg-[color:var(--color-bg-3)] focus:outline-none focus:border-[color:var(--color-accent)]"
+      className="mapcard"
+      style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm text-[color:var(--color-text-0)]">
-            {r.map}
-            {r.area ? <span className="text-[color:var(--color-text-2)]"> · {r.area}</span> : ''}
-          </div>
-          <div className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{whenOf(r.recordedAt)}</div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span className="wor-name" style={{ fontSize: 13 }}>
+          {r.map}
+          {r.area ? <span style={{ color: 'var(--ink-3)' }}> · {r.area}</span> : ''}
+        </span>
+        <span className="rule" />
         <Pill tone={teamTone(r.team)}>{r.team}</Pill>
       </div>
-      <div className="mt-1 text-xs text-[color:var(--color-text-1)]">
-        {role || <span className="text-[color:var(--color-text-2)]">no roster info</span>}
+      <div className="cap" style={{ marginTop: 3 }}>{whenOf(r.recordedAt)}</div>
+      <div className="note" style={{ marginTop: 5, color: 'var(--ink-2)' }}>
+        {role || <span style={{ color: 'var(--ink-3)' }}>no roster info</span>}
       </div>
-      <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-px">
+      <div className="kpis" style={{ marginTop: 9, border: '1px solid var(--line)' }}>
         <Cell label="Kills" value={r.kills} />
         <Cell label="Deaths" value={r.deaths} />
         <Cell label="K/D" value={kdStr(r.kills, r.deaths)} />
         <Cell label="×Td" value={formatAvgT(r.avgTd)} title={AVG_TD_LABEL} />
         <Cell label="×Tk" value={formatAvgT(r.avgTk)} title={AVG_TK_LABEL} />
       </div>
-      <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs font-mono tabular-nums text-[color:var(--color-text-2)]">
-        <div>
-          <span className="uppercase tracking-wider">deaths </span>
-          <span className="text-[color:var(--color-text-1)]">{r.deathsInForm}</span> {FORMATION_SHORT.in_form} ·{' '}
-          <span className="text-[color:var(--color-text-1)]">{r.deathsSkirm}</span> {FORMATION_SHORT.skirm} ·{' '}
-          <span className="text-[color:var(--color-text-1)]">{r.deathsOob}</span> {FORMATION_SHORT.oob}
-        </div>
-        <div>
-          <span className="uppercase tracking-wider">kills </span>
-          <span className="text-[color:var(--color-text-1)]">{r.killsInForm}</span> {FORMATION_SHORT.in_form} ·{' '}
-          <span className="text-[color:var(--color-text-1)]">{r.killsSkirm}</span> {FORMATION_SHORT.skirm} ·{' '}
-          <span className="text-[color:var(--color-text-1)]">{r.killsOob}</span> {FORMATION_SHORT.oob}
-        </div>
-      </div>
-      <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 text-xs font-mono tabular-nums text-[color:var(--color-text-2)]">
+      <dl className="mapdl">
+        <dt>Deaths</dt>
+        <dd>
+          {r.deathsInForm} {FORMATION_SHORT.in_form} · {r.deathsSkirm} {FORMATION_SHORT.skirm} ·{' '}
+          {r.deathsOob} {FORMATION_SHORT.oob}
+        </dd>
+        <dt>Kills</dt>
+        <dd>
+          {r.killsInForm} {FORMATION_SHORT.in_form} · {r.killsSkirm} {FORMATION_SHORT.skirm} ·{' '}
+          {r.killsOob} {FORMATION_SHORT.oob}
+        </dd>
+      </dl>
+      <div className="note" style={{ marginTop: 7 }}>
         <RoundCauseLine label="killed with" data={r.killsByCause} />
         <RoundCauseLine label="died to" data={r.deathsByCause} />
       </div>
@@ -170,46 +160,48 @@ function PerRoundTable({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOp
   const pageRows = ordered.slice(offset, offset + PAGE);
   return (
     <div>
-      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Per round</div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-[color:var(--color-border)] text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-            <th className="px-2 py-0.5 text-left">When</th>
-            <th className="px-2 py-0.5 text-left">Map · Area</th>
-            <th className="px-2 py-0.5 text-right">K</th>
-            <th className="px-2 py-0.5 text-right">D</th>
-            <th className="px-2 py-0.5 text-right">K/D</th>
-            <th className="px-2 py-0.5 text-right" title="In Formation / Skirmish / Out of Line deaths">
-              {FORMATION_SHORT.in_form}/{FORMATION_SHORT.skirm}/{FORMATION_SHORT.oob}
-            </th>
-            <th className="px-2 py-0.5 text-right" title={AVG_TD_LABEL}>×Td</th>
-            <th className="px-2 py-0.5 text-right" title={AVG_TK_LABEL}>×Tk</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pageRows.map((r, i) => (
-            <tr
-              key={`${r.sourceFilename}-${offset + i}`}
-              onClick={() => onOpenRound(r.sourceFilename)}
-              className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-            >
-              <td className="px-2 py-0.5 text-[color:var(--color-text-2)] whitespace-nowrap">{whenOf(r.recordedAt)}</td>
-              <td className="px-2 py-0.5 text-[color:var(--color-text-1)]">
-                {r.map}
-                {r.area ? ` · ${r.area}` : ''}
-              </td>
-              <td className="px-2 py-0.5 text-right tabular-nums">{r.kills}</td>
-              <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">{r.deaths}</td>
-              <td className="px-2 py-0.5 text-right tabular-nums">{kdStr(r.kills, r.deaths)}</td>
-              <td className="px-2 py-0.5 text-right tabular-nums text-[color:var(--color-text-2)]">
-                {r.deathsInForm}/{r.deathsSkirm}/{r.deathsOob}
-              </td>
-              <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTd)}</td>
-              <td className="px-2 py-0.5 text-right tabular-nums">{formatAvgT(r.avgTk)}</td>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span className="cap">Per round</span>
+        <span className="rule" />
+        <span className="cap">click a round for its scoreboard</span>
+      </div>
+      <div className="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Map · Area</th>
+              <th className="num">K</th>
+              <th className="num">D</th>
+              <th className="num">K/D</th>
+              <th className="num" title="In Formation / Skirmish / Out of Line deaths">
+                {FORMATION_SHORT.in_form}/{FORMATION_SHORT.skirm}/{FORMATION_SHORT.oob}
+              </th>
+              <th className="num" title={AVG_TD_LABEL}>×Td</th>
+              <th className="num" title={AVG_TK_LABEL}>×Tk</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pageRows.map((r, i) => (
+              <tr key={`${r.sourceFilename}-${offset + i}`} className="click" onClick={() => onOpenRound(r.sourceFilename)}>
+                <td style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{whenOf(r.recordedAt)}</td>
+                <td className="wor-name">
+                  {r.map}
+                  {r.area ? <span style={{ color: 'var(--ink-3)' }}> · {r.area}</span> : ''}
+                </td>
+                <td className="num">{r.kills}</td>
+                <td className="num" style={{ color: 'var(--ink-2)' }}>{r.deaths}</td>
+                <td className="num">{kdStr(r.kills, r.deaths)}</td>
+                <td className="num" style={{ color: 'var(--ink-2)' }}>
+                  {r.deathsInForm}/{r.deathsSkirm}/{r.deathsOob}
+                </td>
+                <td className="num" style={{ color: 'var(--ink-2)' }}>{formatAvgT(r.avgTd)}</td>
+                <td className="num" style={{ color: 'var(--ink-2)' }}>{formatAvgT(r.avgTk)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <Pager page={current} pageCount={pageCount} offset={offset} shown={pageRows.length} total={ordered.length} onPage={setPage} />
     </div>
   );
@@ -234,35 +226,34 @@ function SplitsSection({ rounds }: { rounds: PlayerRoundRow[] }) {
   if (shown.length === 0) return null;
   return (
     <div>
-      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-        Splits
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+        <span className="cap">Splits</span>
+        <span className="rule" />
+        <span className="cap">the same breakdowns, sliced by context</span>
       </div>
-      <div className="space-y-2">
-        {shown.map(({ label, slice }) => (
-          <details key={label} className="border border-[color:var(--color-border)]">
-            <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 bg-[color:var(--color-bg-2)] px-2 py-1 text-xs">
-              <span className="uppercase tracking-wider text-[color:var(--color-text-0)]">{label}</span>
-              <span className="tabular-nums text-[color:var(--color-text-2)]">
-                {slice.rounds}rd · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)} K/D
-                {' · '}
-                <span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
-                {' · '}
-                <span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
-              </span>
-            </summary>
-            <div className="space-y-3 p-2">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <StanceBar counts={slice.casualtiesByFormation} label="Where he was caught" />
-                <StanceBar counts={slice.killsByFormation} label="Where his victims were caught" />
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <CauseTable title="Killed with" data={slice.killsByCause} />
-                <CauseTable title="Died to" data={slice.casualtiesByCause} />
-              </div>
+      {shown.map(({ label, slice }) => (
+        <details key={label} className="panel" style={{ marginBottom: 9 }}>
+          <summary className="ph area-h" style={{ listStyle: 'none' }}>
+            <h2>{label}</h2>
+            <span className="rule" />
+            <span className="meta">
+              {slice.rounds}rd · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)} K/D ·{' '}
+              <span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span> ·{' '}
+              <span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
+            </span>
+          </summary>
+          <div className="pb">
+            <div className="cols">
+              <div className="col"><StanceBar counts={slice.casualtiesByFormation} label="Where they were caught" /></div>
+              <div className="col"><StanceBar counts={slice.killsByFormation} label="Where their victims were caught" /></div>
             </div>
-          </details>
-        ))}
-      </div>
+            <div className="cols" style={{ marginTop: 13 }}>
+              <div className="col"><CauseTable title="Killed with" data={slice.killsByCause} /></div>
+              <div className="col"><CauseTable title="Died to" data={slice.casualtiesByCause} /></div>
+            </div>
+          </div>
+        </details>
+      ))}
     </div>
   );
 }
@@ -291,20 +282,15 @@ export function PlayerDrawer({
   onType: (t: PlayerType) => void;
 }) {
   const toggle = (
-    <div className="flex flex-wrap items-center gap-1 px-3 pt-3 font-mono text-xs uppercase tracking-wider">
-      <span className="text-[color:var(--color-text-2)]">Arm</span>
-      {ARM_LABELS.map(({ key, label }) => (
-        <button
-          key={key}
-          onClick={() => onType(key)}
-          aria-pressed={type === key}
-          className={`border border-[color:var(--color-border)] px-2 py-0.5 ${
-            type === key ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="ctl">
+      <span className="cap">Branch</span>
+      <div className="seg" role="group" aria-label="Arm of service">
+        {ARM_LABELS.map(({ key, label }) => (
+          <button key={key} onClick={() => onType(key)} aria-pressed={type === key}>{label}</button>
+        ))}
+      </div>
+      <span className="rule" />
+      <span className="meta">from the in-game regiment</span>
     </div>
   );
   return (
@@ -321,13 +307,14 @@ export function PlayerDrawer({
           {type === 'all' ? 'No data' : `No ${ARM_LABELS.find((a) => a.key === type)?.label.toLowerCase()} rounds for this player`}
         </EmptyHint>
       ) : (
-        <div className="space-y-3 p-3 font-mono">
+        <div className="pb">
           {detail.steamId && (
             <a
               href={`https://steamcommunity.com/profiles/${detail.steamId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-[color:var(--color-text-2)] hover:text-[color:var(--color-accent)]"
+              className="gh"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 11 }}
               title="Open Steam profile in a new tab"
             >
               <ExternalLink size={11} /> Steam profile
@@ -335,13 +322,13 @@ export function PlayerDrawer({
           )}
 
           {detail.aliases.length > 0 && (
-            <div className="text-xs text-[color:var(--color-text-2)]">
+            <p className="note" style={{ marginBottom: 11 }}>
               also known as: {detail.aliases.slice(0, 4).join(', ')}
               {detail.aliases.length > 4 && ' …'}
-            </div>
+            </p>
           )}
 
-          <div className="grid grid-cols-3 gap-px">
+          <div className="kpis" style={{ border: '1px solid var(--line)' }}>
             <Cell label="Rounds" value={detail.rounds} />
             <Cell label="Kills" value={detail.kills} />
             <Cell label="Deaths" value={detail.deaths} />
@@ -350,42 +337,38 @@ export function PlayerDrawer({
             <Cell label="×Tk" value={formatAvgT(detail.avgTk)} title={AVG_TK_LABEL} />
           </div>
 
-          <div>
-            <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Deaths by stance</div>
-            <div className="grid grid-cols-3 gap-px">
-              <Cell label={FORMATION_LABEL.in_form} value={detail.deathsInForm} />
-              <Cell label={FORMATION_LABEL.skirm} value={detail.deathsSkirm} />
-              <Cell label={FORMATION_LABEL.oob} value={detail.deathsOob} />
+          <div className="cols" style={{ marginTop: 18 }}>
+            <div className="col">
+              <StanceBar
+                counts={{ in_form: detail.deathsInForm, skirm: detail.deathsSkirm, oob: detail.deathsOob }}
+                label="Deaths by stance"
+              />
+            </div>
+            <div className="col">
+              <StanceBar
+                counts={{ in_form: detail.killsInForm, skirm: detail.killsSkirm, oob: detail.killsOob }}
+                label="Kills by victim stance"
+              />
             </div>
           </div>
 
-          <div>
-            <div
-              className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)] cursor-help"
-              title="Kills bucketed by the formation each victim died in"
-            >
-              Kills by stance
-            </div>
-            <div className="grid grid-cols-3 gap-px">
-              <Cell label={FORMATION_LABEL.in_form} value={detail.killsInForm} />
-              <Cell label={FORMATION_LABEL.skirm} value={detail.killsSkirm} />
-              <Cell label={FORMATION_LABEL.oob} value={detail.killsOob} />
-            </div>
+          <div className="cols" style={{ marginTop: 18 }}>
+            <div className="col"><CauseTable title="Killed with" data={detail.killsByCause} /></div>
+            <div className="col"><CauseTable title="Died to" data={detail.deathsByCause} /></div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <CauseTable title="Killed with" data={detail.killsByCause} />
-            <CauseTable title="Died to" data={detail.deathsByCause} />
-          </div>
-
-          <SplitsSection rounds={detail.perRound} />
+          <div style={{ marginTop: 18 }}><SplitsSection rounds={detail.perRound} /></div>
 
           {detail.perRound.length > 0 && (
-            <RoundsPlayedSection key={`rp-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
+            <div style={{ marginTop: 18 }}>
+              <RoundsPlayedSection key={`rp-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
+            </div>
           )}
 
           {detail.perRound.length > 0 && (
-            <PerRoundTable key={`pr-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
+            <div style={{ marginTop: 18 }}>
+              <PerRoundTable key={`pr-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
+            </div>
           )}
         </div>
       )}

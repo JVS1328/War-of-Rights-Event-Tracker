@@ -55,12 +55,12 @@ export function SummaryTab({
 
   // Per-side casualty rows: total, then each stance as a share of that side's total.
   const statRow = (label: string, usa: number, csa: number, usaTotal: number | null, csaTotal: number | null) => (
-    <tr key={label} className="border-t border-[color:var(--color-border)]">
-      <td className="px-3 py-1 text-[color:var(--color-text-1)]">{label}</td>
-      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-usa)]">{usa}</td>
-      <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(usa, usaTotal)}</td>
-      <td className="px-3 py-1 text-right font-mono tabular-nums text-[color:var(--color-csa)]">{csa}</td>
-      <td className="px-2 py-1 text-right font-mono tabular-nums text-[color:var(--color-text-2)]">{sharePct(csa, csaTotal)}</td>
+    <tr key={label}>
+      <td style={{ textTransform: 'capitalize' }}>{label}</td>
+      <td className="num f-usa">{usa}</td>
+      <td className="num" style={{ color: 'var(--ink-3)' }}>{sharePct(usa, usaTotal)}</td>
+      <td className="num f-csa">{csa}</td>
+      <td className="num" style={{ color: 'var(--ink-3)' }}>{sharePct(csa, csaTotal)}</td>
     </tr>
   );
 
@@ -74,9 +74,9 @@ export function SummaryTab({
   const csaWeaponTotal = Object.values(meta.deathsByWeapon.CSA).reduce((n, v) => n + v, 0);
 
   return (
-    <div className="text-base font-mono">
+    <div>
       {canBind && buildAutofill && weeks.length > 0 && (
-        <div className="p-3 border-b border-[color:var(--color-border)]">
+        <div className="pb">
           <BindPanel
             sb={sb}
             stored={stored}
@@ -93,31 +93,31 @@ export function SummaryTab({
 
       <MatchupHead sb={sb} />
 
-      <section className="p-4 border-b border-[color:var(--color-border)] grid grid-cols-3 gap-px bg-[color:var(--color-border)]">
-        <Cell label="map" value={meta.map} />
-        <Cell label="mode" value={meta.mode} />
-        <Cell label="area" value={meta.area ?? '—'} />
-        <Cell label="winner" value={meta.winner ?? '—'} />
-        <Cell label="duration" value={fmtDuration(roundDurationSeconds(sb))} />
-        <Cell label="round ended" value={whenOf(sb.recordedAt)} />
-        <Cell label="pop @ start" value={String(meta.popRoundStart ?? '—')} />
-        <Cell label="pop @ peak" value={String(meta.popRoundPeak ?? '—')} />
-        <Cell label="pop @ end" value={String(meta.popRoundEnd ?? '—')} />
-        <Cell label="unique players" value={String(meta.popRoundMax ?? '—')} />
-        <Cell label="morale USA" value={meta.moraleUsa ?? '—'} />
-        <Cell label="morale CSA" value={meta.moraleCsa ?? '—'} />
+      <section className="kpis" style={{ borderTop: '1px solid var(--line)' }}>
+        <Cell label="Map" value={meta.map} />
+        <Cell label="Mode" value={meta.mode} />
+        <Cell label="Area" value={meta.area ?? '—'} />
+        <Cell label="Winner" value={meta.winner ?? '—'} />
+        <Cell label="Duration" value={fmtDuration(roundDurationSeconds(sb))} />
+        <Cell label="Round ended" value={whenOf(sb.recordedAt)} />
+        <Cell label="Pop @ start" value={String(meta.popRoundStart ?? '—')} />
+        <Cell label="Pop @ peak" value={String(meta.popRoundPeak ?? '—')} />
+        <Cell label="Pop @ end" value={String(meta.popRoundEnd ?? '—')} />
+        <Cell label="Unique players" value={String(meta.popRoundMax ?? '—')} />
+        <Cell label="Morale USA" value={meta.moraleUsa ?? '—'} />
+        <Cell label="Morale CSA" value={meta.moraleCsa ?? '—'} />
       </section>
 
-      <section className="p-4 border-b border-[color:var(--color-border)]">
-        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">casualties</div>
-        <table className="w-full">
-          <thead className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+      <section className="pb">
+        <span className="cap">Casualties</span>
+        <table style={{ marginTop: 7 }}>
+          <thead>
             <tr>
-              <th className="text-left px-3 py-1"></th>
-              <th className="text-right px-3 py-1">USA</th>
-              <th className="text-right px-2 py-1">%</th>
-              <th className="text-right px-3 py-1">CSA</th>
-              <th className="text-right px-2 py-1">%</th>
+              <th />
+              <th className="num">USA</th>
+              <th className="num">%</th>
+              <th className="num">CSA</th>
+              <th className="num">%</th>
             </tr>
           </thead>
           <tbody>
@@ -129,19 +129,19 @@ export function SummaryTab({
         </table>
       </section>
 
-      <section className="p-4">
-        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] mb-2">deaths by weapon</div>
+      <section className="pb">
+        <span className="cap">Deaths by weapon</span>
         {weaponKeys.length === 0 ? (
-          <div className="text-xs text-[color:var(--color-text-2)] py-2">No weapon data</div>
+          <p className="note" style={{ marginTop: 7 }}>No weapon data.</p>
         ) : (
-          <table className="w-full">
-            <thead className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+          <table style={{ marginTop: 7 }}>
+            <thead>
               <tr>
-                <th className="text-left px-3 py-1">weapon</th>
-                <th className="text-right px-3 py-1">USA died</th>
-                <th className="text-right px-2 py-1">%</th>
-                <th className="text-right px-3 py-1">CSA died</th>
-                <th className="text-right px-2 py-1">%</th>
+                <th>Weapon</th>
+                <th className="num">USA died</th>
+                <th className="num">%</th>
+                <th className="num">CSA died</th>
+                <th className="num">%</th>
               </tr>
             </thead>
             <tbody>
@@ -171,7 +171,7 @@ function MatchupHead({ sb }: { sb: Scoreboard }) {
 
   return (
     <>
-      <section className="border-b border-[color:var(--color-border)]">
+      <section style={{ borderBottom: '1px solid var(--line)' }}>
         <Scoreline
           winner={score.winner === 'USA' ? 'a' : score.winner === 'CSA' ? 'b' : null}
           label={score.winner ? 'Final' : 'Draw'}
@@ -192,37 +192,35 @@ function MatchupHead({ sb }: { sb: Scoreboard }) {
         />
       </section>
 
-      <section className="border-b border-[color:var(--color-border)]">
-        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-          <h3 className="text-xs uppercase tracking-wider text-[color:var(--color-text-1)]">
-            How the round was won
-          </h3>
-          <span className="h-px flex-1 bg-[color:var(--color-border)]" />
-          <span className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-            one line per metric
-          </span>
+      <section style={{ borderBottom: '1px solid var(--line)' }}>
+        <div className="ph">
+          <h2>How the round was won</h2>
+          <span className="rule" />
+          <span className="meta">one line per metric</span>
         </div>
         <Spine rows={rows} aSide="usa" bSide="csa" />
       </section>
 
-      <section className="grid grid-cols-1 gap-4 border-b border-[color:var(--color-border)] p-4 sm:grid-cols-2">
-        <StanceBar counts={toCounts(cas.USA)} label="USA — where the losses happened" />
-        <StanceBar counts={toCounts(cas.CSA)} label="CSA — where the losses happened" />
+      <section className="pb" style={{ borderBottom: '1px solid var(--line)' }}>
+        <div className="cols">
+          <div className="col"><StanceBar counts={toCounts(cas.USA)} label="USA — where the losses happened" /></div>
+          <div className="col"><StanceBar counts={toCounts(cas.CSA)} label="CSA — where the losses happened" /></div>
+        </div>
       </section>
 
       {keys.length > 0 && (
-        <section className="border-b border-[color:var(--color-border)]">
+        <section style={{ borderBottom: '1px solid var(--line)' }}>
           {keys.map((k) => (
-            <div key={k.title} className="border-t border-[color:var(--color-border)] px-4 py-3 first:border-t-0">
-              <div className="flex items-center gap-2">
+            <div key={k.title} className="pb" style={{ borderTop: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {k.side ? (
                   <Pill tone={k.side === 'USA' ? 'usa' : 'csa'}>{k.side}</Pill>
                 ) : (
                   <Pill tone="neutral">Round</Pill>
                 )}
-                <strong className="text-sm text-[color:var(--color-text-0)]">{k.title}</strong>
+                <strong>{k.title}</strong>
               </div>
-              <p className="mt-1.5 text-xs leading-relaxed text-[color:var(--color-text-1)]">{k.body}</p>
+              <p className="note" style={{ marginTop: 6 }}>{k.body}</p>
             </div>
           ))}
         </section>
@@ -262,60 +260,51 @@ function BindPanel({
   const selWeek = weeks.find((w) => w.id === weekId);
   const flipped = !!(round === 1 ? selWeek?.round1Flipped : selWeek?.round2Flipped);
   const af = buildAutofill(sb, flipped);
-  const selectCls =
-    'bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]';
   return (
-    <div className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] p-2 space-y-2">
-      <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-        Bind to event round → auto-fill standings
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <select value={weekId} onChange={(e) => setWeekId(e.target.value)} className={selectCls}>
-          <option value="">Select week…</option>
+    <div className="panel" style={{ marginBottom: 0 }}>
+      <div className="ctl">
+        <span className="cap">Bind to a round</span>
+        <select value={weekId} onChange={(e) => setWeekId(e.target.value)}>
+          <option value="">Select a night…</option>
           {weeks.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
+            <option key={w.id} value={w.id}>{w.name}</option>
           ))}
         </select>
-        <select value={round} onChange={(e) => setRound(Number(e.target.value) === 2 ? 2 : 1)} className={selectCls}>
+        <select value={round} onChange={(e) => setRound(Number(e.target.value) === 2 ? 2 : 1)}>
           <option value={1}>Round 1</option>
           <option value={2}>Round 2</option>
         </select>
-        <button
-          disabled={!weekId}
-          onClick={() => weekId && onApply?.(weekId, round, af)}
-          className="border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-2 py-0.5 hover:bg-[color:var(--color-accent-soft)] disabled:opacity-40"
-        >
+        <button className="gh live" disabled={!weekId} onClick={() => weekId && onApply?.(weekId, round, af)}>
           Apply auto-fill
         </button>
+        <span className="rule" />
+        <span className="meta">fills the night's result from this scoreboard</span>
       </div>
-      <div className="text-xs text-[color:var(--color-text-1)] space-y-0.5">
-        <div>
-          Map:{' '}
-          {af.validMap ? (
-            af.area
-          ) : (
-            <span className="text-[color:var(--color-warn)]">{af.areaRaw ?? '—'} — unknown area, set manually</span>
-          )}
-        </div>
-        <div>
-          Sides: A = {af.sideAFaction} · B = {af.sideBFaction}
-          {af.flipped && <span className="text-[color:var(--color-warn)]"> (round flipped)</span>}
-        </div>
-        <div>
-          Winner: {af.winner ?? 'Draw'} {af.winnerSide ? `→ side ${af.winnerSide}` : ''}
-        </div>
-        <div>
-          Casualties: side A {af.casualtiesA} · side B {af.casualtiesB}
-        </div>
-      </div>
-      {stored?.binding && (
-        <div className="text-xs text-[color:var(--color-ok)]">
-          Currently bound to {weeks.find((w) => w.id === stored.binding!.weekId)?.name ?? 'a week'} · Round{' '}
-          {stored.binding.round}
-        </div>
-      )}
+      <dl className="mapdl" style={{ padding: 13, margin: 0 }}>
+        <dt>Map</dt>
+        <dd>
+          {af.validMap
+            ? af.area
+            : <span style={{ color: 'var(--live)' }}>{af.areaRaw ?? '—'} — unknown area, set it by hand</span>}
+        </dd>
+        <dt>Sides</dt>
+        <dd>
+          A = {af.sideAFaction} · B = {af.sideBFaction}
+          {af.flipped && <span style={{ color: 'var(--live)' }}> (round flipped)</span>}
+        </dd>
+        <dt>Winner</dt>
+        <dd>{af.winner ?? 'Draw'} {af.winnerSide ? `→ side ${af.winnerSide}` : ''}</dd>
+        <dt>Casualties</dt>
+        <dd>side A {af.casualtiesA} · side B {af.casualtiesB}</dd>
+        {stored?.binding && (
+          <>
+            <dt>Bound</dt>
+            <dd>
+              {weeks.find((w) => w.id === stored.binding!.weekId)?.name ?? 'a night'} · Round {stored.binding.round}
+            </dd>
+          </>
+        )}
+      </dl>
     </div>
   );
 }

@@ -44,7 +44,7 @@ export default function SharedStatsView({
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border border-border-default bg-bg-card p-4 rounded-lg">
           <div className="flex items-center gap-3 min-w-0">
-            <BarChart3 className="w-6 h-6 text-indigo-500 shrink-0" />
+            <BarChart3 className="w-6 h-6 c-accent shrink-0" />
             <div className="min-w-0">
               <h1 className="text-lg font-semibold truncate">{title}</h1>
               <p className="text-xs text-text-secondary mt-0.5">
@@ -59,7 +59,7 @@ export default function SharedStatsView({
             </span>
             <a
               href={window.location.origin + window.location.pathname}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
+              className="gh live"
             >
               <ExternalLink className="w-4 h-4" />
               <span className="hidden sm:inline">Open Season Tracker</span>

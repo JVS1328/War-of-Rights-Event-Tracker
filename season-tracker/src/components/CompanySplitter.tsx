@@ -67,7 +67,7 @@ export function CompanySplitter() {
             onChange={(e) => setText(e.target.value)}
             placeholder={PLACEHOLDER}
             rows={14}
-            className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none font-mono text-sm"
+            className="fld-i"
           />
           <div className="flex items-center gap-2">
             <span className="text-xs text-text-secondary">
@@ -116,7 +116,7 @@ export function CompanySplitter() {
               <CompanyList companies={companies} />
               <button
                 onClick={copySplit}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition"
+                className="gh live"
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? 'Copied' : 'Copy split'}
