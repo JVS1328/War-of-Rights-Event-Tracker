@@ -35,46 +35,35 @@ export function Scoreline({
   const split = aTotal + bTotal > 0 ? (aTotal / (aTotal + bTotal)) * 100 : 50;
   return (
     <div>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-6">
-        <Side side={a} lost={winner === 'b'} align="start" />
-        <div className="flex flex-col items-center gap-1.5 text-[color:var(--color-text-2)]">
-          <span className="h-5 w-px bg-[color:var(--color-border-strong)]" />
-          <span className="text-2xs uppercase tracking-widest">{label}</span>
-          <span className="h-5 w-px bg-[color:var(--color-border-strong)]" />
+      <div className="score">
+        <Side side={a} lost={winner === 'b'} />
+        <div className="mid-col">
+          <span className="v" />
+          <span className="cap">{label}</span>
+          <span className="v" />
         </div>
-        <Side side={b} lost={winner === 'a'} align="end" />
+        <Side side={b} lost={winner === 'a'} align="r" />
       </div>
       {/* The stripe shows how the total splits between two differently-coloured
           sides. In a neutral comparison both hues are the same ink, so it would
           read as one flat bar — drop it rather than draw a meaningless one. */}
       {a.hue !== b.hue && (
-        <div className="flex h-1">
-          <span style={{ width: `${split}%`, background: a.hue }} />
-          <span className="flex-1" style={{ background: b.hue }} />
+        <div className="stripebar">
+          <i style={{ width: `${split}%`, background: a.hue }} />
+          <i style={{ flex: 1, background: b.hue }} />
         </div>
       )}
     </div>
   );
 }
 
-function Side({ side, lost, align }: { side: ScorelineSide; lost: boolean; align: 'start' | 'end' }) {
+function Side({ side, lost, align }: { side: ScorelineSide; lost: boolean; align?: 'r' }) {
   return (
-    <div className={`flex min-w-0 flex-col gap-1.5 ${align === 'end' ? 'items-end text-right' : 'items-start'}`}>
+    <div className={`sd${align === 'r' ? ' r' : ''}${lost ? ' lose' : ''}`}>
       {side.chip}
-      <span
-        className={`wor-name truncate font-mono text-base ${
-          lost ? 'text-[color:var(--color-text-2)]' : 'text-[color:var(--color-text-0)]'
-        }`}
-      >
-        {side.name}
-      </span>
-      <span
-        className="font-mono text-5xl leading-none tabular-nums"
-        style={{ color: lost ? 'var(--color-text-2)' : side.hue, letterSpacing: '-0.04em' }}
-      >
-        {side.value}
-      </span>
-      <span className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{side.sub}</span>
+      <span className="who wor-name">{side.name}</span>
+      <span className="big" style={{ color: lost ? 'var(--ink-3)' : side.hue }}>{side.value}</span>
+      <span className="sub">{side.sub}</span>
     </div>
   );
 }

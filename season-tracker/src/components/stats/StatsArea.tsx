@@ -442,24 +442,18 @@ export function StatsPanel({
 
       {tab === 'players' && (
         <>
-          <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
-            <span className="text-[color:var(--color-text-2)]">Arm</span>
-            {ARM_FILTERS.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setTypeFilter(key)}
-                aria-pressed={typeFilter === key}
-                className={`border border-[color:var(--color-border)] px-2 py-1 ${
-                  typeFilter === key
-                    ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]'
-                    : 'text-[color:var(--color-text-2)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 18 }}>
+            <span className="cap">Arm</span>
+            <div className="seg" role="group" aria-label="Arm of service">
+              {ARM_FILTERS.map(({ key, label }) => (
+                <button key={key} onClick={() => setTypeFilter(key)} aria-pressed={typeFilter === key}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="rule" />
             <span
-              className="normal-case tracking-normal text-xs text-[color:var(--color-text-2)]"
+              className="meta"
               title={`Read from the in-game regiment each round. Cavalry: ${CAVALRY_REGIMENTS.join(', ')}.`}
             >
               from the in-game regiment

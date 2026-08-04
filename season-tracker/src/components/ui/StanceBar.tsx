@@ -2,9 +2,9 @@ import { FORMATION_LABEL, TICKET_WEIGHT } from '../../stats/labels';
 import type { FormationCounts } from '../../stats/statsEngine';
 
 const STOPS = [
-  { key: 'in_form', hue: 'var(--color-stance-1)' },
-  { key: 'skirm', hue: 'var(--color-stance-2)' },
-  { key: 'oob', hue: 'var(--color-stance-3)' },
+  { key: 'in_form', hue: 'var(--st1)' },
+  { key: 'skirm', hue: 'var(--st2)' },
+  { key: 'oob', hue: 'var(--st3)' },
 ] as const;
 
 /**
@@ -19,20 +19,20 @@ export function StanceBar({ counts, label }: { counts: FormationCounts; label: s
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">{label}</div>
-      <div className="mt-2 flex h-2.5 bg-[color:var(--color-bg-2)]">
+      <div className="cap">{label}</div>
+      <div className="stack" style={{ marginTop: 7 }}>
         {total > 0 &&
           STOPS.map(({ key, hue }) => (
-            <span key={key} style={{ width: `${(counts[key] / total) * 100}%`, background: hue }} />
+            <i key={key} style={{ width: `${(counts[key] / total) * 100}%`, background: hue }} />
           ))}
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-2xs text-[color:var(--color-text-1)]">
+      <div className="leg">
         {STOPS.map(({ key, hue }) => (
-          <span key={key} className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2" style={{ background: hue }} />
+          <span key={key}>
+            <i style={{ background: hue }} />
             {FORMATION_LABEL[key]} · {TICKET_WEIGHT[key]} tkt
-            <span className="tabular-nums text-[color:var(--color-text-0)]">{counts[key]}</span>
-            <span className="tabular-nums text-[color:var(--color-text-2)]">{pct(counts[key])}%</span>
+            <b style={{ color: 'var(--ink)', fontWeight: 400 }}>{counts[key]}</b>
+            <span style={{ color: 'var(--ink-3)' }}>{pct(counts[key])}%</span>
           </span>
         ))}
       </div>

@@ -18,11 +18,6 @@ export interface Column<T> {
   className?: string;
 }
 
-const ALIGN: Record<NonNullable<Column<unknown>['align']>, string> = {
-  left: 'text-left',
-  right: 'text-right',
-  center: 'text-center',
-};
 
 /**
  * Compact, sortable, optionally searchable + expandable data table in the
@@ -111,22 +106,24 @@ export function DataTable<T>({
   return (
     <div className={className}>
       {searchValue && (
-        <div className="flex items-center gap-2 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5">
-          <Search size={12} className="text-[color:var(--color-text-2)]" />
+        <div className="ctl">
+          <Search size={12} style={{ color: 'var(--ink-3)' }} />
           <input
+            type="search"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setPage(0);
             }}
             placeholder={searchPlaceholder}
-            className="w-full bg-transparent text-sm font-mono text-[color:var(--color-text-0)] placeholder:text-[color:var(--color-text-2)] outline-none"
+            className="fld-i"
+            style={{ flex: '0 1 220px' }}
           />
         </div>
       )}
-      <table className="w-full border-collapse font-mono text-sm">
+      <table className="ledger">
         <thead>
-          <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)]">
+          <tr>
             {columns.map((col) => {
               const active = sortKey === col.key;
               const canSort = col.sortable && col.sortValue;
@@ -134,9 +131,8 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   onClick={() => onHeaderClick(col)}
-                  className={`px-2 py-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)] ${
-                    ALIGN[col.align ?? 'left']
-                  } ${canSort ? 'cursor-pointer select-none hover:text-[color:var(--color-text-0)]' : ''}`}
+                  className={`${col.align === 'right' ? 'num' : ''}${canSort ? ' s' : ''}`}
+                  style={canSort ? { cursor: 'pointer', userSelect: 'none' } : undefined}
                 >
                   {col.header}
                   {active && <span className="ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>}
@@ -160,24 +156,20 @@ export function DataTable<T>({
               <FragmentRow key={key}>
                 <tr
                   onClick={renderExpanded ? () => toggleExpand(key) : undefined}
-                  className={`border-b border-[color:var(--color-border)] ${
-                    renderExpanded ? 'cursor-pointer hover:bg-[color:var(--color-bg-3)]' : ''
-                  }`}
+                  className={renderExpanded ? 'click' : undefined}
                 >
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-2 py-1 text-[color:var(--color-text-0)] tabular-nums ${
-                        ALIGN[col.align ?? 'left']
-                      } ${col.className ?? ''}`}
+                      className={`${col.align === 'right' ? 'num' : ''} ${col.className ?? ''}`.trim()}
                     >
                       {col.render(row)}
                     </td>
                   ))}
                 </tr>
                 {renderExpanded && isExpanded && (
-                  <tr className="bg-[color:var(--color-bg-2)]">
-                    <td colSpan={columns.length} className="px-2 py-2">
+                  <tr style={{ background: 'var(--raised)' }}>
+                    <td colSpan={columns.length}>
                       {renderExpanded(row)}
                     </td>
                   </tr>
@@ -188,27 +180,27 @@ export function DataTable<T>({
         </tbody>
       </table>
       {pageSize && pageCount > 1 && (
-        <div className="flex items-center justify-between border-t border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-          <span className="tabular-nums">
+        <div className="ctl" style={{ borderBottom: 0, borderTop: '1px solid var(--line)' }}>
+          <span className="meta">
             {currentPage * pageSize + 1}–{currentPage * pageSize + pageRows.length} of {sorted.length}
           </span>
-          <span className="flex items-center gap-1">
+          <span className="rule" /><span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
               onClick={() => setPage((p) => Math.max(0, Math.min(p, pageCount - 1) - 1))}
               disabled={currentPage === 0}
               aria-label="Previous page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="gh"
             >
               ‹
             </button>
-            <span className="px-1 tabular-nums">
+            <span className="meta">
               {currentPage + 1}/{pageCount}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(pageCount - 1, Math.min(p, pageCount - 1) + 1))}
               disabled={currentPage >= pageCount - 1}
               aria-label="Next page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="gh"
             >
               ›
             </button>

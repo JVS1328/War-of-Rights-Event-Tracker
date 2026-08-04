@@ -1,12 +1,11 @@
-import type { ReactNode } from 'react';
 import { spineRow, isTextRow, type SpineRow, type SpineTextRow } from './spineModel';
 
 export type SpineSide = 'usa' | 'csa' | 'neutral';
 
 const HUE: Record<SpineSide, string> = {
-  usa: 'var(--color-usa)',
-  csa: 'var(--color-csa)',
-  neutral: 'var(--color-text-0)',
+  usa: 'var(--union)',
+  csa: 'var(--reb)',
+  neutral: 'var(--ink)',
 };
 
 /**
@@ -27,83 +26,42 @@ export function Spine({
   bSide?: SpineSide;
 }) {
   return (
-    <div className="border-t border-[color:var(--color-border)]">
+    <div className="spine">
       {rows.map((row) => {
         if (isTextRow(row)) {
           return (
-            <Row key={row.label} label={row.label} sub={row.sub}>
-              <div className="text-right text-xs text-[color:var(--color-text-1)]">{row.aText}</div>
+            <div className="sr txt" key={row.label}>
               <div />
-              <div className="text-left text-xs text-[color:var(--color-text-1)]">{row.bText}</div>
-            </Row>
+              <div className="tv l">{row.aText}</div>
+              <div className="sl">
+                <div className="h">{row.label}</div>
+                {row.sub && <div className="u">{row.sub}</div>}
+              </div>
+              <div className="tv r">{row.bText}</div>
+              <div />
+            </div>
           );
         }
         const v = spineRow(row);
         const aOn = v.winner !== 'b';
         const bOn = v.winner !== 'a';
         return (
-          <Row key={row.label} label={v.label} sub={v.sub}>
-            <Value text={v.aText} on={aOn} align="right" />
-            <Track width={v.aWidth} hue={HUE[aSide]} on={aOn} side="left" />
-            <Track width={v.bWidth} hue={HUE[bSide]} on={bOn} side="right" />
-            <Value text={v.bText} on={bOn} align="left" />
-          </Row>
+          <div className="sr" key={v.label}>
+            <div className={`sv l${aOn ? '' : ' off'}`}>{v.aText}</div>
+            <span className="trk l">
+              <i style={{ width: `${v.aWidth}%`, background: HUE[aSide], opacity: aOn ? 1 : 0.28 }} />
+            </span>
+            <div className="sl">
+              <div className="h">{v.label}</div>
+              {v.sub && <div className="u">{v.sub}</div>}
+            </div>
+            <span className="trk">
+              <i style={{ width: `${v.bWidth}%`, background: HUE[bSide], opacity: bOn ? 1 : 0.28 }} />
+            </span>
+            <div className={`sv r${bOn ? '' : ' off'}`}>{v.bText}</div>
+          </div>
         );
       })}
     </div>
-  );
-}
-
-/** Grid shell: value · track · label · track · value, with a centre hairline. */
-function Row({ label, sub, children }: { label: string; sub?: string; children: ReactNode }) {
-  const kids = Array.isArray(children) ? children : [children];
-  const [a, aTrack, bTrack, b] = kids.length === 4 ? kids : [kids[0], null, kids[2], null];
-  return (
-    <div className="relative grid grid-cols-[56px_1fr_auto_1fr_56px] items-center gap-2 border-b border-[color:var(--color-border)] px-3 py-1.5 hover:bg-[color:var(--color-bg-2)]">
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[color:var(--color-border)]"
-      />
-      <div className="text-right font-mono text-sm tabular-nums">{a}</div>
-      <div className="flex justify-end">{aTrack}</div>
-      <div className="z-10 w-[150px] text-center">
-        <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-1)]">{label}</div>
-        {sub && <div className="text-2xs text-[color:var(--color-text-2)]">{sub}</div>}
-      </div>
-      <div className="flex justify-start">{bTrack}</div>
-      <div className="text-left font-mono text-sm tabular-nums">{b}</div>
-    </div>
-  );
-}
-
-function Value({ text, on, align }: { text: string; on: boolean; align: 'left' | 'right' }) {
-  return (
-    <span
-      className={`block ${align === 'right' ? 'text-right' : 'text-left'} ${
-        on ? 'font-semibold text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
-      }`}
-    >
-      {text}
-    </span>
-  );
-}
-
-function Track({
-  width,
-  hue,
-  on,
-  side,
-}: {
-  width: number;
-  hue: string;
-  on: boolean;
-  side: 'left' | 'right';
-}) {
-  return (
-    <span
-      className={`flex h-2 w-full bg-[color:var(--color-bg-2)] ${side === 'left' ? 'justify-end' : 'justify-start'}`}
-    >
-      <span style={{ width: `${width}%`, background: hue, opacity: on ? 1 : 0.28 }} />
-    </span>
   );
 }
