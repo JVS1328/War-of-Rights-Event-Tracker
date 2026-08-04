@@ -56,6 +56,7 @@ import {
 } from './utils/eloEngine';
 import { MAP_AREAS, ALL_MAPS, mapAttacker, mapMode } from './stats/mapCatalog';
 import { CompanyConfigFields, CompanyList } from './components/CompanyBalancer';
+import { BalanceSwaps } from './components/BalanceSwaps';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
 import {
@@ -5788,45 +5789,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {renderCasualtyFormation(1, 'B')}
                     </div>
                     {/* Round 1 Balance Swaps */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
-                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
-                          {[
-                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
-                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
-                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
-                            const swaps = selectedWeek.roundSwaps?.r1 || [];
-                            const isSwapped = swaps.includes(unit);
-                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
-                            return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isSwapped}
-                                  onChange={() => {
-                                    const current = selectedWeek.roundSwaps?.r1 || [];
-                                    const updated = isSwapped
-                                      ? current.filter(u => u !== unit)
-                                      : [...current, unit];
-                                    updateWeek(selectedWeek.id, {
-                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: updated }
-                                    });
-                                  }}
-                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
-                                />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
-                                  {unit}
-                                </span>
-                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
-                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    <BalanceSwaps
+                      teamA={selectedWeek.teamA}
+                      teamB={selectedWeek.teamB}
+                      swapped={selectedWeek.roundSwaps?.r1 || []}
+                      teamNames={teamNames}
+                      onToggle={(_unit, next) => updateWeek(selectedWeek.id, {
+                        roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: next }
+                      })}
+                    />
                     {/* Round 1 Company Balancer */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r1')}
                   </div>
@@ -5908,45 +5879,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       {renderCasualtyFormation(2, 'B')}
                     </div>
                     {/* Round 2 Balance Swaps */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && (
-                      <div>
-                        <label className="block text-sm text-text-secondary mb-1">Balance Swaps</label>
-                        <div className="bg-bg-card rounded p-2 max-h-32 overflow-y-auto space-y-1">
-                          {[
-                            ...selectedWeek.teamA.map(u => ({ unit: u, home: 'A' })),
-                            ...selectedWeek.teamB.map(u => ({ unit: u, home: 'B' }))
-                          ].sort((a, b) => a.unit.localeCompare(b.unit)).map(({ unit, home }) => {
-                            const swaps = selectedWeek.roundSwaps?.r2 || [];
-                            const isSwapped = swaps.includes(unit);
-                            const effectiveSide = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
-                            return (
-                              <label key={unit} className="flex items-center gap-2 cursor-pointer hover:bg-bg-inset rounded px-1 py-0.5">
-                                <input
-                                  type="checkbox"
-                                  checked={isSwapped}
-                                  onChange={() => {
-                                    const current = selectedWeek.roundSwaps?.r2 || [];
-                                    const updated = isSwapped
-                                      ? current.filter(u => u !== unit)
-                                      : [...current, unit];
-                                    updateWeek(selectedWeek.id, {
-                                      roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: updated }
-                                    });
-                                  }}
-                                  className="w-3 h-3 rounded border-border-default bg-bg-inset"
-                                />
-                                <span className={`text-xs ${isSwapped ? 'text-orange-400 font-semibold' : 'text-text-secondary'}`}>
-                                  {unit}
-                                </span>
-                                <span className={`text-xs ml-auto ${effectiveSide === 'A' ? 'text-blue-400' : 'text-red-400'}`}>
-                                  {effectiveSide === 'A' ? teamNames.A : teamNames.B}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    <BalanceSwaps
+                      teamA={selectedWeek.teamA}
+                      teamB={selectedWeek.teamB}
+                      swapped={selectedWeek.roundSwaps?.r2 || []}
+                      teamNames={teamNames}
+                      onToggle={(_unit, next) => updateWeek(selectedWeek.id, {
+                        roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: next }
+                      })}
+                    />
                     {/* Round 2 Company Balancer */}
                     {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r2')}
                   </div>
