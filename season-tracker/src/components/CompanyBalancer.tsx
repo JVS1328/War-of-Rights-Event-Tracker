@@ -1,10 +1,14 @@
-import { COMPANY_KINDS, SPECIAL_COMPANY_CAP } from '../utils/companySplit';
+import { COMPANY_KINDS } from '../utils/companySplit';
 import type { Company, CompanySideConfig } from '../utils/companySplit';
 
 const INPUT_CLASS =
   'w-full px-2 py-1 bg-bg-inset text-text-primary text-sm rounded border border-border-default focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none';
 
-/** The company-count inputs for one side: companies, special, cavalry + its cap. */
+/**
+ * The company-count inputs for one side: how many companies, how many of them
+ * are special or cavalry, and the cap on each of those kinds. Both caps are
+ * per side — the special one used to be fixed at 20.
+ */
 export function CompanyConfigFields({
   config,
   onChange,
@@ -12,15 +16,16 @@ export function CompanyConfigFields({
   config: CompanySideConfig;
   onChange: (patch: Partial<CompanySideConfig>) => void;
 }) {
-  const field = (label: string, key: keyof CompanySideConfig, max?: number) => (
+  // A count can legitimately be 0; a cap cannot, or nothing fits in it.
+  const field = (label: string, key: keyof CompanySideConfig, max?: number, min = 0) => (
     <div>
       <label className="text-xs text-text-secondary">{label}</label>
       <input
         type="number"
-        min="0"
+        min={min}
         max={max}
         value={config[key]}
-        onChange={(e) => onChange({ [key]: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+        onChange={(e) => onChange({ [key]: Math.max(min, parseInt(e.target.value, 10) || min) })}
         className={INPUT_CLASS}
       />
     </div>
@@ -29,9 +34,10 @@ export function CompanyConfigFields({
   return (
     <div className="grid grid-cols-2 gap-2">
       {field('Companies', 'count', 10)}
-      {field(`Special (cap ${SPECIAL_COMPANY_CAP})`, 'specialCount', config.count)}
-      {field('Cavalry', 'cavalryCount', Math.max(0, config.count - config.specialCount))}
-      {field('Cavalry cap', 'cavalryCap')}
+      {field('Special companies', 'specialCount', config.count)}
+      {field('Special cap', 'specialCap', undefined, 1)}
+      {field('Cavalry companies', 'cavalryCount', Math.max(0, config.count - config.specialCount))}
+      {field('Cavalry cap', 'cavalryCap', undefined, 1)}
     </div>
   );
 }

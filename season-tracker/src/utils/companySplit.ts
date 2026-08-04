@@ -7,16 +7,20 @@
 
 export type CompanyKind = 'special' | 'cavalry' | 'regular';
 
-/** Fixed player cap for a special company. */
-export const SPECIAL_COMPANY_CAP = 20;
+/** Starting player cap for a special company (editable per side). */
+export const DEFAULT_SPECIAL_CAP = 20;
 /** Starting player cap for a cavalry company (editable per side). */
 export const DEFAULT_CAVALRY_CAP = 30;
+
+/** @deprecated The special cap is per-side now; this is only its default. */
+export const SPECIAL_COMPANY_CAP = DEFAULT_SPECIAL_CAP;
 
 export interface CompanySideConfig {
   /** Total companies for this side, capped kinds included. */
   count: number;
   specialCount: number;
   cavalryCount: number;
+  specialCap: number;
   cavalryCap: number;
 }
 
@@ -24,6 +28,7 @@ export const DEFAULT_COMPANY_SIDE: CompanySideConfig = {
   count: 0,
   specialCount: 0,
   cavalryCount: 0,
+  specialCap: DEFAULT_SPECIAL_CAP,
   cavalryCap: DEFAULT_CAVALRY_CAP,
 };
 
@@ -42,13 +47,31 @@ export const COMPANY_KINDS: Record<CompanyKind, { label: string; box: string; te
   regular: { label: 'Co', box: 'bg-bg-inset', text: 'text-text-secondary' },
 };
 
-/** Keep the capped company counts inside the side's total company count. */
+/**
+ * Keep the capped company counts inside the side's total company count.
+ *
+ * A cap of 0 would leave a company that nothing fits in, so both caps floor at
+ * 1. Configs saved before the special cap was editable have no `specialCap`
+ * field and pick up the default, which is the number it was fixed at.
+ */
 export const clampSideConfig = (config: Partial<CompanySideConfig>): CompanySideConfig => {
   const next = { ...DEFAULT_COMPANY_SIDE, ...config };
   const count = Math.max(0, next.count);
   const specialCount = Math.min(Math.max(0, next.specialCount), count);
   const cavalryCount = Math.min(Math.max(0, next.cavalryCount), count - specialCount);
-  return { count, specialCount, cavalryCount, cavalryCap: Math.max(0, next.cavalryCap) };
+  return {
+    count,
+    specialCount,
+    cavalryCount,
+    specialCap: capOf(next.specialCap, DEFAULT_SPECIAL_CAP),
+    cavalryCap: capOf(next.cavalryCap, DEFAULT_CAVALRY_CAP),
+  };
+};
+
+/** A whole number of at least 1; anything unreadable falls back to the default. */
+const capOf = (value: unknown, fallback: number): number => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.max(1, n) : fallback;
 };
 
 export interface RosterEntry {
@@ -124,7 +147,7 @@ export const distributeCompanies = (
   roster: RosterEntry[],
   sideConfig: Partial<CompanySideConfig>,
 ): Company[] => {
-  const { count, specialCount, cavalryCount, cavalryCap } = clampSideConfig(sideConfig);
+  const { count, specialCount, cavalryCount, specialCap, cavalryCap } = clampSideConfig(sideConfig);
   if (count <= 0 || roster.length === 0) return [];
 
   const regs = roster
@@ -132,7 +155,7 @@ export const distributeCompanies = (
     .sort((a, b) => b.avg - a.avg); // largest first for greedy fill
 
   const caps: Record<CompanyKind, number> = {
-    special: SPECIAL_COMPANY_CAP,
+    special: specialCap,
     cavalry: cavalryCap,
     regular: Infinity,
   };
