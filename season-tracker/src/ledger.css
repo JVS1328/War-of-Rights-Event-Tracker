@@ -568,3 +568,8 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .form { display: flex; gap: 3px; align-items: flex-end; height: 38px; }
 .form i { flex: 0 1 22px; background: var(--ink); opacity: 0.22; min-width: 5px; }
 .form i.w { opacity: 1; }
+
+/* ── bracket ────────────────────────────────────────────────────────────── */
+.bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.bslot { padding: 12px 13px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.bpair { border: 1px solid var(--line); margin-top: 8px; }

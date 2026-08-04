@@ -62,6 +62,7 @@ import { Shell } from './components/Shell';
 import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
 import { NightBuilder, RT_RULES } from './components/season/NightBuilder';
 import { Balancer } from './components/season/Balancer';
+import { Playoffs } from './components/season/Playoffs';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
@@ -4083,6 +4084,49 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return bracket;
   };
 
+  /** The drawn bracket, as slots the Playoffs screen can render. */
+  const playoffBracketSlots = useMemo(() => {
+    const b = generatePlayoffBracket();
+    if (!b || !Array.isArray(b.rounds)) return [];
+    const out = [];
+    b.rounds.forEach((rd, ri) => {
+      (rd.matchups || []).forEach(m => {
+        if (!m.team1 && !m.team2) return;
+        const wk = weeks.filter(w => w.isPlayoffs)[ri];
+        const rounds = (side) => {
+          if (!wk) return 0;
+          return (wk.round1Winner === side ? 1 : 0) + (wk.round2Winner === side ? 1 : 0);
+        };
+        out.push({
+          stage: rd.name || (ri === b.rounds.length - 1 ? 'Final' : `Round ${ri + 1}`),
+          night: wk?.name ?? 'unscheduled',
+          a: m.team1?.unit ?? m.slot1Label ?? 'TBD',
+          b: m.team2?.unit ?? m.slot2Label ?? (m.bye ? 'Bye' : 'TBD'),
+          roundsA: rounds('A'),
+          roundsB: rounds('B'),
+          map1: wk?.round1Map ?? null,
+          map2: wk?.round2Map ?? null,
+        });
+      });
+    });
+    return out;
+  }, [weeks, playoffConfig, appState]);
+
+  /** Formats the planner rates, as the screen's cards. */
+  const playoffFormatOptions = useMemo(() => playoffSuggestions.map(plan => ({
+    field: plan.field?.qualifiers ?? plan.placed,
+    series: plan.stages.reduce((n, st) => n + (st.matchups ?? 0), 0),
+    style: plan.label ?? 'Knockout',
+    entry: plan.config.useDivisions
+      ? `Top ${plan.config.teamsPerDivision} per division`
+      : `Top ${plan.placed} on the table`,
+    bestOf: `${plan.minRounds}–${plan.maxRounds} rounds`,
+    nights: plan.maxNights,
+    share: Math.round((plan.qualifyRate ?? 0) * 100),
+    plan,
+  })), [playoffSuggestions]);
+
+
   // Optional per-formation casualty inputs (In Formation / Skirmish / Out of
   // Line) for one round + side. Writes r{N}CasualtiesForm{A|B} as an object;
   // auto-fill from scoreboard import populates the same fields.
@@ -5868,468 +5912,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
           {/* Statistics Modal */}
-          {/* Playoffs — its own screen; the bracket and its format settings. */}
+          {/* Playoffs, to the prototype's V.playoffs: the bracket, who is
+              qualifying on the table as it sits, formats that fit the nights
+              left, and why the lengths are what they are. */}
           {screen === 'playoffs' && (
-            <div className="panel">
-              <header className="ph"><h2>Playoffs</h2><span className="rule" />
-                <span className="meta">{playoffConfig.enabled ? 'enabled' : 'off'}</span></header>
-              <div className="pb">
-                  <div className="panel pb">
-                    <h3 className="cap">
-                      <Trophy className="w-5 h-5" />
-                      Playoffs
-                    </h3>
-                    
-                    {/* Playoff Configuration */}
-                    <div className="panel pb">
-                      <h4 className="cap">Playoff Format Settings</h4>
-                      
-                      <div className="space-y-3">
-                        {/* Enable Playoffs */}
-                        <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={playoffConfig.enabled}
-                            onChange={(e) => setPlayoffConfig({ ...playoffConfig, enabled: e.target.checked })}
-                            className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                          />
-                          <Star className="w-4 h-4" />
-                          <span className="font-semibold">Enable Playoff Tracking</span>
-                        </label>
-                        
-                        {playoffConfig.enabled && (
-                          <>
-                            {/* Bracket style */}
-                            <div className="ml-6">
-                              <label className="block text-sm text-text-secondary mb-1">Bracket Style</label>
-                              <div className="flex gap-2 flex-wrap">
-                                {[
-                                  {
-                                    value: 'knockout',
-                                    name: 'Seeded Knockout',
-                                    hint: 'Whole field seeded 1–N on points, paired 1-vs-N. Works with any number of groups.',
-                                  },
-                                  {
-                                    value: 'conference',
-                                    name: 'Conference',
-                                    hint: 'Splits the field between two conferences, each crowning a winner before the championship.',
-                                  },
-                                ].map(style => {
-                                  const active = (playoffConfig.bracketStyle || 'conference') === style.value;
-                                  return (
-                                    <button
-                                      key={style.value}
-                                      onClick={() => setPlayoffConfig({ ...playoffConfig, bracketStyle: style.value })}
-                                      title={style.hint}
-                                      className={`px-3 py-1 rounded text-sm transition ${
-                                        active
-                                          ? 'bg-indigo-600 text-white'
-                                          : 'bg-bg-input text-text-secondary hover:bg-bg-card border border-border-default'
-                                      }`}
-                                    >
-                                      {style.name}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-xs text-text-muted mt-1">
-                                {(playoffConfig.bracketStyle || 'conference') === 'knockout'
-                                  ? 'Every qualifier is reseeded on total points, so groups decide who gets in, not who plays whom.'
-                                  : 'Needs exactly two conferences — divisions are grouped by the first word of their name.'}
-                              </p>
-                            </div>
-
-                            {/* Use Divisions */}
-                            {divisions && divisions.length > 0 && (
-                              <label className="flex items-center gap-2 text-text-secondary cursor-pointer ml-6">
-                                <input
-                                  type="checkbox"
-                                  checked={playoffConfig.useDivisions}
-                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, useDivisions: e.target.checked })}
-                                  className="w-4 h-4 rounded border-border-default bg-bg-card focus:ring-2 focus:ring-indigo-500"
-                                />
-                                <Shield className="w-4 h-4" />
-                                <span className="text-sm">Qualify Through Groups</span>
-                              </label>
-                            )}
-                            
-                            {/* Teams per Group */}
-                            {playoffConfig.useDivisions && (
-                              <div className="ml-6">
-                                <label className="block text-sm text-text-secondary mb-1">Top Teams per Group</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max="4"
-                                  value={playoffConfig.teamsPerDivision}
-                                  onChange={(e) => setPlayoffConfig({ ...playoffConfig, teamsPerDivision: parseInt(e.target.value) || 1 })}
-                                  className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                />
-                              </div>
-                            )}
-
-                            {/* Wildcards, or the whole field when groups are off */}
-                            <div className="ml-6">
-                              <label className="block text-sm text-text-secondary mb-1">
-                                {!playoffConfig.useDivisions
-                                  ? 'Total Playoff Teams'
-                                  : (playoffConfig.bracketStyle || 'conference') === 'knockout'
-                                    ? 'Wildcard Teams (league-wide)'
-                                    : 'Wildcard Teams (per conference)'}
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="16"
-                                value={playoffConfig.wildcardTeams}
-                                onChange={(e) => setPlayoffConfig({ ...playoffConfig, wildcardTeams: parseInt(e.target.value) || 0 })}
-                                className="w-24 px-3 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                              />
-                            </div>
-
-
-                            {/* Round Formats — labelled by the stages this
-                               config actually draws, so they read as the
-                               bracket will (Quarterfinals, Semifinals, ...). */}
-                            <div className="ml-6 bg-bg-card rounded p-3">
-                              <h5 className="text-sm font-semibold text-text-secondary mb-2">Rounds per Playoff Stage</h5>
-                              {playoffAudit?.stages?.length ? (
-                                <div className="grid grid-cols-2 gap-3">
-                                  {playoffAudit.stages.map(stagePlan => (
-                                    <div key={stagePlan.key}>
-                                      <label className="block text-xs text-text-secondary mb-1">
-                                        {stagePlan.name}
-                                        <span className="text-text-muted"> ({stagePlan.matchups} match{stagePlan.matchups === 1 ? '' : 'es'})</span>
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        max="3"
-                                        value={playoffConfig.roundFormats[stagePlan.key]}
-                                        onChange={(e) => setPlayoffConfig({
-                                          ...playoffConfig,
-                                          roundFormats: {
-                                            ...playoffConfig.roundFormats,
-                                            [stagePlan.key]: parseInt(e.target.value) || 1,
-                                          },
-                                        })}
-                                        className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-text-secondary">
-                                  These settings draw no bracket yet — the planner below says why.
-                                </p>
-                              )}
-                              <p className="text-xs text-text-muted mt-2">
-                                A stage set to N rounds resolves as first to (N ÷ 2) + 1 wins, so 2 and 3 are the same
-                                series — both need two wins, and both can run to a third round.
-                              </p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Format Planner — what the settings above actually build,
-                       and the formats worth considering instead. */}
-                    {playoffConfig.enabled && playoffAudit && (
-                      <div className="panel pb">
-                        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                          <h4 className="font-semibold flex items-center gap-2">
-                            <Zap className="w-4 h-4" />
-                            Format Planner
-                          </h4>
-                          <label className="flex items-center gap-2 text-sm text-text-secondary">
-                            Playoff nights available
-                            <input
-                              type="number"
-                              min="1"
-                              max="12"
-                              value={playoffNights}
-                              onChange={(e) => setPlayoffNights(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-16 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
-                            />
-                          </label>
-                        </div>
-                        <p className="text-xs text-text-muted mb-3">
-                          A round hosts one matchup and a night is {ROUNDS_PER_NIGHT} rounds, so two matchups fit in a
-                          night. That is what decides how long a bracket takes.
-                        </p>
-
-                        {/* What the current settings build */}
-                        <div className="bg-bg-card rounded p-3 mb-3">
-                          <h5 className="text-sm font-semibold text-text-secondary mb-2">Your current settings</h5>
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-semibold text-sm">{playoffAudit.label}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${playoffAudit.fitsCalendar ? 'bg-green-500/15 c-ok' : 'bg-amber-500/15 c-warn'}`}>
-                              {formatNights(playoffAudit.minNights, playoffAudit.maxNights)}
-                            </span>
-                          </div>
-                          <p className="text-sm text-text-secondary">{playoffAudit.summary}</p>
-                          {playoffAudit.stages.length > 0 && (
-                            <div className="text-xs text-text-muted mt-2">
-                              {playoffAudit.stages.map(s => (
-                                `${s.name}: ${s.matchups} match${s.matchups === 1 ? '' : 'es'} × ${s.roundsPerMatch} round${s.roundsPerMatch === 1 ? '' : 's'}`
-                              )).join(' · ')}
-                            </div>
-                          )}
-                          {playoffAudit.defects.map((defect, i) => (
-                            <p
-                              key={i}
-                              className={`text-xs mt-2 ${defect.severity === 'blocker' ? 'c-danger' : 'c-warn'}`}
-                            >
-                              {defect.severity === 'blocker' ? '✕' : '!'} {defect.message}
-                            </p>
-                          ))}
-                          {playoffAudit.notes.map((note, i) => (
-                            <p key={i} className="text-xs text-text-muted mt-2">{note}</p>
-                          ))}
-                        </div>
-
-                        {/* Formats worth considering */}
-                        <h5 className="text-sm font-semibold text-text-secondary mb-2">Recommended formats</h5>
-                        {playoffSuggestions.length === 0 ? (
-                          <p className="text-sm text-text-secondary bg-bg-card rounded p-3">
-                            No bracket can be built from this league yet — add token units, or check the notes below.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {playoffSuggestions.map((plan, idx) => {
-                              const applied = isPlayoffFormatApplied(plan);
-                              return (
-                                <div key={idx} className="row">
-                                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                                    <div className="flex-1 min-w-[16rem]">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-semibold text-sm">{plan.label}</span>
-                                        {idx === 0 && (
-                                          <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/15 c-accent">
-                                            Best fit
-                                          </span>
-                                        )}
-                                        <span className={`text-xs px-2 py-0.5 rounded ${plan.fitsCalendar ? 'bg-green-500/15 c-ok' : 'bg-amber-500/15 c-warn'}`}>
-                                          {formatNights(plan.minNights, plan.maxNights)}
-                                        </span>
-                                      </div>
-                                      <p className="text-sm text-text-secondary mt-1">{plan.summary}</p>
-                                      <div className="text-xs text-text-muted mt-1">
-                                        {plan.stages.map(s => (
-                                          `${s.name}: ${s.matchups} × ${s.roundsPerMatch}r`
-                                        )).join(' · ')}
-                                      </div>
-                                      {plan.defects.map((defect, i) => (
-                                        <p key={i} className="text-xs c-warn mt-1">! {defect.message}</p>
-                                      ))}
-                                    </div>
-                                    <button
-                                      onClick={() => setPlayoffConfig({ ...playoffConfig, ...plan.config })}
-                                      disabled={applied}
-                                      className={`px-3 py-1 rounded text-sm transition shrink-0 ${
-                                        applied
-                                          ? 'bg-bg-inset text-text-muted cursor-default'
-                                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                      }`}
-                                    >
-                                      {applied ? 'In use' : 'Apply'}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Things no single format can fix */}
-                        {playoffAdvice.length > 0 && (
-                          <div className="mt-3 bg-bg-card rounded p-3">
-                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Worth knowing</h5>
-                            <ul className="list-disc list-inside space-y-1 text-xs text-text-secondary">
-                              {playoffAdvice.map((note, i) => <li key={i}>{note}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-
-                    {/* Playoff Picture */}
-                    {playoffConfig.enabled && (() => {
-                      const currentWeekIdx = selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1;
-                      const bracket = generatePlayoffBracket(currentWeekIdx);
-                      
-                      if (!bracket || bracket.teams.length === 0) {
-                        return (
-                          <div className="bg-bg-inset rounded-lg p-4 text-center">
-                            <p className="text-text-secondary text-sm">
-                              Not enough teams for playoffs. Configure playoff settings above.
-                            </p>
-                          </div>
-                        );
-                      }
-                      
-                      return (
-                        <div className="panel pb">
-                          <h4 className="font-semibold mb-3 flex items-center gap-2">
-                            <Target className="w-4 h-4" />
-                            Playoff Picture
-                            {selectedWeek && (
-                              <span className="text-xs text-text-secondary font-normal">
-                                (as of {selectedWeek.name})
-                              </span>
-                            )}
-                          </h4>
-
-                          {/* Seeding */}
-                          <div className="mb-4 bg-bg-card rounded p-3">
-                            <h5 className="text-sm font-semibold text-text-secondary mb-2">Playoff Seeds</h5>
-                            {playoffConfig.useDivisions && bracket.teams.some(t => t.conference) ? (
-                              // Conference-based seeding display
-                              (() => {
-                                const conferences = {};
-                                bracket.teams.forEach(team => {
-                                  const conf = team.conference || 'Unknown';
-                                  if (!conferences[conf]) conferences[conf] = [];
-                                  conferences[conf].push(team);
-                                });
-                                
-                                return (
-                                  <div className="space-y-3">
-                                    {Object.entries(conferences).map(([confName, confTeams]) => (
-                                      <div key={confName} className="row">
-                                        <h6 className="text-xs font-bold c-accent mb-2">{confName} Conference</h6>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          {confTeams.map((team) => (
-                                            <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                              <span className="c-accent font-bold">#{team.conferenceSeed}</span>
-                                              <span>{team.unit}</span>
-                                              <span className="text-text-secondary text-xs">
-                                                ({team.points} pts{team.isWildcard ? ', WC' : ''})
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              // Simple seeding display — for a knockout this is
-                              // the whole story, so it also shows how each unit
-                              // got in: its group, or a wildcard.
-                              <div className="grid grid-cols-2 gap-2">
-                                {bracket.teams.map((team) => (
-                                  <div key={team.unit} className="flex items-center gap-2 text-sm">
-                                    <span className="c-accent font-bold">#{team.seed}</span>
-                                    <span>{team.unit}</span>
-                                    <span className="text-text-secondary text-xs">({team.points} pts)</span>
-                                    {team.isWildcard && (
-                                      <span className="c-accent text-xs font-bold">WC</span>
-                                    )}
-                                    {team.division && !team.isWildcard && (
-                                      <span className="c-accent text-xs">{team.division}</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Bracket Rounds */}
-                          <div className="space-y-3">
-                            {bracket.rounds.map((round, roundIdx) => (
-                              <div key={roundIdx} className="row">
-                                <h5 className="text-sm font-semibold text-text-secondary mb-2 flex items-center gap-2">
-                                  <Swords className="w-4 h-4" />
-                                  {round.name}
-                                  <span className="text-xs text-text-secondary font-normal">
-                                    ({round.roundsPerMatch} round{round.roundsPerMatch > 1 ? 's' : ''} per match)
-                                  </span>
-                                </h5>
-                                <div className="space-y-2">
-                                  {round.matchups.map((matchup, matchIdx) => {
-                                    // Show conference name if present
-                                    const confLabel = matchup.conference && matchup.conference !== 'Championship'
-                                      ? `[${matchup.conference}] `
-                                      : '';
-                                    const team1IsWinner = matchup.winner && matchup.team1 && matchup.winner.unit === matchup.team1.unit;
-                                    const team2IsWinner = matchup.winner && matchup.team2 && matchup.winner.unit === matchup.team2.unit;
-                                    const team1Class = team1IsWinner ? 'c-ok font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
-                                    const team2Class = team2IsWinner ? 'c-ok font-semibold' : (matchup.winner ? 'text-text-secondary line-through opacity-60' : '');
-
-                                    return (
-                                      <div key={matchIdx} className="row">
-                                        {confLabel && (
-                                          <div className="text-xs c-accent font-semibold mb-1">{confLabel}</div>
-                                        )}
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-2 flex-1">
-                                            {matchup.team1 ? (
-                                              <>
-                                                <span className="c-accent font-bold text-xs">#{matchup.seed1}</span>
-                                                <span className={`text-sm ${team1Class}`}>{matchup.team1.unit}</span>
-                                                {matchup.team1.isWildcard && (
-                                                  <span className="c-accent text-xs font-bold">WC</span>
-                                                )}
-                                                {team1IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 c-ok" />
-                                                )}
-                                              </>
-                                            ) : matchup.slot1Label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.slot1Label}</span>
-                                            ) : matchup.label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
-                                            ) : (
-                                              <span className="text-text-secondary text-sm italic">Seed #{matchup.seed1}</span>
-                                            )}
-                                          </div>
-                                          <span className="text-text-secondary text-xs font-bold mx-2">VS</span>
-                                          <div className="flex items-center gap-2 flex-1 justify-end">
-                                            {matchup.team2 ? (
-                                              <>
-                                                {team2IsWinner && (
-                                                  <CheckCircle2 className="w-3.5 h-3.5 c-ok" />
-                                                )}
-                                                {matchup.team2.isWildcard && (
-                                                  <span className="c-accent text-xs font-bold">WC</span>
-                                                )}
-                                                <span className={`text-sm ${team2Class}`}>{matchup.team2.unit}</span>
-                                                <span className="c-accent font-bold text-xs">#{matchup.seed2}</span>
-                                              </>
-                                            ) : matchup.bye ? (
-                                              <span className="text-text-secondary text-sm italic">Bye — advances</span>
-                                            ) : matchup.slot2Label ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.slot2Label}</span>
-                                            ) : matchup.label && !matchup.team1 ? (
-                                              <span className="text-text-secondary text-sm italic">{matchup.label}</span>
-                                            ) : (
-                                              <span className="text-text-secondary text-sm italic">
-                                                {matchup.seed2 === 'WC1' || matchup.seed2 === 'WC2' ? 'Wildcard Winner' : `Seed #${matchup.seed2}`}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-              </div>
-            </div>
+            <Playoffs
+              enabled={!!playoffConfig.enabled}
+              bracket={playoffBracketSlots}
+              standings={standingRows}
+              divisions={divisions}
+              qualifyPerDivision={playoffConfig.teamsPerDivision || 2}
+              nightsAvailable={weeks.filter(w => w.isPlayoffs).length || playoffNights}
+              formats={playoffFormatOptions}
+              onApplyFormat={(f) => f.plan && setPlayoffConfig({ ...f.plan.config })}
+              onSettings={() => goScreen('settings')}
+            />
           )}
 
-          {/* Elo ladder — the ladder, and nothing but. This screen used to
-              carry the whole of the old stats dialog under a rail entry that
-              says Elo ladder, which is not what it said it was. */}
           {screen === 'elo' && (
             <>
                 <EloLadder
