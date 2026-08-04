@@ -1,4 +1,5 @@
 import type {
+  Branch,
   RosterEntry,
   Scoreboard,
   ScoreboardOfficer,
@@ -12,6 +13,7 @@ import type { RegimentListEntry } from './regimentMatcher';
 import { avgTicketCost, perPlayerRate, ticketDamage, pctShare } from './labels';
 import { mapAttacker, canonicalMapName } from './mapCatalog';
 import { averageMorale } from './morale';
+import { branchOf } from './branch';
 
 export interface FormationCounts {
   in_form: number;
@@ -42,14 +44,24 @@ export interface PlayerStatRow {
   avgTk: number | null;
 }
 
-export type PlayerType = 'all' | 'inf' | 'arty';
+export type PlayerType = 'all' | 'inf' | 'cav' | 'arty';
+
+/** Filter value -> the arm of service it keeps. */
+const TYPE_BRANCH: Record<Exclude<PlayerType, 'all'>, Branch> = {
+  inf: 'Infantry',
+  cav: 'Cavalry',
+  arty: 'Artillery',
+};
 
 export interface EngineOptions {
   regimentList?: RegimentListEntry[];
   /**
-   * Restrict player-round aggregation by role: 'inf' counts only non-battery
-   * rounds, 'arty' only battery rounds, 'all' (default) counts every round.
-   * inf + arty reconcile to all.
+   * Restrict player-round aggregation by arm of service, read off the in-game
+   * regiment the roster recorded for that round. 'all' (default) counts every
+   * round; inf + cav + arty reconcile to all.
+   *
+   * 'inf' excludes cavalry. Before branchOf existed the only question asked was
+   * "is this a battery?", so mounted rounds counted as infantry.
    */
   type?: PlayerType;
   /**
@@ -167,9 +179,6 @@ function findRoster(sb: Scoreboard, steamId: string | null, name: string, team: 
   return sb.roster.find((r) => r.team === team && r.name.toLowerCase() === lower);
 }
 
-function isBattery(entry: RosterEntry | undefined): boolean {
-  return !!entry?.regiment && /batter/i.test(entry.regiment);
-}
 
 /** Parse "HH:MM:SS" → seconds since midnight, or null. */
 function timeToSeconds(t: string | null): number | null {
@@ -244,11 +253,11 @@ function finalizePlayerRow(row: PlayerStatRow): void {
   row.avgTk = avgTicketCost(row.killsInForm, row.killsSkirm, row.killsOob);
 }
 
-/** Role filter for a player-round: 'inf' excludes battery rounds, 'arty' keeps only them. */
+/** Arm-of-service filter for one player-round. */
 function roundMatchesType(sb: Scoreboard, p: ScoreboardPlayer, type: PlayerType): boolean {
   if (type === 'all') return true;
-  const battery = isBattery(findRoster(sb, p.steamId, p.name, p.team));
-  return type === 'arty' ? battery : !battery;
+  const entry = findRoster(sb, p.steamId, p.name, p.team);
+  return branchOf(entry?.regiment) === TYPE_BRANCH[type];
 }
 
 /** Per-player aggregate across the supplied scoreboards. */
@@ -852,6 +861,8 @@ export interface PlayerRoundRow {
   rank: string | null;
   /** True when this round was played on a battery (artillery). */
   battery: boolean;
+  /** Arm of service for this round, from the in-game regiment. */
+  branch: Branch;
   kills: number;
   deaths: number;
   deathsInForm: number;
@@ -939,9 +950,10 @@ export function computePlayerDetail(
     const p = sb.players.find((x) => (x.steamId ?? x.name) === key);
     if (!p) continue;
     const rosterEntry = findRoster(sb, p.steamId, p.name, p.team);
-    const batteryRound = isBattery(rosterEntry);
-    if (type === 'inf' && batteryRound) continue;
-    if (type === 'arty' && !batteryRound) continue;
+    const roundBranch = branchOf(rosterEntry?.regiment);
+    const batteryRound = roundBranch === 'Artillery';
+    // Same arm filter the leaderboard uses, so the card and the table agree.
+    if (type !== 'all' && roundBranch !== TYPE_BRANCH[type]) continue;
 
     found = true;
     if (!latestSb || (sb.recordedAt ?? '') >= (latestSb.recordedAt ?? '')) latestSb = sb;
@@ -992,6 +1004,7 @@ export function computePlayerDetail(
       className: rosterEntry?.className ?? null,
       rank: rosterEntry?.rank ?? null,
       battery: batteryRound,
+      branch: roundBranch,
       kills: p.kills,
       deaths: p.deaths,
       deathsInForm: p.deathsInForm,

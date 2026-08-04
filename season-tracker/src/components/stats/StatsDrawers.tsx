@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
-import type { PlayerDetail, PlayerRoundRow } from '../../stats/statsEngine';
+import type { PlayerDetail, PlayerRoundRow, PlayerType } from '../../stats/statsEngine';
 import { Cell, CauseTable, kdStr, whenOf, teamTone, roleLine } from './drawerPrimitives';
 import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 
@@ -217,6 +217,14 @@ function PerRoundTable({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOp
 // here so existing imports (`./StatsDrawers`) keep working.
 export { ScoreboardDrawer } from './scoreboard/ScoreboardDrawer';
 
+/** Arm filters, mirroring the leaderboard so the two never disagree. */
+const ARM_LABELS: { key: PlayerType; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'inf', label: 'Infantry' },
+  { key: 'cav', label: 'Cavalry' },
+  { key: 'arty', label: 'Artillery' },
+];
+
 export function PlayerDrawer({
   open,
   onClose,
@@ -229,21 +237,22 @@ export function PlayerDrawer({
   onClose: () => void;
   detail: PlayerDetail | null;
   onOpenRound: (filename: string) => void;
-  type: 'all' | 'inf' | 'arty';
-  onType: (t: 'all' | 'inf' | 'arty') => void;
+  type: PlayerType;
+  onType: (t: PlayerType) => void;
 }) {
   const toggle = (
-    <div className="flex items-center gap-1 px-3 pt-3 font-mono text-xs uppercase tracking-wider">
-      <span className="text-[color:var(--color-text-2)]">Class</span>
-      {(['all', 'inf', 'arty'] as const).map((t) => (
+    <div className="flex flex-wrap items-center gap-1 px-3 pt-3 font-mono text-xs uppercase tracking-wider">
+      <span className="text-[color:var(--color-text-2)]">Arm</span>
+      {ARM_LABELS.map(({ key, label }) => (
         <button
-          key={t}
-          onClick={() => onType(t)}
+          key={key}
+          onClick={() => onType(key)}
+          aria-pressed={type === key}
           className={`border border-[color:var(--color-border)] px-2 py-0.5 ${
-            type === t ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
+            type === key ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
           }`}
         >
-          {t}
+          {label}
         </button>
       ))}
     </div>

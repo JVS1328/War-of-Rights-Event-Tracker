@@ -16,6 +16,8 @@ import {
   resolveFor,
   withAliasLayer,
 } from '../../stats/statsEngine';
+import type { PlayerType } from '../../stats/statsEngine';
+import { CAVALRY_REGIMENTS } from '../../stats/branch';
 import type { PlayerStatRow, RegimentStatRow, RegimentRoundRow, RoundSummary, FormationCounts, TrackerMapEntry, TrackerMapStats, ContextStatSlice, RegimentContextStats, TicketShare, TicketRoundShare, TicketContextShare } from '../../stats/statsEngine';
 import type { Scoreboard, Team } from '../../stats/types';
 import { formatAvgT, formatRate, FORMATION_LABEL, AVG_TD_LABEL, AVG_TK_LABEL, KILL_RATE_LABEL, LOSS_RATE_LABEL, TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL, AVG_TICKET_INFLICTED_LABEL, AVG_TICKET_RECEIVED_LABEL } from '../../stats/labels';
@@ -40,6 +42,14 @@ type SubTab = 'overview' | 'players' | 'regiments' | 'compare' | 'maps' | 'round
 const TABS: SubTab[] = ['overview', 'players', 'regiments', 'compare', 'maps', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
+
+/** Arm-of-service filter buttons for the player leaderboard and the card. */
+const ARM_FILTERS: { key: PlayerType; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'inf', label: 'Infantry' },
+  { key: 'cav', label: 'Cavalry' },
+  { key: 'arty', label: 'Artillery' },
+];
 
 function fmtDuration(sec: number | null): string {
   if (sec == null) return '—';
@@ -161,9 +171,9 @@ export function StatsPanel({
   // happens automatically via `opts` below.)
   const [listText, setListText] = useState('');
   const [importMsg, setImportMsg] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'inf' | 'arty'>('all');
+  const [typeFilter, setTypeFilter] = useState<PlayerType>('all');
   const [playerKey, setPlayerKey] = useState<string | null>(null);
-  const [playerType, setPlayerType] = useState<'all' | 'inf' | 'arty'>('all');
+  const [playerType, setPlayerType] = useState<PlayerType>('all');
   const [scoreboardId, setScoreboardId] = useState<string | null>(null);
   // Regiments-tab focus navigation (from the Players-tab regiment link).
   const [focusRegiment, setFocusRegiment] = useState<string | null>(null);
@@ -302,6 +312,22 @@ export function StatsPanel({
     clear: () => setCombineLabels([]),
   };
 
+  // Rank is the player's place in the list as currently filtered, and the bars
+  // are scaled to that same set — so both answer "against who is on screen".
+  const playerRank = useMemo(() => {
+    const order = [...players].sort((a, b) => b.kills - a.kills);
+    return new Map(order.map((p, i) => [p.key, i + 1]));
+  }, [players]);
+  const rankOfPlayer = (p: PlayerStatRow) => playerRank.get(p.key) ?? 0;
+  const playerMax = useMemo(
+    () => ({
+      kills: players.reduce((m, p) => Math.max(m, p.kills), 0),
+      kd: players.reduce((m, p) => Math.max(m, p.kd), 0),
+    }),
+    [players],
+  );
+  const maxOfPlayer = (k: 'kills' | 'kd') => playerMax[k];
+
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const playerDetail = useMemo(
@@ -386,22 +412,28 @@ export function StatsPanel({
 
       {tab === 'players' && (
         <>
-          <div className="flex items-center gap-2 font-mono text-sm uppercase tracking-wider">
-            <span className="text-[color:var(--color-text-2)]">Class</span>
-            {(['all', 'inf', 'arty'] as const).map((f) => (
+          <div className="flex flex-wrap items-center gap-2 font-mono text-sm uppercase tracking-wider">
+            <span className="text-[color:var(--color-text-2)]">Arm</span>
+            {ARM_FILTERS.map(({ key, label }) => (
               <button
-                key={f}
-                onClick={() => setTypeFilter(f)}
+                key={key}
+                onClick={() => setTypeFilter(key)}
+                aria-pressed={typeFilter === key}
                 className={`border border-[color:var(--color-border)] px-2 py-1 ${
-                  typeFilter === f ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]' : 'text-[color:var(--color-text-2)]'
+                  typeFilter === key
+                    ? 'bg-[color:var(--color-bg-3)] text-[color:var(--color-text-0)]'
+                    : 'text-[color:var(--color-text-2)]'
                 }`}
               >
-                {f}
+                {label}
               </button>
             ))}
-            <Pill tone={typeFilter === 'arty' ? 'warn' : typeFilter === 'inf' ? 'neutral' : 'accent'}>
-              {typeFilter === 'all' ? 'All (combined)' : typeFilter === 'inf' ? 'Infantry' : 'Artillery'}
-            </Pill>
+            <span
+              className="normal-case tracking-normal text-xs text-[color:var(--color-text-2)]"
+              title={`Read from the in-game regiment each round. Cavalry: ${CAVALRY_REGIMENTS.join(', ')}.`}
+            >
+              from the in-game regiment
+            </span>
           </div>
           <Panel title={`Player Leaderboard (${players.length})`}>
             {players.length === 0 ? (
@@ -416,7 +448,7 @@ export function StatsPanel({
                 pageSize={25}
                 searchValue={(p) => `${p.name} ${p.regiment} ${p.steamId ?? ''}`}
                 searchPlaceholder="Search players, regiments, or steam id…"
-                columns={playerColumns(goToRegiment, openPlayer)}
+                columns={playerColumns(goToRegiment, openPlayer, rankOfPlayer, maxOfPlayer)}
               />
             )}
           </Panel>
@@ -558,8 +590,28 @@ function OverviewTab({
 
 // ── Players (no Team column — event context) ────────────────────────────────
 
-function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: string) => void): Column<PlayerStatRow>[] {
+function playerColumns(
+  goToRegiment: (label: string) => void,
+  openPlayer: (key: string) => void,
+  rankOf: (p: PlayerStatRow) => number,
+  max: (key: 'kills' | 'kd') => number,
+): Column<PlayerStatRow>[] {
+  /** Inline bar against the field's best, so the gap is visible, not inferred. */
+  const withBar = (value: string, share: number) => (
+    <span className="inline-flex items-center justify-end gap-2">
+      <span className="inline-block h-1 w-10 bg-[color:var(--color-bg-2)] align-middle">
+        <span className="block h-1 bg-[color:var(--color-text-0)]" style={{ width: `${share * 100}%` }} />
+      </span>
+      {value}
+    </span>
+  );
   return [
+    {
+      key: 'rank',
+      header: '#',
+      align: 'right',
+      render: (p) => <span className="text-[color:var(--color-text-2)]">{rankOf(p)}</span>,
+    },
     {
       key: 'name',
       header: 'Player',
@@ -587,11 +639,49 @@ function playerColumns(goToRegiment: (label: string) => void, openPlayer: (key: 
       ),
     },
     { key: 'rounds', header: 'Rounds', align: 'right', sortable: true, sortValue: (p) => p.rounds, render: (p) => p.rounds },
-    { key: 'kills', header: 'K', align: 'right', sortable: true, sortValue: (p) => p.kills, render: (p) => p.kills },
-    { key: 'deaths', header: 'D', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
-    { key: 'kd', header: 'K/D', align: 'right', sortable: true, sortValue: (p) => p.kd, render: (p) => p.kd.toFixed(2) },
-    { key: 'avgTd', header: TdHead, align: 'right', sortable: true, sortValue: (p) => p.avgTd ?? -1, render: (p) => formatAvgT(p.avgTd) },
-    { key: 'avgTk', header: TkHead, align: 'right', sortable: true, sortValue: (p) => p.avgTk ?? -1, render: (p) => formatAvgT(p.avgTk) },
+    {
+      key: 'kills',
+      header: 'Kills',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.kills,
+      render: (p) => withBar(String(p.kills), max('kills') > 0 ? p.kills / max('kills') : 0),
+    },
+    { key: 'deaths', header: 'Deaths', align: 'right', sortable: true, sortValue: (p) => p.deaths, render: (p) => p.deaths },
+    {
+      key: 'kd',
+      header: 'K/D',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.kd,
+      render: (p) => withBar(p.kd.toFixed(2), max('kd') > 0 ? p.kd / max('kd') : 0),
+    },
+    {
+      key: 'kpr',
+      header: 'K / round',
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => (p.rounds > 0 ? p.kills / p.rounds : 0),
+      render: (p) => (p.rounds > 0 ? (p.kills / p.rounds).toFixed(1) : '—'),
+    },
+    {
+      key: 'avgTd',
+      header: <span title={AVG_TD_LABEL}>Cost / death</span>,
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.avgTd ?? -1,
+      render: (p) => formatAvgT(p.avgTd),
+      className: 'text-[color:var(--color-text-1)]',
+    },
+    {
+      key: 'avgTk',
+      header: <span title={AVG_TK_LABEL}>Value / kill</span>,
+      align: 'right',
+      sortable: true,
+      sortValue: (p) => p.avgTk ?? -1,
+      render: (p) => formatAvgT(p.avgTk),
+      className: 'text-[color:var(--color-text-1)]',
+    },
   ];
 }
 
