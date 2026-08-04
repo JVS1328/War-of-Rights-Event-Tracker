@@ -9,6 +9,7 @@
  * event, and which season.
  */
 import type { ReactNode } from 'react';
+import { ThemeControls } from './ThemeControls';
 
 export interface NavItem {
   key: string;
@@ -74,6 +75,7 @@ export function Shell({
         <div className="crumb">
           {crumb}
           <span className="rule" />
+          <ThemeControls />
           <span className="cap">{here?.group ?? ''}</span>
           <span className="cap" style={{ color: 'var(--color-text-0)' }}>
             {here?.label ?? ''}

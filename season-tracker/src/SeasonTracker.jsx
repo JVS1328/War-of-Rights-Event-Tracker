@@ -89,6 +89,7 @@ import {
   leagueAdvice as playoffLeagueAdvice,
   nextPowerOfTwo,
   suggestFormats as suggestPlayoffFormats,
+  LIMITS as PLAYOFF_LIMITS,
 } from './utils/playoffPlanner';
 import { balanceTeams, sitOuts, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
 import {
@@ -107,6 +108,25 @@ import { nightType, leadsPerNight } from './stats/nightMatchup';
  * construction: picking one clears the other two, so a week can never carry
  * more than one kind.
  */
+/**
+ * The bracket stages the settings expose, in the order they are played. The
+ * wildcard round is only drawn when there are wildcard seats, but its length is
+ * still worth setting up front rather than only once the field is known.
+ */
+const PLAYOFF_STAGES = [
+  { key: 'wildcard', label: 'wildcard', note: 'only drawn when there are wildcard seats' },
+  { key: 'divisional', label: 'divisional', note: '1 round = a single game' },
+  { key: 'conference', label: 'conference', note: '2 and 3 are the same series: first to 2' },
+  { key: 'finals', label: 'finals', note: 'the championship night' },
+];
+
+/** Keep a typed number inside the planner's own bounds. */
+const clampTo = ({ min, max }, raw, fallback) => {
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+};
+
 const NIGHT_TYPES = [
   { key: 'Regular', label: 'Regular', hint: 'Two leads, each leading both rounds',
     flags: { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: false } },
@@ -4247,17 +4267,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
             {overall.totalCasualties > 0 && (
               <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-2">Casualties &amp; formation makeup</div>
-                <div className="cols">
+                <div className="pcols">
                   {[
+                    // CSA is a faction, not a failure — it takes the faction ink
+                    // like USA does, not the danger colour.
                     { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'f-usa' },
-                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'c-danger' },
-                    { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: 'text-text-primary' },
+                    { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'f-csa' },
+                    { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: '' },
                   ].map(({ label, total, form, color }) => (
                     <div key={label} className="panel pb">
-                      <div className={`font-semibold ${color}`}>{label}: {total}</div>
+                      <div className={color} style={{ fontWeight: 600 }}>
+                        {label}: {total.toLocaleString()}
+                      </div>
                       {overall.hasFormation && (
-                        <div className="text-text-secondary mt-0.5">
-                          {form.in_form} In Formation · {form.skirm} Skirmish · {form.oob} Out of Line
+                        <div className="note" style={{ marginTop: 3 }}>
+                          {form.in_form} in formation · {form.skirm} skirmish · {form.oob} out of line
                         </div>
                       )}
                     </div>
@@ -4279,7 +4303,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <table>
                 <thead>
                   <tr>
-                    <th >#</th>
+                    <th className="num">#</th>
                     <th >Map</th>
                     <th className="num">Rounds</th>
                     <th className="num">USA Win%</th>
@@ -5331,6 +5355,109 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
 
+              {/* Playoff format — what the bracket and the planner read. */}
+              <div className="fset">
+                <h3 className="cap">
+                  <Trophy className="w-5 h-5" />
+                  Playoff format
+                </h3>
+                <div style={{ marginTop: 9 }}>
+                  <label className="chk">
+                    <input
+                      type="checkbox"
+                      checked={!!playoffConfig.enabled}
+                      onChange={(e) => setPlayoffConfig({ ...playoffConfig, enabled: e.target.checked })}
+                    />
+                    <span>
+                      <span className="l">Enable playoff tracking</span>
+                      <span className="note">unlocks the bracket and the format planner</span>
+                    </span>
+                  </label>
+                </div>
+                {playoffConfig.enabled && (
+                  <>
+                    <div className="grid-f" style={{ marginTop: 11 }}>
+                      <div className="fld">
+                        <label className="cap">Bracket style</label>
+                        <select
+                          className="fld-i"
+                          value={playoffConfig.bracketStyle || 'conference'}
+                          onChange={(e) => setPlayoffConfig({ ...playoffConfig, bracketStyle: e.target.value })}
+                        >
+                          <option value="conference">Conference</option>
+                          <option value="knockout">Seeded knockout</option>
+                        </select>
+                        <div className="note">
+                          knockout reseeds the whole field 1-vs-N; conference needs exactly two
+                        </div>
+                      </div>
+                      <div className="fld">
+                        <label className="cap">Top teams per division</label>
+                        <input
+                          className="fld-i" type="number"
+                          min={PLAYOFF_LIMITS.teamsPerDivision.min} max={PLAYOFF_LIMITS.teamsPerDivision.max}
+                          value={playoffConfig.teamsPerDivision ?? 2}
+                          onChange={(e) => setPlayoffConfig({
+                            ...playoffConfig,
+                            teamsPerDivision: clampTo(PLAYOFF_LIMITS.teamsPerDivision, e.target.value, 2),
+                          })}
+                        />
+                        <div className="note">who qualifies from each one</div>
+                      </div>
+                      <div className="fld">
+                        <label className="cap">Wildcard seats</label>
+                        <input
+                          className="fld-i" type="number"
+                          min={PLAYOFF_LIMITS.wildcardTeams.min} max={PLAYOFF_LIMITS.wildcardTeams.max}
+                          value={playoffConfig.wildcardTeams ?? 0}
+                          onChange={(e) => setPlayoffConfig({
+                            ...playoffConfig,
+                            wildcardTeams: clampTo(PLAYOFF_LIMITS.wildcardTeams, e.target.value, 0),
+                          })}
+                        />
+                        <div className="note">best of the rest, per conference</div>
+                      </div>
+                      {PLAYOFF_STAGES.map(({ key, label, note }) => (
+                        <div className="fld" key={key}>
+                          <label className="cap">Rounds — {label}</label>
+                          <input
+                            className="fld-i" type="number"
+                            min={PLAYOFF_LIMITS.roundsPerMatch.min} max={PLAYOFF_LIMITS.roundsPerMatch.max}
+                            value={playoffConfig.roundFormats?.[key] ?? 1}
+                            onChange={(e) => setPlayoffConfig({
+                              ...playoffConfig,
+                              roundFormats: {
+                                ...playoffConfig.roundFormats,
+                                [key]: clampTo(PLAYOFF_LIMITS.roundsPerMatch, e.target.value, 1),
+                              },
+                            })}
+                          />
+                          <div className="note">{note}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 11 }}>
+                      <label className="chk">
+                        <input
+                          type="checkbox"
+                          checked={!!playoffConfig.useDivisions}
+                          onChange={(e) => setPlayoffConfig({ ...playoffConfig, useDivisions: e.target.checked })}
+                        />
+                        <span>
+                          <span className="l">Qualify through divisions</span>
+                          <span className="note">off means the whole league seeds on points</span>
+                        </span>
+                      </label>
+                    </div>
+                    <p className="note" style={{ marginTop: 11 }}>
+                      The planner on the Playoffs screen reads these and says which formats fit the nights you
+                      have left.{' '}
+                      <button className="gh" onClick={() => goScreen('playoffs')}>Open playoffs</button>
+                    </p>
+                  </>
+                )}
+              </div>
+
               {/* Balancer Settings Section */}
               <div className="fset">
                 <h3 className="cap">
@@ -5555,6 +5682,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 });
               }}
               onBalancer={openBalancerModal}
+              onAssignStats={openCasualtyModal}
             />
           )}
 

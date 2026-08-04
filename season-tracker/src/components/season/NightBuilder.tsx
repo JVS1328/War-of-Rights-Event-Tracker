@@ -130,6 +130,7 @@ export function NightBuilder({
   onRound,
   onSwap,
   onBalancer,
+  onAssignStats,
 }: {
   weeks: { id: string | number; name: string }[];
   week: NightBuilderWeek | null;
@@ -160,6 +161,11 @@ export function NightBuilder({
   onRound: (round: 1 | 2, patch: Partial<NightRound>) => void;
   onSwap: (round: 1 | 2, unit: string, on: boolean) => void;
   onBalancer: () => void;
+  /**
+   * Open the mapping from this night's units to the scoreboard regiments that
+   * played as them. Omitted when there is nothing to map against.
+   */
+  onAssignStats?: () => void;
 }) {
   const R = RT_RULES[type];
   const scores = new Set(tokenUnits);
@@ -397,6 +403,15 @@ export function NightBuilder({
           >
             <button className="gh" onClick={onBalancer}>Open balancer</button>
             <button className="gh" onClick={onClearSides}>Clear both sides</button>
+            {onAssignStats && (
+              <button
+                className="gh"
+                onClick={onAssignStats}
+                title="Map each unit on this night to the scoreboard regiments that played as it"
+              >
+                Assign player stats
+              </button>
+            )}
             <span className="rule" />
             <span className="meta">
               {bench.length
