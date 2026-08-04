@@ -4793,7 +4793,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </button>
                 <button
                   onClick={() => setShowMapBiasModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 border border-border-default hover:bg-bg-inset rounded-lg transition"
+                  className="gh"
                 >
                   <Map className="w-4 h-4" />
                   Map History
@@ -4830,15 +4830,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </button>
                 </div>
               </div>
-              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
+              <div className="rows scroll-y">
                 {weeks.map((week) => (
                   <div
                     key={week.id}
-                    className={`p-4 rounded-lg transition cursor-pointer ${
-                      selectedWeek?.id === week.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-bg-inset hover:bg-border-subtle'
-                    }`}
+                    className={`row click${selectedWeek?.id === week.id ? ' on' : ''}`}
                   >
                     <div className="flex justify-between items-center">
                       {editingWeek === week.id ? (
@@ -4933,7 +4929,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   💡 Drag units to teams or use A/B buttons
                 </div>
               )}
-              <div className="space-y-2 max-h-48 sm:max-h-72 overflow-y-auto">
+              <div className="rows scroll-y">
                 {(selectedWeek ? getAvailableUnitsForWeek() : units).map((unit) => {
                   const isNonToken = nonTokenUnits.includes(unit);
                   return (
@@ -4941,9 +4937,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       key={unit}
                       draggable={selectedWeek ? true : false}
                       onDragStart={() => selectedWeek && handleMainDragStart(unit, null)}
-                      className={`flex justify-between items-center p-3 bg-bg-inset rounded-md ${
-                        selectedWeek ? 'cursor-move hover:bg-border-subtle' : ''
-                      } transition`}
+                      className={`row flex justify-between items-center${selectedWeek ? ' click' : ''}`}
                     >
                       <div className="flex items-center gap-2">
                         <button
@@ -5037,7 +5031,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                 </div>
               </div>
-              <div className="space-y-2 max-h-64 sm:max-h-96 overflow-y-auto">
+              <div className="rows scroll-y">
                 {showGroupedStandings && divisions && divisions.length > 0 ? (
                   // Grouped view by division
                   getGroupedStandings().map((group) => (
@@ -5264,7 +5258,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
           {screen === 'night' && selectedWeek && (
-            <div className="mt-6 bg-bg-card border border-border-default rounded-lg p-4">
+            <div className="panel pb">
               <h2 className="cap">
                 {selectedWeek.name} - Team Rosters
               </h2>
@@ -5413,7 +5407,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <div className="text-xs text-text-secondary mb-2">
                             Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
                           </div>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <div className="rows scroll-y">
                             {matchups.map((m, i) => (
                               <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
                                 <span className="f-usa">{m.unitA}</span>
@@ -5436,7 +5430,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 {/* Team A */}
                 <div
-                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
+                  className="panel pb"
                   onDragOver={handleMainDragOver}
                   onDrop={() => handleMainDrop('A')}
                 >
@@ -5520,7 +5514,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                 {/* Team B */}
                 <div
-                  className="bg-bg-inset rounded-lg p-4 min-h-[200px]"
+                  className="panel pb"
                   onDragOver={handleMainDragOver}
                   onDrop={() => handleMainDrop('B')}
                 >
@@ -6288,7 +6282,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="text-xs text-text-secondary mb-2">
                                 Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
                               </div>
-                              <div className="space-y-1 max-h-32 overflow-y-auto">
+                              <div className="rows scroll-y">
                                 {matchups.map((m, i) => (
                                   <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
                                     <span className="f-usa">{m.unitA}</span>
@@ -6729,7 +6723,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <button
                             key={opt.id}
                             onClick={() => changeAssignScope(opt.id)}
-                            className={`px-2 py-1 rounded border transition ${assignScope === opt.id ? 'bg-indigo-600 text-white border-indigo-600' : 'border-border-default text-text-secondary hover:bg-bg-inset'}`}
+                            className="chip"
+                          aria-pressed={assignScope === opt.id}
                           >
                             {opt.label}
                           </button>
@@ -7956,7 +7951,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </button>
                     </div>
 
-                    <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                    <div className="panel pb">
                       <p className="text-sm text-text-secondary">
                         Per-map outcome history. These numbers feed Elo expected-win-probability when{' '}
                         <strong>Map Weight</strong> in Settings is non-zero, with Bayesian shrinkage controlled by{' '}
@@ -7968,7 +7963,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <div key={category} className="mb-4">
                         <button
                           onClick={() => toggleSection(category)}
-                          className="w-full flex items-center justify-between bg-bg-inset rounded-lg p-3 hover:bg-bg-inset transition"
+                          className="row click w-full flex items-center justify-between"
                         >
                           <h3 className="cap">
                             {category.replace(/_/g, ' ').toUpperCase()}
@@ -7981,7 +7976,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         </button>
 
                         {expandedSections[category] && (
-                          <div className="mt-2 bg-bg-inset rounded-lg p-4">
+                          <div className="panel pb">
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-text-secondary border-b border-border-default">
@@ -8067,7 +8062,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </header>
                   <div className="pb">
 
-                    <div className="mb-4 bg-bg-inset rounded-lg p-3">
+                    <div className="panel pb">
                       <p className="text-xs text-text-secondary">
                         Every unit ever associated with this event. Renaming here propagates to all seasons (rosters, leads, swaps, casualties).
                         Hard-delete is only available when a unit has no roster appearance anywhere in the event.
@@ -8186,7 +8181,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     ))}
                   </div>
 
-                  <div className="mb-4 bg-bg-inset rounded-lg p-4">
+                  <div className="panel pb">
                     <p className="text-sm text-text-secondary">
                       {HEAT_MODE_BLURB[heatmapMode]}
                       {heatmapScope === 'event' && ' Aggregated across every season in this event.'}
@@ -8987,11 +8982,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         {weeks.map((week) => (
                           <div
                             key={week.id}
-                            className={`p-4 rounded-lg transition cursor-pointer ${
-                              selectedWeek?.id === week.id
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-bg-inset hover:bg-border-subtle'
-                            }`}
+                            className={`row click${selectedWeek?.id === week.id ? ' on' : ''}`}
                           >
                             <div className="flex justify-between items-center">
                               {editingWeek === week.id ? (
@@ -9071,7 +9062,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           return (
                             <div
                               key={unit}
-                              className="flex justify-between items-center p-3 bg-bg-inset rounded-lg"
+                              className="row flex justify-between items-center"
                             >
                               <div className="flex items-center gap-2">
                                 <button

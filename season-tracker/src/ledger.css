@@ -341,12 +341,14 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .ib:hover { background: var(--color-bg-2); color: var(--color-text-0); }
 .ib.danger:hover { background: var(--color-danger); color: #fff; }
 
-/* A list of things is ruled, not a stack of cards. */
+/* A list of things is ruled, not a stack of cards. Deliberately no `display`
+   here: rows that lay their contents out sideways carry `flex` themselves, and
+   an unlayered `display: block` would beat that utility. */
 .rows { display: flex; flex-direction: column; }
-.rows.scroll-y { max-height: 260px; overflow-y: auto; }
+.rows.scroll-y { max-height: 340px; overflow-y: auto; }
 .row {
   padding: 7px 9px; border-bottom: 1px solid var(--color-border);
-  display: block; min-width: 0;
+  min-width: 0;
 }
 .row:last-child { border-bottom: 0; }
 .row.click { cursor: pointer; }
