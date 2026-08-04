@@ -1,9 +1,15 @@
-// Summary tab of the round drawer. Season-tracker's event-binding panel sits at
-// the top (when binding is allowed), followed by a PUBS-style summary: meta
-// cells, a casualties table with per-side shares, and a deaths-by-weapon table.
+// Summary tab of the round drawer, read as a matchup: the result first, then
+// one mirrored line per metric, then the notes those numbers support. The
+// event-binding panel sits above it when binding is allowed, and the raw
+// casualty and weapon tables stay underneath for anyone reading exact figures.
 import { useEffect, useState } from 'react';
 import { Cell, fmtDuration, whenOf } from '../drawerPrimitives';
 import { roundDurationSeconds } from '../../../stats/statsEngine';
+import { Pill } from '../../ui';
+import { Spine } from '../../ui/Spine';
+import { Scoreline } from '../../ui/Scoreline';
+import { StanceBar } from '../../ui/StanceBar';
+import { matchupScore, matchupRows, matchupKeys } from '../../../stats/roundMatchup';
 import type { Scoreboard } from '../../../stats/types';
 import type { StoredScoreboard } from '../../../stats/StatsRepository';
 import type { RoundAutofill } from '../../../stats/eventBinding';
@@ -85,6 +91,8 @@ export function SummaryTab({
         </div>
       )}
 
+      <MatchupHead sb={sb} />
+
       <section className="p-4 border-b border-[color:var(--color-border)] grid grid-cols-3 gap-px bg-[color:var(--color-border)]">
         <Cell label="map" value={meta.map} />
         <Cell label="mode" value={meta.mode} />
@@ -153,6 +161,82 @@ export function SummaryTab({
     </div>
   );
 }
+
+/** Scoreline, the mirrored metric spine, the stance split and the notes. */
+function MatchupHead({ sb }: { sb: Scoreboard }) {
+  const score = matchupScore(sb);
+  const rows = matchupRows(sb);
+  const keys = matchupKeys(sb);
+  const cas = sb.meta.casualties;
+
+  return (
+    <>
+      <section className="border-b border-[color:var(--color-border)]">
+        <Scoreline
+          winner={score.winner === 'USA' ? 'a' : score.winner === 'CSA' ? 'b' : null}
+          label={score.winner ? 'Final' : 'Draw'}
+          a={{
+            chip: <Pill tone="usa">Union</Pill>,
+            name: 'USA',
+            value: score.usaInflicted,
+            sub: 'casualties inflicted',
+            hue: 'var(--color-usa)',
+          }}
+          b={{
+            chip: <Pill tone="csa">Confederate</Pill>,
+            name: 'CSA',
+            value: score.csaInflicted,
+            sub: 'casualties inflicted',
+            hue: 'var(--color-csa)',
+          }}
+        />
+      </section>
+
+      <section className="border-b border-[color:var(--color-border)]">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+          <h3 className="text-xs uppercase tracking-wider text-[color:var(--color-text-1)]">
+            How the round was won
+          </h3>
+          <span className="h-px flex-1 bg-[color:var(--color-border)]" />
+          <span className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+            one line per metric
+          </span>
+        </div>
+        <Spine rows={rows} aSide="usa" bSide="csa" />
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 border-b border-[color:var(--color-border)] p-4 sm:grid-cols-2">
+        <StanceBar counts={toCounts(cas.USA)} label="USA — where the losses happened" />
+        <StanceBar counts={toCounts(cas.CSA)} label="CSA — where the losses happened" />
+      </section>
+
+      {keys.length > 0 && (
+        <section className="border-b border-[color:var(--color-border)]">
+          {keys.map((k) => (
+            <div key={k.title} className="border-t border-[color:var(--color-border)] px-4 py-3 first:border-t-0">
+              <div className="flex items-center gap-2">
+                {k.side ? (
+                  <Pill tone={k.side === 'USA' ? 'usa' : 'csa'}>{k.side}</Pill>
+                ) : (
+                  <Pill tone="neutral">Round</Pill>
+                )}
+                <strong className="text-sm text-[color:var(--color-text-0)]">{k.title}</strong>
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-[color:var(--color-text-1)]">{k.body}</p>
+            </div>
+          ))}
+        </section>
+      )}
+    </>
+  );
+}
+
+/** The meta block counts casualties by stance; the bar wants FormationCounts. */
+const toCounts = (c: { inForm: number; skirm: number; oob: number }) => ({
+  in_form: c.inForm,
+  skirm: c.skirm,
+  oob: c.oob,
+});
 
 function BindPanel({
   sb,
