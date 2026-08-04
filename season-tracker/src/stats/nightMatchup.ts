@@ -27,14 +27,23 @@ export type Side = 'A' | 'B';
 export const otherSide = (s: Side): Side => (s === 'A' ? 'B' : 'A');
 
 /**
+ * Just the two sides and the balance swaps — everything {@link effectiveTeams}
+ * needs. Split out so anything reading who was on which side (the heatmaps,
+ * for one) goes through the same swap rule rather than reimplementing it.
+ */
+export interface TeamSides {
+  teamA?: string[];
+  teamB?: string[];
+  roundSwaps?: { r1?: string[]; r2?: string[] };
+}
+
+/**
  * The subset of a tracker week this module reads. Kept structural so the live
  * tracker can hand its week straight in, and the tests can build a small one.
  */
-export interface NightWeek {
+export interface NightWeek extends TeamSides {
   id: string | number;
   name: string;
-  teamA?: string[];
-  teamB?: string[];
   round1Winner?: Side | null;
   round2Winner?: Side | null;
   round1Draw?: boolean;
@@ -64,7 +73,6 @@ export interface NightWeek {
   r1MoraleB?: string | null;
   r2MoraleA?: string | null;
   r2MoraleB?: string | null;
-  roundSwaps?: { r1?: string[]; r2?: string[] };
 }
 
 export type NightType = 'Regular' | 'Single-round leads' | 'Playoffs' | 'Fun round';
@@ -104,7 +112,7 @@ export const nightAwardsPoints = (t: NightType): boolean =>
  * getEffectiveTeams: a swapped unit moves to the other side for that round
  * only.
  */
-export function effectiveTeams(w: NightWeek, round: 1 | 2): { A: string[]; B: string[] } {
+export function effectiveTeams(w: TeamSides, round: 1 | 2): { A: string[]; B: string[] } {
   const baseA = w.teamA ?? [];
   const baseB = w.teamB ?? [];
   const swaps = new Set(w.roundSwaps?.[round === 1 ? 'r1' : 'r2'] ?? []);

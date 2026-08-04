@@ -89,6 +89,15 @@ import {
   scheduleWeeks,
   describeProblem as describeScheduleProblem,
 } from './utils/scheduleImport';
+import {
+  buildPairHeatmap,
+  findPair,
+  pairPct,
+  heatColor,
+  heatInk,
+  MODE_LABEL as HEAT_MODE_LABEL,
+  MODE_BLURB as HEAT_MODE_BLURB,
+} from './utils/pairHeatmap';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -180,6 +189,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [statsTab, setStatsTab] = useState('season'); // 'season' | 'event'
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
+  const [heatmapMode, setHeatmapMode] = useState('together'); // 'together' | 'against'
   const [showSimulateModal, setShowSimulateModal] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [simulationAnalytics, setSimulationAnalytics] = useState(null);
@@ -2556,64 +2566,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const assignedUnits = new Set(divisions.flatMap(d => d.units));
     return units.filter(u => !assignedUnits.has(u));
   };
-
-  // Calculate teammate composition heatmap (per-round, swap-aware)
-  // Build a teammate-composition heatmap from any list of seasons. KISS DRY:
-  // the active-season heatmap is just `seasons = [activeSeason]`; the
-  // event-wide heatmap is `seasons = activeEvent.seasons`. Pure aggregation —
-  // counts how often each pair was on the same team across all rounds in the
-  // supplied seasons (swap-aware via getEffectiveTeams).
-  const calculateTeammateHeatmapForSeasons = (seasons) => {
-    const allWeeks = (seasons || []).flatMap(s => s.weeks || []);
-    const teammate = {};
-    allWeeks.forEach(week => {
-      [1, 2].forEach(roundNum => {
-        const { teamA, teamB } = getEffectiveTeams(week, roundNum);
-        const ensure = (u) => (teammate[u] ||= {});
-        teamA.forEach(u1 => {
-          const m = ensure(u1);
-          teamA.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
-        });
-        teamB.forEach(u1 => {
-          const m = ensure(u1);
-          teamB.forEach(u2 => { if (u1 !== u2) m[u2] = (m[u2] || 0) + 1; });
-        });
-      });
-    });
-
-    // Active units across the supplied seasons.
-    const allUnits = new Set();
-    for (const s of seasons || []) (s.units || []).forEach(u => allUnits.add(u));
-    const activeUnits = [...allUnits].filter(unit =>
-      allWeeks.some(w => (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit))
-    ).sort();
-
-    const unitActiveWeeks = {};
-    activeUnits.forEach(unit => {
-      unitActiveWeeks[unit] = allWeeks.filter(w =>
-        (w.teamA || []).includes(unit) || (w.teamB || []).includes(unit)
-      ).length;
-    });
-
-    const heatmapData = [];
-    activeUnits.forEach(u1 => {
-      activeUnits.forEach(u2 => {
-        if (u1 === u2) return;
-        const count = teammate[u1]?.[u2] || 0;
-        const bothActiveWeeks = Math.min(unitActiveWeeks[u1] || 0, unitActiveWeeks[u2] || 0);
-        const bothActiveRounds = bothActiveWeeks * 2;
-        if (count > 0 || bothActiveRounds > 0) {
-          heatmapData.push({ unit1: u1, unit2: u2, count, bothActiveWeeks, bothActiveRounds });
-        }
-      });
-    });
-
-    return { heatmapData, activeUnits, unitActiveWeeks };
-  };
-
-  // Active-season heatmap (legacy callers).
-  const calculateTeammateHeatmap = () =>
-    calculateTeammateHeatmapForSeasons(activeSeason ? [activeSeason] : []);
 
   // Calculate live preview stats for balancer
   const calculatePreviewStats = (teamA, teamB) => {
@@ -7208,7 +7160,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition"
                           >
                             <Swords className="w-4 h-4" />
-                            Open Cross-Season Heatmap
+                            Open Cross-Season Pairings
                           </button>
                         </div>
                       </div>
@@ -7842,10 +7794,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <button
                         onClick={() => setShowHeatmapModal(true)}
                         className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm transition flex items-center gap-1"
-                        title="View Teammate Composition Heatmap"
+                        title="Who has played alongside whom, and who against"
                       >
                         <Swords className="w-4 h-4" />
-                        Heatmap
+                        Pairings
                       </button>
                     </div>
                     <div className="space-y-3">
@@ -8279,7 +8231,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-semibold flex items-center gap-2">
                       <Swords className="w-6 h-6" />
-                      Teammate Composition Heatmap
+                      Unit Pairings
                     </h2>
                     <button
                       onClick={() => setShowHeatmapModal(false)}
@@ -8290,7 +8242,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {/* Scope toggle — same UI as the stats modal tab strip */}
-                  <div className="flex gap-1 mb-4 border-b border-border-default">
+                  <div className="flex gap-1 mb-3 border-b border-border-default">
                     <button
                       onClick={() => setHeatmapScope('season')}
                       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
@@ -8313,10 +8265,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
+                  {/* Together / against. Both read as a share of the rounds the
+                      pair were both on the field, so they add up to 100%. */}
+                  <div className="flex gap-2 mb-4">
+                    {(['together', 'against']).map(mode => (
+                      <button
+                        key={mode}
+                        onClick={() => setHeatmapMode(mode)}
+                        className={`px-3 py-1.5 text-sm rounded-md transition ${
+                          heatmapMode === mode
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-bg-inset text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {HEAT_MODE_LABEL[mode]}
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="mb-4 bg-bg-inset rounded-lg p-4">
                     <p className="text-sm text-text-secondary">
-                      How often units have played together as teammates per round, accounting for balance swaps.
-                      50% means they were teammates in half of the rounds where both units were present.
+                      {HEAT_MODE_BLURB[heatmapMode]}
                       {heatmapScope === 'event' && ' Aggregated across every season in this event.'}
                     </p>
                   </div>
@@ -8325,55 +8294,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const seasonsToScan = heatmapScope === 'event'
                       ? activeEvent.seasons
                       : (activeSeason ? [activeSeason] : []);
-                    const { heatmapData, activeUnits, unitActiveWeeks } = calculateTeammateHeatmapForSeasons(seasonsToScan);
-                    
-                    if (activeUnits.length === 0) {
+                    const map = buildPairHeatmap((seasonsToScan || []).flatMap(s => s.weeks || []));
+
+                    if (map.units.length === 0) {
                       return (
                         <div className="text-center text-text-secondary py-12">
                           <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                          <p>No teammate data available yet</p>
+                          <p>No pairing data available yet</p>
                         </div>
                       );
                     }
 
-                    // Helper to get color intensity based on percentage of rounds both units were active
-                    // Creates a smooth gradient from blue (0%) -> purple -> orange -> red (100%)
-                    const getHeatColor = (count, bothActiveRounds) => {
-                      if (bothActiveRounds === 0) return 'bg-bg-inset';
-                      const percentage = (count / bothActiveRounds) * 100;
-                      
-                      // Calculate RGB values for smooth gradient
-                      // 0% = sky blue (135, 206, 235), 100% = red (220, 38, 38)
-                      let r, g, b;
-                      
-                      if (percentage <= 50) {
-                        // Sky Blue to purple (0-50%)
-                        const t = percentage / 50;
-                        r = Math.round(135 + (147 - 135) * t);    // 135 -> 147
-                        g = Math.round(206 - (206 - 51) * t);   // 206 -> 51
-                        b = Math.round(235 - (235 - 235) * t);  // 235 -> 235
-                      } else {
-                        // Purple to red (50-100%)
-                        const t = (percentage - 50) / 50;
-                        r = Math.round(147 + (220 - 147) * t);  // 147 -> 220
-                        g = Math.round(51 - (51 - 38) * t);     // 51 -> 38
-                        b = Math.round(235 - (235 - 38) * t);   // 235 -> 38
-                      }
-                      
-                      return `rgb(${r}, ${g}, ${b})`;
-                    };
-
-                    // Helper to get percentage display
-                    const getPercentage = (count, bothActiveRounds) => {
-                      if (bothActiveRounds === 0) return '';
-                      return Math.round((count / bothActiveRounds) * 100);
-                    };
-
-                    // Calculate dynamic cell size based on number of units
-                    const unitCount = activeUnits.length;
-                    const cellSize = Math.max(24, Math.min(48, Math.floor(800 / unitCount)));
+                    const cellSize = Math.max(24, Math.min(48, Math.floor(800 / map.units.length)));
                     const fontSize = cellSize < 32 ? 'text-[8px]' : cellSize < 40 ? 'text-[10px]' : 'text-xs';
-                    
+
                     return (
                       <div className="bg-bg-inset rounded-lg p-4">
                         <div className="w-full">
@@ -8381,7 +8315,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             <thead>
                               <tr style={{ height: '80px' }}>
                                 <th className="p-1 text-xs font-semibold text-text-secondary bg-bg-inset z-10" style={{ width: '120px' }}></th>
-                                {activeUnits.map(unit => (
+                                {map.units.map(unit => (
                                   <th key={unit} className={`p-0.5 ${fontSize} font-semibold text-text-secondary relative`} style={{ height: '80px' }}>
                                     <div className="absolute bottom-2 left-1/2 transform -translate-x-1/6 -rotate-45 origin-bottom-left whitespace-nowrap" style={{ maxWidth: `${cellSize * 2}px` }} title={unit}>
                                       <span className="truncate block">{unit}</span>
@@ -8391,12 +8325,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeUnits.map(unit1 => (
+                              {map.units.map(unit1 => (
                                 <tr key={unit1}>
                                   <td className={`p-1 ${fontSize} font-semibold text-text-secondary bg-bg-inset z-10 truncate`} style={{ maxWidth: '120px' }} title={unit1}>
                                     {unit1}
                                   </td>
-                                  {activeUnits.map(unit2 => {
+                                  {map.units.map(unit2 => {
                                     if (unit1 === unit2) {
                                       return (
                                         <td key={unit2} className="p-0.5">
@@ -8406,31 +8340,34 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                         </td>
                                       );
                                     }
-                                    
-                                    const data = heatmapData.find(d =>
-                                      (d.unit1 === unit1 && d.unit2 === unit2) ||
-                                      (d.unit1 === unit2 && d.unit2 === unit1)
-                                    );
-                                    const count = data?.count || 0;
-                                    const bothActiveWeeks = data?.bothActiveWeeks || 0;
-                                    const bothActiveRounds = data?.bothActiveRounds || 0;
-                                    const percentage = getPercentage(count, bothActiveRounds);
-
-                                    const bgColor = getHeatColor(count, bothActiveRounds);
-                                    const isSlateGray = bgColor === 'bg-bg-inset';
-                                    
+                                    const cell = findPair(map, unit1, unit2);
+                                    const percentage = pairPct(cell, heatmapMode);
+                                    // A pair that never shared a round has no share
+                                    // to show — that is different from 0%, so it is
+                                    // left blank rather than coloured at the low end.
+                                    if (percentage === null) {
+                                      return (
+                                        <td key={unit2} className="p-0.5">
+                                          <div
+                                            className="w-full bg-bg-card rounded flex items-center justify-center"
+                                            style={{ height: `${cellSize}px` }}
+                                            title={`${unit1} & ${unit2}: never on the field in the same round`}
+                                          >
+                                            <span className={`${fontSize} text-text-muted`}>·</span>
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    const count = heatmapMode === 'together' ? cell.together : cell.against;
                                     return (
                                       <td key={unit2} className="p-0.5">
                                         <div
-                                          className={`w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition ${isSlateGray ? bgColor : ''}`}
-                                          style={{
-                                            height: `${cellSize}px`,
-                                            backgroundColor: isSlateGray ? undefined : bgColor
-                                          }}
-                                          title={`${unit1} & ${unit2}: ${count} rounds together (${percentage}% of ${bothActiveRounds} rounds) — ${bothActiveWeeks} weeks both active`}
+                                          className="w-full rounded flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-indigo-400 transition"
+                                          style={{ height: `${cellSize}px`, backgroundColor: heatColor(percentage) }}
+                                          title={`${unit1} & ${unit2}: ${count} of ${cell.bothActive} shared rounds ${heatmapMode === 'together' ? 'on the same side' : 'facing each other'} (${percentage}%)`}
                                         >
-                                          <span className={`${fontSize} font-semibold text-white`}>
-                                            {percentage !== '' ? `${percentage}%` : ''}
+                                          <span className={`${fontSize} font-semibold`} style={{ color: heatInk(percentage) }}>
+                                            {percentage}%
                                           </span>
                                         </div>
                                       </td>
@@ -8445,7 +8382,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         {/* Legend */}
                         <div className="mt-6">
                           <div className="text-sm text-text-secondary text-center mb-2">
-                            Percentage of Weeks Both Units Active
+                            Share of the rounds both units were on the field
                           </div>
                           <div className="flex items-center justify-center gap-3">
                             <span className="text-xs text-text-secondary">0%</span>
@@ -8453,25 +8390,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div
                                 className="absolute inset-0"
                                 style={{
-                                  background: 'linear-gradient(to right, rgb(135, 206, 235) 0%, rgb(147, 51, 235) 50%, rgb(220, 38, 38) 100%)'
+                                  background: `linear-gradient(to right, ${heatColor(0)} 0%, ${heatColor(50)} 50%, ${heatColor(100)} 100%)`
                                 }}
                               />
                             </div>
                             <span className="text-xs text-text-secondary">100%</span>
                           </div>
-                          <div className="flex items-center justify-center gap-8 mt-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(135, 206, 235)' }}></div>
-                              <span className="text-xs text-text-secondary">Low</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(147, 51, 235)' }}></div>
-                              <span className="text-xs text-text-secondary">Mid</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: 'rgb(220, 38, 38)' }}></div>
-                              <span className="text-xs text-text-secondary">High</span>
-                            </div>
+                          <div className="text-xs text-text-secondary text-center mt-2">
+                            · marks a pair that has never been on the field in the same round · {map.rounds} rounds scanned
                           </div>
                         </div>
                       </div>
