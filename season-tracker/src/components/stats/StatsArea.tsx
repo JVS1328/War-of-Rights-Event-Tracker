@@ -29,17 +29,21 @@ import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, sc
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
 import { CompareView } from './CompareView';
+import { NightMatchup } from './NightMatchup';
+import type { NightWeek, PointSystem } from '../../stats/nightMatchup';
 import { TicketPct } from './drawerPrimitives';
 
-export interface WeekRef {
+/**
+ * A week, as the stats side reads it. The binding panel only needs id/name/flip,
+ * but the Nights tab reads the whole result — so this is {@link NightWeek} with
+ * a string id, and the tracker hands its week straight in.
+ */
+export interface WeekRef extends NightWeek {
   id: string;
-  name: string;
-  round1Flipped?: boolean;
-  round2Flipped?: boolean;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'compare' | 'maps' | 'rounds' | 'import';
-const TABS: SubTab[] = ['overview', 'players', 'regiments', 'compare', 'maps', 'rounds', 'import'];
+type SubTab = 'overview' | 'players' | 'regiments' | 'nights' | 'compare' | 'maps' | 'rounds' | 'import';
+const TABS: SubTab[] = ['overview', 'players', 'regiments', 'nights', 'compare', 'maps', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
 
@@ -116,6 +120,12 @@ interface StatsAreaProps {
   validMaps?: string[];
   /** Writes auto-filled round fields back into the tracker's week. */
   onApplyRound?: (weekId: string, updates: Record<string, unknown>) => void;
+  /** The season's point system, so the Nights tab can price a night. */
+  pointSystem?: PointSystem;
+  /** Units holding a standings token — anyone else scores nothing. */
+  tokenUnits?: string[];
+  /** Opens the tracker's night builder for a week, from the Nights tab. */
+  onEditNight?: (weekId: string) => void;
   /**
    * All seasons (id, name, weekIds) for the season/Overall stats filter. A
    * scoreboard belongs to a season when its `binding.weekId` is in that
@@ -158,6 +168,9 @@ export function StatsPanel({
   teamNames = { A: 'USA', B: 'CSA' },
   validMaps = [],
   onApplyRound,
+  pointSystem,
+  tokenUnits,
+  onEditNight,
   seasons = [],
   seasonScope = OVERALL_SCOPE,
   onSeasonScope,
@@ -352,7 +365,9 @@ export function StatsPanel({
 
   const hasData = sbs.length > 0;
   // Shared/read-only views drop the Import tab — there's nothing to import into.
-  const visibleTabs = readOnly ? TABS.filter((t) => t !== 'import') : TABS;
+  const visibleTabs = TABS.filter(
+    (t) => (t !== 'import' || !readOnly) && (t !== 'nights' || weeks.length > 0),
+  );
 
   return (
     <div className="space-y-3">
@@ -469,6 +484,19 @@ export function StatsPanel({
           seasonScope={seasonScope}
           seasonName={seasons.find((s) => s.id === seasonScope)?.name ?? null}
           combine={combine}
+        />
+      )}
+
+      {tab === 'nights' && (
+        <NightMatchup
+          weeks={weeks}
+          stored={stats.stored}
+          pointSystem={pointSystem}
+          tokenUnits={tokenUnits}
+          assignments={overallAssignments}
+          options={{ regimentList, aliasMap: overallAlias }}
+          onOpenRound={openRound}
+          onEditNight={onEditNight}
         />
       )}
 

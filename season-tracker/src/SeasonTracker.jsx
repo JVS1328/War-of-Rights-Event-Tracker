@@ -4540,17 +4540,22 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {viewMode === 'splitter' && <CompanySplitter />}
 
+          {/* The whole week goes across as `weeks`, not just id/name/flip: the
+              Nights tab reads a night's result, leads and rosters as a matchup. */}
           {viewMode === 'stats' && (
             <StatsArea
               eventId={appState.activeEventId}
               eventName={activeEvent.name}
               registryUnits={registryUnitNames}
-              weeks={weeks.map(w => ({
-                id: String(w.id),
-                name: w.name,
-                round1Flipped: !!w.round1Flipped,
-                round2Flipped: !!w.round2Flipped,
-              }))}
+              weeks={weeks.map(w => ({ ...w, id: String(w.id) }))}
+              pointSystem={pointSystem}
+              tokenUnits={tokenUnits}
+              onEditNight={(weekId) => {
+                const w = weeks.find(x => String(x.id) === weekId);
+                if (!w) return;
+                setSelectedWeek(w);
+                setViewMode('tracker');
+              }}
               seasons={statsSeasonRefs}
               seasonScope={statsAllSeasons ? OVERALL_SCOPE : appState.activeSeasonId}
               teamNames={teamNames}
