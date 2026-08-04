@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Drawer, EmptyHint, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow, PlayerType } from '../../stats/statsEngine';
+import { splitPlayerRounds, SPLIT_LABELS } from '../../stats/playerSplits';
+import { StanceBar } from '../ui/StanceBar';
 import { Cell, CauseTable, kdStr, whenOf, teamTone, roleLine } from './drawerPrimitives';
 import { formatAvgT, FORMATION_LABEL, FORMATION_SHORT, AVG_TD_LABEL, AVG_TK_LABEL } from '../../stats/labels';
 
@@ -217,6 +219,54 @@ function PerRoundTable({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOp
 // here so existing imports (`./StatsDrawers`) keep working.
 export { ScoreboardDrawer } from './scoreboard/ScoreboardDrawer';
 
+/**
+ * The same four context slices units get, for a player: a good K/D means
+ * something different if it was all earned defending.
+ *
+ * Collapsed by default — this is the second question about a player, not the
+ * first — and a slice with no rounds is left out rather than shown at zero.
+ */
+function SplitsSection({ rounds }: { rounds: PlayerRoundRow[] }) {
+  const splits = useMemo(() => splitPlayerRounds(rounds), [rounds]);
+  const shown = SPLIT_LABELS.map(({ key, label }) => ({ label, slice: splits[key] })).filter(
+    (s) => s.slice.rounds > 0,
+  );
+  if (shown.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-1 text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+        Splits
+      </div>
+      <div className="space-y-2">
+        {shown.map(({ label, slice }) => (
+          <details key={label} className="border border-[color:var(--color-border)]">
+            <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 bg-[color:var(--color-bg-2)] px-2 py-1 text-xs">
+              <span className="uppercase tracking-wider text-[color:var(--color-text-0)]">{label}</span>
+              <span className="tabular-nums text-[color:var(--color-text-2)]">
+                {slice.rounds}rd · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)} K/D
+                {' · '}
+                <span title={AVG_TD_LABEL}>×Td {formatAvgT(slice.avgTd)}</span>
+                {' · '}
+                <span title={AVG_TK_LABEL}>×Tk {formatAvgT(slice.avgTk)}</span>
+              </span>
+            </summary>
+            <div className="space-y-3 p-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <StanceBar counts={slice.casualtiesByFormation} label="Where he was caught" />
+                <StanceBar counts={slice.killsByFormation} label="Where his victims were caught" />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <CauseTable title="Killed with" data={slice.killsByCause} />
+                <CauseTable title="Died to" data={slice.casualtiesByCause} />
+              </div>
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Arm filters, mirroring the leaderboard so the two never disagree. */
 const ARM_LABELS: { key: PlayerType; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -267,7 +317,9 @@ export function PlayerDrawer({
     >
       {toggle}
       {!detail ? (
-        <EmptyHint>{type === 'all' ? 'No data' : `No ${type === 'inf' ? 'infantry' : 'artillery'} rounds for this player`}</EmptyHint>
+        <EmptyHint>
+          {type === 'all' ? 'No data' : `No ${ARM_LABELS.find((a) => a.key === type)?.label.toLowerCase()} rounds for this player`}
+        </EmptyHint>
       ) : (
         <div className="space-y-3 p-3 font-mono">
           {detail.steamId && (
@@ -325,6 +377,8 @@ export function PlayerDrawer({
             <CauseTable title="Killed with" data={detail.killsByCause} />
             <CauseTable title="Died to" data={detail.deathsByCause} />
           </div>
+
+          <SplitsSection rounds={detail.perRound} />
 
           {detail.perRound.length > 0 && (
             <RoundsPlayedSection key={`rp-${detail.key}-${type}`} rounds={detail.perRound} onOpenRound={onOpenRound} />
