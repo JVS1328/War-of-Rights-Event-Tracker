@@ -32,7 +32,7 @@ export function StanceBar({ counts, label }: { counts: FormationCounts; label: s
             <i style={{ background: hue }} />
             {FORMATION_LABEL[key]} · {TICKET_WEIGHT[key]} tkt
             <b style={{ color: 'var(--ink)', fontWeight: 400 }}>{counts[key]}</b>
-            <span style={{ color: 'var(--ink-3)' }}>{pct(counts[key])}%</span>
+            <span style={{ color: 'var(--ink-3)' }}>· {pct(counts[key])}%</span>
           </span>
         ))}
       </div>
