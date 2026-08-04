@@ -463,3 +463,17 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
   font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--ink-3); line-height: 1.6;
 }
+
+/* A unit on a side: name left, head count and the move button right. */
+.bteam {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 6px 9px; font-size: 12px;
+}
+.bteam + .bteam { border-top: 1px solid var(--line); }
+.bteam.win { background: var(--raised); font-weight: 600; }
+.bteam.win .s { color: var(--ink); }
+.bteam .s { color: var(--ink-3); font-size: 11px; }
+
+/* A run of tags — a bench, a filter set, a roster at a glance. */
+.rl { display: flex; flex-wrap: wrap; gap: 4px; }
+.rl .tag.q { cursor: default; }

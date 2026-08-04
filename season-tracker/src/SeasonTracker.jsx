@@ -60,6 +60,7 @@ import { BalanceSwaps } from './components/BalanceSwaps';
 import { EloLadder } from './components/EloLadder';
 import { Shell } from './components/Shell';
 import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
+import { NightBuilder, RT_RULES } from './components/season/NightBuilder';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
 import { DEFAULT_COMPANY_SIDE, clampSideConfig, distributeCompanies, parseRosterPaste, rosterFromCounts } from './utils/companySplit';
@@ -126,6 +127,14 @@ const NIGHT_TYPES = [
  * no view hides behind a modal, so each of these is a place you can be rather
  * than a dialog you open.
  */
+/** Round type name → the flags a week carries for it. */
+const ROUND_TYPE_FLAGS = {
+  'Regular':            { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: false },
+  'Single round leads': { isPlayoffs: false, isSingleRoundLeads: true,  isFunRound: false },
+  'Playoffs':           { isPlayoffs: true,  isSingleRoundLeads: false, isFunRound: false },
+  'Fun round':          { isPlayoffs: false, isSingleRoundLeads: false, isFunRound: true },
+};
+
 const RAIL_NAV = [
   { title: 'Season', items: [
     { key: 'dash', label: 'Overview' },
@@ -2993,6 +3002,43 @@ const SeasonTracker = ({ initialShareData = null }) => {
     [units, nonTokenUnits]
   );
 
+  /** Expected head count per unit — the midpoint of its min/max. */
+  const unitHeadcounts = useMemo(() => {
+    const src = selectedWeek?.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+      ? selectedWeek.unitPlayerCounts
+      : unitPlayerCounts;
+    const out = {};
+    units.forEach(u => {
+      const c = src[u];
+      out[u] = c ? ((c.min || 0) + (c.max || 0)) / 2 : 0;
+    });
+    return out;
+  }, [units, unitPlayerCounts, selectedWeek]);
+
+  /** The night builder names round types the way the prototype does. */
+  const nightBuilderType = !selectedWeek ? 'Regular'
+    : selectedWeek.isPlayoffs ? 'Playoffs'
+    : selectedWeek.isSingleRoundLeads ? 'Single round leads'
+    : selectedWeek.isFunRound ? 'Fun round'
+    : 'Regular';
+
+  /** Copy a night's shape — sides and leads — without its results. */
+  const duplicateSelectedWeek = () => {
+    if (!selectedWeek) return;
+    const copy = {
+      ...selectedWeek,
+      id: Date.now(),
+      name: `${selectedWeek.name} (copy)`,
+      round1Winner: null, round2Winner: null,
+      round1Draw: false, round2Draw: false,
+      round1Map: null, round2Map: null,
+      r1CasualtiesA: 0, r1CasualtiesB: 0, r2CasualtiesA: 0, r2CasualtiesB: 0,
+      roundSwaps: { r1: [], r2: [] },
+    };
+    setWeeks([...weeks, copy]);
+    setSelectedWeek(copy);
+  };
+
   /**
    * The season as the Overview, Standings and Schedule screens read it. One
    * shape, three screens — the prototype's rows, not three ad-hoc projections.
@@ -4889,7 +4935,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
             />
           )}
 
-          {viewMode === 'tracker' && (<>
+          {/* Season screens. Each guards on `screen`; the old viewMode wrapper
+              that used to enclose them is gone with the block that closed it. */}
           {/* Settings — its own screen. */}
           {screen === 'settings' && (
             <div className="panel pb mb-4">
@@ -5324,744 +5371,69 @@ const SeasonTracker = ({ initialShareData = null }) => {
           )}
 
 
-          {/* Night builder. A screen you can arrive at cold, so it carries its
-              own picker rather than assuming a week was clicked first. */}
+          {/* Night builder, to the prototype's V.night: what kind of night it
+              is and what that costs, who is on each side and who leads, then
+              what happened in each round. */}
           {screen === 'night' && (
-            <div className="panel">
-              <header className="ph">
-                <h2>Night builder</h2>
-                <select
-                  value={selectedWeek?.id ?? ''}
-                  onChange={(e) => setSelectedWeek(weeks.find(w => String(w.id) === e.target.value) || null)}
-                  aria-label="Night to build"
-                >
-                  <option value="">Pick a night…</option>
-                  {weeks.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                </select>
-                <span className="rule" />
-                {weeks.length === 0 && <button className="gh live" onClick={addWeek}>Add the first night</button>}
-                {weeks.length > 0 && <button className="gh" onClick={addWeek}>Add night</button>}
-              </header>
-              {!selectedWeek && (
-                <div className="pb"><p className="note">Pick a night above, or add one.</p></div>
-              )}
-            </div>
+            <NightBuilder
+              weeks={weeks.map(w => ({ id: w.id, name: w.name }))}
+              week={selectedWeek && {
+                id: selectedWeek.id,
+                name: selectedWeek.name,
+                teamA: selectedWeek.teamA || [],
+                teamB: selectedWeek.teamB || [],
+                leadA: selectedWeek.leadA || null,
+                leadB: selectedWeek.leadB || null,
+                leadA_r1: selectedWeek.leadA_r1 || null,
+                leadB_r1: selectedWeek.leadB_r1 || null,
+                leadA_r2: selectedWeek.leadA_r2 || null,
+                leadB_r2: selectedWeek.leadB_r2 || null,
+                rounds: [1, 2].map(r => ({
+                  round: r,
+                  map: selectedWeek[`round${r}Map`] || null,
+                  winner: selectedWeek[`round${r}Winner`] || null,
+                  flipped: !!selectedWeek[`round${r}Flipped`],
+                  casualtiesA: selectedWeek[`r${r}CasualtiesA`] ?? null,
+                  casualtiesB: selectedWeek[`r${r}CasualtiesB`] ?? null,
+                  swaps: selectedWeek.roundSwaps?.[`r${r}`] || [],
+                })),
+              }}
+              type={nightBuilderType}
+              registry={units}
+              headcount={unitHeadcounts}
+              tokenUnits={tokenUnits}
+              maps={ALL_MAPS}
+              mapCooldown={mapCooldown}
+              onPickWeek={(id) => setSelectedWeek(weeks.find(w => String(w.id) === id) || null)}
+              onType={(t) => updateWeek(selectedWeek.id, ROUND_TYPE_FLAGS[t])}
+              onRename={(name) => updateWeek(selectedWeek.id, { name })}
+              onNewNight={() => addWeek()}
+              onDuplicate={duplicateSelectedWeek}
+              onMoveUnit={(unit, to) => moveUnitToTeam(unit, to)}
+              onClearSides={() => updateWeek(selectedWeek.id, { teamA: [], teamB: [] })}
+              onLead={(side, round, unit) => updateWeek(selectedWeek.id,
+                round === 0 ? { [`lead${side}`]: unit } : { [`lead${side}_r${round}`]: unit })}
+              onRound={(r, patch) => {
+                const u = {};
+                if ('map' in patch) u[`round${r}Map`] = patch.map;
+                if ('winner' in patch) u[`round${r}Winner`] = patch.winner;
+                if ('flipped' in patch) u[`round${r}Flipped`] = patch.flipped;
+                if ('casualtiesA' in patch) u[`r${r}CasualtiesA`] = patch.casualtiesA ?? 0;
+                if ('casualtiesB' in patch) u[`r${r}CasualtiesB`] = patch.casualtiesB ?? 0;
+                updateWeek(selectedWeek.id, u);
+              }}
+              onSwap={(r, unit, on) => {
+                const cur = selectedWeek.roundSwaps?.[`r${r}`] || [];
+                updateWeek(selectedWeek.id, {
+                  roundSwaps: {
+                    ...(selectedWeek.roundSwaps || { r1: [], r2: [] }),
+                    [`r${r}`]: on ? [...cur, unit] : cur.filter(x => x !== unit),
+                  },
+                });
+              }}
+              onBalancer={openBalancerModal}
+            />
           )}
-          {screen === 'night' && selectedWeek && (
-            <div className="panel pb">
-              <h2 className="cap">
-                {selectedWeek.name} - Team Rosters
-              </h2>
-              
-              {/* Team Balance Stats */}
-              {(() => {
-                const stats = calculateWeekTeamStats();
-                if (!stats) return null;
-                
-                return (
-                  <div className="panel pb">
-                    <h3 className="cap">
-                      <Target className="w-5 h-5" />
-                      Team Balance Overview
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Avg Difference</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.avgDiff.toFixed(1)}
-                        </div>
-                      </div>
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Min Difference</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.minDiff.toFixed(0)}
-                        </div>
-                      </div>
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Max Difference</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.maxDiff.toFixed(0)}
-                        </div>
-                      </div>
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Avg Teammate History</div>
-                        <div className="text-lg font-bold c-ok">
-                          {stats.combinedAvgHistory.toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 mt-3">
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Total Min Pop</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.totalMin}
-                        </div>
-                      </div>
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Total Max Pop</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.totalMax}
-                        </div>
-                      </div>
-                      <div className="panel pb">
-                        <div className="text-xs text-text-secondary mb-1">Total Average Pop</div>
-                        <div className="text-lg font-bold c-accent">
-                          {stats.totalAvg.toFixed(1)}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Win Probability Bars */}
-                    {(stats.round1Probability || stats.round2Probability) && (
-                      <div className="mt-4 space-y-3">
-                        <h4 className="text-sm font-semibold flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" />
-                          Win Probability
-                        </h4>
-                        {[
-                          { label: 'Round 1', prob: stats.round1Probability, map: selectedWeek.round1Map },
-                          { label: 'Round 2', prob: stats.round2Probability, map: selectedWeek.round2Map }
-                        ].map(({ label, prob, map }) => {
-                          if (!prob) return null;
-                          return (
-                            <div key={label} className="panel pb">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs text-text-secondary">{label}{map ? ` — ${map}` : ''}</span>
-                                <div className="flex gap-3 text-xs">
-                                  {prob.factors.elo && (
-                                    <span className="text-text-secondary" title="Elo-based probability">Elo: {prob.factors.elo.probA}%</span>
-                                  )}
-                                  {prob.factors.globalMap && (
-                                    <span className="text-text-secondary" title="Global map win rate">Map: {prob.factors.globalMap.probA}%</span>
-                                  )}
-                                  {prob.factors.unitMap && (
-                                    <span className="text-text-secondary" title="Unit map history">Units: {prob.factors.unitMap.probA}%</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold f-usa w-16 text-right">{teamNames.A} {prob.teamAProb}%</span>
-                                <div className="flex-1 h-5 bg-bg-card rounded-full overflow-hidden flex">
-                                  <div
-                                    className="h-full transition-all duration-300"
-                                    style={{
-                                      width: `${prob.teamAProb}%`,
-                                      background: `linear-gradient(90deg, #3b82f6, ${prob.teamAProb > 50 ? '#60a5fa' : '#6b7280'})`
-                                    }}
-                                  />
-                                  <div
-                                    className="h-full transition-all duration-300"
-                                    style={{
-                                      width: `${prob.teamBProb}%`,
-                                      background: `linear-gradient(90deg, ${prob.teamBProb > 50 ? '#f87171' : '#6b7280'}, #ef4444)`
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-xs font-bold c-danger w-16">{prob.teamBProb}% {teamNames.B}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      {/* Team A Stats */}
-                      <div className="panel pb">
-                        <h4 className="text-sm font-semibold f-usa mb-2">
-                          {teamNames.A} ({stats.teamA.length} units)
-                        </h4>
-                        <div className="text-text-secondary text-sm space-y-1">
-                          <p>Players: {stats.minA}-{stats.maxA} (avg: {stats.avgA.toFixed(1)})</p>
-                          <p className="text-xs">
-                            Avg Teammate History: <span className="c-accent font-semibold">{stats.avgHistoryA.toFixed(2)}</span>
-                          </p>
-                        </div>
-                      </div>
-                      {/* Team B Stats */}
-                      <div className="panel pb">
-                        <h4 className="text-sm font-semibold c-danger mb-2">
-                          {teamNames.B} ({stats.teamB.length} units)
-                        </h4>
-                        <div className="text-text-secondary text-sm space-y-1">
-                          <p>Players: {stats.minB}-{stats.maxB} (avg: {stats.avgB.toFixed(1)})</p>
-                          <p className="text-xs">
-                            Avg Teammate History: <span className="c-accent font-semibold">{stats.avgHistoryB.toFixed(2)}</span>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {balancerSettings.divisionOppositionWeight > 0 && (() => {
-                      const matchups = getDivisionMatchups(stats.teamA, stats.teamB);
-                      if (matchups.length === 0) return null;
-                      return (
-                        <div className="mt-3 bg-bg-inset rounded p-3">
-                          <div className="text-xs text-text-secondary mb-2">
-                            Division Matchups: <span className="c-accent font-bold text-sm">{matchups.length}</span>
-                          </div>
-                          <div className="rows scroll-y">
-                            {matchups.map((m, i) => (
-                              <div key={i} className="text-xs text-text-secondary flex items-center gap-1">
-                                <span className="f-usa">{m.unitA}</span>
-                                <span className="text-text-secondary">vs</span>
-                                <span className="c-danger">{m.unitB}</span>
-                                <span className="c-accent ml-1">({m.division})</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    <p className="text-xs text-text-secondary mt-3 text-center">
-                      💡 Lower teammate history = better variety • Counts rounds played together before the current week.
-                    </p>
-                  </div>
-                );
-              })()}
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* Team A */}
-                <div
-                  className="panel pb"
-                  onDragOver={handleMainDragOver}
-                  onDrop={() => handleMainDrop('A')}
-                >
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={teamNames.A}
-                      onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
-                      className="fld-i big-i"
-                    />
-                  </div>
-                  {selectedWeek.teamA.length === 0 && (
-                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
-                      Drop units here or use → A button
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {selectedWeek.teamA.map((unit) => {
-                      // Calculate Elo and TII up to the week BEFORE this one
-                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                      const previousWeekIdx = currentWeekIdx - 1;
-                      
-                      // Get Elo from previous week (or initial if first week)
-                      const { eloRatings } = previousWeekIdx >= 0
-                        ? calculateEloRatings(previousWeekIdx)
-                        : { eloRatings: {} };
-                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
-                      
-                      // Get TII from previous week (or 0 if first week)
-                      const { impactStats } = previousWeekIdx >= 0
-                        ? calculateTeammateImpact(previousWeekIdx)
-                        : { impactStats: {} };
-                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
-                      
-                      // Get min/max for this unit
-                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
-                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                      
-                      return (
-                        <div
-                          key={unit}
-                          draggable
-                          onDragStart={() => handleMainDragStart(unit, 'A')}
-                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
-                        >
-                          <div className="flex flex-col flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium">{unit}</span>
-                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
-                            </div>
-                            <span className="text-xs text-text-secondary">
-                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeUnitFromTeam(unit, 'A')}
-                            className="ib danger"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {leadsPerNight(nightType(selectedWeek)) === 2 && (
-                    <div className="mt-3">
-                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
-                      <select
-                        value={selectedWeek.leadA || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select lead...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Team B */}
-                <div
-                  className="panel pb"
-                  onDragOver={handleMainDragOver}
-                  onDrop={() => handleMainDrop('B')}
-                >
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={teamNames.B}
-                      onChange={(e) => setTeamNames({ ...teamNames, B: e.target.value })}
-                      className="fld-i big-i"
-                    />
-                  </div>
-                  {selectedWeek.teamB.length === 0 && (
-                    <div className="text-center text-text-secondary py-8 border-2 border-dashed border-border-default rounded">
-                      Drop units here or use → B button
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {selectedWeek.teamB.map((unit) => {
-                      // Calculate Elo and TII up to the week BEFORE this one
-                      const currentWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                      const previousWeekIdx = currentWeekIdx - 1;
-                      
-                      // Get Elo from previous week (or initial if first week)
-                      const { eloRatings } = previousWeekIdx >= 0
-                        ? calculateEloRatings(previousWeekIdx)
-                        : { eloRatings: {} };
-                      const unitElo = eloRatings[unit] || eloSystem.initialElo;
-                      
-                      // Get TII from previous week (or 0 if first week)
-                      const { impactStats } = previousWeekIdx >= 0
-                        ? calculateTeammateImpact(previousWeekIdx)
-                        : { impactStats: {} };
-                      const unitTii = impactStats[unit]?.adjustedTiiScore || 0;
-                      
-                      // Get min/max for this unit
-                      const counts = selectedWeek.unitPlayerCounts?.[unit] || unitPlayerCounts[unit];
-                      const minMax = counts ? `(${counts.min}-${counts.max})` : '';
-                      
-                      return (
-                        <div
-                          key={unit}
-                          draggable
-                          onDragStart={() => handleMainDragStart(unit, 'B')}
-                          className="flex justify-between items-center p-2 bg-bg-card rounded cursor-move hover:bg-bg-inset transition"
-                        >
-                          <div className="flex flex-col flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium">{unit}</span>
-                              <span className="text-xs text-text-secondary ml-2">{minMax}</span>
-                            </div>
-                            <span className="text-xs text-text-secondary">
-                              Elo: {Math.round(unitElo)} | TII: {unitTii.toFixed(3)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeUnitFromTeam(unit, 'B')}
-                            className="ib danger"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {leadsPerNight(nightType(selectedWeek)) === 2 && (
-                    <div className="mt-3">
-                      <label className="block text-sm text-text-secondary mb-1">Lead Unit</label>
-                      <select
-                        value={selectedWeek.leadB || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select lead...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Round type. The three used to be separate checkboxes that
-                  cleared each other on change; one control makes the exclusivity
-                  the shape of the thing rather than a rule to maintain, and says
-                  how many leads the night needs. */}
-              <div className="mb-4">
-                <label className="block text-sm text-text-secondary mb-2">Round Type</label>
-                <div className="flex flex-wrap gap-1 bg-bg-inset rounded-lg p-1">
-                  {NIGHT_TYPES.map(({ key, label, flags, hint }) => {
-                    const active = nightType(selectedWeek) === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => updateWeek(selectedWeek.id, flags)}
-                        title={hint}
-                        className={`px-3 py-1.5 text-sm rounded-md transition ${
-                          active ? 'bg-indigo-600 text-white' : 'text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-text-secondary mt-2">
-                  {(() => {
-                    const type = nightType(selectedWeek);
-                    const leads = leadsPerNight(type);
-                    if (leads === 0) return 'Fun rounds are exhibition — no leads, no points, no map cooldown, no Elo.';
-                    if (leads === 4) return `Four leads — one per side, per round.${type === 'Playoffs' ? ' Playoff nights record the result but award no points.' : ''}`;
-                    return 'Two leads — one per side, leading both rounds.';
-                  })()}
-                </p>
-              </div>
-
-              {/* Playoffs Lead Selection */}
-              {selectedWeek.isPlayoffs && (
-                <div className="panel pb">
-                  <h3 className="text-lg font-bold mb-3">Playoff Round Leads</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Single Round Leads Lead Selection */}
-              {selectedWeek.isSingleRoundLeads && (
-                <div className="panel pb">
-                  <h3 className="text-lg font-bold mb-3">Round Leads</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r1: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R1 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r1 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r1: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.A}</label>
-                      <select
-                        value={selectedWeek.leadA_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadA_r2: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamA.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">R2 Lead {teamNames.B}</label>
-                      <select
-                        value={selectedWeek.leadB_r2 || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { leadB_r2: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select...</option>
-                        {selectedWeek.teamB.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Round Results with Maps */}
-              {(() => {
-                const selectedWeekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-                const cooldownMaps = getMapsOnCooldown(selectedWeekIdx);
-                return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {/* Round 1 */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Target className="w-4 h-4" />
-                    Round 1
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Map</label>
-                      <select
-                        value={selectedWeek.round1Map || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round1Map: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select map...</option>
-                        {ALL_MAPS.map((map) => (
-                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
-                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedWeek.round1Flipped || false}
-                          onChange={(e) => updateWeek(selectedWeek.id, { round1Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-border-default bg-bg-card"
-                        />
-                        <span className="text-sm">Flipped</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
-                      <select
-                        value={selectedWeek.round1Draw ? 'draw' : (selectedWeek.round1Winner || '')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateWeek(selectedWeek.id, v === 'draw'
-                            ? { round1Winner: null, round1Draw: true }
-                            : { round1Winner: v || null, round1Draw: false });
-                        }}
-                        className="fld-i"
-                      >
-                        <option value="">No winner</option>
-                        <option value="A">{teamNames.A}</option>
-                        <option value="B">{teamNames.B}</option>
-                        {(mapMode(selectedWeek.round1Map) === 'conquest' || selectedWeek.round1Draw) && (
-                          <option value="draw">Draw</option>
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r1CasualtiesA || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="fld-i"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(1, 'A')}
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r1CasualtiesB || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r1CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="fld-i"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(1, 'B')}
-                    </div>
-                    {/* Round 1 Balance Swaps */}
-                    <BalanceSwaps
-                      teamA={selectedWeek.teamA}
-                      teamB={selectedWeek.teamB}
-                      swapped={selectedWeek.roundSwaps?.r1 || []}
-                      teamNames={teamNames}
-                      onToggle={(_unit, next) => updateWeek(selectedWeek.id, {
-                        roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r1: next }
-                      })}
-                    />
-                    {/* Round 1 Company Balancer */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r1')}
-                  </div>
-                </div>
-
-                {/* Round 2 */}
-                <div className="panel pb">
-                  <h3 className="cap">
-                    <Target className="w-4 h-4" />
-                    Round 2
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Map</label>
-                      <select
-                        value={selectedWeek.round2Map || ''}
-                        onChange={(e) => updateWeek(selectedWeek.id, { round2Map: e.target.value || null })}
-                        className="fld-i"
-                      >
-                        <option value="">Select map...</option>
-                        {ALL_MAPS.map((map) => (
-                          <option key={map} value={map} disabled={cooldownMaps.has(map)}>
-                            {cooldownMaps.has(map) ? `${map} (cooldown)` : map}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedWeek.round2Flipped || false}
-                          onChange={(e) => updateWeek(selectedWeek.id, { round2Flipped: e.target.checked })}
-                          className="w-4 h-4 rounded border-border-default bg-bg-card"
-                        />
-                        <span className="text-sm">Flipped</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Winner</label>
-                      <select
-                        value={selectedWeek.round2Draw ? 'draw' : (selectedWeek.round2Winner || '')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateWeek(selectedWeek.id, v === 'draw'
-                            ? { round2Winner: null, round2Draw: true }
-                            : { round2Winner: v || null, round2Draw: false });
-                        }}
-                        className="fld-i"
-                      >
-                        <option value="">No winner</option>
-                        <option value="A">{teamNames.A}</option>
-                        <option value="B">{teamNames.B}</option>
-                        {(mapMode(selectedWeek.round2Map) === 'conquest' || selectedWeek.round2Draw) && (
-                          <option value="draw">Draw</option>
-                        )}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.A}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r2CasualtiesA || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesA: parseInt(e.target.value) || 0 })}
-                        className="fld-i"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(2, 'A')}
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-secondary mb-1">Casualties {teamNames.B}</label>
-                      <input
-                        type="number"
-                        value={selectedWeek.r2CasualtiesB || 0}
-                        onChange={(e) => updateWeek(selectedWeek.id, { r2CasualtiesB: parseInt(e.target.value) || 0 })}
-                        className="fld-i"
-                        min="0"
-                      />
-                      {renderCasualtyFormation(2, 'B')}
-                    </div>
-                    {/* Round 2 Balance Swaps */}
-                    <BalanceSwaps
-                      teamA={selectedWeek.teamA}
-                      teamB={selectedWeek.teamB}
-                      swapped={selectedWeek.roundSwaps?.r2 || []}
-                      teamNames={teamNames}
-                      onToggle={(_unit, next) => updateWeek(selectedWeek.id, {
-                        roundSwaps: { ...(selectedWeek.roundSwaps || { r1: [], r2: [] }), r2: next }
-                      })}
-                    />
-                    {/* Round 2 Company Balancer */}
-                    {(selectedWeek.teamA.length > 0 || selectedWeek.teamB.length > 0) && renderCompanySection('r2')}
-                  </div>
-                </div>
-              </div>
-                );
-              })()}
-
-              {/* Action Buttons */}
-              <div className="mt-4 space-y-2">
-                <button
-                  onClick={openBalancerModal}
-                  disabled={!selectedWeek}
-                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
-                    selectedWeek
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                      : 'bg-bg-inset text-text-muted cursor-not-allowed'
-                  }`}
-                >
-                  <Target className="w-5 h-5" />
-                  <span className="font-semibold">Team Balancer</span>
-                </button>
-                <button
-                  onClick={openCasualtyModal}
-                  disabled={!selectedWeek}
-                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-center gap-2 ${
-                    selectedWeek
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-bg-inset text-text-secondary cursor-not-allowed'
-                  }`}
-                >
-                  <Flame className="w-5 h-5" />
-                  <span className="font-semibold">Input Casualties</span>
-                </button>
-              </div>
-            </div>
-          )}
-          </>)}
 
           {/* Balancer — a screen, not a dialog. */}
           {screen === 'balancer' && (
