@@ -26,6 +26,7 @@ import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
 import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, scopedMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
 import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
+import { CompareView } from './CompareView';
 import { TicketPct } from './drawerPrimitives';
 
 export interface WeekRef {
@@ -35,8 +36,8 @@ export interface WeekRef {
   round2Flipped?: boolean;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'maps' | 'rounds' | 'import';
-const TABS: SubTab[] = ['overview', 'players', 'regiments', 'maps', 'rounds', 'import'];
+type SubTab = 'overview' | 'players' | 'regiments' | 'compare' | 'maps' | 'rounds' | 'import';
+const TABS: SubTab[] = ['overview', 'players', 'regiments', 'compare', 'maps', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
 
@@ -437,6 +438,10 @@ export function StatsPanel({
           seasonName={seasons.find((s) => s.id === seasonScope)?.name ?? null}
           combine={combine}
         />
+      )}
+
+      {tab === 'compare' && (
+        <CompareView players={players} regiments={regiments} />
       )}
 
       {tab === 'maps' && <MapsTab trackerMapStats={trackerMapStats} scoreboardMapStats={scoreboardMapStats} />}

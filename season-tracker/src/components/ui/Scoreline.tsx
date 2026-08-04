@@ -44,10 +44,15 @@ export function Scoreline({
         </div>
         <Side side={b} lost={winner === 'a'} align="end" />
       </div>
-      <div className="flex h-1">
-        <span style={{ width: `${split}%`, background: a.hue }} />
-        <span className="flex-1" style={{ background: b.hue }} />
-      </div>
+      {/* The stripe shows how the total splits between two differently-coloured
+          sides. In a neutral comparison both hues are the same ink, so it would
+          read as one flat bar — drop it rather than draw a meaningless one. */}
+      {a.hue !== b.hue && (
+        <div className="flex h-1">
+          <span style={{ width: `${split}%`, background: a.hue }} />
+          <span className="flex-1" style={{ background: b.hue }} />
+        </div>
+      )}
     </div>
   );
 }
