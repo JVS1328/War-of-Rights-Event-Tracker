@@ -348,6 +348,20 @@ details.panel[open] > summary.ph::before { content: '▼'; }
 .drawer > .ph { flex: none; }
 .drawer-b { flex: 1; min-height: 0; overflow: auto; }
 
+/* A modal: a panel in the middle of the screen. Same chrome, same header, same
+   body padding — it is only where it sits that differs. */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center; padding: 13px;
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--line-2);
+  width: 100%; max-width: 900px; max-height: 86vh; overflow-y: auto;
+}
+.modal.wide { max-width: 1120px; }
+.modal.narrow { max-width: 520px; }
+.modal > .ph { position: sticky; top: 0; z-index: 2; }
+
 /* Position within a filtered, paged list. Below the rows, never above them —
    the answer comes first and the navigation second. */
 .pager {

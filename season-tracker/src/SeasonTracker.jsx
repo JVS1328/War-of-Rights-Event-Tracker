@@ -2448,24 +2448,24 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!snap || (!snap.kills && !snap.deaths)) return null;
     const kd = snap.deaths > 0 ? snap.kills / snap.deaths : snap.kills;
     return (
-      <tr className="bg-bg-card/50 text-[10px]">
-        <td className="py-1 px-2 pl-6 text-text-secondary italic">{label}</td>
-        <td className="c-accent/70 text-center py-1 px-2" />
-        <td className="c-accent/70 text-center py-1 px-2" />
-        <td className="c-ok/70 text-center py-1 px-2">{snap.kills}</td>
-        <td className="c-danger/70 text-center py-1 px-2">{snap.deaths}</td>
-        <td className="c-accent/70 text-center py-1 px-2">{kd.toFixed(2)}</td>
+      <tr style={{ background: 'var(--sunken)', fontSize: 10.5 }}>
+        <td className="pl-6 text-text-secondary italic">{label}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }} />
+        <td className="num" style={{ color: 'var(--ink-3)' }} />
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{snap.kills}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{snap.deaths}</td>
+        <td className="num" style={{ color: 'var(--ink-3)' }}>{kd.toFixed(2)}</td>
         {/* KR/LR need a player-count denominator the context snaps don't carry — left blank, like Players/Avg-Rd above. */}
-        <td className="text-center py-1 px-2" />
-        <td className="text-center py-1 px-2" />
-        <td className="text-text-secondary text-center py-1 px-2">
+        <td className="num" />
+        <td className="num" />
+        <td className="num" style={{ color: 'var(--ink-2)' }}>
           {snap.deathsForm.in_form}/{snap.deathsForm.skirm}/{snap.deathsForm.oob}
         </td>
-        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTd(snap))}</td>
-        <td className="text-center py-1 px-2">{formatAvgT(unitSnapAvgTk(snap))}</td>
+        <td className="num">{formatAvgT(unitSnapAvgTd(snap))}</td>
+        <td className="num">{formatAvgT(unitSnapAvgTk(snap))}</td>
         {/* TDI/TDR% need per-round team totals the context snaps don't carry — left blank. */}
-        <td className="text-center py-1 px-2" />
-        <td className="text-center py-1 px-2" />
+        <td className="num" />
+        <td className="num" />
       </tr>
     );
   };
@@ -2502,29 +2502,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
       .sort((a, b) => b.kills - a.kills);
     if (rows.length === 0) {
       return (
-        <p className="text-text-secondary text-center py-4 text-sm">
+        <p className="note">
           No assigned player stats yet. Use "Assign Player Stats" on a week to map units to scoreboard regiments.
         </p>
       );
     }
     return (
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table>
           <thead>
-            <tr className="text-text-secondary border-b border-border-default">
-              <th className="text-left py-2 px-2">Unit</th>
-              <th className="text-center py-2 px-2" title="Total unique players across all rounds">Players</th>
-              <th className="text-center py-2 px-2" title="Average player count per round">Avg/Rd</th>
-              <th className="text-center py-2 px-2">K</th>
-              <th className="text-center py-2 px-2">D</th>
-              <th className="text-center py-2 px-2">K/D</th>
-              <th className="text-center py-2 px-2 cursor-help" title={KILL_RATE_LABEL}>KR</th>
-              <th className="text-center py-2 px-2 cursor-help" title={LOSS_RATE_LABEL}>LR</th>
-              <th className="text-center py-2 px-2" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
-              <th className="text-center py-2 px-2" title={AVG_TD_LABEL}>×Td</th>
-              <th className="text-center py-2 px-2" title={AVG_TK_LABEL}>×Tk</th>
-              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI%</th>
-              <th className="text-center py-2 px-2 cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR%</th>
+            <tr>
+              <th>Unit</th>
+              <th className="num" title="Total unique players across all rounds">Players</th>
+              <th className="num" title="Average player count per round">Avg/Rd</th>
+              <th className="num">K</th>
+              <th className="num">D</th>
+              <th className="num">K/D</th>
+              <th className="num cursor-help" title={KILL_RATE_LABEL}>KR</th>
+              <th className="num cursor-help" title={LOSS_RATE_LABEL}>LR</th>
+              <th className="num" title="Deaths by stance">{`Form (${FORMATION_SHORT.in_form}/${FORMATION_SHORT.skirm}/${FORMATION_SHORT.oob})`}</th>
+              <th className="num" title={AVG_TD_LABEL}>×Td</th>
+              <th className="num" title={AVG_TK_LABEL}>×Tk</th>
+              <th className="num cursor-help" title={AVG_TICKET_INFLICTED_LABEL}>TDI%</th>
+              <th className="num cursor-help" title={AVG_TICKET_RECEIVED_LABEL}>TDR%</th>
             </tr>
           </thead>
           <tbody>
@@ -2533,27 +2533,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
               return (
                 <React.Fragment key={r.unit}>
                   <tr
-                    className={`${idx % 2 === 0 ? 'bg-bg-card' : 'bg-bg-inset'} ${r.ctx ? 'cursor-pointer hover:brightness-110' : ''}`}
+                    className={`${r.ctx ? 'click hover:brightness-110' : ''}`}
                     onClick={() => r.ctx && toggleExpandedUnit(r.unit)}
                   >
-                    <td className="py-2 px-2 font-medium">
+                    <td className="wor-name">
                       {r.ctx && (
                         <span className="inline-block w-3 mr-1 text-text-secondary">{isOpen ? '▾' : '▸'}</span>
                       )}
                       {r.unit}
                     </td>
-                    <td className="c-accent text-center py-2 px-2">{r.uniquePlayers}</td>
-                    <td className="c-accent text-center py-2 px-2">{Math.round(r.avgPlayers)}</td>
-                    <td className="c-ok text-center py-2 px-2">{r.kills}</td>
-                    <td className="c-danger text-center py-2 px-2">{r.deaths}</td>
-                    <td className="c-accent text-center py-2 px-2">{r.kd.toFixed(2)}</td>
-                    <td className="c-ok/80 text-center py-2 px-2">{formatRate(r.killRate)}</td>
-                    <td className="c-danger/80 text-center py-2 px-2">{formatRate(r.lossRate)}</td>
-                    <td className="text-text-secondary text-center py-2 px-2">{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
-                    <td className="text-center py-2 px-2">{formatAvgT(r.td)}</td>
-                    <td className="text-center py-2 px-2">{formatAvgT(r.tk)}</td>
-                    <td className="c-ok/80 text-center py-2 px-2"><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
-                    <td className="c-danger/80 text-center py-2 px-2"><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
+                    <td className="num">{r.uniquePlayers}</td>
+                    <td className="num">{Math.round(r.avgPlayers)}</td>
+                    <td className="num">{r.kills}</td>
+                    <td className="num">{r.deaths}</td>
+                    <td className="num">{r.kd.toFixed(2)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{formatRate(r.killRate)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{formatRate(r.lossRate)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}>{r.form.in_form}/{r.form.skirm}/{r.form.oob}</td>
+                    <td className="num">{formatAvgT(r.td)}</td>
+                    <td className="num">{formatAvgT(r.tk)}</td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}><TicketPct share={r.tdInf} shareTitle={AVG_TICKET_INFLICTED_LABEL} /></td>
+                    <td className="num" style={{ color: 'var(--ink-2)' }}><TicketPct share={r.tdRec} shareTitle={AVG_TICKET_RECEIVED_LABEL} /></td>
                   </tr>
                   {isOpen && r.ctx && (
                     <>
@@ -2913,10 +2913,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
 
     return (
-      <div className="mt-3 space-y-3">
+      <div style={{ marginTop: 13 }}>
         <label className="cap">Company Balancer</label>
         {['A', 'B'].map(side => (
-          <div key={side} className="bg-bg-card rounded p-2 space-y-2">
+          <div key={side} className="panel pb">
             <div className="text-xs font-semibold text-text-secondary">{teamNames[side]}</div>
             <CompanyConfigFields config={config[side]} onChange={(patch) => setSideConfig(side, patch)} />
             <CompanyList
@@ -4147,7 +4147,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const morale = selectedWeek?.[moraleField] || '';
     return (
       <>
-        <div className="grid grid-cols-3 gap-1 mt-1">
+        <div className="kpis" style={{ marginTop: 5 }}>
           {fields.map(([k, label]) => (
             <div key={k}>
               <label className="block text-[10px] text-text-muted mb-0.5">{label}</label>
@@ -4189,8 +4189,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return (
       <>
         {overall.totalRounds > 0 && (
-          <div className="mb-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+          <div style={{ marginBottom: 18 }}>
+            <div className="kpis">
               <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">USA Overall</div>
                 <div className="text-lg font-bold f-usa">
@@ -4204,7 +4204,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="kpis">
               <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-1">Attackers Won</div>
                 <div className="text-lg font-bold c-accent">
@@ -4218,7 +4218,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="kpis">
               <div className="row">
                 <div className="text-xs text-text-secondary">USA Attack</div>
                 <div className="text-sm font-semibold f-usa">
@@ -4247,13 +4247,13 @@ const SeasonTracker = ({ initialShareData = null }) => {
             {overall.totalCasualties > 0 && (
               <div className="panel pb">
                 <div className="text-xs text-text-secondary mb-2">Casualties &amp; formation makeup</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="cols">
                   {[
                     { label: 'USA', total: overall.usaCasualties, form: overall.usaFormation, color: 'f-usa' },
                     { label: 'CSA', total: overall.csaCasualties, form: overall.csaFormation, color: 'c-danger' },
                     { label: 'Overall', total: overall.totalCasualties, form: overall.formationTotal, color: 'text-text-primary' },
                   ].map(({ label, total, form, color }) => (
-                    <div key={label} className="bg-bg-card rounded p-2">
+                    <div key={label} className="panel pb">
                       <div className={`font-semibold ${color}`}>{label}: {total}</div>
                       {overall.hasFormation && (
                         <div className="text-text-secondary mt-0.5">
@@ -4274,28 +4274,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
             .slice(0, 5);
           if (top5.length === 0) return null;
           return (
-            <div className="bg-bg-inset rounded-lg p-3 mb-2">
+            <div className="panel pb mb-2">
               <div className="text-xs text-text-secondary uppercase tracking-wider mb-2 font-semibold">Most Played Maps</div>
-              <table className="w-full text-xs">
+              <table>
                 <thead>
-                  <tr className="text-text-secondary border-b border-border-default">
-                    <th className="text-left py-1 px-1">#</th>
-                    <th className="text-left py-1 px-1">Map</th>
-                    <th className="text-center py-1 px-1">Rounds</th>
-                    <th className="text-center py-1 px-1">USA Win%</th>
-                    <th className="text-center py-1 px-1">CSA Win%</th>
-                    <th className="text-center py-1 px-1">Avg Cas</th>
+                  <tr>
+                    <th >#</th>
+                    <th >Map</th>
+                    <th className="num">Rounds</th>
+                    <th className="num">USA Win%</th>
+                    <th className="num">CSA Win%</th>
+                    <th className="num">Avg Cas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {top5.map(([name, s], i) => (
-                    <tr key={name} className={i % 2 === 0 ? 'bg-bg-card' : ''}>
-                      <td className="py-1 px-1 text-text-secondary">{i + 1}</td>
-                      <td className="py-1 px-1 font-medium">{name}</td>
-                      <td className="text-center py-1 px-1">{s.plays}</td>
-                      <td className="text-center py-1 px-1 f-usa">{pct(s.usaWins, s.plays)}%</td>
-                      <td className="text-center py-1 px-1 c-danger">{pct(s.csaWins, s.plays)}%</td>
-                      <td className="text-center py-1 px-1 text-text-secondary">{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
+                    <tr key={name} >
+                      <td className="num" style={{ color: 'var(--ink-3)' }}>{i + 1}</td>
+                      <td className="wor-name">{name}</td>
+                      <td className="num">{s.plays}</td>
+                      <td className="num f-usa">{pct(s.usaWins, s.plays)}%</td>
+                      <td className="num f-csa">{pct(s.csaWins, s.plays)}%</td>
+                      <td className="num" style={{ color: 'var(--ink-2)' }}>{s.plays > 0 ? Math.round(s.totalCasualties / s.plays) : 0}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -4304,17 +4304,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
           );
         })()}
 
-        <div className="space-y-2">
+        <div >
           {Object.entries(MAPS).map(([areaKey, areaMaps]) => {
             const areaName = areaKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
             const playedMaps = areaMaps.filter(m => byMap[m]);
             if (playedMaps.length === 0) return null;
             const sectionKey = `${keyPrefix}_${areaKey}`;
             return (
-              <div key={areaKey} className="bg-bg-inset rounded-lg overflow-hidden">
+              <div key={areaKey} className="panel">
                 <button
                   onClick={() => toggleSection(sectionKey)}
-                  className="w-full flex items-center justify-between bg-bg-inset px-3 py-2 hover:bg-border-subtle transition"
+                  className="ph area-h" style={{ width: '100%', textAlign: 'left' }}
                 >
                   <span className="font-semibold text-text-secondary">{areaName} ({playedMaps.length})</span>
                   {expandedSections[sectionKey] ? (
@@ -4324,19 +4324,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   )}
                 </button>
                 {expandedSections[sectionKey] && (
-                  <div className="p-2 space-y-2">
+                  <div className="pb">
                     {playedMaps
                       .sort((a, b) => (byMap[b]?.plays || 0) - (byMap[a]?.plays || 0))
                       .map(mapName => {
                         const s = byMap[mapName];
                         const avgCas = s.plays > 0 ? (s.totalCasualties / s.plays).toFixed(0) : 0;
                         return (
-                          <div key={mapName} className="bg-bg-card rounded p-2">
+                          <div key={mapName} className="panel pb">
                             <div className="flex justify-between items-center mb-1">
                               <span className="text-sm font-medium">{mapName}</span>
                               <span className="text-xs text-text-secondary">{s.plays} rounds</span>
                             </div>
-                            <div className="text-xs space-y-0.5">
+                            <div className="note">
                               <div>
                                 <span className="f-usa">USA: {s.usaWins} ({pct(s.usaWins, s.plays)}%)</span>
                                 <span className="text-text-secondary mx-2">|</span>
@@ -4377,7 +4377,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
         </div>
 
         {Object.keys(byMap).length === 0 && (
-          <p className="text-text-secondary text-center py-4">No map data available</p>
+          <p className="note">No map data available</p>
         )}
       </>
     );
@@ -5619,9 +5619,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Coord Sheet Paste Modal */}
           {showCoordPasteModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="cap">Paste from Coord Sheet</h2>
                     <button
@@ -5633,7 +5633,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   </div>
 
                   {coordParsedRows.length === 0 ? (
-                    <div className="space-y-3">
+                    <div >
                       <p className="text-sm text-text-secondary">
                         Paste rows from your Google Sheets coord sheet. Expected format: tab-separated columns with regiment name, min, (optional column), max.
                       </p>
@@ -5653,11 +5653,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div >
                       <p className="text-sm text-text-secondary mb-2">
                         Review matched regiments below. Adjust matches or choose to create / ignore unmatched ones.
                       </p>
-                      <div className="max-h-[50vh] overflow-y-auto space-y-2">
+                      <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                         {coordParsedRows.map((row, idx) => (
                           <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
                             <div className="grid grid-cols-12 gap-2 items-center">
@@ -5675,7 +5675,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], min: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
+                                  className="fld-i" style={{ width: 56 }}
                                 />
                                 <input
                                   type="number"
@@ -5685,7 +5685,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], max: parseInt(e.target.value) || 0 };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-14 px-1 py-0.5 bg-bg-input text-xs rounded-md border border-border-default text-center"
+                                  className="fld-i" style={{ width: 56 }}
                                 />
                               </div>
                               {/* Arrow */}
@@ -5706,7 +5706,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     }
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="w-full px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 >
                                   <optgroup label="Registered Units">
                                     {units.map(u => (
@@ -5732,7 +5732,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     updated[idx] = { ...updated[idx], newUnitName: e.target.value };
                                     setCoordParsedRows(updated);
                                   }}
-                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none text-sm"
+                                  className="fld-i"
                                 />
                                 <label className="flex items-center gap-1 text-xs text-text-secondary cursor-pointer">
                                   <input
@@ -5743,7 +5743,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       updated[idx] = { ...updated[idx], newUnitIsToken: e.target.checked };
                                       setCoordParsedRows(updated);
                                     }}
-                                    className="rounded"
+                                    
                                   />
                                   Token unit
                                 </label>
@@ -5778,9 +5778,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Casualty Input Modal */}
           {showCasualtyModal && selectedWeek && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal wide">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="cap">
                       <Flame className="w-6 h-6" />
@@ -5794,7 +5794,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
-                  <div className="text-xs text-text-secondary mb-4 bg-bg-inset rounded p-3 leading-relaxed">
+                  <div className="text-xs text-text-secondary mb-4 panel pb leading-relaxed">
                     Assign each token the scoreboard regiment(s) that played as it — for units that used a different in-game tag this event, or that fielded several regiments under one token. Stats are pulled from imported scoreboards and apply across every round we have data for.
                     {' '}These do <span className="font-semibold text-text-primary">not</span> change the round casualty totals (those stay on the per-side casualty inputs, which include untagged losses).
                     {sbStored.length === 0 && (
@@ -5802,7 +5802,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="cols">
                     {[teamNames.A, teamNames.B].map((teamName, teamIdx) => {
                       const teamId = teamIdx === 0 ? 'A' : 'B';
                       const rosterUnits = selectedWeek[`team${teamId}`] || [];
@@ -5810,15 +5810,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <div key={teamName} className="panel pb">
                           <h3 className="cap">{teamName} Units</h3>
-                          <div className="space-y-2">
+                          <div >
                             {rosterUnits.length === 0 && (
-                              <p className="text-text-secondary text-xs text-center py-2">No units assigned</p>
+                              <p className="note">No units assigned</p>
                             )}
                             {rosterUnits.map(unit => {
                               const regs = tokenRegiments[unit] || [];
                               const snap = deriveTokenSnaps(eventRegBreakdown, { [unit]: regs })[unit];
                               return (
-                                <div key={unit} className="flex items-center gap-2 bg-bg-card rounded p-2">
+                                <div key={unit} className="flex items-center gap-2 panel pb">
                                   <div className="flex-1 min-w-0">
                                     <div className="text-sm font-medium truncate" title={unit}>{unit}</div>
                                     <div className="text-xs text-text-secondary truncate">
@@ -5857,12 +5857,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Assign-stats sub-modal: toggle scoreboard regiments for one token */}
           {assignToken && (
-            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={() => setAssignToken(null)}>
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="p-4">
+            <div className="modal-scrim" onClick={() => setAssignToken(null)}>
+              <div className="modal narrow" onClick={(e) => e.stopPropagation()}>
+                <div className="pb">
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="font-semibold truncate">Assign stats → {assignToken}</h3>
-                    <button onClick={() => setAssignToken(null)} className="p-1 rounded hover:bg-bg-inset"><X className="w-4 h-4 text-text-muted" /></button>
+                    <button onClick={() => setAssignToken(null)} className="ib"><X className="w-4 h-4 text-text-muted" /></button>
                   </div>
                   <p className="note">
                     Toggle the scoreboard regiment(s) that played as <span className="font-semibold">{assignToken}</span>. Regiments already claimed by another token are locked.
@@ -5895,7 +5895,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     const snap = deriveTokenSnaps(eventRegBreakdown, { [assignToken]: assignSel })[assignToken];
                     const kd = snap.deaths > 0 ? (snap.kills / snap.deaths).toFixed(2) : String(snap.kills);
                     return (
-                      <div className="text-xs bg-bg-inset rounded p-2 mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                      <div className="text-xs panel pb mb-3 flex flex-wrap gap-x-4 gap-y-1">
                         <span className="c-ok">{snap.kills}K</span>
                         <span className="c-danger">{snap.deaths}D</span>
                         <span>K/D {kd}</span>
@@ -5905,9 +5905,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     );
                   })()}
 
-                  <div className="space-y-1 max-h-[45vh] overflow-y-auto">
+                  <div style={{ maxHeight: '45vh', overflowY: 'auto' }}>
                     {availableRegiments.length === 0 && (
-                      <p className="text-text-secondary text-xs text-center py-3">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
+                      <p className="note">No scoreboard regiments found. Import scoreboards in the Player Stats view first.</p>
                     )}
                     {availableRegiments.map(reg => {
                       const owner = assignClaimedBy[reg];
@@ -6072,9 +6072,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {showMapBiasModal && (() => {
             const { byMap } = calculateMapStats();
             return (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-                <div className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-4xl w-full max-h-[85vh] overflow-y-auto">
-                  <div className="p-4 sm:p-6">
+              <div className="modal-scrim">
+                <div className="modal">
+                  <div className="pb">
                     <div className="flex justify-between items-center mb-6">
                       <h2 className="cap">
                         <Map className="w-6 h-6" />
@@ -6117,12 +6117,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="text-left text-text-secondary border-b border-border-default">
-                                  <th className="py-2 pr-2">Map</th>
-                                  <th className="py-2 pr-2 text-right">Plays</th>
-                                  <th className="py-2 pr-2 text-right">USA W</th>
-                                  <th className="py-2 pr-2 text-right">CSA W</th>
-                                  <th className="py-2 pr-2 text-right">USA Win %</th>
-                                  <th className="py-2 pr-2 text-right">Atk Win %</th>
+                                  <th>Map</th>
+                                  <th className="text-right">Plays</th>
+                                  <th className="text-right">USA W</th>
+                                  <th className="text-right">CSA W</th>
+                                  <th className="text-right">USA Win %</th>
+                                  <th className="text-right">Atk Win %</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -6131,8 +6131,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   if (!data) {
                                     return (
                                       <tr key={mapName} className="border-b border-border-default/40">
-                                        <td className="py-2 pr-2">{mapName}</td>
-                                        <td colSpan={5} className="py-2 pr-2 text-text-muted text-right">No plays</td>
+                                        <td >{mapName}</td>
+                                        <td colSpan={5} className="text-text-muted text-right">No plays</td>
                                       </tr>
                                     );
                                   }
@@ -6140,12 +6140,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   const atkPct = data.plays > 0 ? Math.round((data.attackerWins / data.plays) * 100) : 0;
                                   return (
                                     <tr key={mapName} className="border-b border-border-default/40">
-                                      <td className="py-2 pr-2">{mapName}</td>
-                                      <td className="py-2 pr-2 text-right">{data.plays}</td>
-                                      <td className="py-2 pr-2 text-right">{data.usaWins}</td>
-                                      <td className="py-2 pr-2 text-right">{data.csaWins}</td>
-                                      <td className="py-2 pr-2 text-right">{usaPct}%</td>
-                                      <td className="py-2 pr-2 text-right">{atkPct}%</td>
+                                      <td >{mapName}</td>
+                                      <td className="text-right">{data.plays}</td>
+                                      <td className="text-right">{data.usaWins}</td>
+                                      <td className="text-right">{data.csaWins}</td>
+                                      <td className="text-right">{usaPct}%</td>
+                                      <td className="text-right">{atkPct}%</td>
                                     </tr>
                                   );
                                 })}
@@ -6320,14 +6320,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
           {/* Simulation Analytics Modal */}
           {showAnalyticsModal && simulationAnalytics && (
             <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
+              className="modal-scrim"
               onClick={() => setShowAnalyticsModal(false)}
             >
               <div
-                className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-3xl w-full max-h-[85vh] overflow-y-auto"
+                className="modal"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="p-4 sm:p-6">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="cap">
                       <TrendingUp className="w-6 h-6" />
@@ -6341,9 +6341,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     </button>
                   </div>
 
-                  <div className="space-y-6">
+                  <div >
                     {/* Success Message */}
-                    <div className="bg-green-900/30 border border-green-700 rounded-lg p-4">
+                    <div className="panel pb">
                       <p className="c-ok font-semibold flex items-center gap-2">
                         <CheckCircle2 className="w-5 h-5" />
                         Added {simulationAnalytics.spacing.nights} weeks ({simulationAnalytics.spacing.rounds} rounds) to the season
@@ -6364,7 +6364,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       <p className="text-xs text-text-secondary mb-4">
                         Nights between a unit's {simulationAnalytics.splitLeads ? 'lead rounds' : 'lead weeks'}, across {simulationAnalytics.spacing.leadingUnits} leading units
                       </p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="kpis">
                         <SimStat
                           label="Season Length"
                           value={`${simulationAnalytics.spacing.nights} wks`}
@@ -6396,11 +6396,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                         )}
                       </div>
-                      <div className="mt-3 max-h-56 overflow-y-auto rounded bg-bg-inset">
-                        <table className="w-full text-xs">
+                      <div style={{ marginTop: 13, maxHeight: 224, overflowY: 'auto' }}>
+                        <table>
                           <thead className="text-text-secondary">
                             <tr className="border-b border-border-default">
-                              <th className="text-left p-2">Unit</th>
+                              <th >Unit</th>
                               <th className="text-right p-2">Lead Rounds</th>
                               <th className="text-right p-2">Lead Nights</th>
                               <th className="text-right p-2">Avg Gap</th>
@@ -6452,7 +6452,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         value={toTsv(simulationAnalytics.rows)}
                         onFocus={(e) => e.target.select()}
                         rows={6}
-                        className="w-full px-3 py-2 bg-bg-input rounded-md border border-border-default outline-none text-xs font-mono whitespace-pre"
+                        className="w-full px-3 py-2 border border-border-default outline-none text-xs font-mono whitespace-pre"
                       />
                     </div>
 
@@ -6464,7 +6464,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <Settings className="w-5 h-5" />
                           Current Point System
                         </h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid-f text-sm">
                           <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Lead Points</div>
                             <div className="space-y-1 text-text-secondary">
@@ -6493,7 +6493,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <p className="text-xs text-text-secondary mb-4">
                           Maximum possible points per token unit (winning every round and sweep)
                         </p>
-                        <div className="space-y-3">
+                        <div >
                           <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Max Possible (Season)</div>
                             <div className="flex justify-between items-center mb-2">
@@ -6526,7 +6526,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{(simulationAnalytics.points.theoretical.totalPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="kpis">
                             <div className="kpi">
                               <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.theoretical.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
@@ -6548,7 +6548,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <p className="text-xs text-text-secondary mb-4">
                           Actual points averaged across all token units from the simulation
                         </p>
-                        <div className="space-y-3">
+                        <div >
                           <div className="panel pb">
                             <div className="text-xs text-text-secondary mb-2 font-semibold">Season Totals (Average)</div>
                             <div className="flex justify-between items-center mb-2">
@@ -6581,10 +6581,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <span className="font-bold">{(simulationAnalytics.points.simulated.totalPoints / simulationAnalytics.points.totalRounds).toFixed(2)}</span>
                             </div>
                           </div>
-                          <div className="text-xs text-text-secondary bg-bg-inset rounded p-2">
+                          <div className="text-xs text-text-secondary panel pb">
                             All token units combined: {simulationAnalytics.points.simulated.totalLeadPoints.toFixed(0)} lead points, {simulationAnalytics.points.simulated.totalAssistPoints.toFixed(0)} assist points
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="kpis">
                             <div className="kpi">
                               <div className="c-accent text-2xl font-bold">{simulationAnalytics.points.simulated.leadPercentage.toFixed(1)}%</div>
                               <div className="text-xs text-text-secondary mt-1">Lead Points</div>
@@ -6603,7 +6603,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <TrendingUp className="w-5 h-5" />
                           Comparison
                         </h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid-f text-sm">
                           <div>
                             <div className="text-text-secondary mb-1">Lead Point Variance</div>
                             <div className={`text-lg font-bold ${Math.abs(simulationAnalytics.points.simulated.leadPercentage - simulationAnalytics.points.theoretical.leadPercentage) < 2 ? 'c-ok' : 'text-yellow-400'}`}>
@@ -6643,9 +6643,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Enlarged Section Modal */}
           {enlargedSection && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-              <div className="bg-bg-card rounded-xl shadow-lg border border-border-default w-full max-w-6xl max-h-[85vh] overflow-y-auto">
-                <div className="p-4 sm:p-6">
+            <div className="modal-scrim">
+              <div className="modal wide">
+                <div className="pb">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="cap">
                       {enlargedSection === 'weeks' && (
@@ -6704,7 +6704,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       renameWeek(week.id, e.target.value);
                                     }
                                   }}
-                                  className="flex-1 px-2 py-1 bg-bg-input rounded-md border border-border-default outline-none"
+                                  className="flex-1 px-2 py-1 border border-border-default outline-none"
                                   autoFocus
                                 />
                               ) : (
@@ -6853,7 +6853,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                 <Shield className="w-4 h-4" />
                                 {group.name}
                               </h3>
-                              <div className="space-y-2">
+                              <div >
                                 {group.units.map((stat) => {
                                   const isNonToken = nonTokenUnits.includes(stat.unit);
                                   return (
@@ -6911,7 +6911,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                           )}
                                         </div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+                                      <div className="grid-f text-xs text-text-secondary">
                                         <div>L-Wins: {stat.leadWins}</div>
                                         <div>L-Loss: {stat.leadLosses}</div>
                                         <div>A-Wins: {stat.assistWins}</div>
@@ -6984,7 +6984,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                     )}
                                   </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-text-secondary">
+                                <div className="grid-f text-xs text-text-secondary">
                                   <div>L-Wins: {stat.leadWins}</div>
                                   <div>L-Loss: {stat.leadLosses}</div>
                                   <div>A-Wins: {stat.assistWins}</div>
@@ -7017,11 +7017,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
       {/* Generic Choice Dialog — replaces window.prompt() for action picks */}
       {choiceDialog && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          className="modal-scrim"
           onClick={choiceDialog.onClose}
         >
           <div
-            className="bg-bg-card rounded-xl shadow-lg border border-border-default max-w-md w-full"
+            className="modal narrow"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5">

@@ -38,7 +38,7 @@ import type { EngineOptions } from '../../stats/statsEngine';
 
 /** Small qualifier in a panel's right slot. */
 const Hint = ({ children }: { children: ReactNode }) => (
-  <span className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">{children}</span>
+  <span className="cap">{children}</span>
 );
 
 /** Team A takes the Union hue, Team B the Confederate one — the tracker's convention. */
@@ -156,14 +156,14 @@ function NightBody({
   const label = score.played === 0 ? 'Not played' : score.winner ? 'Final' : 'Split';
 
   return (
-    <div className="space-y-3">
+    <div >
       <Panel title="Night matchup">
-        <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--color-border)] px-3 py-2 font-mono text-sm">
+        <div className="ctl">
           <span className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">Night</span>
           <select
             value={weekId}
             onChange={(e) => setWeekId(e.target.value)}
-            className="border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] px-1 py-0.5 text-[color:var(--color-text-0)]"
+            
           >
             {weeks.map((w) => (
               <option key={String(w.id)} value={String(w.id)}>
@@ -210,7 +210,7 @@ function NightBody({
       </Panel>
 
       <Panel title="Rounds" right={<Hint>two rounds make a night</Hint>}>
-        <div className="grid grid-cols-1 gap-px bg-[color:var(--color-border)] sm:grid-cols-2">
+        <div className="cols">
           {rounds.map((r) => {
             const bound = boundByRound.get(r.round);
             const open = bound && onOpenRound ? () => onOpenRound(bound.scoreboard.sourceFilename) : null;
@@ -224,7 +224,7 @@ function NightBody({
                 tabIndex={open ? 0 : undefined}
                 onClick={open ?? undefined}
                 onKeyDown={open ? (e) => (e.key === 'Enter' || e.key === ' ') && open() : undefined}
-                className={`bg-[color:var(--color-bg-1)] p-3 font-mono ${
+                className={`col ${
                   open ? 'cursor-pointer hover:bg-[color:var(--color-bg-2)]' : ''
                 }`}
               >
@@ -242,12 +242,12 @@ function NightBody({
                   )}
                 </div>
                 <div className="wor-name mt-1.5 text-sm text-[color:var(--color-text-0)]">{r.map ?? '—'}</div>
-                <div className="mt-1 text-2xs text-[color:var(--color-text-2)]">
+                <div className="mt-1 text-[color:var(--color-text-2)]">
                   Team A as {r.factionA} · Team B as {r.factionB}
                   {r.flipped && ' · sides flipped'}
                 </div>
                 {perRound && (
-                  <div className="mt-1 text-2xs text-[color:var(--color-text-2)]">
+                  <div className="mt-1 text-[color:var(--color-text-2)]">
                     Leads: <span className="wor-name text-[color:var(--color-text-1)]">{r.leadA ?? '—'}</span> vs{' '}
                     <span className="wor-name text-[color:var(--color-text-1)]">{r.leadB ?? '—'}</span>
                   </div>
@@ -258,19 +258,19 @@ function NightBody({
                       <span style={{ width: `${(inflictedA / bar) * 100}%`, background: SIDE_HUE.A }} />
                       <span className="flex-1" style={{ background: SIDE_HUE.B }} />
                     </div>
-                    <div className="mt-1 flex justify-between text-2xs tabular-nums text-[color:var(--color-text-2)]">
+                    <div className="mt-1 flex justify-between tabular-nums text-[color:var(--color-text-2)]">
                       <span>A inflicted {inflictedA}</span>
                       <span>B inflicted {inflictedB}</span>
                     </div>
                   </>
                 )}
                 {(r.moraleA || r.moraleB) && (
-                  <div className="mt-1.5 text-2xs text-[color:var(--color-text-2)]">
+                  <div className="mt-1.5 text-[color:var(--color-text-2)]">
                     Morale: {r.moraleA ?? '—'} vs {r.moraleB ?? '—'}
                   </div>
                 )}
                 <div
-                  className={`mt-2 text-2xs uppercase tracking-wider ${
+                  className={`mt-2 uppercase tracking-wider ${
                     open ? 'text-[color:var(--color-accent)]' : 'text-[color:var(--color-text-2)]'
                   }`}
                 >
@@ -288,7 +288,7 @@ function NightBody({
 
       {form.A && form.B && (form.A.in_form + form.A.skirm + form.A.oob > 0 || form.B.in_form + form.B.skirm + form.B.oob > 0) && (
         <Panel title="Where the losses happened" right={<Hint>across both rounds</Hint>}>
-          <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
+          <div className="cols pb">
             <StanceBar counts={form.A} label="Team A" />
             <StanceBar counts={form.B} label="Team B" />
           </div>
@@ -298,7 +298,7 @@ function NightBody({
       {keys.length > 0 && (
         <Panel title="What decided it">
           {keys.map((k) => (
-            <div key={k.title} className="border-t border-[color:var(--color-border)] px-3 py-2.5 first:border-t-0">
+            <div key={k.title} className="pb" style={{ borderTop: '1px solid var(--line)' }}>
               <div className="flex items-center gap-2">
                 {k.side ? <Pill tone={SIDE_TONE[k.side]}>Team {k.side}</Pill> : <Pill tone="neutral">Night</Pill>}
                 <strong className="text-sm text-[color:var(--color-text-0)]">{k.title}</strong>
@@ -315,7 +315,7 @@ function NightBody({
             <Spine rows={roll.rows} aSide="usa" bSide="csa" />
           </Panel>
           <Panel title="Weapons across the night">
-            <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
+            <div className="cols pb">
               <CauseTable title="Team A killed with" data={roll.A.killsByCause} />
               <CauseTable title="Team B killed with" data={roll.B.killsByCause} />
               <CauseTable title="Team A died to" data={roll.A.casualtiesByCause} />
@@ -348,38 +348,38 @@ function UnitRoll({ roll }: { roll: NightSideRoll }) {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse font-mono text-sm">
           <thead>
-            <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-              <th className="px-2 py-1 text-left">Unit</th>
-              <th className="px-2 py-1 text-right">Rds</th>
-              <th className="px-2 py-1 text-right">Men</th>
-              <th className="px-2 py-1 text-right">Kills</th>
-              <th className="px-2 py-1 text-right">Lost</th>
-              <th className="px-2 py-1 text-right">K/D</th>
-              <th className="px-2 py-1 text-right" title={KILL_RATE_LABEL}>KR</th>
-              <th className="px-2 py-1 text-right" title={LOSS_RATE_LABEL}>LR</th>
-              <th className="px-2 py-1 text-right" title={AVG_TK_LABEL}>×Tk</th>
-              <th className="px-2 py-1 text-right" title={AVG_TD_LABEL}>×Td</th>
-              <th className="px-2 py-1 text-right" title={TICKET_INFLICTED_LABEL}>TDI</th>
-              <th className="px-2 py-1 text-right" title={TICKET_RECEIVED_LABEL}>TDR</th>
+            <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] uppercase tracking-wider text-[color:var(--color-text-2)]">
+              <th className="text-left">Unit</th>
+              <th className="text-right">Rds</th>
+              <th className="text-right">Men</th>
+              <th className="text-right">Kills</th>
+              <th className="text-right">Lost</th>
+              <th className="text-right">K/D</th>
+              <th className="text-right" title={KILL_RATE_LABEL}>KR</th>
+              <th className="text-right" title={LOSS_RATE_LABEL}>LR</th>
+              <th className="text-right" title={AVG_TK_LABEL}>×Tk</th>
+              <th className="text-right" title={AVG_TD_LABEL}>×Td</th>
+              <th className="text-right" title={TICKET_INFLICTED_LABEL}>TDI</th>
+              <th className="text-right" title={TICKET_RECEIVED_LABEL}>TDR</th>
             </tr>
           </thead>
           <tbody>
             {roll.units.map((u: NightUnitRoll) => (
               <tr key={u.unit} className="border-b border-[color:var(--color-border)]">
-                <td className="wor-name px-2 py-1 text-[color:var(--color-text-0)]">{u.unit}</td>
-                <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{u.rounds}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{u.fielded}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{u.kills}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{u.deaths}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{u.kd.toFixed(2)}</td>
-                <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(u.killRate)}</td>
-                <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(u.lossRate)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(u.avgTk)}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{formatAvgT(u.avgTd)}</td>
-                <td className="px-2 py-1 text-right">
+                <td className="wor-name">{u.unit}</td>
+                <td className="text-right tabular-nums text-[color:var(--color-text-2)]">{u.rounds}</td>
+                <td className="text-right tabular-nums">{u.fielded}</td>
+                <td className="text-right tabular-nums">{u.kills}</td>
+                <td className="text-right tabular-nums">{u.deaths}</td>
+                <td className="text-right tabular-nums">{u.kd.toFixed(2)}</td>
+                <td className="text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(u.killRate)}</td>
+                <td className="text-right tabular-nums text-[color:var(--color-text-2)]">{formatRate(u.lossRate)}</td>
+                <td className="text-right tabular-nums">{formatAvgT(u.avgTk)}</td>
+                <td className="text-right tabular-nums">{formatAvgT(u.avgTd)}</td>
+                <td className="text-right">
                   <TicketPct share={u.pctInflicted / 100} shareTitle={TICKET_INFLICTED_LABEL} />
                 </td>
-                <td className="px-2 py-1 text-right">
+                <td className="text-right">
                   <TicketPct share={u.pctReceived / 100} shareTitle={TICKET_RECEIVED_LABEL} />
                 </td>
               </tr>
@@ -412,16 +412,16 @@ function Rosters({
 
   return (
     <Panel title="Rosters" right={<Hint>{perRound ? 'leads are set per round' : 'lead marked ★'}</Hint>}>
-      <div className="grid grid-cols-1 gap-px bg-[color:var(--color-border)] sm:grid-cols-2">
+      <div className="cols">
         {(['A', 'B'] as Side[]).map((side) => {
           const units = teams[side];
           const total = units.reduce((n, u) => n + (byUnit.get(u)?.points ?? 0), 0);
           return (
-            <div key={side} className="bg-[color:var(--color-bg-1)] p-3 font-mono">
+            <div key={side} className="col">
               <div className="flex flex-wrap items-center gap-2">
                 <Pill tone={SIDE_TONE[side]}>Team {side}</Pill>
                 <span className="h-px flex-1 bg-[color:var(--color-border)]" />
-                <span className="text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+                <span className="cap">
                   {units.length} units{hasPoints && ` · ${total} pts`}
                 </span>
               </div>
@@ -435,25 +435,25 @@ function Rosters({
                       const led = ledIn(u);
                       return (
                         <tr key={u} className="border-b border-[color:var(--color-border)]">
-                          <td className={`wor-name py-1 ${p?.token === false ? 'text-[color:var(--color-text-2)]' : 'text-[color:var(--color-text-0)]'}`}>
+                          <td className={`wor-name ${p?.token === false ? 'text-[color:var(--color-text-2)]' : 'text-[color:var(--color-text-0)]'}`}>
                             {u}
                             {led.length > 0 && (
-                              <span className="ml-1.5 text-2xs uppercase tracking-wider text-[color:var(--color-accent)]">
+                              <span className="ml-1.5 uppercase tracking-wider text-[color:var(--color-accent)]">
                                 ★ {perRound ? `R${led.join(' R')}` : 'lead'}
                               </span>
                             )}
                             {p?.token === false && (
-                              <span className="ml-1.5 text-2xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+                              <span className="ml-1.5 uppercase tracking-wider text-[color:var(--color-text-2)]">
                                 no token
                               </span>
                             )}
                           </td>
-                          <td className="py-1 text-right text-2xs tabular-nums text-[color:var(--color-text-2)]">
+                          <td className="num" style={{ color: 'var(--ink-3)' }}>
                             {p ? `${p.roundsWon}–${p.roundsLost}` : ''}
                             {p && p.swappedRounds > 0 && ` · balanced ×${p.swappedRounds}`}
                           </td>
                           {hasPoints && (
-                            <td className="w-12 py-1 text-right tabular-nums text-[color:var(--color-text-0)]">
+                            <td className="num">
                               {p?.points ?? 0}
                             </td>
                           )}
@@ -464,12 +464,12 @@ function Rosters({
                 </table>
               )}
               {hasPoints && type === 'Playoffs' && (
-                <div className="mt-2 text-2xs text-[color:var(--color-text-2)]">
+                <div className="mt-2 text-[color:var(--color-text-2)]">
                   Playoff nights award no points — the record still counts.
                 </div>
               )}
               {hasPoints && type === 'Fun round' && (
-                <div className="mt-2 text-2xs text-[color:var(--color-text-2)]">
+                <div className="mt-2 text-[color:var(--color-text-2)]">
                   Fun rounds are exhibition — no points and no record.
                 </div>
               )}
