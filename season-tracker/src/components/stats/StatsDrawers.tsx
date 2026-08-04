@@ -299,7 +299,7 @@ export function PlayerDrawer({
       onOpenChange={(o) => !o && onClose()}
       title={detail?.name ?? 'Player'}
       subtitle={detail ? `${detail.regiment} · ${detail.isArtillery ? 'Artillery' : 'Infantry'} · ${detail.steamId ?? 'no steam id'}` : undefined}
-      width={560}
+      width={720}
     >
       {toggle}
       {!detail ? (

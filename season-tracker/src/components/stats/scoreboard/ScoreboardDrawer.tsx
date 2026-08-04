@@ -66,7 +66,7 @@ export function ScoreboardDrawer({
             : sb.sourceFilename
           : undefined
       }
-      width={660}
+      width={860}
     >
       {!sb ? (
         <EmptyHint>No data</EmptyHint>

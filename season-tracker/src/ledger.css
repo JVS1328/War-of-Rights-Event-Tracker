@@ -212,20 +212,26 @@ h2.cap svg, h3.cap svg, h4.cap svg { width: 12px; height: 12px; flex: none; opac
 
 .body { padding: 20px; max-width: 1120px; }
 
-/* Narrow: the rail lies down across the top and scrolls sideways. */
+/* Narrow: the rail lies down across the top and scrolls sideways. It has to
+   clip, not push — a nav wider than the viewport would drag the whole page
+   sideways and every screen would read as broken. */
 @media (max-width: 860px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .rail {
     position: static; height: auto; border-right: 0;
     border-bottom: 1px solid var(--color-border);
+    overflow-x: hidden; min-width: 0;
   }
-  .rail-h { display: flex; align-items: baseline; gap: 10px; }
+  .rail-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .rail-h .s { margin-top: 0; }
-  .rail-nav { display: flex; overflow-x: auto; }
-  .rgrp { padding: 6px 0; border-right: 1px solid var(--color-border); }
-  .rail button { white-space: nowrap; }
+  .rail-nav { display: flex; overflow-x: auto; max-width: 100%; }
+  .rgrp { padding: 6px 0; border-right: 1px solid var(--color-border); flex: none; }
+  .rail button { white-space: nowrap; width: auto; }
   .body { padding: 13px; }
   .crumb { padding: 9px 13px; }
+  /* A meta line is a caption, not a column header — let it wrap rather than
+     force the panel wider than the screen. */
+  .ph .meta, .ctl .meta { white-space: normal; }
 }
 
 /* ── faction ────────────────────────────────────────────────────────────── */
@@ -338,7 +344,7 @@ details.panel[open] > summary.ph::before { content: '▼'; }
   border-left: 1px solid var(--line); background: var(--surface);
   outline: none;
 }
-@media (min-width: 640px) { .drawer { width: var(--drawer-w, 480px); } }
+@media (min-width: 640px) { .drawer { width: min(var(--drawer-w, 480px), 94vw); } }
 .drawer > .ph { flex: none; }
 .drawer-b { flex: 1; min-height: 0; overflow: auto; }
 
