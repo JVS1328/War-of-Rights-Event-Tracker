@@ -82,6 +82,7 @@ import {
   nextPowerOfTwo,
   suggestFormats as suggestPlayoffFormats,
 } from './utils/playoffPlanner';
+import { balanceTeams, sitOuts, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
 
 const STORAGE_KEY = 'WarOfRightsSeasonTracker';
 
@@ -203,6 +204,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [balancerResults, setBalancerResults] = useState(null); // Now an array of options
   const [selectedBalanceIndex, setSelectedBalanceIndex] = useState(0);
   const [balancerStatus, setBalancerStatus] = useState('');
+  // Units the balancer left out because they field nobody this night.
+  const [balancerSatOut, setBalancerSatOut] = useState([]);
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
   const [draggedMainUnit, setDraggedMainUnit] = useState(null);
@@ -1323,6 +1326,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setBalancerOpposingPairs([]);
     setBalancerResults(null);
     setBalancerStatus('');
+    setBalancerSatOut([]);
     setShowBalancerModal(true);
   };
 
@@ -1453,315 +1457,74 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
   const runBalancer = () => {
     if (!selectedWeek) return;
-
     setBalancerStatus('Balancing...');
-    
-    // Get available units (not assigned to teams in current week)
+
+    // Units not already placed on a side this week.
     const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
     const available = units.filter(u => !assignedUnits.has(u));
 
-    // Validate inputs
-    try {
-      const maxDiff = parseInt(balancerMaxDiff);
-      if (isNaN(maxDiff) || maxDiff < 0) {
-        alert('Max player difference must be a valid number');
-        setBalancerStatus('Error!');
-        return;
-      }
-
-      // Get teammate history
-      const { teammate } = computeStats();
-
-      // Skill-based post-season balancing: the set of playoff-pedigree units to
-      // even across the two sides (null outside playoffs or when weight is 0).
-      const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
-      const postSeasonSkillUnits = getPostSeasonSkillUnits(weekIdx);
-
-      // Run the balancing algorithm
-      const result = balanceTeams(
-        available,
-        balancerUnitCounts,
-        balancerOpposingPairs,
-        maxDiff,
-        teammate,
-        divisions,
-        postSeasonSkillUnits
-      );
-
-      if (result) {
-        // result is now an array of top N solutions
-        const enrichedResults = result.map(r => {
-          const stats = calculatePreviewStats(r.teamA, r.teamB);
-          return {
-            ...r,
-            avgHistoryA: stats.avgHistoryA,
-            avgHistoryB: stats.avgHistoryB,
-            combinedAvgHistory: stats.combinedAvgHistory,
-            round1Probability: stats.round1Probability,
-            round2Probability: stats.round2Probability
-          };
-        });
-        setBalancerResults(enrichedResults);
-        setSelectedBalanceIndex(0);
-        setBalancerStatus(`Found ${enrichedResults.length} balance option${enrichedResults.length > 1 ? 's' : ''}! Best Avg. Diff: ${enrichedResults[0].score.toFixed(1)}`);
-      } else {
-        setBalancerStatus('Failed to find a valid balance.');
-      }
-    } catch (error) {
-      alert('Error during balancing: ' + error.message);
-      setBalancerStatus('Error!');
-    }
-  };
-
-  const balanceTeams = (available, unitCounts, opposingPairs, maxPlayerDiff, teammateHistory, divisionsList = [], postSeasonSkillUnits = null) => {
-    // Validate and prepare unit data
-    const unitData = {};
-    try {
-      Object.entries(unitCounts).forEach(([unit, counts]) => {
-        unitData[unit] = {
-          min: parseInt(counts.min) || 0,
-          max: parseInt(counts.max) || 0
-        };
-      });
-    } catch (error) {
-      alert('Min/Max values for all units must be valid integers.');
-      return null;
+    const maxDiff = parseInt(balancerMaxDiff);
+    if (isNaN(maxDiff) || maxDiff < 0) {
+      setBalancerStatus('Max player difference must be a whole number.');
+      return;
     }
 
-    // Filter out units with 0 min and 0 max
-    const presentUnits = new Set(
-      Object.entries(unitData)
-        .filter(([unit, data]) => !(data.min === 0 && data.max === 0))
-        .map(([unit]) => unit)
-    );
+    const { teammate } = computeStats();
+    const weekIdx = weeks.findIndex(w => w.id === selectedWeek.id);
+    const postSeasonSkillUnits = getPostSeasonSkillUnits(weekIdx);
+    // Ratings as they stood going into this week, so an option's Elo split
+    // reflects the night being built rather than the season's end state.
+    const { eloRatings } = weekIdx > 0 ? calculateEloRatings(weekIdx - 1) : { eloRatings: {} };
+    const elo = {};
+    units.forEach(u => { elo[u] = eloRatings[u] ?? eloSystem.initialElo; });
 
-    const players = available.filter(u => presentUnits.has(u)).sort();
-
-    // Build opposing map
-    const opposingMap = {};
-    opposingPairs.forEach(([p1, p2]) => {
-      if (!opposingMap[p1]) opposingMap[p1] = new Set();
-      if (!opposingMap[p2]) opposingMap[p2] = new Set();
-      opposingMap[p1].add(p2);
-      opposingMap[p2].add(p1);
+    const result = balanceTeams({
+      available,
+      counts: balancerUnitCounts,
+      opposingPairs: balancerOpposingPairs,
+      maxPlayerDiff: maxDiff,
+      teammateHistory: teammate,
+      divisions,
+      postSeasonSkillUnits,
+      weights: {
+        teammate: balancerSettings.teammateWeight,
+        avgDiff: balancerSettings.avgDiffWeight,
+        regimentCount: balancerSettings.regimentCountWeight,
+        rangeSimilarity: balancerSettings.rangeSimilarityWeight,
+        divisionOpposition: balancerSettings.divisionOppositionWeight,
+        postSeasonSkill: balancerSettings.postSeasonSkillWeight || 0,
+      },
+      optionCount: balancerSettings.balanceOptionCount || 3,
+      elo,
     });
 
-    // Build unit-to-division lookup for division opposition scoring
-    const unitDivision = {};
-    if (balancerSettings.divisionOppositionWeight > 0 && divisionsList.length > 0) {
-      divisionsList.forEach(div => {
-        div.units.forEach(unit => { unitDivision[unit] = div.name; });
-      });
+    setBalancerSatOut(result.satOut);
+    if (!result.ok) {
+      setBalancerResults(null);
+      setBalancerStatus(describeBalanceFailure(result.failure, maxDiff));
+      return;
     }
 
-    // Calculate average teammate count for penalty
-    const allCounts = [];
-    const countedPairs = new Set();
-    Object.entries(teammateHistory).forEach(([u1, others]) => {
-      Object.entries(others).forEach(([u2, count]) => {
-        const pair = [u1, u2].sort().join('|');
-        if (!countedPairs.has(pair)) {
-          allCounts.push(count);
-          countedPairs.add(pair);
-        }
-      });
-    });
-
-    const averageTeammateCount = allCounts.length > 0
-      ? allCounts.reduce((sum, val) => sum + val, 0) / allCounts.length
-      : 0;
-    const overTeamingThreshold = Math.round(averageTeammateCount);
-    const overTeamingPenaltyMultiplier = 10;
-
-    // Handle forced teams from opposing pairs
-    const forcedA = new Set(opposingPairs.map(p => p[0]).filter(Boolean));
-    const forcedB = new Set(opposingPairs.map(p => p[1]).filter(Boolean));
-
-    // Check for contradictions
-    const conflict = [...forcedA].filter(u => forcedB.has(u));
-    if (conflict.length > 0) {
-      alert(`Units cannot be in both opposing teams: ${conflict.join(', ')}`);
-      return null;
-    }
-
-    // Players to assign (not forced to either team)
-    const playersToAssign = players.filter(p => !forcedA.has(p) && !forcedB.has(p)).sort();
-    const n = playersToAssign.length;
-    const totalCombos = 1 << n; // 2^n bitmask iteration — each bit assigns a unit to team A or B
-
-    const hasDivisions = balancerSettings.divisionOppositionWeight > 0 && Object.keys(unitDivision).length > 0;
-    const forcedAArray = [...forcedA];
-    const forcedBArray = [...forcedB];
-
-    // Evaluate raw metrics for a given bitmask
-    const evaluateMask = (mask) => {
-      const teamAArray = [...forcedAArray];
-      const teamBArray = [...forcedBArray];
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) teamAArray.push(playersToAssign[i]);
-        else teamBArray.push(playersToAssign[i]);
-      }
-
-      const minA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-      const maxA = teamAArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-      const minB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.min || 0), 0);
-      const maxB = teamBArray.reduce((sum, p) => sum + (unitData[p]?.max || 0), 0);
-
-      const regimentCountDiff = Math.abs(teamAArray.length - teamBArray.length);
-      const rangeA = maxA - minA;
-      const rangeB = maxB - minB;
-      const rangeSimilarity = Math.abs(rangeA - rangeB);
-      const avgA = teamAArray.length > 0 ? (minA + maxA) / 2 : 0;
-      const avgB = teamBArray.length > 0 ? (minB + maxB) / 2 : 0;
-      const avgDiff = Math.abs(avgA - avgB);
-
-      let teammateScore = 0;
-      const scorePairs = (arr) => {
-        for (let i = 0; i < arr.length; i++) {
-          for (let j = i + 1; j < arr.length; j++) {
-            const count = teammateHistory[arr[i]]?.[arr[j]] || 0;
-            teammateScore += (averageTeammateCount > 0 && count > overTeamingThreshold)
-              ? count * overTeamingPenaltyMultiplier : count;
-          }
-        }
-      };
-      scorePairs(teamAArray);
-      scorePairs(teamBArray);
-
-      let divisionOppositionScore = 0;
-      if (hasDivisions) {
-        for (const uA of teamAArray) {
-          const divA = unitDivision[uA];
-          if (!divA) continue;
-          for (const uB of teamBArray) {
-            if (unitDivision[uB] === divA) divisionOppositionScore--;
-          }
-        }
-      }
-
-      // Skill-based post-season balancing: minimize the difference in the count
-      // of playoff-pedigree units between the two sides (see getPostSeasonSkillUnits).
-      let postSeasonSkillDiff = 0;
-      if (postSeasonSkillUnits) {
-        let qA = 0, qB = 0;
-        for (const u of teamAArray) if (postSeasonSkillUnits.has(u)) qA++;
-        for (const u of teamBArray) if (postSeasonSkillUnits.has(u)) qB++;
-        postSeasonSkillDiff = Math.abs(qA - qB);
-      }
-
-      let gap = 0;
-      if (maxA < minB) gap = minB - maxA;
-      else if (maxB < minA) gap = minA - maxB;
-
+    // Win probability and teammate averages are the tracker's own, so they get
+    // layered on here rather than pushed into the scoring model.
+    const enriched = result.options.map(o => {
+      const stats = calculatePreviewStats(o.teamA, o.teamB);
       return {
-        stats: [minA, maxA, minB, maxB],
-        isValid: gap <= maxPlayerDiff && avgDiff <= maxPlayerDiff,
-        raw: { teammateScore, avgDiff, regimentCountDiff, rangeSimilarity, divisionOppositionScore, postSeasonSkillDiff }
+        ...o,
+        score: o.avgDiff,
+        avgHistoryA: stats.avgHistoryA,
+        avgHistoryB: stats.avgHistoryB,
+        combinedAvgHistory: stats.combinedAvgHistory,
+        round1Probability: stats.round1Probability,
+        round2Probability: stats.round2Probability,
       };
-    };
-
-    // Pass 1: Iterate all partitions to find min/max of each metric (for normalization)
-    const metricKeys = ['teammateScore', 'avgDiff', 'regimentCountDiff', 'rangeSimilarity', 'divisionOppositionScore', 'postSeasonSkillDiff'];
-    const metricMin = {};
-    const metricMax = {};
-    for (const key of metricKeys) { metricMin[key] = Infinity; metricMax[key] = -Infinity; }
-
-    for (let mask = 0; mask < totalCombos; mask++) {
-      const { raw } = evaluateMask(mask);
-      for (const key of metricKeys) {
-        if (raw[key] < metricMin[key]) metricMin[key] = raw[key];
-        if (raw[key] > metricMax[key]) metricMax[key] = raw[key];
-      }
-    }
-
-    const metricRange = {};
-    for (const key of metricKeys) { metricRange[key] = metricMax[key] - metricMin[key]; }
-
-    const weights = {
-      teammateScore: balancerSettings.teammateWeight,
-      avgDiff: balancerSettings.avgDiffWeight,
-      regimentCountDiff: balancerSettings.regimentCountWeight,
-      rangeSimilarity: balancerSettings.rangeSimilarityWeight,
-      divisionOppositionScore: balancerSettings.divisionOppositionWeight,
-      postSeasonSkillDiff: balancerSettings.postSeasonSkillWeight || 0
-    };
-
-    // Pass 2: Normalize, score, and find top N partitions
-    const topN = balancerSettings.balanceOptionCount || 3;
-    const topValidSolutions = []; // sorted ascending by score (best first)
-    let bestOverallSolution = null;
-
-    const insertIntoTopN = (arr, entry) => {
-      // Insert into sorted array, keep only topN entries
-      let inserted = false;
-      for (let i = 0; i < arr.length; i++) {
-        if (entry.score < arr[i].score) {
-          arr.splice(i, 0, entry);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) arr.push(entry);
-      if (arr.length > topN) arr.pop();
-    };
-
-    for (let mask = 0; mask < totalCombos; mask++) {
-      const result = evaluateMask(mask);
-      let score = 0;
-      for (const key of metricKeys) {
-        const normalized = metricRange[key] === 0 ? 0 : (result.raw[key] - metricMin[key]) / metricRange[key];
-        score += normalized * weights[key];
-      }
-
-      if (result.isValid) {
-        if (topValidSolutions.length < topN || score < topValidSolutions[topValidSolutions.length - 1].score) {
-          insertIntoTopN(topValidSolutions, { mask, score, stats: result.stats });
-        }
-      }
-      if (!bestOverallSolution || score < bestOverallSolution.score) {
-        bestOverallSolution = { mask, score, stats: result.stats };
-      }
-    }
-
-    // Reconstruct teams from a bitmask
-    const buildTeams = (mask) => {
-      const teamA = [...forcedAArray];
-      const teamB = [...forcedBArray];
-      for (let i = 0; i < n; i++) {
-        if (mask & (1 << i)) teamA.push(playersToAssign[i]);
-        else teamB.push(playersToAssign[i]);
-      }
-      return [teamA, teamB];
-    };
-
-    // Prefer valid solutions; fall back to overall best for error reporting
-    if (topValidSolutions.length > 0) {
-      return topValidSolutions.map(sol => {
-        const [teamA, teamB] = buildTeams(sol.mask);
-        const [minA, maxA, minB, maxB] = sol.stats;
-        const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
-        return { teamA, teamB, score: avgDiff, minA, maxA, minB, maxB, compositeScore: sol.score };
-      });
-    } else if (bestOverallSolution) {
-      const [minA, maxA, minB, maxB] = bestOverallSolution.stats;
-      let gap = 0;
-      if (maxA < minB) gap = minB - maxA;
-      else if (maxB < minA) gap = minA - maxB;
-      const avgDiff = Math.abs((minA + maxA) / 2 - (minB + maxB) / 2);
-
-      let msg = `Could not find a balance within the max player difference of ${maxPlayerDiff}.\n`;
-      if (gap > maxPlayerDiff) {
-        msg += `The best possible balance has a range gap of ${gap.toFixed(0)} players.\n`;
-      }
-      if (avgDiff > maxPlayerDiff) {
-        msg += `The best possible balance has an average difference of ${avgDiff.toFixed(0)} players.\n`;
-      }
-      alert(msg.trim());
-      return null;
-    } else {
-      alert('No valid team composition could be found with the given constraints.');
-      return null;
-    }
+    });
+    setBalancerResults(enriched);
+    setSelectedBalanceIndex(0);
+    const sat = result.satOut.length ? ` · ${result.satOut.length} sitting out` : '';
+    setBalancerStatus(
+      `${enriched.length} option${enriched.length === 1 ? '' : 's'} · best average difference ${enriched[0].avgDiff.toFixed(1)}${sat}`
+    );
   };
 
   const applyBalancerResults = () => {
@@ -6214,26 +5977,50 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
                   {!balancerResults || balancerResults.length === 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Left: Available Units */}
+                      {/* Left: Available Units. A unit fielding nobody is shown
+                          struck through rather than silently dropped — it is
+                          left out of the split, and that should be visible
+                          before the balance runs, not discovered after. */}
                       <div className="bg-bg-inset rounded-lg p-4">
-                        <h3 className="text-lg font-semibold mb-3">Available Units Pool</h3>
-                        <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
-                          {(() => {
-                            const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
-                            const available = units.filter(u => !assignedUnits.has(u));
-                            return available.length > 0 ? (
-                              <div className="space-y-1">
-                                {available.map(unit => (
-                                  <div key={unit} className="text-sm py-1">
-                                    {unit}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-text-secondary text-sm">All units assigned</p>
-                            );
-                          })()}
-                        </div>
+                        {(() => {
+                          const assignedUnits = new Set([...selectedWeek.teamA, ...selectedWeek.teamB]);
+                          const available = units.filter(u => !assignedUnits.has(u));
+                          const satOut = new Set(sitOuts(available, balancerUnitCounts));
+                          const playing = available.filter(u => !satOut.has(u));
+                          return (<>
+                            <div className="flex items-baseline justify-between mb-3">
+                              <h3 className="text-lg font-semibold">Available Units Pool</h3>
+                              <span className="text-xs text-text-secondary">
+                                {playing.length} playing{satOut.size > 0 ? ` · ${satOut.size} sitting out` : ''}
+                              </span>
+                            </div>
+                            <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
+                              {available.length === 0 ? (
+                                <p className="text-text-secondary text-sm">All units assigned</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {available.map(unit => {
+                                    const counts = balancerUnitCounts[unit];
+                                    const out = satOut.has(unit);
+                                    return (
+                                      <div key={unit} className="flex items-center justify-between gap-2 text-sm py-1">
+                                        <span className={out ? 'line-through text-text-secondary' : ''}>{unit}</span>
+                                        <span className="text-xs text-text-secondary tabular-nums">
+                                          {out ? 'fielding nobody' : `${counts?.min ?? 0}-${counts?.max ?? 0}`}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            {satOut.size > 0 && (
+                              <p className="text-xs text-text-secondary mt-2">
+                                Units at 0 players are sat out of the split. Give one a count above to bring it back in.
+                              </p>
+                            )}
+                          </>);
+                        })()}
                       </div>
 
                       {/* Right: Constraints */}
@@ -6459,6 +6246,29 @@ const SeasonTracker = ({ initialShareData = null }) => {
                             </div>
                           </div>
                         </div>
+                        {activeResult.avgEloA != null && activeResult.avgEloB != null && (
+                          <div className="grid grid-cols-3 gap-3 mt-3 max-w-4xl mx-auto">
+                            <div className="bg-bg-inset rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">{teamNames.A} Avg Elo</div>
+                              <div className="text-lg font-bold text-blue-400">{Math.round(activeResult.avgEloA)}</div>
+                            </div>
+                            <div className="bg-bg-inset rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">Elo Difference</div>
+                              <div className="text-lg font-bold text-indigo-400">
+                                {Math.abs(Math.round(activeResult.avgEloA - activeResult.avgEloB))}
+                              </div>
+                            </div>
+                            <div className="bg-bg-inset rounded p-3">
+                              <div className="text-xs text-text-secondary mb-1">{teamNames.B} Avg Elo</div>
+                              <div className="text-lg font-bold text-red-400">{Math.round(activeResult.avgEloB)}</div>
+                            </div>
+                          </div>
+                        )}
+                        {balancerSatOut.length > 0 && (
+                          <p className="text-xs text-text-secondary mt-3 max-w-4xl mx-auto">
+                            Sat out (fielding nobody): {balancerSatOut.join(', ')}
+                          </p>
+                        )}
                         {balancerSettings.divisionOppositionWeight > 0 && (() => {
                           const matchups = getDivisionMatchups(activeResult.teamA, activeResult.teamB);
                           if (matchups.length === 0) return null;
@@ -6546,13 +6356,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onDrop={() => handleDrop('A')}
                         >
                           <h4 className="text-lg font-semibold text-blue-400 mb-3">
-                            Team A ({activeResult.teamA.length} units)
+                            Team A ({activeResult.teamA.length} unit{activeResult.teamA.length === 1 ? '' : 's'})
                           </h4>
                           <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minA}-{activeResult.maxA} (avg: {((activeResult.minA + activeResult.maxA) / 2).toFixed(1)})</p>
                             <p className="text-xs">
                               Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryA?.toFixed(2) || '0.00'}</span>
                             </p>
+                            {activeResult.avgEloA != null && (
+                              <p className="text-xs">
+                                Avg Elo: <span className="text-cyan-400 font-semibold">{Math.round(activeResult.avgEloA)}</span>
+                              </p>
+                            )}
                           </div>
                           <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
@@ -6585,13 +6400,18 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           onDrop={() => handleDrop('B')}
                         >
                           <h4 className="text-lg font-semibold text-red-400 mb-3">
-                            Team B ({activeResult.teamB.length} units)
+                            Team B ({activeResult.teamB.length} unit{activeResult.teamB.length === 1 ? '' : 's'})
                           </h4>
                           <div className="text-text-secondary text-sm mb-3 space-y-1">
                             <p>Players: {activeResult.minB}-{activeResult.maxB} (avg: {((activeResult.minB + activeResult.maxB) / 2).toFixed(1)})</p>
                             <p className="text-xs">
                               Avg Teammate History: <span className="text-cyan-400 font-semibold">{activeResult.avgHistoryB?.toFixed(2) || '0.00'}</span>
                             </p>
+                            {activeResult.avgEloB != null && (
+                              <p className="text-xs">
+                                Avg Elo: <span className="text-cyan-400 font-semibold">{Math.round(activeResult.avgEloB)}</span>
+                              </p>
+                            )}
                           </div>
                           <div className="bg-bg-inset rounded p-3 max-h-64 overflow-y-auto">
                             <div className="space-y-1">
