@@ -288,8 +288,24 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .kpi .h { font-size: 10px; color: var(--color-text-2); margin-top: 2px; }
 
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); }
-.col { padding: 13px; border-right: 1px solid var(--color-border); min-width: 0; }
-.col:last-child { border-right: none; }
+/* Every child is a column whether or not it carries the class. A bare child
+   used to butt straight against its neighbour with no gutter and no rule
+   between them, which read as one run-together block.
+
+   A panel is exempt: it already has a border and its own body padding, so
+   padding it again would push its header band in off its own edge. */
+.cols > *:not(.panel) { padding: 13px; border-right: 1px solid var(--color-border); min-width: 0; }
+.cols > *:not(.panel):last-child { border-right: none; }
+.cols > .panel { min-width: 0; }
+.col { min-width: 0; }
+
+/* Panels side by side. Distinct from .cols, which draws the rules and padding
+   itself — a panel supplies both, so what it needs between siblings is a gap. */
+.pcols {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px; align-items: start;
+}
+.pcols > .panel { margin-bottom: 0; }
 .click-col { cursor: pointer; }
 .click-col:hover { background: var(--color-bg-2); }
 

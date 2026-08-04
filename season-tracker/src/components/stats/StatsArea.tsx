@@ -1833,7 +1833,7 @@ function ImportTab({
   const importOffset = importPage * PAGE;
   const importItems = sortedStored.slice(importOffset, importOffset + PAGE);
   return (
-    <div className="cols">
+    <div className="pcols">
       <Panel title="Import scoreboards">
         <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
         <button className="gh live" onClick={() => fileRef.current?.click()}>

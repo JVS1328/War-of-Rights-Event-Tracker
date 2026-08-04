@@ -341,3 +341,75 @@ describe('describeProblem', () => {
     expect(msg).toContain('2 in round 1');
   });
 });
+
+// ── Pastes that lost their tabs ─────────────────────────────────────────────
+
+// The registry from the paste that surfaced this: names with spaces, names that
+// are prefixes of each other, and one that is a substring of another ("II Corps"
+// sits inside nothing, but "8th OH" starts with a token that matches alone).
+const LOOSE_REGISTRY = [
+  '8th OH', 'II Corps', 'MSG', 'FSB', '12th VA', '7th MI', '1st CS', '51st AL',
+  '20th ME', 'Sussy', 'CQB', '5th NH', '9th LA', 'JD', '10th US',
+];
+
+const LOOSE_PASTE = [
+  'Week Round Home Away Date',
+  '1 R1 8th OH II Corps 8/5/2026',
+  '1 R2 MSG FSB 8/5/2026',
+  '2 R1 12th VA 7th MI 8/12/2026',
+  '2 R2 1st CS 51st AL 8/12/2026',
+  '3 R1 20th ME Sussy 9/2/2026',
+  '3 R2 CQB II Corps 9/2/2026',
+].join('\n');
+
+describe('parseSchedulePaste — whitespace-separated pastes', () => {
+  it('reads a paste whose tabs were flattened to spaces', () => {
+    const p = parseSchedulePaste(LOOSE_PASTE, LOOSE_REGISTRY);
+    expect(p.problems).toEqual([]);
+    expect(p.rows).toHaveLength(6);
+    expect(p.weeks).toEqual([1, 2, 3]);
+  });
+
+  it('splits two multi-word names on the registry, not on the first space', () => {
+    const p = parseSchedulePaste(LOOSE_PASTE, LOOSE_REGISTRY);
+    // "8th OH II Corps" must not read as "8th" versus "OH II Corps", even
+    // though "8th" alone substring-matches "8th OH".
+    expect(p.rows[0]).toMatchObject({ week: 1, round: 1, home: '8th OH', away: 'II Corps' });
+    expect(p.rows[2]).toMatchObject({ week: 2, round: 1, home: '12th VA', away: '7th MI' });
+  });
+
+  it('reads R1/R2 round labels and keeps the trailing date', () => {
+    const p = parseSchedulePaste(LOOSE_PASTE, LOOSE_REGISTRY);
+    expect(p.rows.map((r) => r.round)).toEqual([1, 2, 1, 2, 1, 2]);
+    expect(p.rows[0].date).toBe('8/5/2026');
+  });
+
+  it('reads a whitespace paste with no round column', () => {
+    const p = parseSchedulePaste(
+      'Week Home Away Date\n1 8th OH II Corps 8/5/2026\n2 MSG FSB 8/12/2026',
+      LOOSE_REGISTRY,
+    );
+    expect(p.problems).toEqual([]);
+    expect(p.rows).toHaveLength(2);
+    expect(p.rows[0]).toMatchObject({ week: 1, round: 1, home: '8th OH', away: 'II Corps' });
+  });
+
+  it('reads a whitespace paste with no date', () => {
+    const p = parseSchedulePaste('1 R1 8th OH II Corps', LOOSE_REGISTRY);
+    expect(p.rows[0]).toMatchObject({ home: '8th OH', away: 'II Corps', date: '' });
+  });
+
+  it('reports a row whose middle names no two known units', () => {
+    const p = parseSchedulePaste('1 R1 Nobody At All 8/5/2026', LOOSE_REGISTRY);
+    expect(p.rows).toEqual([]);
+    expect(p.problems).toEqual([
+      { kind: 'unparsable', line: 1, text: '1 R1 Nobody At All 8/5/2026' },
+    ]);
+  });
+
+  it('still prefers the strict split when tabs survived', () => {
+    const p = parseSchedulePaste('1\tR1\t8th OH\tII Corps\t8/5/2026', LOOSE_REGISTRY);
+    expect(p.problems).toEqual([]);
+    expect(p.rows[0]).toMatchObject({ home: '8th OH', away: 'II Corps', date: '8/5/2026' });
+  });
+});
