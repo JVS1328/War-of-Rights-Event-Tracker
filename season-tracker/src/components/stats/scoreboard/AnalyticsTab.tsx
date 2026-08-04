@@ -238,7 +238,7 @@ function RateRows({
   const isLoss = kind === 'loss';
   const color = isLoss ? 'var(--color-danger)' : 'var(--color-ok)';
   return (
-    <div className="space-y-1.5">
+    <div>
       {rows.map((r, i) => {
         const rate = isLoss ? r.lossRate : r.killRate;
         const detail = isLoss ? `${r.deaths} cas · ${r.players} plr` : `${r.kills} k · ${r.players} plr`;
@@ -309,7 +309,7 @@ function NemesisRows({
   onOpenPlayer: (key: string) => void;
 }) {
   return (
-    <div className="space-y-0.5 text-sm">
+    <div>
       {rows.map((r, i) => (
         <div key={`${r.killerKey}-${r.victimKey}-${offset + i}`} className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1">

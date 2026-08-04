@@ -70,7 +70,7 @@ export function KillfeedTab({
       ) : (
         <ul className="divide-y divide-[color:var(--color-border)]">
           {filtered.map((k, i) => (
-            <li key={`${k.tsInRound}-${i}`} className="py-1 flex items-start gap-2 font-mono px-3">
+            <li key={`${k.tsInRound}-${i}`} className="kf">
               <span className="text-xs text-[color:var(--color-text-2)] tabular-nums w-16 shrink-0">{k.tsInRound}</span>
               <Pill tone={teamTone(k.killerTeam)}>{k.cause}</Pill>
               <span className="text-[color:var(--color-text-1)] break-words flex-1">

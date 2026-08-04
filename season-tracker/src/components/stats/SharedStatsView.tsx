@@ -39,33 +39,22 @@ export default function SharedStatsView({
   }, [bundle.mapStats, seasonScope]);
 
   return (
-    <div className="min-h-screen bg-bg-page text-text-primary p-2 sm:p-4 lg:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border border-border-default bg-bg-card p-4 rounded-lg">
-          <div className="flex items-center gap-3 min-w-0">
-            <BarChart3 className="w-6 h-6 c-accent shrink-0" />
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold truncate">{title}</h1>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Player Stats · {count} scoreboard{count === 1 ? '' : 's'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <ThemeControls />
-            <span className="px-2.5 py-1 text-xs rounded-md border border-border-default text-text-secondary">
-              Read-Only View
-            </span>
-            <a
-              href={window.location.origin + window.location.pathname}
-              className="gh live"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span className="hidden sm:inline">Open Season Tracker</span>
-            </a>
-          </div>
+    <div className="app">
+      <div className="main">
+        <div className="crumb">
+          <BarChart3 className="w-4 h-4" />
+          <span className="wor-name">{title}</span>
+          <span className="cap">
+            player stats · {count} scoreboard{count === 1 ? '' : 's'}
+          </span>
+          <span className="rule" />
+          <ThemeControls />
+          <span className="tag q">read only</span>
+          <a href={window.location.origin + window.location.pathname} className="gh live">
+            <ExternalLink className="w-3 h-3" /> Open the tracker
+          </a>
         </div>
+        <div className="body">
 
         <StatsPanel
           stats={stats}
@@ -78,6 +67,7 @@ export default function SharedStatsView({
           onSeasonScope={setSeasonScope}
           trackerMapStats={trackerMapStats}
         />
+        </div>
       </div>
     </div>
   );

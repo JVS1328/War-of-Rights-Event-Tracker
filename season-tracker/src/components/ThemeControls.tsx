@@ -40,7 +40,7 @@ export function ThemeControls({ showMode = true }: { showMode?: boolean }) {
   return (
     <div className="flex items-center gap-2 shrink-0">
       <div
-        className="flex items-center rounded-md border border-border-default overflow-hidden"
+        className="seg"
         role="group"
         aria-label="Theme"
       >
@@ -50,11 +50,7 @@ export function ThemeControls({ showMode = true }: { showMode?: boolean }) {
             onClick={() => chooseFamily(f)}
             title={FAMILY_HINT[f]}
             aria-pressed={family === f}
-            className={`px-2.5 py-1 text-xs transition ${
-              family === f
-                ? 'gh live'
-                : 'text-text-secondary hover:bg-bg-inset'
-            }`}
+
           >
             {FAMILY_LABEL[f]}
           </button>
@@ -63,7 +59,7 @@ export function ThemeControls({ showMode = true }: { showMode?: boolean }) {
       {showMode && (
         <button
           onClick={toggleMode}
-          className="p-1.5 rounded-md hover:bg-bg-inset transition"
+          className="gh"
           title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >

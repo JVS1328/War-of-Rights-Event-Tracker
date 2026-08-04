@@ -5659,7 +5659,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       </p>
                       <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                         {coordParsedRows.map((row, idx) => (
-                          <div key={idx} className={`rounded-lg p-3 ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
+                          <div key={idx} className={`panel pb ${row.action === 'ignore' ? 'bg-bg-card opacity-50' : row.action === 'create' ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-bg-inset'}`}>
                             <div className="grid grid-cols-12 gap-2 items-center">
                               {/* Parsed name */}
                               <div className="col-span-3">
@@ -5915,7 +5915,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                       return (
                         <label
                           key={reg}
-                          className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${lockedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-inset cursor-pointer'}`}
+                          className={`row ${lockedByOther ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-inset cursor-pointer'}`}
                         >
                           <input type="checkbox" disabled={lockedByOther} checked={assignSel.includes(reg)} onChange={() => toggleAssignReg(reg)} />
                           <span className="flex-1 truncate">{reg}</span>
@@ -6386,12 +6386,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           hint={`rounds over ${oneDecimal(simulationAnalytics.spacing.avgLeadNights)} nights`}
                         />
                       </div>
-                      <div className={`grid ${simulationAnalytics.splitLeads ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mt-3 text-xs`}>
-                        <div className={`rounded p-2 bg-bg-inset ${simulationAnalytics.spacing.backToBack > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                      <div className="kpis" style={{ marginTop: 13 }}>
+                        <div className={`kpi ${simulationAnalytics.spacing.backToBack > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
                           Leads on back-to-back nights: <span className="font-bold">{simulationAnalytics.spacing.backToBack}</span>
                         </div>
                         {simulationAnalytics.splitLeads && (
-                          <div className={`rounded p-2 bg-bg-inset ${simulationAnalytics.spacing.doubleNights > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
+                          <div className={`kpi ${simulationAnalytics.spacing.doubleNights > 0 ? 'text-yellow-400' : 'text-text-secondary'}`}>
                             Units leading both rounds of a night: <span className="font-bold">{simulationAnalytics.spacing.doubleNights}</span>
                           </div>
                         )}
@@ -6401,20 +6401,20 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           <thead className="text-text-secondary">
                             <tr className="border-b border-border-default">
                               <th >Unit</th>
-                              <th className="text-right p-2">Lead Rounds</th>
-                              <th className="text-right p-2">Lead Nights</th>
-                              <th className="text-right p-2">Avg Gap</th>
-                              <th className="text-right p-2">Min / Max</th>
+                              <th className="num">Lead Rounds</th>
+                              <th className="num">Lead Nights</th>
+                              <th className="num">Avg Gap</th>
+                              <th className="num">Min / Max</th>
                             </tr>
                           </thead>
                           <tbody>
                             {simulationAnalytics.spacing.perUnit.map(entry => (
                               <tr key={entry.unit} className="border-b border-border-default/50 last:border-0">
-                                <td className="p-2">{entry.unit}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.leadRounds}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.leadNights}</td>
-                                <td className="p-2 text-right tabular-nums">{oneDecimal(entry.avgGap)}</td>
-                                <td className="p-2 text-right tabular-nums">{entry.minGap ?? '—'} / {entry.maxGap ?? '—'}</td>
+                                <td >{entry.unit}</td>
+                                <td className="num">{entry.leadRounds}</td>
+                                <td className="num">{entry.leadNights}</td>
+                                <td className="num">{oneDecimal(entry.avgGap)}</td>
+                                <td className="num">{entry.minGap ?? '—'} / {entry.maxGap ?? '—'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -6438,7 +6438,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </button>
                           <button
                             onClick={downloadSchedule}
-                            className="px-3 py-1.5 border border-border-default hover:bg-bg-card text-xs rounded-md transition flex items-center gap-2"
+                            className="gh"
                           >
                             <Download className="w-4 h-4" /> CSV
                           </button>
@@ -6452,7 +6452,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         value={toTsv(simulationAnalytics.rows)}
                         onFocus={(e) => e.target.select()}
                         rows={6}
-                        className="w-full px-3 py-2 border border-border-default outline-none text-xs font-mono whitespace-pre"
+                        className="fld-i" style={{ whiteSpace: 'pre' }}
                       />
                     </div>
 
@@ -6467,7 +6467,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                         <div className="grid-f text-sm">
                           <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Lead Points</div>
-                            <div className="space-y-1 text-text-secondary">
+                            <div className="note">
                               <div>Win: <span className="c-accent font-semibold">{pointSystem.winLead}</span></div>
                               <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossLead}</span></div>
                               <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Lead}</span></div>
@@ -6475,7 +6475,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </div>
                           <div className="panel pb">
                             <div className="text-text-secondary mb-2 font-semibold">Assist Points</div>
-                            <div className="space-y-1 text-text-secondary">
+                            <div className="note">
                               <div>Win: <span className="c-accent font-semibold">{pointSystem.winAssist}</span></div>
                               <div>Loss: <span className="c-accent font-semibold">{pointSystem.lossAssist}</span></div>
                               <div>Sweep: <span className="c-accent font-semibold">{pointSystem.bonus2_0Assist}</span></div>
@@ -6630,7 +6630,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                     <div className="flex justify-end">
                       <button
                         onClick={() => setShowAnalyticsModal(false)}
-                        className="px-6 py-2 border border-border-default hover:bg-bg-inset text-sm rounded-md transition font-semibold"
+                        className="gh"
                       >
                         Close
                       </button>
@@ -6687,7 +6687,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           Add Week
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="mapgrid">
                         {weeks.map((week) => (
                           <div
                             key={week.id}
@@ -6704,7 +6704,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                       renameWeek(week.id, e.target.value);
                                     }
                                   }}
-                                  className="flex-1 px-2 py-1 border border-border-default outline-none"
+                                  className="fld-i"
                                   autoFocus
                                 />
                               ) : (
@@ -6765,7 +6765,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           Add Unit
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="mapgrid">
                         {units.map((unit) => {
                           const isNonToken = nonTokenUnits.includes(unit);
                           return (
@@ -6776,10 +6776,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => toggleNonTokenStatus(unit)}
-                                  className={`px-2 py-1 rounded text-xs font-bold transition ${
+                                  className={`gh ${
                                     isNonToken
                                       ? 'gh live'
-                                      : 'bg-bg-card hover:bg-bg-inset text-text-secondary'
+                                      : ''
                                   }`}
                                   title={isNonToken ? "Non-token unit (click to toggle)" : "Token unit (click to toggle)"}
                                 >
@@ -6794,14 +6794,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                                   <>
                                     <button
                                       onClick={() => moveUnitToTeam(unit, 'A')}
-                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition"
+                                      className="gh live"
                                       title={`Add to ${teamNames.A}`}
                                     >
                                       → A
                                     </button>
                                     <button
                                       onClick={() => moveUnitToTeam(unit, 'B')}
-                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition"
+                                      className="gh c-danger"
                                       title={`Add to ${teamNames.B}`}
                                     >
                                       → B
@@ -6845,11 +6845,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
                           </button>
                         )}
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="mapgrid">
                         {showGroupedStandings && divisions && divisions.length > 0 ? (
                           getGroupedStandings().map((group) => (
                             <div key={group.name} className="panel pb">
-                              <h3 className="text-sm font-bold text-text-secondary mb-3 px-2 flex items-center gap-2">
+                              <h3 className="cap">
                                 <Shield className="w-4 h-4" />
                                 {group.name}
                               </h3>
@@ -7007,7 +7007,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
           {/* Empty State */}
           {viewMode === 'tracker' && weeks.length === 0 && (
-            <div className="text-center text-text-secondary py-12 mt-6">
+            <div className="panel pb">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg">Add a week to get started</p>
             </div>
@@ -7024,12 +7024,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
             className="modal narrow"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-5">
+            <div className="pb">
               <div className="flex justify-between items-start gap-3 mb-2">
                 <h2 className="cap">{choiceDialog.title}</h2>
                 <button
                   onClick={choiceDialog.onClose}
-                  className="p-1 rounded-md hover:bg-bg-inset transition shrink-0"
+                  className="ib"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4 text-text-muted" />

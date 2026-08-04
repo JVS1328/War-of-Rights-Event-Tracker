@@ -49,7 +49,7 @@ export function BalanceSwaps({
           {swaps.size === 0 ? 'nobody swapped' : `${swaps.size} swapped`}
         </span>
       </div>
-      <div className="bg-bg-card rounded p-2 flex flex-wrap gap-1">
+      <div className="tgs">
         {units.map(({ unit, home }) => {
           const isSwapped = swaps.has(unit);
           const side: Side = isSwapped ? (home === 'A' ? 'B' : 'A') : home;
@@ -63,13 +63,13 @@ export function BalanceSwaps({
                   ? `${unit} moved from ${home === 'A' ? teamNames.A : teamNames.B} to ${side === 'A' ? teamNames.A : teamNames.B} for this round — click to move it back`
                   : `${unit} plays for ${side === 'A' ? teamNames.A : teamNames.B} — click to swap it across`
               }
-              className={`px-2 py-0.5 rounded text-xs border transition ${
-                side === 'A'
-                  ? 'border-blue-500/50 text-blue-400'
-                  : 'border-red-500/50 text-red-400'
-              } ${isSwapped ? 'bg-orange-500/15 font-semibold' : 'hover:bg-bg-inset'}`}
+              className={`tg${isSwapped ? ' on' : ''}`}
+              style={{
+                borderColor: side === 'A' ? 'var(--union)' : 'var(--reb)',
+                color: isSwapped ? undefined : side === 'A' ? 'var(--union)' : 'var(--reb)',
+              }}
             >
-              {isSwapped && <span className="mr-1 text-orange-400">⇄</span>}
+              {isSwapped && <span>⇄</span>}
               {unit}
             </button>
           );

@@ -99,7 +99,7 @@ function Pager({
         <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} aria-label="Previous page" className={btn}>
           ‹
         </button>
-        <span className="px-1 tabular-nums">
+        <span>
           {page + 1}/{pageCount}
         </span>
         <button onClick={() => onPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1} aria-label="Next page" className={btn}>
@@ -398,7 +398,7 @@ export function StatsPanel({
   );
 
   return (
-    <div className="space-y-3">
+    <div>
       {/* Season / Overall filter — rendered only when this panel owns the
           control (the shared view). The live tracker drives `seasonScope` from
           its own season nav, so it passes no handler and this row stays hidden. */}
@@ -1057,7 +1057,7 @@ function RegimentsTab({
   }
 
   return (
-    <div className="space-y-3 pb-16">
+    <div>
       {/* Edit toolbar — hidden in read-only/shared views (no mutations). */}
       <div className="panel">
         <div className="ctl">
@@ -1239,7 +1239,7 @@ function RegimentsTab({
             >
               ‹
             </button>
-            <span className="px-1 tabular-nums">
+            <span>
               {regPage + 1}/{regPageCount}
             </span>
             <button
@@ -1711,7 +1711,7 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
   const offset = current * PAGE;
   const pageDates = byDate.slice(offset, offset + PAGE);
   return (
-    <div className="space-y-3">
+    <div>
       {pageDates.map(([date, list]) => (
         <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`} flush>
           <table>
