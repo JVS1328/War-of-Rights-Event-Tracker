@@ -89,9 +89,9 @@ function Pager({
 }) {
   if (pageCount <= 1) return null;
   const btn =
-    'border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40';
+    '';
   return (
-    <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+    <div className="pager">
       <span className="tabular-nums">
         {offset + 1}–{offset + shown} of {total} {noun}
       </span>
@@ -403,17 +403,14 @@ export function StatsPanel({
           control (the shared view). The live tracker drives `seasonScope` from
           its own season nav, so it passes no handler and this row stays hidden. */}
       {!railDriven && onSeasonScope && seasons.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
-          <span className="px-2 text-[color:var(--color-text-2)]">Season</span>
+        <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 18 }}>
+          <span className="cap">Season</span>
           {seasons.map((s) => (
             <button
               key={s.id}
               onClick={() => onSeasonScope(s.id)}
-              className={`px-3 py-1.5 transition ${
-                seasonScope === s.id
-                  ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-                  : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-              }`}
+              className="gh"
+              aria-pressed={seasonScope === s.id}
             >
               {s.name}
             </button>
@@ -421,30 +418,22 @@ export function StatsPanel({
           <button
             onClick={() => onSeasonScope(OVERALL_SCOPE)}
             title="All seasons combined"
-            className={`px-3 py-1.5 transition ${
-              seasonScope === OVERALL_SCOPE
-                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]'
-                : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-            }`}
+            className="gh"
+            aria-pressed={seasonScope === OVERALL_SCOPE}
           >
             Overall
           </button>
         </div>
       )}
       {!railDriven && (
-      <div className="flex flex-wrap items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-1)] p-1 font-mono text-sm uppercase tracking-wider">
-        {visibleTabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 transition ${
-              tab === t ? 'bg-[color:var(--color-accent)] text-[color:var(--color-bg-0)]' : 'text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-        <span className="px-3 text-[color:var(--color-text-2)]">{eventName}</span>
+      <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 18 }}>
+        <div className="seg">
+          {visibleTabs.map((t) => (
+            <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t}>{t}</button>
+          ))}
+        </div>
+        <span className="rule" />
+        <span className="meta wor-name">{eventName}</span>
       </div>
       )}
 
@@ -723,19 +712,15 @@ function Bars({ data, showPct = false }: { data: [string, number][]; showPct?: b
   const total = data.reduce((s, [, v]) => s + v, 0);
   if (data.length === 0 || max === 0) return <EmptyHint>No data</EmptyHint>;
   return (
-    <div className="space-y-1 font-mono text-sm">
+    <div>
       {data.map(([label, count]) => (
-        <div key={label} className="flex items-center gap-2">
-          <span className="w-28 shrink-0 capitalize text-[color:var(--color-text-1)]">{label}</span>
-          <div className="flex-1 bg-[color:var(--color-bg-2)] h-3">
-            <div className="h-3 bg-[color:var(--color-accent)]/40" style={{ width: `${(count / max) * 100}%` }} />
-          </div>
-          <span className="w-10 text-right tabular-nums text-[color:var(--color-text-0)]">{count}</span>
-          {showPct && (
-            <span className="w-10 text-right tabular-nums text-[color:var(--color-text-2)]">
-              {total ? `${Math.round((count / total) * 100)}%` : ''}
-            </span>
-          )}
+        <div key={label} className="hb">
+          <span className="nm" style={{ textTransform: 'capitalize' }}>{label}</span>
+          <span className="t"><i style={{ width: `${(count / max) * 100}%` }} /></span>
+          <span className="n">
+            {count}
+            {showPct && <span style={{ color: 'var(--ink-3)' }}> · {total ? Math.round((count / total) * 100) : 0}%</span>}
+          </span>
         </div>
       ))}
     </div>
@@ -756,14 +741,14 @@ function BreakdownGroup({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider text-[color:var(--color-accent)] font-mono mb-1.5">{heading}</div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By formation</div>
+      <div className="cap" style={{ color: 'var(--live)', marginBottom: 7 }}>{heading}</div>
+      <div className="cols">
+        <div className="col">
+          <div className="cap">By formation</div>
           <Bars data={form} showPct />
         </div>
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">By cause</div>
+        <div className="col">
+          <div className="cap">By cause</div>
           {cause.length === 0 ? <EmptyHint>No killfeed data</EmptyHint> : <Bars data={cause} showPct />}
         </div>
       </div>
@@ -1113,20 +1098,19 @@ function RegimentsTab({
       {/* Active renames/merges — current scope's own edits plus inherited Overall ones. */}
       {editMode && aliasEntries.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Active renames / merges / removals:</span>
+          <span className="cap">Active renames, merges and removals</span>
           {aliasEntries.map(({ from, to, scope, inherited }) => (
             <span
               key={`${scope}:${from}`}
-              className={`flex items-center gap-1 border border-[color:var(--color-border)] px-1.5 py-0.5 ${
-                inherited ? 'bg-[color:var(--color-bg-1)] opacity-80' : 'bg-[color:var(--color-bg-2)]'
-              }`}
+              className="tag q"
+              style={inherited ? { opacity: 0.75 } : undefined}
             >
-              <span className="text-[color:var(--color-text-1)]">{from} → {to}</span>
-              {inherited && <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">all</span>}
+              {from} → {to}
+              {inherited && <span style={{ color: 'var(--ink-3)', marginLeft: 5 }}>all</span>}
               <button
                 onClick={() => void stats.removeAlias(from, scope)}
                 title={inherited ? 'Undo (affects all seasons)' : 'Undo'}
-                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+                style={{ marginLeft: 5, color: 'var(--ink-3)' }}
               >
                 <X size={11} />
               </button>
@@ -1138,17 +1122,17 @@ function RegimentsTab({
       {/* Ticked units, so a selection stays manageable across pages and searches. */}
       {combine.on && combine.labels.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="uppercase tracking-wider text-[color:var(--color-text-2)]">Combining:</span>
+          <span className="cap">Combining</span>
           {combine.labels.map((label) => (
             <span
               key={label}
-              className="flex items-center gap-1 border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-1.5 py-0.5"
+              className="tag q"
             >
-              <span className="text-[color:var(--color-text-1)]">{label}</span>
+              {label}
               <button
                 onClick={() => combine.toggle(label)}
                 title={`Drop ${label} from the combined view`}
-                className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]"
+                style={{ marginLeft: 5, color: 'var(--ink-3)' }}
               >
                 <X size={11} />
               </button>
@@ -1156,7 +1140,7 @@ function RegimentsTab({
           ))}
           <button
             onClick={combine.clear}
-            className="uppercase tracking-wider text-[color:var(--color-text-2)] hover:text-[color:var(--color-text-0)]"
+            className="gh"
           >
             Clear
           </button>
@@ -1243,7 +1227,7 @@ function RegimentsTab({
 
       {/* Panel-list pager (search + sort narrow first). */}
       {regPageCount > 1 && (
-        <div className="flex items-center justify-between border border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
+        <div className="pager">
           <span className="tabular-nums">
             {regPage * PAGE + 1}–{regPage * PAGE + pageRegiments.length} of {filteredRegiments.length} regiments
           </span>
@@ -1252,7 +1236,6 @@ function RegimentsTab({
               onClick={() => setPage(Math.max(0, regPage - 1))}
               disabled={regPage === 0}
               aria-label="Previous page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               ‹
             </button>
@@ -1263,7 +1246,6 @@ function RegimentsTab({
               onClick={() => setPage(Math.min(regPageCount - 1, regPage + 1))}
               disabled={regPage >= regPageCount - 1}
               aria-label="Next page"
-              className="border border-[color:var(--color-border)] px-1.5 py-0.5 leading-none hover:bg-[color:var(--color-bg-3)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               ›
             </button>
@@ -1273,14 +1255,13 @@ function RegimentsTab({
 
       {/* Sticky action bar */}
       {editMode && (pendingCount > 0 || selected.size > 0) && (
-        <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border border-[color:var(--color-accent)] bg-[color:var(--color-bg-2)] px-3 py-2 font-mono text-sm">
+        <div className="ctl" style={{ position: 'sticky', bottom: 0, zIndex: 10, border: '1px solid var(--live)' }}>
           {selected.size > 0 && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[color:var(--color-text-1)]">{selected.size} selected →</span>
+              <span className="cap">{selected.size} selected</span>
               <select
                 value={moveTarget}
                 onChange={(e) => setMoveTarget(e.target.value)}
-                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
               >
                 <option value="">move to…</option>
                 {allRegiments.map((label) => (
@@ -1290,21 +1271,22 @@ function RegimentsTab({
               <button
                 onClick={() => moveSelectedTo(moveTarget)}
                 disabled={!moveTarget}
-                className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] enabled:hover:bg-[color:var(--color-bg-3)] disabled:opacity-40"
+                className="gh"
               >
                 Stage move
               </button>
             </div>
           )}
           <div className="flex-1" />
-          <span className="text-[color:var(--color-text-2)] uppercase tracking-wider">{pendingCount} pending change{pendingCount === 1 ? '' : 's'}</span>
-          <button onClick={reset} className="border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+          <span className="rule" />
+          <span className="meta">{pendingCount} pending change{pendingCount === 1 ? '' : 's'}</span>
+          <button onClick={reset} className="gh">
             Discard
           </button>
           <button
             onClick={() => void save()}
             disabled={pendingCount === 0}
-            className="border border-[color:var(--color-accent)] bg-[color:var(--color-accent)] px-3 py-0.5 uppercase tracking-wider text-[color:var(--color-bg-0)] disabled:opacity-40"
+            className="gh live"
           >
             Save
           </button>
@@ -1331,7 +1313,7 @@ function ContextSlicePanel({ label, slice, ticket }: { label: string; slice: Con
       collapsible
       defaultOpen={false}
       right={
-        <span className="font-mono text-xs text-[color:var(--color-text-2)]">
+        <span className="meta" style={{ whiteSpace: 'normal' }}>
           {slice.rounds}rd · {slice.players}p · {slice.kills}K/{slice.deaths}D · {slice.kd.toFixed(2)}
           {' · '}<span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(slice.killRate)}</span>
           {' · '}<span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(slice.lossRate)}</span>
@@ -1346,8 +1328,9 @@ function ContextSlicePanel({ label, slice, ticket }: { label: string; slice: Con
         </span>
       }
     >
-      <div className="p-2 space-y-2">
+      <div className="pb">
         <BreakdownGroup heading="Casualties suffered" form={formOf(slice.casualtiesByFormation)} cause={byCause(slice.casualtiesByCause)} />
+        <div style={{ height: 14 }} />
         <BreakdownGroup heading="Casualties inflicted" form={formOf(slice.killsByFormation)} cause={byCause(slice.killsByCause)} />
       </div>
     </Panel>
@@ -1371,8 +1354,8 @@ function RegimentRoundBreakdown({
   onOpenRound: () => void;
 }) {
   return (
-    <div className="space-y-2 font-mono">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--color-text-2)]">
+    <div>
+      <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 13 }}>
         <span className="cursor-help" title={TICKET_INFLICTED_LABEL}>
           TDI <TicketPct share={share?.pctInflicted ?? null} shareTitle={TICKET_INFLICTED_LABEL} />
         </span>
@@ -1383,11 +1366,11 @@ function RegimentRoundBreakdown({
         <span title={AVG_TK_LABEL}>×Tk {formatAvgT(rr.avgTk)}</span>
         <span className="cursor-help" title={KILL_RATE_LABEL}>KR {formatRate(rr.killRate)}</span>
         <span className="cursor-help" title={LOSS_RATE_LABEL}>LR {formatRate(rr.lossRate)}</span>
-        <button onClick={onOpenRound} className="ml-auto text-[color:var(--color-accent)] hover:underline">
-          Open round drawer »
-        </button>
+        <span className="rule" />
+        <button onClick={onOpenRound} className="gh live">Open the scoreboard</button>
       </div>
       <BreakdownGroup heading="Casualties suffered" form={formOf(rr.casualtiesByFormation)} cause={byCause(rr.casualtiesByCause)} />
+      <div style={{ height: 14 }} />
       <BreakdownGroup heading="Casualties inflicted" form={formOf(rr.killsByFormation)} cause={byCause(rr.killsByCause)} />
     </div>
   );
@@ -1488,46 +1471,45 @@ function RegimentPanel({
           </>
         }
       >
-      <div className="p-3 space-y-3">
+      <div className="pb">
         {combined && (
-          <div className="border-b border-[color:var(--color-border)] pb-2 font-mono text-xs text-[color:var(--color-text-2)]">
+          <p className="note" style={{ borderBottom: '1px solid var(--line)', paddingBottom: 9, marginBottom: 13 }}>
             Temporary view of {reg.regiment} read as one unit — every stat below is recomputed over their
             combined player-rounds. The units themselves are untouched.
-          </div>
+          </p>
         )}
         {edit.editMode && !isUntagged && (
-          <div className="flex flex-wrap items-center gap-2 font-mono text-sm border-b border-[color:var(--color-border)] pb-2">
-            <button onClick={() => edit.rename(reg.regiment)} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]">
+          <div className="ctl" style={{ border: '1px solid var(--line)', marginBottom: 13 }}>
+            <button className="gh" onClick={() => edit.rename(reg.regiment)}>
               <Pencil size={11} /> Rename
             </button>
-            <span className="flex items-center gap-1 text-[color:var(--color-text-2)]">
-              <GitMerge size={12} />
-              <select
-                defaultValue=""
-                onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; edit.merge(reg.regiment, v); }}
-                className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
-              >
-                <option value="">Merge into…</option>
-                {mergeTargets.map((label) => (
-                  <option key={label} value={label}>{label}</option>
-                ))}
-              </select>
-            </span>
-            <button onClick={() => edit.removeRegiment(reg.regiment)} title={`Move all players to ${UNTAGGED}`} className="flex items-center gap-1 border border-[color:var(--color-border)] px-2 py-0.5 uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)] hover:text-[color:var(--color-danger)]">
+            <span className="cap"><GitMerge size={12} /></span>
+            <select
+              defaultValue=""
+              onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; edit.merge(reg.regiment, v); }}
+              aria-label={`Merge ${reg.regiment} into another unit`}
+            >
+              <option value="">Merge into…</option>
+              {mergeTargets.map((label) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
+            </select>
+            <button className="gh c-danger" onClick={() => edit.removeRegiment(reg.regiment)} title={`Move all players to ${UNTAGGED}`}>
               <Trash2 size={11} /> Remove
             </button>
+            <span className="rule" />
+            <span className="meta">rename and merge apply immediately · pins apply on save</span>
           </div>
         )}
 
-        <div className="space-y-3">
-          <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
-          <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
-        </div>
+        <BreakdownGroup heading="Casualties suffered" form={sufferedForm} cause={sufferedCause} />
+        <div style={{ height: 16 }} />
+        <BreakdownGroup heading="Casualties inflicted" form={inflictedForm} cause={inflictedCause} />
 
         {/* Faction & role context breakdowns */}
         {contextStats && (
-          <div className="space-y-1">
-            <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mt-2 mb-1">Breakdown by faction & role</div>
+          <div style={{ marginTop: 18 }}>
+            <div className="cap" style={{ marginBottom: 7 }}>Splits — the same breakdowns, sliced by context</div>
             <ContextSlicePanel label="As USA" slice={contextStats.asUSA} ticket={ticketShare?.asUSA} />
             <ContextSlicePanel label="As CSA" slice={contextStats.asCSA} ticket={ticketShare?.asCSA} />
             <ContextSlicePanel label="As Attacker" slice={contextStats.asAttacker} ticket={ticketShare?.asAttacker} />
@@ -1535,9 +1517,11 @@ function RegimentPanel({
           </div>
         )}
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">
-            Round-by-round <span className="text-[color:var(--color-text-2)] normal-case">— row to expand this round's breakdown</span>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+            <span className="cap">Round by round</span>
+            <span className="rule" />
+            <span className="cap">click a round for its breakdown</span>
           </div>
           <DataTable<RegimentRoundRow>
             rows={reg.perRound}
@@ -1590,8 +1574,12 @@ function RegimentPanel({
           />
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono mb-1">Players</div>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 7 }}>
+            <span className="cap">Roster</span>
+            <span className="rule" />
+            <span className="cap">{reg.players} seen in this unit</span>
+          </div>
           {edit.editMode ? (
             <EditablePlayers reg={reg} openPlayer={openPlayer} edit={edit} />
           ) : (
@@ -1640,14 +1628,14 @@ function EditablePlayers({
   edit: RegEdit;
 }) {
   return (
-    <table className="w-full font-mono text-sm">
+    <table>
       <thead>
-        <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-          <th className="px-2 py-1 w-6" />
-          <th className="px-2 py-1 text-left">Player</th>
-          <th className="px-2 py-1 text-left">Move to</th>
-          <th className="px-2 py-1 text-right">K</th>
-          <th className="px-2 py-1 text-right">D</th>
+        <tr>
+          <th style={{ width: 24 }} />
+          <th>Player</th>
+          <th>Move to</th>
+          <th className="num">K</th>
+          <th className="num">D</th>
         </tr>
       </thead>
       <tbody>
@@ -1657,8 +1645,8 @@ function EditablePlayers({
           const value = staged ?? reg.regiment;
           const moved = staged != null && staged !== reg.regiment;
           return (
-            <tr key={p.key} className={`border-b border-[color:var(--color-border)] ${moved ? 'bg-[color:var(--color-accent-soft)]' : ''}`}>
-              <td className="px-2 py-1">
+            <tr key={p.key} style={moved ? { background: 'var(--sunken)' } : undefined}>
+              <td>
                 <input
                   type="checkbox"
                   disabled={!pinnable}
@@ -1666,30 +1654,29 @@ function EditablePlayers({
                   onChange={() => pinnable && edit.toggleSelect(p.steamId!)}
                 />
               </td>
-              <td className="px-2 py-1">
-                <button onClick={() => openPlayer(p.key)} className="wor-name text-left hover:text-[color:var(--color-accent)]">
+              <td>
+                <button onClick={() => openPlayer(p.key)} className="wor-name" style={{ textAlign: 'left' }}>
                   {p.name}
                 </button>
-                {moved && <span className="text-[color:var(--color-text-2)]"> → {staged}</span>}
+                {moved && <span style={{ color: 'var(--ink-3)' }}> → {staged}</span>}
               </td>
-              <td className="px-2 py-1">
+              <td>
                 {pinnable ? (
                   <select
                     value={value}
                     onChange={(e) => edit.stageMove(p.steamId!, e.target.value)}
-                    className="bg-[color:var(--color-bg-1)] border border-[color:var(--color-border)] px-1 py-0.5 text-[color:var(--color-text-0)]"
-                  >
+                      >
                     {!edit.allRegiments.includes(value) && <option value={value}>{value}</option>}
                     {edit.allRegiments.map((label) => (
                       <option key={label} value={label}>{label}</option>
                     ))}
                   </select>
                 ) : (
-                  <span className="text-[color:var(--color-text-2)]" title="No steam id — cannot reassign individually">—</span>
+                  <span style={{ color: 'var(--ink-3)' }} title="No steam id — cannot reassign individually">—</span>
                 )}
               </td>
-              <td className="px-2 py-1 text-right tabular-nums">{p.kills}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{p.deaths}</td>
+              <td className="num">{p.kills}</td>
+              <td className="num">{p.deaths}</td>
             </tr>
           );
         })}
@@ -1726,33 +1713,24 @@ function RoundsTab({ rounds, openRound }: { rounds: RoundSummary[]; openRound: (
   return (
     <div className="space-y-3">
       {pageDates.map(([date, list]) => (
-        <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`}>
-          <table className="w-full border-collapse font-mono text-sm">
+        <Panel key={date} title={date} right={`${list.length} rounds`} collapsible defaultOpen storageKey={`rounds-${date}`} flush>
+          <table>
             <thead>
-              <tr className="border-b border-[color:var(--color-border)] bg-[color:var(--color-bg-2)] text-xs uppercase tracking-wider text-[color:var(--color-text-2)]">
-                <th className="px-2 py-1 text-left">Time</th>
-                <th className="px-2 py-1 text-left">Map</th>
-                <th className="px-2 py-1 text-left">Mode</th>
-                <th className="px-2 py-1 text-left">Area</th>
-                <th className="px-2 py-1 text-left">Winner</th>
-                <th className="px-2 py-1 text-right">Dur</th>
-                <th className="px-2 py-1 text-right">Players</th>
+              <tr>
+                <th>Time</th><th>Map</th><th>Mode</th><th>Area</th><th>Winner</th>
+                <th className="num">Length</th><th className="num">Players</th>
               </tr>
             </thead>
             <tbody>
               {list.map((r) => (
-                <tr
-                  key={r.sourceFilename}
-                  onClick={() => openRound(r.sourceFilename)}
-                  className="border-b border-[color:var(--color-border)] cursor-pointer hover:bg-[color:var(--color-bg-3)]"
-                >
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)]">{timeOf(r.recordedAt)}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-0)]">{r.map}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-1)]">{r.mode}</td>
-                  <td className="px-2 py-1 text-[color:var(--color-text-2)]">{r.area ?? '—'}</td>
-                  <td className="px-2 py-1">{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{fmtDuration(r.durationSeconds)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums text-[color:var(--color-text-2)]">{r.players}</td>
+                <tr key={r.sourceFilename} className="click" onClick={() => openRound(r.sourceFilename)}>
+                  <td style={{ color: 'var(--ink-3)' }}>{timeOf(r.recordedAt)}</td>
+                  <td className="wor-name">{r.map}</td>
+                  <td style={{ color: 'var(--ink-2)' }}>{r.mode}</td>
+                  <td style={{ color: 'var(--ink-3)' }}>{r.area ?? '—'}</td>
+                  <td>{r.winner && <Pill tone={teamTone(r.winner)}>{r.winner}</Pill>}</td>
+                  <td className="num">{fmtDuration(r.durationSeconds)}</td>
+                  <td className="num" style={{ color: 'var(--ink-3)' }}>{r.players}</td>
                 </tr>
               ))}
             </tbody>
@@ -1794,34 +1772,23 @@ function ImportTab({
   const importOffset = importPage * PAGE;
   const importItems = sortedStored.slice(importOffset, importOffset + PAGE);
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <Panel title="Import Scoreboards">
-        <div className="p-3 space-y-3">
-          <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1.5 border border-[color:var(--color-accent)] text-[color:var(--color-accent)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider hover:bg-[color:var(--color-accent-soft)]"
-          >
-            <Upload size={13} /> Choose scoreboard CSV(s)
-          </button>
-          {importMsg && <div className="text-sm font-mono text-[color:var(--color-text-1)]">{importMsg}</div>}
-          <div className="text-xs uppercase tracking-wider text-[color:var(--color-text-2)] font-mono pt-2">
-            Regiment list (optional override)
-          </div>
-          <textarea
-            value={listText}
-            onChange={(e) => setListText(e.target.value)}
-            placeholder={'One per line. e.g.\n51stNY\nII Corps = II-, II'}
-            rows={6}
-            className="w-full bg-[color:var(--color-bg-2)] border border-[color:var(--color-border)] p-2 font-mono text-sm text-[color:var(--color-text-0)] outline-none focus:border-[color:var(--color-accent)]"
-          />
-          <button
-            onClick={() => void stats.applyRegimentList(listText)}
-            className="border border-[color:var(--color-border)] px-3 py-1.5 text-sm font-mono uppercase tracking-wider text-[color:var(--color-text-1)] hover:bg-[color:var(--color-bg-3)]"
-          >
-            Apply &amp; persist to all players
-          </button>
-        </div>
+    <div className="cols">
+      <Panel title="Import scoreboards">
+        <input ref={fileRef} type="file" accept=".csv" multiple className="hidden" onChange={(e) => onPickFiles(e.target.files)} />
+        <button className="gh live" onClick={() => fileRef.current?.click()}>
+          <Upload size={12} /> Choose scoreboard CSVs
+        </button>
+        {importMsg && <p className="note" style={{ marginTop: 9 }}>{importMsg}</p>}
+        <div className="cap" style={{ margin: '18px 0 5px' }}>Regiment list — optional override</div>
+        <textarea
+          value={listText}
+          onChange={(e) => setListText(e.target.value)}
+          placeholder={'One per line. e.g.\n51stNY\nII Corps = II-, II'}
+          rows={6}
+        />
+        <button className="gh" style={{ marginTop: 9 }} onClick={() => void stats.applyRegimentList(listText)}>
+          Apply and persist to all players
+        </button>
       </Panel>
 
       <Panel title={`Imported (${stats.stored.length})`}>
@@ -1829,26 +1796,38 @@ function ImportTab({
           <EmptyHint>No scoreboards imported yet</EmptyHint>
         ) : (
           <>
-            <div className="divide-y divide-[color:var(--color-border)]">
-              {importItems.map((s) => (
-                <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 font-mono text-sm hover:bg-[color:var(--color-bg-3)]">
-                  <button onClick={() => onOpenScoreboard(s.id)} className="flex items-center gap-2 text-left flex-1 min-w-0" title="View full scoreboard">
-                    <span className="text-[color:var(--color-text-2)] w-48 shrink-0">
+            <table>
+              <tbody>
+                {importItems.map((s) => (
+                  <tr key={s.id} className="click" onClick={() => onOpenScoreboard(s.id)} title="View the full scoreboard">
+                    <td style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
                       {s.scoreboard.recordedAt
-                        ? `${dateOf(s.scoreboard.recordedAt)} @ ${timeOf(s.scoreboard.recordedAt)}`
+                        ? `${dateOf(s.scoreboard.recordedAt)} ${timeOf(s.scoreboard.recordedAt)}`
                         : s.scoreboard.sourceFilename}
-                    </span>
-                    <span className="text-[color:var(--color-text-0)]">{s.scoreboard.meta.map}</span>
-                    <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.mode}</span>
-                    {s.scoreboard.meta.area && <span className="text-[color:var(--color-text-2)]">{s.scoreboard.meta.area}</span>}
-                    {s.scoreboard.meta.winner && <Pill tone={s.scoreboard.meta.winner === 'USA' ? 'ok' : 'accent'}>{s.scoreboard.meta.winner}</Pill>}
-                  </button>
-                  <button onClick={() => void stats.remove(s.id)} className="text-[color:var(--color-text-2)] hover:text-[color:var(--color-danger)]" title="Delete">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
+                    </td>
+                    <td className="wor-name">{s.scoreboard.meta.map}</td>
+                    <td style={{ color: 'var(--ink-2)' }}>
+                      {s.scoreboard.meta.mode}
+                      {s.scoreboard.meta.area && <span style={{ color: 'var(--ink-3)' }}> · {s.scoreboard.meta.area}</span>}
+                    </td>
+                    <td>
+                      {s.scoreboard.meta.winner && (
+                        <Pill tone={teamTone(s.scoreboard.meta.winner)}>{s.scoreboard.meta.winner}</Pill>
+                      )}
+                    </td>
+                    <td className="num">
+                      <button
+                        className="gh c-danger"
+                        onClick={(e) => { e.stopPropagation(); void stats.remove(s.id); }}
+                        title="Delete this scoreboard"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             <Pager
               page={importPage}
               pageCount={importPageCount}
