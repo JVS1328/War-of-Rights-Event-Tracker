@@ -196,14 +196,14 @@ function NightBody({
             chip: <Pill tone="usa">Team A</Pill>,
             name: perRound ? `${teams.A.length} units` : week.leadA ? `${week.leadA} leading` : 'No lead recorded',
             value: score.roundsA,
-            sub: `rounds won · ${score.casualtiesA} lost`,
+            sub: `rounds won · ${score.casualtiesA} men lost`,
             hue: SIDE_HUE.A,
           }}
           b={{
             chip: <Pill tone="csa">Team B</Pill>,
             name: perRound ? `${teams.B.length} units` : week.leadB ? `${week.leadB} leading` : 'No lead recorded',
             value: score.roundsB,
-            sub: `rounds won · ${score.casualtiesB} lost`,
+            sub: `rounds won · ${score.casualtiesB} men lost`,
             hue: SIDE_HUE.B,
           }}
         />
