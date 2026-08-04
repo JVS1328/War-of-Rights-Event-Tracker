@@ -112,6 +112,10 @@ export function NightBuilder({
   type,
   registry,
   headcount,
+  counts,
+  elo,
+  balancePoints,
+  balancePointsStyle,
   tokenUnits,
   maps,
   mapCooldown,
@@ -134,6 +138,13 @@ export function NightBuilder({
   registry: string[];
   /** Unit → expected head count, for the side sizes. */
   headcount: Record<string, number>;
+  /** Unit → min/max men, so a side can show the spread and not just the mean. */
+  counts: Record<string, { min: number; max: number }>;
+  /** Unit → Elo, for the side's average rating. */
+  elo: Record<string, number>;
+  /** Balance points a swapped unit earns, and in which style. 0 = off. */
+  balancePoints: number;
+  balancePointsStyle: string;
   /** Units that hold a standings token; the rest are drawn faint. */
   tokenUnits: string[];
   maps: string[];
@@ -211,7 +222,18 @@ export function NightBuilder({
           <span className={`tag ${s === 'A' ? 'usa' : 'csa'}`}>Team {s}</span>
           <span className="tag q">{s === 'A' ? 'Home' : 'Away'}</span>
           <span className="rule" />
-          <span className="meta">{units.length} units · ~{size(units).toFixed(0)} men</span>
+          <span className="meta">{units.length} units</span>
+        </div>
+        {/* What the side is worth before a shot is fired: how many men it can
+            put up at worst and at best, and how the ladder rates it. */}
+        <div className="ostat" style={{ marginTop: 9 }}>
+          <span><b>{units.reduce((t, u) => t + (counts[u]?.min ?? 0), 0)}</b><i>min pop</i></span>
+          <span><b>{units.reduce((t, u) => t + (counts[u]?.max ?? 0), 0)}</b><i>max pop</i></span>
+          <span><b>{size(units).toFixed(0)}</b><i>avg pop</i></span>
+          <span>
+            <b>{units.length ? Math.round(units.reduce((t, u) => t + (elo[u] ?? 1500), 0) / units.length) : 1500}</b>
+            <i>avg Elo</i>
+          </span>
         </div>
         <div style={{ marginTop: 9 }}>
           {units.map((u) => (
@@ -311,9 +333,9 @@ export function NightBuilder({
             onChange={(v) => onRound(r.round, { flipped: v })}
           />
         </div>
-        <div style={{ marginTop: 7 }}>
-          <div className="cap" style={{ marginBottom: 4 }}>Balance swaps</div>
-          <div className="chips">
+        <div style={{ marginTop: 9 }}>
+          <div className="cap">Balance swaps</div>
+          <div className="tgs" style={{ marginTop: 6 }}>
             {swappable.map((u) => {
               const on = r.swaps.includes(u);
               const home: Side = week.teamA.includes(u) ? 'A' : 'B';
@@ -321,18 +343,23 @@ export function NightBuilder({
               return (
                 <button
                   key={u}
-                  className={`chip ${plays === 'A' ? 'usa' : 'csa'}`}
+                  className={`tg${on ? ' on' : ''}`}
                   aria-pressed={on}
                   onClick={() => onSwap(r.round, u, !on)}
                   title={on ? `${u} moved to Team ${plays} for this round` : `${u} plays for Team ${plays}`}
                 >
-                  {on && <span style={{ marginRight: 4 }}>⇄</span>}{u}
+                  {u}
                 </button>
               );
             })}
             {swappable.length === 0 && <span className="note">No units on either side yet.</span>}
           </div>
-          <div className="note" style={{ marginTop: 4 }}>units moved to even the sides</div>
+          <div className="note" style={{ marginTop: 6 }}>
+            Units moved across to even this round.{' '}
+            {balancePoints
+              ? `Each earns ${balancePoints} balance point${balancePoints === 1 ? '' : 's'}, ${balancePointsStyle}.`
+              : 'Balance points are off, so this is recorded but scores nothing.'}
+          </div>
         </div>
       </div>
     );

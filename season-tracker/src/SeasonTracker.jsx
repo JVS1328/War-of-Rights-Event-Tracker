@@ -5450,6 +5450,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
               type={nightBuilderType}
               registry={units}
               headcount={unitHeadcounts}
+              counts={selectedWeek?.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
+                ? selectedWeek.unitPlayerCounts : unitPlayerCounts}
+              elo={Object.fromEntries(eloLadderRows.map(r => [r.unit, r.elo]))}
+              balancePoints={pointSystem.balancePoints || 0}
+              balancePointsStyle={pointSystem.balancePointsStyle || 'perNight'}
               tokenUnits={tokenUnits}
               maps={ALL_MAPS}
               mapCooldown={mapCooldown}
