@@ -27,13 +27,18 @@ interface WeekRef {
 type Tab = 'summary' | 'players' | 'killfeed' | 'analytics';
 const TABS: Tab[] = ['summary', 'players', 'killfeed', 'analytics'];
 
-/** How a round reads in the picker: when it was, where, and who took it. */
-const roundLabel = (r: StoredScoreboard): string => {
+/**
+ * How a round reads in the picker: when it was, where, who took it, and — since
+ * an <option> cannot carry markup — whether it is already feeding a night.
+ */
+const roundLabel = (r: StoredScoreboard, weeks: WeekRef[]): string => {
   const m = r.scoreboard.meta;
   const when = r.scoreboard.recordedAt
     ? `${r.scoreboard.recordedAt.slice(0, 10)} ${r.scoreboard.recordedAt.slice(11, 16)}`
     : r.scoreboard.sourceFilename;
-  return `${when} · ${m.map}${m.area ? ` · ${m.area}` : ''}${m.winner ? ` · ${m.winner}` : ''}`;
+  const b = r.binding;
+  const bound = b ? ` — bound: ${weeks.find((w) => w.id === b.weekId)?.name ?? 'a night'} R${b.round}` : '';
+  return `${when} · ${m.map}${m.area ? ` · ${m.area}` : ''}${m.winner ? ` · ${m.winner}` : ''}${bound}`;
 };
 
 export function RoundScreen({
@@ -69,6 +74,9 @@ export function RoundScreen({
 
   const sb = stored?.scoreboard;
   const at = stored ? rounds.findIndex((r) => r.id === stored.id) : -1;
+  const binding = stored?.binding ?? null;
+  const boundWeekName = binding ? weeks.find((w) => w.id === binding.weekId)?.name ?? 'a night' : null;
+  const boundCount = rounds.filter((r) => r.binding).length;
   const step = (by: number) => {
     const next = rounds[at + by];
     if (next) onPickRound?.(next.id);
@@ -87,7 +95,7 @@ export function RoundScreen({
           >
             {rounds.length === 0 && <option value="">No rounds imported</option>}
             {rounds.map((r) => (
-              <option key={r.id} value={r.id}>{roundLabel(r)}</option>
+              <option key={r.id} value={r.id}>{roundLabel(r, weeks)}</option>
             ))}
           </select>
           <button className="gh" onClick={() => step(-1)} disabled={at <= 0} aria-label="Newer round">‹</button>
@@ -100,6 +108,7 @@ export function RoundScreen({
           <span className="rule" />
           <span className="meta">
             {at >= 0 ? `${at + 1} of ${rounds.length}` : `${rounds.length} imported`}
+            {boundCount > 0 && ` · ${boundCount} bound`}
           </span>
         </div>
       </div>
@@ -120,6 +129,13 @@ export function RoundScreen({
               {sb.meta.map}{sb.meta.area ? ` · ${sb.meta.area}` : ''}
             </h2>
             <span className="rule" />
+            {binding ? (
+              <span className="tag" title="This round's figures feed that night">
+                Bound · {boundWeekName} · R{binding.round}
+              </span>
+            ) : (
+              <span className="tag q" style={{ opacity: 0.6, borderStyle: 'dashed' }}>Not bound</span>
+            )}
             <span className="meta">
               {sb.meta.mode}
               {sb.recordedAt ? ` · ${sb.recordedAt.slice(0, 10)} ${sb.recordedAt.slice(11, 16)}` : ''}

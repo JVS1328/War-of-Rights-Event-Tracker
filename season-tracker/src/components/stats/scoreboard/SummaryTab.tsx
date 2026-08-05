@@ -260,10 +260,26 @@ function BindPanel({
   const selWeek = weeks.find((w) => w.id === weekId);
   const flipped = !!(round === 1 ? selWeek?.round1Flipped : selWeek?.round2Flipped);
   const af = buildAutofill(sb, flipped);
+
+  // Whether this scoreboard is already bound, and whether it is bound to the
+  // slot currently picked. Applying to a different slot moves the binding
+  // rather than adding one, and the button should say which it is about to do.
+  const bound = stored?.binding ?? null;
+  const boundWeek = bound ? weeks.find((w) => w.id === bound.weekId) : null;
+  const boundHere = !!bound && bound.weekId === weekId && bound.round === round;
+  const action = boundHere ? 'Re-apply auto-fill' : bound ? 'Move the binding here' : 'Apply auto-fill';
+
   return (
     <div className="panel" style={{ marginBottom: 0 }}>
       <div className="ctl">
         <span className="cap">Bind to a round</span>
+        {bound ? (
+          <span className="tag" title="This scoreboard is already bound to a round">
+            Bound · {boundWeek?.name ?? 'a night'} · R{bound.round}
+          </span>
+        ) : (
+          <span className="tag q" style={{ opacity: 0.6, borderStyle: 'dashed' }}>Not bound</span>
+        )}
         <select value={weekId} onChange={(e) => setWeekId(e.target.value)}>
           <option value="">Select a night…</option>
           {weeks.map((w) => (
@@ -275,10 +291,16 @@ function BindPanel({
           <option value={2}>Round 2</option>
         </select>
         <button className="gh live" disabled={!weekId} onClick={() => weekId && onApply?.(weekId, round, af)}>
-          Apply auto-fill
+          {action}
         </button>
         <span className="rule" />
-        <span className="meta">fills the night's result from this scoreboard</span>
+        <span className="meta">
+          {boundHere
+            ? 'already feeding this round — re-apply to refresh its figures'
+            : bound
+              ? 'this scoreboard is bound elsewhere; applying moves it'
+              : "fills the night's result from this scoreboard"}
+        </span>
       </div>
       <dl className="mapdl" style={{ padding: 13, margin: 0 }}>
         <dt>Map</dt>
@@ -296,14 +318,7 @@ function BindPanel({
         <dd>{af.winner ?? 'Draw'} {af.winnerSide ? `→ side ${af.winnerSide}` : ''}</dd>
         <dt>Casualties</dt>
         <dd>side A {af.casualtiesA} · side B {af.casualtiesB}</dd>
-        {stored?.binding && (
-          <>
-            <dt>Bound</dt>
-            <dd>
-              {weeks.find((w) => w.id === stored.binding!.weekId)?.name ?? 'a night'} · Round {stored.binding.round}
-            </dd>
-          </>
-        )}
+
       </dl>
     </div>
   );
