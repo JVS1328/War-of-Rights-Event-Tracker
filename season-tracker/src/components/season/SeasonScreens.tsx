@@ -27,8 +27,12 @@ export interface NightRow {
   index: number;
   n: number;
   name: string;
+  /** Round one's leads, or the night's single pair. */
   leadA: string | null;
   leadB: string | null;
+  /** Round two's, when a split-lead night runs a second matchup. */
+  leadA2?: string | null;
+  leadB2?: string | null;
   map1: string | null;
   map2: string | null;
   sidesA: number;
@@ -77,6 +81,24 @@ const Kpi = ({ head, value, hint }: { head: string; value: ReactNode; hint: Reac
     <div className="h">{hint}</div>
   </div>
 );
+
+/**
+ * A night's matchup. Playoff and single-round-lead nights can run a different
+ * pair each round, so both are named — one line only when the night runs the
+ * same matchup twice.
+ */
+function Leads({ w }: { w: NightRow }) {
+  const vs = (a: string | null, b: string | null) => (
+    <>{a ?? '—'} <span style={{ color: 'var(--ink-3)' }}>vs</span> {b ?? '—'}</>
+  );
+  if (!w.leadA2 && !w.leadB2) return vs(w.leadA, w.leadB);
+  return (
+    <>
+      <div><span className="cap" style={{ marginRight: 5 }}>R1</span>{vs(w.leadA, w.leadB)}</div>
+      <div><span className="cap" style={{ marginRight: 5 }}>R2</span>{vs(w.leadA2 ?? null, w.leadB2 ?? null)}</div>
+    </>
+  );
+}
 
 /** Result of a night, as the prototype puts it: a 2–0 tag or a split. */
 function NightResult({ r1, r2, played }: { r1: 'A' | 'B' | null; r2: 'A' | 'B' | null; played: boolean }) {
@@ -174,9 +196,7 @@ export function SeasonOverview({
             {recent.map((w) => (
               <tr key={w.index} className={onOpenNight ? 'click' : undefined} onClick={() => onOpenNight?.(w.index)}>
                 <td style={{ color: 'var(--ink-3)' }}>W{w.n}</td>
-                <td className="wor-name">
-                  {w.leadA ?? '—'} <span style={{ color: 'var(--ink-3)' }}>vs</span> {w.leadB ?? '—'}
-                </td>
+                <td className="wor-name"><Leads w={w} /></td>
                 <td>{w.playoffs && <span className="tag q">Playoff</span>}</td>
                 <td className="num">
                   {w.r1 === 'A' ? '1' : '0'}–{w.r1 === 'B' ? '1' : '0'} / {w.r2 === 'A' ? '1' : '0'}–
@@ -337,9 +357,7 @@ export function ScheduleScreen({
               >
                 <td style={{ color: 'var(--ink-3)' }}>{w.playoffs ? 'PO' : `W${w.n}`}</td>
                 <td className="wor-name">{w.name}</td>
-                <td className="wor-name">
-                  {w.leadA ?? '—'} <span style={{ color: 'var(--ink-3)' }}>vs</span> {w.leadB ?? '—'}
-                </td>
+                <td className="wor-name"><Leads w={w} /></td>
                 <td style={{ color: 'var(--ink-2)' }}>{w.map1 ?? '—'}</td>
                 <td style={{ color: 'var(--ink-2)' }}>{w.map2 ?? '—'}</td>
                 <td className="num">{w.sidesA}v{w.sidesB}</td>

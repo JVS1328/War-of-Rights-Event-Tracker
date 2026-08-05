@@ -142,6 +142,99 @@ describe('balanceTeams — units that field nobody', () => {
   });
 });
 
+describe('balanceTeams — units already on a side', () => {
+  it('leaves a locked unit where it stands instead of re-drawing it', () => {
+    // Every 2–2 split is dead even here, so nothing but the lock decides A.
+    const top = ok({ lockedA: ['A'], lockedB: ['B'] }).options[0];
+    expect(top.teamA).toContain('A');
+    expect(top.teamB).toContain('B');
+  });
+
+  it('takes locked units on trust rather than needing them in the pool too', () => {
+    const r = ok({ available: ['C', 'D'], lockedA: ['A'], lockedB: ['B'] });
+    expect([...r.options[0].teamA, ...r.options[0].teamB].sort()).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('counts a locked unit toward its side, so the pool packs around it', () => {
+    // A is stuck on side A with thirty men, and the three tens have to go
+    // opposite it to make an even night — the lock decides the whole split.
+    const r = ok({
+      available: ['B', 'C', 'D'],
+      lockedA: ['A'],
+      counts: {
+        A: { min: 30, max: 30 },
+        B: { min: 10, max: 10 },
+        C: { min: 10, max: 10 },
+        D: { min: 10, max: 10 },
+      },
+    });
+    const top = r.options[0];
+    expect(top.teamA).toEqual(['A']);
+    expect(top.teamB).toEqual(['B', 'C', 'D']);
+    expect(top.minA).toBe(30);
+    expect(top.minB).toBe(30);
+  });
+
+  it('sits out a locked unit fielding nobody rather than holding its side', () => {
+    const r = ok({
+      available: ['A', 'B', 'C', 'D'],
+      lockedA: ['Ghost'],
+      counts: {
+        A: { min: 10, max: 10 },
+        B: { min: 10, max: 10 },
+        C: { min: 10, max: 10 },
+        D: { min: 10, max: 10 },
+        Ghost: { min: 0, max: 0 },
+      },
+    });
+    expect(r.satOut).toEqual(['Ghost']);
+    expect([...r.options[0].teamA, ...r.options[0].teamB]).not.toContain('Ghost');
+  });
+
+  it('refuses a forced pair that contradicts the side a unit already holds', () => {
+    const r = run({ lockedA: ['A'], opposingPairs: [['B', 'A']] });
+    expect(r.ok).toBe(false);
+    if (!r.ok && r.failure.kind === 'conflict') expect(r.failure.units).toEqual(['A']);
+    else throw new Error('expected a conflict');
+  });
+
+  it('does not count locked units against the enumeration ceiling', () => {
+    // Placing units on a side is the way out of "too many units", so a lock
+    // has to buy the same relief a forced pair does.
+    const many = Array.from({ length: 8 }, (_, i) => `U${i}`);
+    const r = balanceTeams({
+      ...evenFour(),
+      available: many,
+      counts: Object.fromEntries(many.map((u) => [u, { min: 5, max: 5 }])),
+      maxPlayerDiff: 10,
+      maxFreeUnits: 6,
+      lockedA: ['U0'],
+      lockedB: ['U1'],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('reports the night as it stands when every unit is locked', () => {
+    const r = ok({ available: [], lockedA: ['A', 'B'], lockedB: ['C', 'D'] });
+    expect(r.options).toHaveLength(1);
+    expect(r.options[0].teamA).toEqual(['A', 'B']);
+    expect(r.options[0].teamB).toEqual(['C', 'D']);
+  });
+
+  it('says by how much a locked night misses when it cannot be fixed', () => {
+    const r = run({
+      available: [],
+      lockedA: ['A', 'B'],
+      lockedB: ['C', 'D'],
+      counts: { A: { min: 40, max: 40 }, B: { min: 40, max: 40 }, C: { min: 1, max: 1 }, D: { min: 1, max: 1 } },
+      maxPlayerDiff: 2,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok && r.failure.kind === 'no-valid') expect(r.failure.gap).toBe(78);
+    else throw new Error('expected no-valid');
+  });
+});
+
 describe('balanceTeams — forced opposing pairs', () => {
   it('puts the pair on opposite sides', () => {
     const top = ok({ opposingPairs: [['A', 'B']] }).options[0];

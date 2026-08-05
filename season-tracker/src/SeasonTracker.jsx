@@ -62,6 +62,7 @@ import { Shell } from './components/Shell';
 import { SeasonOverview, StandingsScreen, ScheduleScreen } from './components/season/SeasonScreens';
 import { NightBuilder, RT_RULES } from './components/season/NightBuilder';
 import { Balancer } from './components/season/Balancer';
+import { RosterScreen } from './components/season/Roster';
 import { Playoffs } from './components/season/Playoffs';
 import { buildEloLadder } from './utils/eloLadder';
 import { CompanySplitter } from './components/CompanySplitter';
@@ -91,7 +92,8 @@ import {
   suggestFormats as suggestPlayoffFormats,
   LIMITS as PLAYOFF_LIMITS,
 } from './utils/playoffPlanner';
-import { balanceTeams, sitOuts, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
+import { balanceTeams, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
+import { nightLeadPairs } from './utils/nightLeads';
 import {
   parseSchedulePaste,
   auditSchedule,
@@ -165,6 +167,7 @@ const RAIL_NAV = [
   { title: 'Season', items: [
     { key: 'dash', label: 'Overview' },
     { key: 'standings', label: 'Standings' },
+    { key: 'roster', label: 'Season roster' },
     { key: 'schedule', label: 'Schedule' },
     { key: 'night', label: 'Night builder' },
     { key: 'balancer', label: 'Balancer' },
@@ -343,6 +346,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [balancerStatus, setBalancerStatus] = useState('');
   // Units the balancer left out because they field nobody this night.
   const [balancerSatOut, setBalancerSatOut] = useState([]);
+  // Units already on a side that the user has thrown back into the pool, so
+  // this run is free to move them. Everything else on a side is held there.
+  const [balancerReleased, setBalancerReleased] = useState([]);
   const [draggedUnit, setDraggedUnit] = useState(null);
   const [previewTeams, setPreviewTeams] = useState(null);
   const [draggedMainUnit, setDraggedMainUnit] = useState(null);
@@ -589,6 +595,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
       }
     };
     setWeeks([...weeks, newWeek]);
+    // Both callers walk straight to the builder, which is no use looking at an
+    // empty picker — the night you just made is the night you meant to open.
+    setSelectedWeek(newWeek);
   };
 
   // Removing a night takes its results with it, and those move the standings
@@ -1473,14 +1482,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
       countsToUse = unitPlayerCounts;
     }
 
-    // Initialize balancer unit counts for all units
+    // Every registered unit gets a row. No count on record means nobody is
+    // coming — 0–0, a night off — rather than "up to a hundred men", which is
+    // what the old default quietly balanced them as.
     const initialCounts = {};
     units.forEach(unit => {
-      if (countsToUse[unit]) {
-        initialCounts[unit] = { ...countsToUse[unit] };
-      } else {
-        initialCounts[unit] = { min: 0, max: 100 };
-      }
+      initialCounts[unit] = countsToUse[unit] ? { ...countsToUse[unit] } : { min: 0, max: 0 };
     });
 
     setBalancerUnitCounts(initialCounts);
@@ -1488,6 +1495,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setBalancerResults(null);
     setBalancerStatus('');
     setBalancerSatOut([]);
+    setBalancerReleased([]);
     goScreen('balancer');
   };
 
@@ -1572,10 +1580,15 @@ const SeasonTracker = ({ initialShareData = null }) => {
     newUnits.sort();
     setUnits(newUnits);
     setNonTokenUnits(newNonToken);
-    setBalancerUnitCounts(newCounts);
+    // Committed, not just held in the screen's own state: pasted numbers are
+    // the night's player counts, and they used to evaporate the moment you
+    // left the balancer.
+    commitBalancerCounts(newCounts);
     setShowCoordPasteModal(false);
     setCoordParsedRows([]);
     setCoordPasteText('');
+    const n = coordParsedRows.filter(r => r.action !== 'ignore').length;
+    setBalancerStatus(`${n} unit${n === 1 ? '' : 's'} updated from the coord sheet.`);
   };
 
   // Units to even across the two sides for skill-based post-season balancing.
@@ -1616,13 +1629,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
     if (!selectedWeek) return;
     setBalancerStatus('Balancing...');
 
-    // The night's own roster is what gets split — the balancer re-splits the
-    // units playing tonight, it does not fill the sides from the bench. Units
-    // sat out on the pool row are excluded rather than balanced around.
+    // The pool is every registered unit fielding somebody tonight — you do not
+    // have to put a unit on a side before the balancer will consider it. What
+    // is already on a side stays there: those units are counted in the split
+    // but never re-drawn, unless you release one back into the pool. A unit at
+    // 0–0 men has the night off and is left out of the night entirely.
     const out = new Set(balancerSatOut);
-    const available = [...new Set([...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])])]
-      .filter(u => !out.has(u))
-      .sort();
+    const loose = new Set(balancerReleased);
+    const held = (side) => (selectedWeek[side] || []).filter(u => !out.has(u) && !loose.has(u));
+    const lockedA = held('teamA');
+    const lockedB = held('teamB');
+    const available = units.filter(u => !out.has(u)).sort();
 
     const maxDiff = parseInt(balancerMaxDiff);
     if (isNaN(maxDiff) || maxDiff < 0) {
@@ -1641,6 +1658,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
     const result = balanceTeams({
       available,
+      lockedA,
+      lockedB,
       counts: balancerUnitCounts,
       opposingPairs: balancerOpposingPairs,
       maxPlayerDiff: maxDiff,
@@ -1681,11 +1700,19 @@ const SeasonTracker = ({ initialShareData = null }) => {
     });
     setBalancerResults(enriched);
     setSelectedBalanceIndex(0);
+
+    const idle = new Set(result.satOut);
+    const stayed = [...lockedA, ...lockedB].filter(u => !idle.has(u)).length;
+    const placed = enriched[0].teamA.length + enriched[0].teamB.length - stayed;
+    const bits = [
+      `${enriched.length} option${enriched.length === 1 ? '' : 's'}`,
+      `best average difference ${enriched[0].avgDiff.toFixed(1)}`,
+      `${placed} placed`,
+    ];
+    if (stayed) bits.push(`${stayed} held where they stood`);
     const zero = result.satOut.filter(u => !out.has(u));
-    const sat = zero.length ? ` · ${zero.length} fielding nobody` : '';
-    setBalancerStatus(
-      `${enriched.length} option${enriched.length === 1 ? '' : 's'} · best average difference ${enriched[0].avgDiff.toFixed(1)}${sat}`
-    );
+    if (zero.length) bits.push(`${zero.length} fielding nobody`);
+    setBalancerStatus(bits.join(' · '));
   };
 
   /**
@@ -1695,20 +1722,42 @@ const SeasonTracker = ({ initialShareData = null }) => {
    */
   useEffect(() => {
     if (screen !== 'balancer' || !selectedWeek) return;
-    const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])];
-    if (roster.every(u => balancerUnitCounts[u])) return;
+    const missing = units.filter(u => !balancerUnitCounts[u]);
+    if (missing.length === 0) return;
     const src = selectedWeek.unitPlayerCounts && Object.keys(selectedWeek.unitPlayerCounts).length
       ? selectedWeek.unitPlayerCounts
       : unitPlayerCounts;
     const next = { ...balancerUnitCounts };
-    units.forEach(u => { next[u] = next[u] ?? { ...(src[u] ?? { min: 0, max: 0 }) }; });
+    missing.forEach(u => { next[u] = { ...(src[u] ?? { min: 0, max: 0 }) }; });
     setBalancerUnitCounts(next);
   }, [screen, selectedWeek, units, unitPlayerCounts, balancerUnitCounts]);
 
-  /** Put one option's split onto the night. */
+  /**
+   * Put one option's split onto the night. Units the balancer left out — the
+   * ones fielding nobody — come off the night with it, so a lead or a balance
+   * swap pointing at one is cleared rather than left dangling on a unit that
+   * isn't there.
+   */
   const applyBalancerOption = (option) => {
     if (!selectedWeek || !option) return;
-    updateWeek(selectedWeek.id, { teamA: [...option.teamA], teamB: [...option.teamB] });
+    const onA = new Set(option.teamA);
+    const onB = new Set(option.teamB);
+    const lead = (unit, side) => (unit && (side === 'A' ? onA : onB).has(unit) ? unit : null);
+    const swaps = (list) => (list || []).filter(u => onA.has(u) || onB.has(u));
+    updateWeek(selectedWeek.id, {
+      teamA: [...option.teamA],
+      teamB: [...option.teamB],
+      leadA: lead(selectedWeek.leadA, 'A'),
+      leadB: lead(selectedWeek.leadB, 'B'),
+      leadA_r1: lead(selectedWeek.leadA_r1, 'A'),
+      leadB_r1: lead(selectedWeek.leadB_r1, 'B'),
+      leadA_r2: lead(selectedWeek.leadA_r2, 'A'),
+      leadB_r2: lead(selectedWeek.leadB_r2, 'B'),
+      roundSwaps: {
+        r1: swaps(selectedWeek.roundSwaps?.r1),
+        r2: swaps(selectedWeek.roundSwaps?.r2),
+      },
+    });
     goScreen('night');
   };
 
@@ -3105,6 +3154,23 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return out;
   }, [units, unitPlayerCounts, selectedWeek]);
 
+  /** The season roster, with what each unit has done in it. */
+  const rosterRows = useMemo(() => {
+    const divisionOf = {};
+    (divisions || []).forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
+    const nights = {};
+    (weeks || []).forEach(w => {
+      new Set([...(w.teamA || []), ...(w.teamB || [])]).forEach(u => { nights[u] = (nights[u] || 0) + 1; });
+    });
+    return [...units].sort().map(u => ({
+      name: u,
+      token: !nonTokenUnits.includes(u),
+      division: divisionOf[u] ?? null,
+      nights: nights[u] || 0,
+      men: unitPlayerCounts[u] ? ((unitPlayerCounts[u].min || 0) + (unitPlayerCounts[u].max || 0)) / 2 : null,
+    }));
+  }, [units, nonTokenUnits, divisions, weeks, unitPlayerCounts]);
+
   /** The night builder names round types the way the prototype does. */
   const nightBuilderType = !selectedWeek ? 'Regular'
     : selectedWeek.isPlayoffs ? 'Playoffs'
@@ -3163,15 +3229,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
   }, [weeks, divisionOfUnit, pointSystem, manualAdjustments, appState]);
 
   const nightRows = useMemo(() => weeks.map((w, i) => {
-    const leads = w.isPlayoffs || w.isSingleRoundLeads
-      ? { a: w.leadA_r1 || w.leadA_r2, b: w.leadB_r1 || w.leadB_r2 }
-      : { a: w.leadA, b: w.leadB };
+    // Both of a split-lead night's matchups, not just the first — see
+    // utils/nightLeads.
+    const { first, second } = nightLeadPairs(w);
     return {
       index: i,
       n: i + 1,
       name: w.name,
-      leadA: leads.a || null,
-      leadB: leads.b || null,
+      leadA: first?.a ?? null,
+      leadB: first?.b ?? null,
+      leadA2: second?.a ?? null,
+      leadB2: second?.b ?? null,
       map1: w.round1Map || null,
       map2: w.round2Map || null,
       sidesA: (w.teamA || []).length,
@@ -5629,6 +5697,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
             />
           )}
 
+          {/* Season roster — add a unit, rename it across the event, and say
+              whether it holds a standings token. */}
+          {screen === 'roster' && (
+            <RosterScreen
+              seasonName={activeSeason?.name || 'This season'}
+              units={rosterRows}
+              draft={newUnitName}
+              onDraft={setNewUnitName}
+              onAdd={addUnit}
+              onRename={renameUnit}
+              onToggleToken={toggleNonTokenStatus}
+              onRemove={removeUnit}
+            />
+          )}
+
           {screen === 'schedule' && (
             <ScheduleScreen
               nights={nightRows}
@@ -5718,9 +5801,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
               <Balancer
                 view={{
                   weekName: selectedWeek.name,
-                  roster: [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort(),
+                  roster: [...units].sort(),
+                  assignedA: selectedWeek.teamA || [],
+                  assignedB: selectedWeek.teamB || [],
+                  released: balancerReleased,
                   sittingOut: balancerSatOut,
-                  headcount: unitHeadcounts,
                   counts: balancerUnitCounts,
                   pairs: balancerOpposingPairs,
                   maxDiff: balancerMaxDiff,
@@ -5739,12 +5824,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
                 onBack={() => goScreen('night')}
                 onToggleUnit={(u) => setBalancerSatOut(prev =>
                   prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u])}
+                onToggleRelease={(u) => setBalancerReleased(prev =>
+                  prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u])}
+                onReleaseAll={() => setBalancerReleased(
+                  [...new Set([...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])])])}
+                onHoldAll={() => setBalancerReleased([])}
                 onPair={(idx, slot, unit) => setBalancerOpposingPairs(prev =>
                   prev.map((p, k) => k === idx ? (slot === 0 ? [unit, p[1]] : [p[0], unit]) : p))}
-                onAddPair={() => {
-                  const roster = [...(selectedWeek.teamA || []), ...(selectedWeek.teamB || [])].sort();
-                  if (roster.length >= 2) setBalancerOpposingPairs(prev => [...prev, [roster[0], roster[1]]]);
-                }}
+                onAddPair={(a, b) => { if (a && b) setBalancerOpposingPairs(prev => [...prev, [a, b]]); }}
                 onRemovePair={(idx) => setBalancerOpposingPairs(prev => prev.filter((_, k) => k !== idx))}
                 onMaxDiff={setBalancerMaxDiff}
                 onOptionCount={(n) => setBalancerSettings({ ...balancerSettings, balanceOptionCount: Math.max(1, Math.min(10, n)) })}
