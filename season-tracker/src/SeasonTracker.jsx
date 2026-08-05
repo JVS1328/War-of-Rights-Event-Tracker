@@ -591,12 +591,21 @@ const SeasonTracker = ({ initialShareData = null }) => {
     setWeeks([...weeks, newWeek]);
   };
 
+  // Removing a night takes its results with it, and those move the standings
+  // and the ladder. Name what is going and say what it carries, because there
+  // is no undo and "Remove this week?" does not say which week.
   const removeWeek = (weekId) => {
-    if (!confirm('Remove this week?')) return;
-    setWeeks(weeks.filter(w => w.id !== weekId));
-    if (selectedWeek?.id === weekId) {
-      setSelectedWeek(null);
-    }
+    const w = weeks.find(x => x.id === weekId);
+    if (!w) return;
+    const played = [w.round1Winner || w.round1Draw, w.round2Winner || w.round2Draw].filter(Boolean).length;
+    const carries = [
+      played ? `${played} recorded round${played === 1 ? '' : 's'}` : null,
+      (w.teamA?.length || w.teamB?.length) ? `${(w.teamA?.length || 0) + (w.teamB?.length || 0)} unit assignments` : null,
+    ].filter(Boolean);
+    const what = carries.length ? `\n\nIt carries ${carries.join(' and ')}, and the standings and Elo will be recalculated without them.` : '';
+    if (!confirm(`Remove "${w.name}" from ${activeSeason?.name ?? 'this season'}?${what}\n\nThis cannot be undone.`)) return;
+    setWeeks(weeks.filter(x => x.id !== weekId));
+    if (selectedWeek?.id === weekId) setSelectedWeek(null);
   };
 
   // Compute maps on cooldown relative to a given week index
@@ -5627,6 +5636,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               onEditNight={(idx) => { setSelectedWeek(weeks[idx]); goScreen('night'); }}
               onNewNight={() => { addWeek(); goScreen('night'); }}
               onGenerate={() => goScreen('simulator')}
+              onDeleteNight={(idx) => removeWeek(weeks[idx]?.id)}
             />
           )}
 
