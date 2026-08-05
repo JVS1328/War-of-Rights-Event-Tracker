@@ -305,6 +305,41 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .cols > .panel { min-width: 0; }
 .col { min-width: 0; }
 
+/* Somewhere a dragged unit can land. Marked only while a drag is over it —
+   an always-visible target would be noise on a screen that is mostly reading. */
+.dropzone[data-drop] {
+  outline: 1px dashed var(--ink-3); outline-offset: 2px; background: var(--sunken);
+}
+
+/* A select you can type into. The value reads as a field; the panel below it
+   is a filter box over a scrolling list, so a long roster stays reachable. */
+.picker { position: relative; }
+.picker-v {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  font: inherit; font-size: 11.5px; padding: 4px 7px; text-align: left;
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  cursor: pointer;
+}
+.picker-v:hover { border-color: var(--ink-3); }
+.picker-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-p {
+  position: absolute; z-index: 30; top: calc(100% - 1px); left: 0; right: 0;
+  border: 1px solid var(--line-2); background: var(--surface);
+}
+.picker-p input { width: 100%; border: 0; border-bottom: 1px solid var(--line); }
+.picker-l { max-height: 244px; overflow-y: auto; }
+.picker-l button {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 4px 9px; font: inherit; font-size: 11.5px; text-align: left;
+  background: none; border: 0; color: var(--ink-2); cursor: pointer;
+}
+.picker-l button[data-active="true"] { background: var(--raised); color: var(--ink); }
+.picker-l button.on { color: var(--ink); font-weight: 600; }
+.picker-f {
+  border-top: 1px solid var(--line); padding: 4px 9px;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+}
+
 /* Panels side by side. Distinct from .cols, which draws the rules and padding
    itself — a panel supplies both, so what it needs between siblings is a gap. */
 .pcols {

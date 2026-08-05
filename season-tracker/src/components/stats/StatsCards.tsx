@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { EmptyHint, Pill } from '../ui';
+import { EmptyHint, Picker, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow, PlayerStatRow, PlayerType } from '../../stats/statsEngine';
 import { splitPlayerRounds, SPLIT_LABELS } from '../../stats/playerSplits';
 import { StanceBar } from '../ui/StanceBar';
@@ -387,17 +387,15 @@ export function PlayerScreen({
       <div className="panel">
         <div className="ctl">
           <span className="cap">Player</span>
-          <select
-            value={detail?.key ?? ''}
-            onChange={(e) => onPickPlayer?.(e.target.value)}
-            aria-label="Player"
-            style={{ maxWidth: 320 }}
-          >
-            {roster.length === 0 && <option value="">No players imported</option>}
-            {roster.map((p) => (
-              <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
-            ))}
-          </select>
+          <Picker
+            label="Player"
+            width={300}
+            value={detail?.key ?? null}
+            options={roster.map((p) => ({ value: p.key, label: p.name, hint: p.regiment }))}
+            onChange={(k) => onPickPlayer?.(k)}
+            placeholder="name or unit"
+            emptyText="no players imported"
+          />
           {detail && onCompare && (
             <button className="gh" onClick={() => onCompare(detail.key)}>Compare</button>
           )}

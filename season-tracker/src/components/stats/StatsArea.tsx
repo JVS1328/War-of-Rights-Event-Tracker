@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Upload, Trash2, Pencil, X, GitMerge, Layers } from 'lucide-react';
-import { Panel, Pill, DataTable, EmptyHint } from '../ui';
+import { Panel, Picker, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
 import {
@@ -1499,10 +1499,15 @@ function UnitScreen({
       <div className="panel">
         <div className="ctl">
           <span className="cap">Unit</span>
-          <select value={reg?.regiment ?? ''} onChange={(e) => onPick(e.target.value)} aria-label="Unit">
-            {named.length === 0 && <option value="">No units imported</option>}
-            {named.map((u) => <option key={u.regiment} value={u.regiment}>{u.regiment}</option>)}
-          </select>
+          <Picker
+            label="Unit"
+            width={240}
+            value={reg?.regiment ?? null}
+            options={named.map((u) => ({ value: u.regiment, label: u.regiment, hint: `${u.rounds}rd` }))}
+            onChange={onPick}
+            placeholder="unit name"
+            emptyText="no units imported"
+          />
           {reg && onCompare && (
             <button className="gh" onClick={() => onCompare(reg.regiment)}>Compare</button>
           )}
