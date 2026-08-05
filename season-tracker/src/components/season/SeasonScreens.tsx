@@ -294,6 +294,7 @@ export function ScheduleScreen({
   onEditNight,
   onNewNight,
   onGenerate,
+  onDeleteNight,
 }: {
   nights: NightRow[];
   /** A played night opens its matchup. */
@@ -302,6 +303,8 @@ export function ScheduleScreen({
   onEditNight?: (index: number) => void;
   onNewNight?: () => void;
   onGenerate?: () => void;
+  /** Remove the night from the season. Confirms at the call site. */
+  onDeleteNight?: (index: number) => void;
 }) {
   return (
     <div className="panel">
@@ -322,7 +325,7 @@ export function ScheduleScreen({
             <tr>
               <th /><th>Night</th><th>Leads</th>
               <th>Round 1 map</th><th>Round 2 map</th>
-              <th className="num">Sides</th><th>Result</th><th />
+              <th className="num">Sides</th><th>Result</th><th className="num" />
             </tr>
           </thead>
           <tbody>
@@ -341,13 +344,23 @@ export function ScheduleScreen({
                 <td style={{ color: 'var(--ink-2)' }}>{w.map2 ?? '—'}</td>
                 <td className="num">{w.sidesA}v{w.sidesB}</td>
                 <td><NightResult r1={w.r1} r2={w.r2} played={w.played} /></td>
-                <td>
+                <td className="num" style={{ whiteSpace: 'nowrap' }}>
                   <button
                     className="gh"
                     onClick={(e) => { e.stopPropagation(); onEditNight?.(w.index); }}
                   >
                     Edit
                   </button>
+                  {onDeleteNight && (
+                    <button
+                      className="gh c-danger"
+                      style={{ marginLeft: 5 }}
+                      onClick={(e) => { e.stopPropagation(); onDeleteNight(w.index); }}
+                      title={`Remove ${w.name} from the season`}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
