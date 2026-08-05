@@ -8,6 +8,7 @@ A React-based web application for tracking regiment performance across a War of 
 - **Unit/Regiment Tracking**: Add and organize participating units
 - **Team Rosters**: Assign units to teams for each week
 - **Point System**: Configurable point system for wins, losses, and bonuses
+- **Season Roster**: Add a unit, rename it across the whole event, and say whether it holds a standings token or plays as a guest
 - **Team Balancer**: Weighted balancing of units across the two sides, with an optional skill-based post-season weight for playoffs
 - **Round Types**: Regular, Single Round Leads, Playoffs, and Fun Round (exhibition — no points, no map cooldown, no Elo)
 - **Season Simulator**: Generate a season of lead assignments, evenly spaced per unit, with spread analytics and a sheet-ready schedule export
@@ -47,12 +48,31 @@ npm run dev
 
 ### Basic Workflow
 
-1. **Add Units**: Enter regiment names in the Units section
+1. **Add Units**: Enter regiment names on the Season roster screen
 2. **Create Weeks**: Add weeks for your season schedule
 3. **Assign Teams**: Select a week and assign units to Team A or Team B
 4. **Set Leaders**: Choose lead units for each team
 5. **Record Results**: Select round winners (Round 1 and Round 2)
 6. **View Standings**: Check the real-time standings based on points
+
+### Balancer
+
+The balancer splits the night from the **season roster**, not from the units you
+have already placed — put the night's numbers in (paste the coord sheet, or type
+min and max men per unit) and hit Balance.
+
+- **0–0 men is a night off.** A unit with no men to field is left out of the
+  split and off the night. Units with no count at all read as 0–0.
+- **A unit already on a side stays on it.** It is counted in every metric —
+  head count, teammate history, divisions, Elo — but never re-drawn; the rest of
+  the pool is packed around it. Release one back into the pool from the balancer
+  if you want it moved.
+- **Forced pairs** still seed two units onto opposite sides before anything else
+  is packed.
+
+Applying an option writes the sides to the night. Anything sitting out comes off
+it, and a lead or balance swap pointing at a unit that is no longer there is
+cleared with it.
 
 ### Point System
 

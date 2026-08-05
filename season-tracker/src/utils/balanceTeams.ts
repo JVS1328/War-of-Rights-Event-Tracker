@@ -7,6 +7,12 @@
  * few partitions that also satisfy the hard constraint — sides within
  * `maxPlayerDiff` players of each other — come back as options to choose from.
  *
+ * Two things never enter the enumeration. A unit already on a side (`lockedA`
+ * / `lockedB`) is counted in every metric but stays where it is — the rest of
+ * the pool is packed around it. A unit fielding nobody is out of the night
+ * altogether: 0–0 men means it is sitting this one out, so it is neither
+ * placed nor counted.
+ *
  * Pure, and it reports its problems as data. The version this replaces raised
  * alert() from inside the scoring loop, which made it untestable and put a
  * modal in front of the user mid-calculation.
@@ -35,6 +41,13 @@ export interface BalanceWeights {
 export interface BalanceInput {
   /** Units to split. Anything fielding nobody is sat out first — see satOut. */
   available: string[];
+  /**
+   * Units already on side A tonight. They are counted in every metric but are
+   * never moved, and they belong to the night whether or not `available` also
+   * lists them. Same for {@link lockedB} on side B.
+   */
+  lockedA?: string[];
+  lockedB?: string[];
   counts: Record<string, UnitCount>;
   /** Pairs forced onto opposite sides: [side A unit, side B unit]. */
   opposingPairs: [string, string][];
@@ -147,20 +160,29 @@ export function averageTeammateCount(history: Record<string, Record<string, numb
 const mean = (xs: number[]): number | null => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
 
 export function balanceTeams(input: BalanceInput): BalanceResult {
-  const { available, counts, opposingPairs, maxPlayerDiff, teammateHistory, weights } = input;
+  const { counts, opposingPairs, maxPlayerDiff, teammateHistory, weights } = input;
+  const lockedA = [...new Set(input.lockedA ?? [])];
+  const lockedB = [...new Set(input.lockedB ?? [])];
+  // A unit standing on a side is on the night whether or not the caller listed
+  // it in the pool as well, so the two are unioned rather than trusted to agree.
+  const available = [...new Set([...input.available, ...lockedA, ...lockedB])];
   const satOut = sitOuts(available, counts);
   const satOutSet = new Set(satOut);
   const playing = available.filter((u) => !satOutSet.has(u)).sort();
 
   const forcedA = [...new Set(opposingPairs.map((p) => p[0]).filter(Boolean))];
   const forcedB = [...new Set(opposingPairs.map((p) => p[1]).filter(Boolean))];
-  const conflict = forcedA.filter((u) => forcedB.includes(u));
+  // Locked and forced amount to the same thing once we get here: a unit seeded
+  // onto a side before anything is packed around it.
+  const sideA = [...new Set([...lockedA, ...forcedA])];
+  const sideB = [...new Set([...lockedB, ...forcedB])];
+  const conflict = sideA.filter((u) => sideB.includes(u));
   if (conflict.length) return { ok: false, failure: { kind: 'conflict', units: conflict }, satOut };
 
-  // A forced unit that is sitting out cannot be placed, so it drops with the rest.
+  // A seeded unit that is sitting out cannot be placed, so it drops with the rest.
   const keepForced = (xs: string[]) => xs.filter((u) => !satOutSet.has(u));
-  const fixedA = keepForced(forcedA);
-  const fixedB = keepForced(forcedB);
+  const fixedA = keepForced(sideA);
+  const fixedB = keepForced(sideB);
   const forcedSet = new Set([...fixedA, ...fixedB]);
   const free = playing.filter((u) => !forcedSet.has(u));
 
@@ -372,11 +394,11 @@ export function balanceTeams(input: BalanceInput): BalanceResult {
 export function describeFailure(f: BalanceFailure, maxPlayerDiff: number): string {
   switch (f.kind) {
     case 'conflict':
-      return `${f.units.join(', ')} ${f.units.length === 1 ? 'is' : 'are'} forced onto both sides — remove one of the pairs.`;
+      return `${f.units.join(', ')} ${f.units.length === 1 ? 'is' : 'are'} on both sides at once — a forced pair contradicts a side already held. Drop the pair, or release the unit back into the pool.`;
     case 'nothing-to-balance':
-      return 'Every available unit is fielding nobody. Set player counts before balancing.';
+      return 'Every unit in the pool is fielding nobody — 0–0 men is a night off. Set some player counts before balancing.';
     case 'too-many-units':
-      return `${f.count} units is past the ${f.limit} this can split — every partition is checked, and the count doubles each unit. Assign some to a side first.`;
+      return `${f.count} units to place is past the ${f.limit} this can split — every partition is checked, and the count doubles each unit. Put some on a side first: units already on one are held there, not enumerated.`;
     case 'no-valid': {
       const bits: string[] = [];
       if (f.gap > maxPlayerDiff) bits.push(`a head-count gap of ${f.gap}`);

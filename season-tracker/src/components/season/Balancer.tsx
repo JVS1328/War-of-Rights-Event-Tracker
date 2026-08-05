@@ -23,11 +23,15 @@ const Panel = ({
 
 export interface BalancerView {
   weekName: string;
-  /** Every unit on the night. */
+  /** Every registered unit — the pool comes from the season, not the night. */
   roster: string[];
-  /** Units held out of tonight's pool. */
+  /** Units already on a side tonight; held there unless released. */
+  assignedA: string[];
+  assignedB: string[];
+  /** Assigned units thrown back into the pool, so this run may move them. */
+  released: string[];
+  /** Units held out of tonight's pool by hand. */
   sittingOut: string[];
-  headcount: Record<string, number>;
   counts: Record<string, UnitCount>;
   pairs: [string, string][];
   maxDiff: number;
@@ -44,6 +48,9 @@ export function Balancer({
   view,
   onBack,
   onToggleUnit,
+  onToggleRelease,
+  onReleaseAll,
+  onHoldAll,
   onPair,
   onAddPair,
   onRemovePair,
@@ -61,8 +68,11 @@ export function Balancer({
   view: BalancerView;
   onBack: () => void;
   onToggleUnit: (unit: string) => void;
+  onToggleRelease: (unit: string) => void;
+  onReleaseAll: () => void;
+  onHoldAll: () => void;
   onPair: (i: number, slot: 0 | 1, unit: string) => void;
-  onAddPair: () => void;
+  onAddPair: (a: string, b: string) => void;
   onRemovePair: (i: number) => void;
   onMaxDiff: (n: number) => void;
   onOptionCount: (n: number) => void;
@@ -75,13 +85,38 @@ export function Balancer({
   onPullCounts: () => void;
   onSplitter: () => void;
 }) {
-  const { roster, sittingOut, headcount, counts, pairs, maxDiff, options } = view;
+  const { roster, assignedA, assignedB, released, sittingOut, counts, pairs, maxDiff, options } = view;
   const out = new Set(sittingOut);
-  const pool = roster.filter((u) => !out.has(u));
-  const poolMen = pool.reduce((s, u) => s + (headcount[u] ?? 0), 0);
+  const loose = new Set(released);
+  const onSideA = new Set(assignedA);
+  const onSideB = new Set(assignedB);
+
+  /** 0–0 men is a night off: the unit is out of the split and off the night. */
+  const fields = (u: string) => (counts[u]?.min ?? 0) > 0 || (counts[u]?.max ?? 0) > 0;
+  const sideOf = (u: string): 'A' | 'B' | null => (onSideA.has(u) ? 'A' : onSideB.has(u) ? 'B' : null);
+  /** On a side, fielding somebody, and not released — so it stays put. */
+  const held = (u: string) => sideOf(u) !== null && !loose.has(u) && !out.has(u) && fields(u);
+
+  const pool = roster.filter((u) => fields(u) && !out.has(u));
+  const poolMen = pool.reduce((s, u) => s + avg(counts[u]), 0);
+  const heldUnits = pool.filter(held);
+  const toPlace = pool.filter((u) => !held(u));
+  const benched = roster.filter((u) => out.has(u));
+  const idle = roster.filter((u) => !fields(u) && !out.has(u));
+  // Standing on a side with nobody to field: applying an option takes them off
+  // the night, so it is said plainly rather than discovered afterwards.
+  const idleOnSide = idle.filter((u) => sideOf(u) !== null);
+
   const forcedA = new Set(pairs.map((p) => p[0]).filter(Boolean));
   const forcedB = new Set(pairs.map((p) => p[1]).filter(Boolean));
-  const missing = roster.filter((u) => !(counts[u]?.max)).length;
+
+  /** Pairs pick from the pool, plus whatever the row already holds — a unit
+   *  that has since dropped out still has to show, or the row reads as another
+   *  unit entirely. */
+  const pairOptions = (picked: string) =>
+    (pool.includes(picked) || !picked ? pool : [picked, ...pool]).map((u) => (
+      <option key={u} value={u}>{u}{fields(u) ? '' : ' — fielding nobody'}</option>
+    ));
 
   const card = (o: BalanceOption, i: number) => {
     const big = Math.max(o.avgA, o.avgB) || 1;
@@ -112,20 +147,27 @@ export function Balancer({
           {o.avgEloA != null && o.avgEloB != null &&
             ` · Elo ${Math.round(o.avgEloA)} vs ${Math.round(o.avgEloB)}`}
         </div>
-        <div className="rl" style={{ marginTop: 8 }}>
-          {o.teamA.map((u) => (
-            <span key={u} className="tag q" style={forcedA.has(u) ? { borderColor: 'var(--ink)', color: 'var(--ink)' } : undefined}>
-              {u}{forcedA.has(u) ? ' ⚑' : ''}
-            </span>
-          ))}
-        </div>
-        <div className="rl" style={{ marginTop: 4, opacity: 0.75 }}>
-          {o.teamB.map((u) => (
-            <span key={u} className="tag q" style={forcedB.has(u) ? { borderColor: 'var(--ink)', color: 'var(--ink)', opacity: 1 } : undefined}>
-              {u}{forcedB.has(u) ? ' ⚑' : ''}
-            </span>
-          ))}
-        </div>
+        {[o.teamA, o.teamB].map((side, s) => {
+          const forced = s === 0 ? forcedA : forcedB;
+          return (
+            <div className="rl" key={s} style={{ marginTop: s === 0 ? 8 : 4, opacity: s === 0 ? 1 : 0.75 }}>
+              {side.map((u) => {
+                const pinned = forced.has(u) || held(u);
+                return (
+                  <span
+                    key={u}
+                    className="tag q"
+                    style={pinned ? { borderColor: 'var(--ink)', color: 'var(--ink)', opacity: 1 } : undefined}
+                    title={held(u) ? `${u} was already on this side — held there` : undefined}
+                  >
+                    {u}{forced.has(u) ? ' ⚑' : ''}
+                    {held(u) && <i style={{ fontStyle: 'normal', opacity: 0.55 }}>{' · held'}</i>}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })}
         <div style={{ marginTop: 9 }}>
           <button className="gh" aria-pressed={i === 0} onClick={() => onApply(o)}>
             Apply to {view.weekName}
@@ -154,35 +196,100 @@ export function Balancer({
           <span className="rule" />
           <span className="meta">
             {pool.length} of {roster.length} units in · ~{poolMen.toFixed(0)} men
+            {heldUnits.length > 0 && ` · ${heldUnits.length} held`}
           </span>
         </div>
       </div>
 
       <Panel
-        title="Available units"
-        meta="click to sit a unit out — held-out units are excluded, not balanced around"
-      >
-        <div className="tgs">
-          {roster.map((u) => {
-            const zero = !(counts[u]?.min) && !(counts[u]?.max);
-            return (
-              <button
-                key={u}
-                className={`tg${out.has(u) ? '' : ' on'}${zero ? ' zero' : ''}`}
-                aria-pressed={!out.has(u)}
-                onClick={() => onToggleUnit(u)}
-                title={zero ? `${u} is fielding nobody` : undefined}
-              >
-                {u}<span className="n">~{(headcount[u] ?? 0).toFixed(0)}</span>
+        title="Tonight's pool"
+        meta="every unit with men to field — nobody has to be on a side first"
+        ctl={
+          (heldUnits.length > 0 || loose.size > 0) ? (
+            <div className="ctl">
+              <span className="cap">Already placed</span>
+              <button className="gh" onClick={onReleaseAll} disabled={heldUnits.length === 0}>
+                Release all {heldUnits.length || ''}
               </button>
-            );
-          })}
-          {roster.length === 0 && <span className="note">No units on this night yet.</span>}
+              <button className="gh" onClick={onHoldAll} disabled={loose.size === 0}>
+                Hold them again
+              </button>
+              <span className="rule" />
+              <span className="meta">released units go back in with the rest</span>
+            </div>
+          ) : undefined
+        }
+      >
+        {heldUnits.length > 0 && (
+          <>
+            <div className="cap" style={{ marginBottom: 5 }}>On a side already — kept there</div>
+            <div className="tgs">
+              {heldUnits.map((u) => (
+                <button
+                  key={u}
+                  className="tg on"
+                  aria-pressed
+                  onClick={() => onToggleRelease(u)}
+                  title={`${u} is on Team ${sideOf(u)} and stays there — click to release it into the pool`}
+                >
+                  {u}<span className="n">{sideOf(u)} · ~{avg(counts[u]).toFixed(0)}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="cap" style={{ marginTop: heldUnits.length ? 11 : 0, marginBottom: 5 }}>
+          To place{toPlace.length ? ` — ${toPlace.length}` : ''}
         </div>
+        <div className="tgs">
+          {toPlace.map((u) => (
+            <button
+              key={u}
+              className="tg on"
+              aria-pressed
+              onClick={() => onToggleUnit(u)}
+              title={loose.has(u) ? `${u} was released from Team ${sideOf(u)} — click to sit it out` : `Click to sit ${u} out`}
+            >
+              {u}<span className="n">{loose.has(u) ? 'freed · ' : ''}~{avg(counts[u]).toFixed(0)}</span>
+            </button>
+          ))}
+          {toPlace.length === 0 && (
+            <span className="note">
+              {pool.length ? 'Nothing left to place — every unit in the pool is already on a side.' : 'Nobody is fielding men yet. Paste the coord sheet, or set counts below.'}
+            </span>
+          )}
+        </div>
+
+        {(benched.length > 0 || idle.length > 0) && (
+          <>
+            <div className="cap" style={{ marginTop: 11, marginBottom: 5 }}>Out tonight</div>
+            <div className="tgs">
+              {benched.map((u) => (
+                <button key={u} className="tg" aria-pressed={false} onClick={() => onToggleUnit(u)} title={`Click to bring ${u} back into the pool`}>
+                  {u}<span className="n">sat out</span>
+                </button>
+              ))}
+              {idle.map((u) => (
+                <span key={u} className="tg zero" title={`${u} is set to 0–0 men — give it a count below to bring it in`}>
+                  {u}<span className="n">{sideOf(u) ? `${sideOf(u)} · 0` : '0'}</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="note" style={{ marginTop: 9 }}>
-          {out.size
-            ? `${out.size} sitting out: ${[...out].join(', ')}`
-            : 'Every unit on the night is in the pool.'}
+          {idle.length
+            ? `${idle.length} at 0–0 men — sitting the night out, not balanced around.`
+            : 'Every registered unit is fielding somebody.'}
+          {idleOnSide.length > 0 && (
+            <>
+              {' '}
+              <strong>{idleOnSide.join(', ')}</strong> {idleOnSide.length === 1 ? 'is' : 'are'} still on a side
+              with nobody to field — applying an option takes {idleOnSide.length === 1 ? 'it' : 'them'} off the night.
+            </>
+          )}
         </div>
       </Panel>
 
@@ -192,19 +299,15 @@ export function Balancer({
         ) : (
           pairs.map((p, i) => (
             <div className="pair-row" key={i}>
-              <select value={p[0]} onChange={(e) => onPair(i, 0, e.target.value)}>
-                {roster.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
+              <select value={p[0]} onChange={(e) => onPair(i, 0, e.target.value)}>{pairOptions(p[0])}</select>
               <span className="cap">opposite</span>
-              <select value={p[1]} onChange={(e) => onPair(i, 1, e.target.value)}>
-                {roster.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
+              <select value={p[1]} onChange={(e) => onPair(i, 1, e.target.value)}>{pairOptions(p[1])}</select>
               <button className="gh" onClick={() => onRemovePair(i)}>Remove</button>
             </div>
           ))
         )}
         <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
-          <button className="gh" onClick={onAddPair} disabled={roster.length < 2}>Add a pair</button>
+          <button className="gh" onClick={() => onAddPair(pool[0], pool[1])} disabled={pool.length < 2}>Add a pair</button>
           <span className="rule" />
           <span className="meta">⚑ marks a forced unit in the options below</span>
         </div>
@@ -260,42 +363,51 @@ export function Balancer({
           <h2>Unit player counts</h2>
           <span className="rule" />
           <span className="meta">
-            {missing ? `${missing} unit(s) have no count — they balance as 0` : 'every unit has a count'}
+            every registered unit · {pool.length} in tonight, {roster.length - pool.length} out
           </span>
         </header>
         <div className="ctl">
           <button className="gh" onClick={onPasteCounts}>Paste from coord sheet</button>
           <button className="gh" onClick={onPullCounts}>Pull last night's counts</button>
           <span className="rule" />
-          <span className="meta">min and max men expected, per unit</span>
+          <span className="meta">min and max men expected — 0 and 0 means they are out tonight</span>
         </div>
         <div className="pb flush scroll-x">
           <table>
             <thead>
-              <tr><th>Unit</th><th className="num">Min</th><th className="num">Max</th><th className="num">Avg</th><th /></tr>
+              <tr><th>Unit</th><th className="num">Min</th><th className="num">Max</th><th className="num">Avg</th><th>Tonight</th></tr>
             </thead>
             <tbody>
               {roster.map((u) => {
                 const c = counts[u];
+                const side = sideOf(u);
                 return (
-                  <tr key={u}>
+                  <tr key={u} style={fields(u) && !out.has(u) ? undefined : { opacity: 0.55 }}>
                     <td className="wor-name">{u}</td>
                     <td className="num">
                       <input
-                        type="number" value={c?.min ?? 0} style={{ width: 56, textAlign: 'right' }}
+                        type="number" min="0" value={c?.min ?? 0} style={{ width: 56, textAlign: 'right' }}
                         onChange={(e) => onCount(u, 'min', Number(e.target.value) || 0)}
                       />
                     </td>
                     <td className="num">
                       <input
-                        type="number" value={c?.max ?? 0} style={{ width: 56, textAlign: 'right' }}
+                        type="number" min="0" value={c?.max ?? 0} style={{ width: 56, textAlign: 'right' }}
                         onChange={(e) => onCount(u, 'max', Number(e.target.value) || 0)}
                       />
                     </td>
                     <td className="num" style={{ color: 'var(--ink-2)' }}>{avg(c).toFixed(1)}</td>
                     <td>
-                      {!c?.max && (
-                        <span className="tag q" style={{ borderColor: 'var(--live)', color: 'var(--live)' }}>not set</span>
+                      {!fields(u) ? (
+                        <span className="tag q" style={{ borderColor: 'var(--live)', color: 'var(--live)' }}>
+                          out{side ? ` — comes off Team ${side}` : ''}
+                        </span>
+                      ) : out.has(u) ? (
+                        <span className="tag q">sat out by hand</span>
+                      ) : held(u) ? (
+                        <span className="tag q" style={{ borderColor: 'var(--ink)', color: 'var(--ink)' }}>held on Team {side}</span>
+                      ) : (
+                        <span className="tag q">to place{side ? ' — released' : ''}</span>
                       )}
                     </td>
                   </tr>
