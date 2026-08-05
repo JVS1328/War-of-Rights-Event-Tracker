@@ -640,16 +640,25 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Team Management
+  // Move a unit onto a side, or — with 'bench' — off the night entirely. The
+  // unit is always removed from wherever it was first, so a drag can never
+  // leave it on two sides at once.
   const moveUnitToTeam = (unit, team) => {
     if (!selectedWeek) return;
-    
+
+    if (team === 'bench') {
+      updateWeek(selectedWeek.id, {
+        teamA: (selectedWeek.teamA || []).filter(u => u !== unit),
+        teamB: (selectedWeek.teamB || []).filter(u => u !== unit),
+      });
+      return;
+    }
+
     const otherTeam = team === 'A' ? 'B' : 'A';
-    const updates = {
-      [`team${team}`]: [...selectedWeek[`team${team}`].filter(u => u !== unit), unit],
-      [`team${otherTeam}`]: selectedWeek[`team${otherTeam}`].filter(u => u !== unit)
-    };
-    
-    updateWeek(selectedWeek.id, updates);
+    updateWeek(selectedWeek.id, {
+      [`team${team}`]: [...(selectedWeek[`team${team}`] || []).filter(u => u !== unit), unit],
+      [`team${otherTeam}`]: (selectedWeek[`team${otherTeam}`] || []).filter(u => u !== unit),
+    });
   };
 
   const removeUnitFromTeam = (unit, team) => {

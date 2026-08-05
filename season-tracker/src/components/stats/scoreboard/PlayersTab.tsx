@@ -274,6 +274,7 @@ function TeamBlock({
                 causeIndex={causeIndex}
                 teamInflicted={teamInflicted}
                 teamReceived={teamReceived}
+                teamPlayers={rows.length}
                 onOpenPlayer={onOpenPlayer}
               />
             );
@@ -338,6 +339,7 @@ function RegimentGroup({
   causeIndex,
   teamInflicted,
   teamReceived,
+  teamPlayers,
   onOpenPlayer,
 }: {
   group: RegimentGroupModel;
@@ -352,6 +354,8 @@ function RegimentGroup({
   /** Team-wide ticket damage inflicted/received — the share denominators. */
   teamInflicted: number;
   teamReceived: number;
+  /** Men the whole side fielded this round, so a unit can be sized against it. */
+  teamPlayers: number;
   onOpenPlayer: (key: string) => void;
 }) {
   const { regiment, players } = group;
@@ -455,7 +459,19 @@ function RegimentGroup({
           )}
           <HeaderStat
             label="Players"
-            value={<span className="text-[color:var(--color-text-1)]">{players.length}</span>}
+            value={
+              <>
+                <span style={{ color: 'var(--ink-2)' }}>{players.length}</span>
+                {teamPlayers > 0 && (
+                  <span style={{ color: 'var(--ink-3)' }}>
+                    {' '}({Math.round((players.length / teamPlayers) * 100)}%)
+                  </span>
+                )}
+              </>
+            }
+            title={teamPlayers > 0
+              ? `${players.length} of the ${teamPlayers} men this side fielded`
+              : undefined}
           />
         </span>
       </button>
@@ -465,11 +481,15 @@ function RegimentGroup({
             <div className="note" style={{ borderTop: '1px solid var(--line)', background: 'var(--surface)', padding: '7px 13px' }}>
               <div>
                 <span className="cap">unit killed with </span>
-                {unitKilledWith.length > 0 ? <CauseInline data={unitKilledWith} /> : <span>—</span>}
+                {unitKilledWith.length > 0
+                  ? <CauseInline data={unitKilledWith} recorded={agg.kills} />
+                  : <span>—</span>}
               </div>
               <div>
                 <span className="cap">unit died to </span>
-                {unitDiedTo.length > 0 ? <CauseInline data={unitDiedTo} /> : <span>—</span>}
+                {unitDiedTo.length > 0
+                  ? <CauseInline data={unitDiedTo} recorded={agg.deaths} />
+                  : <span>—</span>}
               </div>
             </div>
           )}
@@ -590,7 +610,18 @@ function sortedCauses(counts: CauseCounts): [string, number][] {
 }
 
 /** Compact inline "Rifle ×3 · Bayonet" cause list for a player card. */
-function CauseInline({ data }: { data: [string, number][] }) {
+/**
+ * A cause breakdown with each weapon's share.
+ *
+ * The share is of the killfeed's own total, never of the scoreboard's kill or
+ * death column. They are different sources and they do not always agree — the
+ * feed can carry victims the column does not — and dividing one by the other
+ * produced shares summing to 245%. `recorded` is the column's figure, shown
+ * alongside only when it disagrees, so the gap is visible instead of silently
+ * distorting every percentage.
+ */
+function CauseInline({ data, recorded }: { data: [string, number][]; recorded?: number }) {
+  const denom = data.reduce((s, [, n]) => s + n, 0);
   return (
     <span>
       {data.map(([cause, n], i) => (
@@ -598,8 +629,19 @@ function CauseInline({ data }: { data: [string, number][] }) {
           {i > 0 && ' · '}
           <span style={{ textTransform: 'capitalize', color: 'var(--ink-2)' }}>{cause}</span>
           {n > 1 && <span style={{ color: 'var(--ink-3)' }}> ×{n}</span>}
+          {denom > 0 && (
+            <span style={{ color: 'var(--ink-3)' }}> {Math.round((n / denom) * 100)}%</span>
+          )}
         </span>
       ))}
+      {recorded != null && recorded !== denom && (
+        <span
+          style={{ color: 'var(--ink-3)' }}
+          title={`The killfeed has ${denom}; the scoreboard column records ${recorded}. Shares are of the ${denom} the feed accounts for.`}
+        >
+          {' '}· {denom} of {recorded} in the feed
+        </span>
+      )}
     </span>
   );
 }

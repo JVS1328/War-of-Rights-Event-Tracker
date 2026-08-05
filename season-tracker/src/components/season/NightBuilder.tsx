@@ -7,9 +7,12 @@
  * cooldown — so it sits at the top with those consequences spelled out as
  * badges rather than buried in a help note.
  */
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type Side = 'A' | 'B';
+/** Where a dragged unit can land: either side, or off the night entirely. */
+export type Drop = Side | 'bench';
 export type RoundType = 'Regular' | 'Single round leads' | 'Playoffs' | 'Fun round';
 
 export interface RoundTypeRule {
@@ -155,7 +158,7 @@ export function NightBuilder({
   onRename: (name: string) => void;
   onNewNight: () => void;
   onDuplicate: () => void;
-  onMoveUnit: (unit: string, to: Side) => void;
+  onMoveUnit: (unit: string, to: Drop) => void;
   onClearSides: () => void;
   onLead: (side: Side, round: 0 | 1 | 2, unit: string | null) => void;
   onRound: (round: 1 | 2, patch: Partial<NightRound>) => void;
@@ -202,6 +205,23 @@ export function NightBuilder({
   const assigned = new Set([...week.teamA, ...week.teamB]);
   const bench = registry.filter((u) => !assigned.has(u));
 
+  // Dragging a unit between sides. The dataTransfer payload is what actually
+  // crosses the drop, so an external drag into the page cannot be mistaken for
+  // one of ours; `dragging` is only for dimming the chip you picked up.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropZone, setDropZone] = useState<Drop | null>(null);
+  const startDrag = (e: React.DragEvent, unit: string) => {
+    e.dataTransfer.setData('text/x-wor-unit', unit);
+    e.dataTransfer.effectAllowed = 'move';
+    setDragging(unit);
+  };
+  const dropOn = (e: React.DragEvent, to: Drop) => {
+    const unit = e.dataTransfer.getData('text/x-wor-unit');
+    setDragging(null);
+    setDropZone(null);
+    if (unit) onMoveUnit(unit, to);
+  };
+
   const leadOf = (s: Side, r: 0 | 1 | 2): string | null =>
     r === 0 ? (s === 'A' ? week.leadA : week.leadB)
       : r === 1 ? (s === 'A' ? week.leadA_r1 : week.leadB_r1)
@@ -241,14 +261,25 @@ export function NightBuilder({
             <i>avg Elo</i>
           </span>
         </div>
-        <div style={{ marginTop: 9 }}>
+        <div
+          style={{ marginTop: 9, minHeight: 34 }}
+          onDragOver={(e) => { e.preventDefault(); setDropZone(s); }}
+          onDragLeave={() => setDropZone((z) => (z === s ? null : z))}
+          onDrop={(e) => { e.preventDefault(); dropOn(e, s); }}
+          data-drop={dropZone === s || undefined}
+          className="dropzone"
+        >
           {units.map((u) => (
             <div
               key={u}
               className="bteam"
+              draggable
+              onDragStart={(e) => startDrag(e, u)}
+              onDragEnd={() => { setDragging(null); setDropZone(null); }}
               style={{
-                border: '1px solid var(--line)', marginTop: 4,
+                border: '1px solid var(--line)', marginTop: 4, cursor: 'grab',
                 ...(scores.has(u) ? {} : { opacity: 0.55, borderStyle: 'dashed' }),
+                ...(dragging === u ? { opacity: 0.4 } : {}),
               }}
             >
               <span>
@@ -419,17 +450,37 @@ export function NightBuilder({
                 : 'every registered unit is assigned'}
             </span>
           </div>
-          {bench.length > 0 && (
-            <div style={{ padding: '0 13px 13px' }}>
+          <div
+            style={{ padding: '0 13px 13px' }}
+            onDragOver={(e) => { e.preventDefault(); setDropZone('bench'); }}
+            onDragLeave={() => setDropZone((z) => (z === 'bench' ? null : z))}
+            onDrop={(e) => { e.preventDefault(); dropOn(e, 'bench'); }}
+            data-drop={dropZone === 'bench' || undefined}
+            className="dropzone"
+          >
+            {bench.length > 0 ? (
               <div className="rl">
                 {bench.map((u) => (
-                  <button key={u} className="chip" onClick={() => onMoveUnit(u, 'A')} title={`Put ${u} on Team A`}>
+                  <button
+                    key={u}
+                    className="chip"
+                    draggable
+                    onDragStart={(e) => startDrag(e, u)}
+                    onDragEnd={() => { setDragging(null); setDropZone(null); }}
+                    onClick={() => onMoveUnit(u, 'A')}
+                    title={`Drag onto a side, or click to put ${u} on Team A`}
+                    style={{ cursor: 'grab', ...(dragging === u ? { opacity: 0.4 } : {}) }}
+                  >
                     {u}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="note">
+                {dragging ? 'Drop here to take a unit off the night.' : 'Every registered unit is on a side.'}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

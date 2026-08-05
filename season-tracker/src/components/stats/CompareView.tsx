@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Panel, Pill, EmptyHint } from '../ui';
+import { Panel, Picker, Pill, EmptyHint } from '../ui';
 import { Spine } from '../ui/Spine';
 import { Scoreline } from '../ui/Scoreline';
 import { comparePlayers, compareRegiments, compareVerdict } from '../../stats/compare';
@@ -94,27 +94,31 @@ export function CompareView({
           </div>
           {mode === 'players' ? (
             <>
-              <select value={pA?.key ?? ''} onChange={(e) => setAKey(e.target.value)} aria-label="First player">
-                {players.map((p) => (
-                  <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
-                ))}
-              </select>
+              <Picker
+                label="First player" width={250} value={pA?.key ?? null} onChange={setAKey}
+                placeholder="name or unit"
+                options={players.map((p) => ({ value: p.key, label: p.name, hint: p.regiment }))}
+              />
               <span className="cap">versus</span>
-              <select value={pB?.key ?? ''} onChange={(e) => setBKey(e.target.value)} aria-label="Second player">
-                {players.map((p) => (
-                  <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
-                ))}
-              </select>
+              <Picker
+                label="Second player" width={250} value={pB?.key ?? null} onChange={setBKey}
+                placeholder="name or unit"
+                options={players.map((p) => ({ value: p.key, label: p.name, hint: p.regiment }))}
+              />
             </>
           ) : (
             <>
-              <select value={uA?.regiment ?? ''} onChange={(e) => setAUnit(e.target.value)} aria-label="First unit">
-                {regiments.map((r) => <option key={r.regiment} value={r.regiment}>{r.regiment}</option>)}
-              </select>
+              <Picker
+                label="First unit" width={220} value={uA?.regiment ?? null} onChange={setAUnit}
+                placeholder="unit name"
+                options={regiments.map((r) => ({ value: r.regiment, label: r.regiment, hint: `${r.rounds}rd` }))}
+              />
               <span className="cap">versus</span>
-              <select value={uB?.regiment ?? ''} onChange={(e) => setBUnit(e.target.value)} aria-label="Second unit">
-                {regiments.map((r) => <option key={r.regiment} value={r.regiment}>{r.regiment}</option>)}
-              </select>
+              <Picker
+                label="Second unit" width={220} value={uB?.regiment ?? null} onChange={setBUnit}
+                placeholder="unit name"
+                options={regiments.map((r) => ({ value: r.regiment, label: r.regiment, hint: `${r.rounds}rd` }))}
+              />
             </>
           )}
           <button className="gh" onClick={swap}>Swap</button>
