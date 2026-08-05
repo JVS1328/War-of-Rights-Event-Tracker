@@ -94,18 +94,18 @@ export function SummaryTab({
       <MatchupHead sb={sb} />
 
       <section className="kpis" style={{ borderTop: '1px solid var(--line)' }}>
-        <Cell label="Map" value={meta.map} />
-        <Cell label="Mode" value={meta.mode} />
-        <Cell label="Area" value={meta.area ?? '—'} />
-        <Cell label="Winner" value={meta.winner ?? '—'} />
-        <Cell label="Duration" value={fmtDuration(roundDurationSeconds(sb))} />
-        <Cell label="Round ended" value={whenOf(sb.recordedAt)} />
+        <Cell text label="Map" value={meta.map} />
+        <Cell text label="Mode" value={meta.mode} />
+        <Cell text label="Area" value={meta.area ?? '—'} />
+        <Cell text label="Winner" value={meta.winner ?? '—'} />
+        <Cell text label="Duration" value={fmtDuration(roundDurationSeconds(sb))} />
+        <Cell text label="Round ended" value={whenOf(sb.recordedAt)} />
         <Cell label="Pop @ start" value={String(meta.popRoundStart ?? '—')} />
         <Cell label="Pop @ peak" value={String(meta.popRoundPeak ?? '—')} />
         <Cell label="Pop @ end" value={String(meta.popRoundEnd ?? '—')} />
         <Cell label="Unique players" value={String(meta.popRoundMax ?? '—')} />
-        <Cell label="Morale USA" value={meta.moraleUsa ?? '—'} />
-        <Cell label="Morale CSA" value={meta.moraleCsa ?? '—'} />
+        <Cell text label="Morale USA" value={meta.moraleUsa ?? '—'} />
+        <Cell text label="Morale CSA" value={meta.moraleCsa ?? '—'} />
       </section>
 
       <section className="pb">

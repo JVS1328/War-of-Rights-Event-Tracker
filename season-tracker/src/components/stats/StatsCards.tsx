@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Drawer, EmptyHint, Pill } from '../ui';
+import { EmptyHint, Pill } from '../ui';
 import type { PlayerDetail, PlayerRoundRow, PlayerStatRow, PlayerType } from '../../stats/statsEngine';
 import { splitPlayerRounds, SPLIT_LABELS } from '../../stats/playerSplits';
 import { StanceBar } from '../ui/StanceBar';
@@ -285,9 +285,9 @@ function PerRoundTable({ rounds, onOpenRound }: { rounds: PlayerRoundRow[]; onOp
   );
 }
 
-// The round (scoreboard) drawer now lives in its own tabbed module; re-exported
-// here so existing imports (`./StatsDrawers`) keep working.
-export { ScoreboardDrawer } from './scoreboard/ScoreboardDrawer';
+// The round screen lives in its own tabbed module; re-exported here so the one
+// import site stays a single line.
+export { RoundScreen } from './scoreboard/RoundScreen';
 
 /**
  * The same four context slices units get, for a player: a good K/D means
@@ -344,19 +344,22 @@ const ARM_LABELS: { key: PlayerType; label: string }[] = [
   { key: 'arty', label: 'Artillery' },
 ];
 
-export function PlayerDrawer({
-  open,
-  onClose,
+export function PlayerScreen({
   detail,
   onOpenRound,
+  onOpenUnit,
+  onPickPlayer,
+  onCompare,
   type,
   onType,
   field = [],
 }: {
-  open: boolean;
-  onClose: () => void;
   detail: PlayerDetail | null;
   onOpenRound: (filename: string) => void;
+  /** Jump to the card for the unit this player is scored under. */
+  onOpenUnit?: (unit: string) => void;
+  onPickPlayer?: (key: string) => void;
+  onCompare?: (key: string) => void;
   type: PlayerType;
   onType: (t: PlayerType) => void;
   /** The leaderboard this player sits in, so each figure can carry its rank. */
@@ -375,27 +378,62 @@ export function PlayerDrawer({
     const i = sorted.findIndex((p) => p.key === detail.key);
     return i < 0 ? null : i + 1;
   };
-  const toggle = (
-    <div className="ctl">
-      <span className="cap">Branch</span>
-      <div className="seg" role="group" aria-label="Arm of service">
-        {ARM_LABELS.map(({ key, label }) => (
-          <button key={key} onClick={() => onType(key)} aria-pressed={type === key}>{label}</button>
-        ))}
-      </div>
-      <span className="rule" />
-      <span className="meta">from the in-game regiment</span>
-    </div>
-  );
+  // Alphabetical, because this is a name you are looking for rather than a
+  // ranking you are reading — the leaderboard is where rank order belongs.
+  const roster = [...field].sort((a, b) => a.name.localeCompare(b.name));
+
   return (
-    <Drawer
-      open={open}
-      onOpenChange={(o) => !o && onClose()}
-      title={detail?.name ?? 'Player'}
-      subtitle={detail ? `${detail.regiment} · ${detail.isArtillery ? 'Artillery' : 'Infantry'} · ${detail.steamId ?? 'no steam id'}` : undefined}
-      width={720}
-    >
-      {toggle}
+    <>
+      <div className="panel">
+        <div className="ctl">
+          <span className="cap">Player</span>
+          <select
+            value={detail?.key ?? ''}
+            onChange={(e) => onPickPlayer?.(e.target.value)}
+            aria-label="Player"
+            style={{ maxWidth: 320 }}
+          >
+            {roster.length === 0 && <option value="">No players imported</option>}
+            {roster.map((p) => (
+              <option key={p.key} value={p.key}>{p.name} — {p.regiment}</option>
+            ))}
+          </select>
+          {detail && onCompare && (
+            <button className="gh" onClick={() => onCompare(detail.key)}>Compare</button>
+          )}
+          <span className="rule" />
+          <span className="meta">{detail?.steamId ?? 'no steam id'}</span>
+        </div>
+      </div>
+
+      <div className="panel">
+        <header className="ph">
+          <div>
+            <div className="mid wor-name">{detail?.name ?? 'Player'}</div>
+            {detail && (
+              <div className="cap" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
+                {onOpenUnit ? (
+                  <button className="tag q" onClick={() => onOpenUnit(detail.regiment)}>{detail.regiment}</button>
+                ) : (
+                  <span className="tag q">{detail.regiment}</span>
+                )}
+                <span>{detail.isArtillery ? 'Artillery' : 'Infantry'}</span>
+                <span>{detail.rounds} round{detail.rounds === 1 ? '' : 's'}</span>
+              </div>
+            )}
+          </div>
+          <span className="rule" />
+        </header>
+      <div className="ctl">
+        <span className="cap">Branch</span>
+        <div className="seg" role="group" aria-label="Arm of service">
+          {ARM_LABELS.map(({ key, label }) => (
+            <button key={key} onClick={() => onType(key)} aria-pressed={type === key}>{label}</button>
+          ))}
+        </div>
+        <span className="rule" />
+        <span className="meta">from the in-game regiment</span>
+      </div>
       {!detail ? (
         <EmptyHint>
           {type === 'all' ? 'No data' : `No ${ARM_LABELS.find((a) => a.key === type)?.label.toLowerCase()} rounds for this player`}
@@ -474,6 +512,7 @@ export function PlayerDrawer({
           )}
         </div>
       )}
-    </Drawer>
+      </div>
+    </>
   );
 }

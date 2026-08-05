@@ -81,11 +81,11 @@ h2.cap svg, h3.cap svg, h4.cap svg { width: 12px; height: 12px; flex: none; opac
    this is the one rule that holds that line across components not yet ported —
    an unlayered declaration outranks Tailwind's layered `rounded-*` utilities,
    so a stray radius cannot survive. Remove this only when nothing emits one. */
-.app, .app *, .drawer, .drawer * { border-radius: 0 !important; }
+.app, .app * { border-radius: 0 !important; }
 
 /* Same for the soft-focus chrome: the ledger's focus state is a hairline, not
    a glow, and its overlays are flat. */
-.app *, .drawer * { box-shadow: none !important; backdrop-filter: none !important; }
+.app * { box-shadow: none !important; backdrop-filter: none !important; }
 
 /* ── ledger primitives ──────────────────────────────────────────────────── */
 
@@ -286,6 +286,12 @@ table.ledger tbody tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var
 .kpi:last-child { border-right: none; }
 .kpi .v { font-size: 26px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05; margin-top: 2px; }
 .kpi .h { font-size: 10px; color: var(--color-text-2); margin-top: 2px; }
+/* A value that is a word rather than a figure. Words need to wrap and do not
+   survive being set at display size in a 118px column. */
+.kpi .v.t {
+  font-size: 14px; letter-spacing: 0; line-height: 1.35;
+  overflow-wrap: anywhere; margin-top: 3px;
+}
 
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); }
 /* Every child is a column whether or not it carries the class. A bare child
@@ -350,19 +356,6 @@ details.panel > summary.ph::before {
   content: '▶'; font-size: 9px; color: var(--ink-3); width: 11px; flex: none;
 }
 details.panel[open] > summary.ph::before { content: '▼'; }
-
-/* A drawer: the same panel language, docked to the right and full height. On a
-   narrow screen it takes the whole width, because half a drawer is no drawer. */
-.drawer-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5); }
-.drawer {
-  position: fixed; inset-block: 0; right: 0; z-index: 50;
-  display: flex; flex-direction: column; width: 100%;
-  border-left: 1px solid var(--line); background: var(--surface);
-  outline: none;
-}
-@media (min-width: 640px) { .drawer { width: min(var(--drawer-w, 480px), 94vw); } }
-.drawer > .ph { flex: none; }
-.drawer-b { flex: 1; min-height: 0; overflow: auto; }
 
 /* A run of rounds as bars, oldest left. Won rounds in ink, lost ones ghosted —
    the shape of a season reads before any figure does. */
@@ -693,11 +686,7 @@ table.hm th, table.hm td { border: none; }
 .sr {
   display: grid; grid-template-columns: 58px 1fr 186px 1fr 58px;
   align-items: center; gap: 9px; padding: 6px 13px;
-  border-bottom: 1px solid var(--line); position: relative;
-}
-.sr::before {
-  content: ''; position: absolute; left: 50%; top: 0; bottom: 0;
-  width: 1px; background: var(--line); transform: translateX(-0.5px);
+  border-bottom: 1px solid var(--line);
 }
 .sr:hover { background: var(--raised); }
 .sv { font-size: 13.5px; font-weight: 600; }

@@ -1,6 +1,6 @@
-// Small presentational helpers shared by the player and round (scoreboard)
-// drawers. Kept here so the round drawer's tab files and PlayerDrawer don't
-// duplicate the same cell / cause-table / formatting primitives.
+// Small presentational helpers shared by the player and round screens. Kept
+// here so the round's tab files and the player card don't duplicate the same
+// cell / cause-table / formatting primitives.
 import type { ReactNode } from 'react';
 import type { Team } from '../../stats/types';
 import { formatPct, formatCompany } from '../../stats/labels';
@@ -51,12 +51,17 @@ export function fmtDuration(sec: number | null): string {
 
 export const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa') as 'usa' | 'csa';
 
-/** Labeled stat tile. `title` makes it a hover-help cell. */
-export function Cell({ label, value, title, hint }: { label: string; value: ReactNode; title?: string; hint?: ReactNode }) {
+/**
+ * Labeled stat tile. `title` makes it a hover-help cell; `text` says the value
+ * is a word rather than a figure, so it is set to be read instead of scanned.
+ */
+export function Cell({
+  label, value, title, hint, text = false,
+}: { label: string; value: ReactNode; title?: string; hint?: ReactNode; text?: boolean }) {
   return (
     <div className="kpi" title={title} style={title ? { cursor: 'help' } : undefined}>
       <div className="cap">{label}</div>
-      <div className="v">{value}</div>
+      <div className={text ? 'v t' : 'v'}>{value}</div>
       {hint && <div className="h">{hint}</div>}
     </div>
   );
