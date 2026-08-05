@@ -147,6 +147,22 @@ function NightBody({
     return imported.length ? rollupNight(imported, assignments, options) : null;
   }, [rounds, boundByRound, assignments, options]);
 
+  /**
+   * One set of figures for the night, not two.
+   *
+   * The scoreboard is richer wherever it exists — kills, ticket value, the
+   * stance splits — so it leads when a round is bound. But only the tracker
+   * knows the result: how many rounds each side took and who led them. Those
+   * two ride along rather than being lost to the swap, because they are the
+   * facts the night is actually about.
+   */
+  const spineRows = useMemo(() => {
+    if (!roll) return rows;
+    const won = rows.filter((r) => r.label === 'Rounds won');
+    const led = rows.filter((r) => r.label === 'Lead unit');
+    return [...won, ...roll.rows, ...led];
+  }, [roll, rows]);
+
   const points = useMemo(
     () => (pointSystem ? nightPoints(week, pointSystem, tokenUnits) : []),
     [week, pointSystem, tokenUnits],
@@ -282,8 +298,17 @@ function NightBody({
         </div>
       </Panel>
 
-      <Panel title="The night in numbers" right={<Hint>from the recorded results</Hint>}>
-        <Spine rows={rows} aSide="usa" bSide="csa" />
+      <Panel
+        title="The night in numbers"
+        right={<Hint>{roll ? `from ${roll.roundsImported} of 2 scoreboards` : 'from the recorded results'}</Hint>}
+      >
+        <Spine rows={spineRows} aSide="usa" bSide="csa" />
+        {!roll && (
+          <p className="note" style={{ padding: '11px 13px 13px' }}>
+            The night's recorded results. Bind a scoreboard to a round and these figures come from it instead,
+            with the stance splits, the per-unit stats and the killfeed alongside.
+          </p>
+        )}
       </Panel>
 
       {form.A && form.B && (form.A.in_form + form.A.skirm + form.A.oob > 0 || form.B.in_form + form.B.skirm + form.B.oob > 0) && (
@@ -309,11 +334,8 @@ function NightBody({
         </Panel>
       )}
 
-      {roll ? (
+      {roll && (
         <>
-          <Panel title="The night in scoreboards" right={<Hint>{`${roll.roundsImported} of 2 rounds imported`}</Hint>}>
-            <Spine rows={roll.rows} aSide="usa" bSide="csa" />
-          </Panel>
           <Panel title="Weapons across the night">
             <div className="cols pb">
               <CauseTable title="Team A killed with" data={roll.A.killsByCause} />
@@ -321,17 +343,14 @@ function NightBody({
               <CauseTable title="Team A died to" data={roll.A.casualtiesByCause} />
               <CauseTable title="Team B died to" data={roll.B.casualtiesByCause} />
             </div>
+            <p className="note" style={{ padding: '0 13px 13px' }}>
+              What one side killed with is mostly what the other died to. They differ where a death had no
+              killer in the feed — the environment, and anything the feed missed.
+            </p>
           </Panel>
           <UnitRoll roll={roll.A} />
           <UnitRoll roll={roll.B} />
         </>
-      ) : (
-        <Panel title="The night in scoreboards">
-          <EmptyHint>
-            No scoreboards bound to {week.name}. The figures above come from the night's recorded results — binding a
-            scoreboard to a round adds the stance splits, the per-unit stats and the killfeed.
-          </EmptyHint>
-        </Panel>
       )}
 
       <Rosters week={week} points={points} hasPoints={!!pointSystem} />

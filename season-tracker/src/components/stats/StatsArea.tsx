@@ -26,7 +26,7 @@ import { buildRoundAutofill, roundFieldUpdates } from '../../stats/eventBinding'
 import type { TeamNames, RoundAutofill } from '../../stats/eventBinding';
 import { weekIdsForScope, OVERALL_SCOPE, effectiveAliasMap, aliasMapBySource, scopedMapBySource } from '../../stats/statsBundle';
 import type { StatsBundleSeason } from '../../stats/statsBundle';
-import { PlayerDrawer, ScoreboardDrawer } from './StatsDrawers';
+import { PlayerScreen, RoundScreen } from './StatsCards';
 import { CompareView } from './CompareView';
 import { StatsOverview } from './StatsOverview';
 import { MapsScreen } from './MapsScreen';
@@ -43,7 +43,11 @@ export interface WeekRef extends NightWeek {
   id: string;
 }
 
-type SubTab = 'overview' | 'players' | 'regiments' | 'nights' | 'compare' | 'maps' | 'rounds' | 'import';
+type SubTab =
+  | 'overview' | 'players' | 'regiments' | 'nights' | 'compare' | 'maps' | 'rounds' | 'import'
+  // The three drill-downs. Screens, not drawers — a round's players tab alone
+  // carries eleven columns and never fitted a docked panel.
+  | 'round' | 'player' | 'unit';
 const TABS: SubTab[] = ['overview', 'players', 'regiments', 'nights', 'compare', 'maps', 'rounds', 'import'];
 
 const teamTone = (t: Team) => (t === 'USA' ? 'usa' : 'csa');
@@ -200,6 +204,8 @@ export function StatsPanel({
   const [glossary, setGlossary] = useState(false);
   /** A pair sent over from the Units screen's "Open comparison" control. */
   const [compareUnits, setCompareUnits] = useState<[string, string] | null>(null);
+  /** A player sent over from their card's Compare button. */
+  const [comparePlayer, setComparePlayer] = useState<string | null>(null);
   const [playerKey, setPlayerKey] = useState<string | null>(null);
   const [playerType, setPlayerType] = useState<PlayerType>('all');
   const [scoreboardId, setScoreboardId] = useState<string | null>(null);
@@ -208,17 +214,19 @@ export function StatsPanel({
   const [focusNonce, setFocusNonce] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Jump from a player's regiment to that regiment's panel in the Regiments tab.
+  // Open a unit's card. The Units list also reads focusRegiment to scroll to a
+  // panel, so both paths keep working off the one piece of state.
   const goToRegiment = (label: string) => {
     setFocusRegiment(label);
     setFocusNonce((n) => n + 1);
-    setTab('regiments');
+    setTab('unit');
   };
 
-  // Open a player card, resetting its role filter to "all".
+  // Open a player's card, resetting its role filter to "all".
   const openPlayer = (key: string) => {
     setPlayerType('all');
     setPlayerKey(key);
+    setTab('player');
   };
 
   // Season filter (whole-view): keep only scoreboards bound to a week in the
@@ -371,14 +379,30 @@ export function StatsPanel({
 
   const rounds = useMemo(() => computeRounds(sbs), [sbs]);
   const overview = useMemo(() => computeOverview(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
+  // Rounds in scope, newest first: what the round picker walks.
+  const sortedStored = useMemo(
+    () => [...stats.stored].sort((a, b) =>
+      (b.scoreboard.recordedAt ?? '').localeCompare(a.scoreboard.recordedAt ?? '')),
+    [stats.stored],
+  );
+  /** The unit whose card is open, defaulting to the top of the table. */
+  const focusedRegiment = useMemo(
+    () => regiments.find((r) => r.regiment === focusRegiment) ?? regiments[0] ?? null,
+    [regiments, focusRegiment],
+  );
+
+  // A card screen opened from the rail has nothing selected yet. Fall back to
+  // the obvious subject — the newest round, the top of the leaderboard — so the
+  // screen shows the thing you came to look at instead of an empty state.
+  const shownPlayerKey = playerKey ?? players[0]?.key ?? null;
   const playerDetail = useMemo(
-    () => (playerKey ? computePlayerDetail(sbs, playerKey, overallAssignments, { ...opts, type: playerType }) : null),
-    [playerKey, playerType, sbs, overallAssignments, opts],
+    () => (shownPlayerKey ? computePlayerDetail(sbs, shownPlayerKey, overallAssignments, { ...opts, type: playerType }) : null),
+    [shownPlayerKey, playerType, sbs, overallAssignments, opts],
   );
 
   const openRound = (filename: string) => {
     const s = stats.stored.find((x) => x.scoreboard.sourceFilename === filename);
-    if (s) setScoreboardId(s.id);
+    if (s) { setScoreboardId(s.id); setTab('round'); }
   };
   const applyRound = (weekId: string, round: 1 | 2, af: RoundAutofill) => {
     onApplyRound?.(weekId, roundFieldUpdates(round, af));
@@ -551,6 +575,7 @@ export function StatsPanel({
           regiments={regiments}
           initialUnit={compareUnits?.[0] ?? null}
           initialUnitB={compareUnits?.[1] ?? null}
+          initialPlayerKey={comparePlayer}
         />
       )}
 
@@ -566,32 +591,52 @@ export function StatsPanel({
           importMsg={importMsg}
           fileRef={fileRef}
           onPickFiles={onPickFiles}
-          onOpenScoreboard={setScoreboardId}
+          onOpenScoreboard={(id) => { setScoreboardId(id); setTab('round'); }}
         />
       )}
 
-      <PlayerDrawer
-        open={playerKey != null}
-        onClose={() => setPlayerKey(null)}
-        detail={playerDetail}
-        onOpenRound={openRound}
-        type={playerType}
-        onType={setPlayerType}
-        field={players}
-      />
-      <ScoreboardDrawer
-        open={scoreboardId != null}
-        onClose={() => setScoreboardId(null)}
-        stored={selectedStored}
-        onOpenPlayer={setPlayerKey}
-        weeks={weeks}
-        teamNames={teamNames}
-        validMaps={validMaps}
-        canBind={!readOnly && !!onApplyRound}
-        buildAutofill={(sb, flipped) => buildRoundAutofill(sb, teamNames, validMaps, flipped)}
-        onApply={applyRound}
-        resolveRegiment={resolveRegiment}
-      />
+      {tab === 'round' && (
+        <RoundScreen
+          stored={selectedStored ?? sortedStored[0] ?? null}
+          rounds={sortedStored}
+          onPickRound={setScoreboardId}
+          onOpenPlayer={openPlayer}
+          weeks={weeks}
+          teamNames={teamNames}
+          validMaps={validMaps}
+          canBind={!readOnly && !!onApplyRound}
+          buildAutofill={(sb: Scoreboard, flipped: boolean) => buildRoundAutofill(sb, teamNames, validMaps, flipped)}
+          onApply={applyRound}
+          resolveRegiment={resolveRegiment}
+        />
+      )}
+
+      {tab === 'player' && (
+        <PlayerScreen
+          detail={playerDetail}
+          onOpenRound={openRound}
+          onOpenUnit={goToRegiment}
+          onPickPlayer={(k) => { setPlayerType('all'); setPlayerKey(k); }}
+          onCompare={(k) => { setComparePlayer(k); setTab('compare'); }}
+          type={playerType}
+          onType={setPlayerType}
+          field={players}
+        />
+      )}
+
+      {tab === 'unit' && (
+        <UnitScreen
+          reg={focusedRegiment}
+          units={regiments}
+          onPick={(u) => { setFocusRegiment(u); setFocusNonce((n) => n + 1); }}
+          onCompare={(u) => { setCompareUnits([u, regiments.find((r) => r.regiment !== u)?.regiment ?? u]); setTab('compare'); }}
+          contextStats={focusedRegiment ? regimentContext[focusedRegiment.regiment] : undefined}
+          ticketShare={focusedRegiment ? regimentTicketShares[focusedRegiment.regiment] : undefined}
+          openPlayer={openPlayer}
+          openRound={openRound}
+        />
+      )}
+
     </div>
   );
 }
@@ -1418,6 +1463,80 @@ function RegRanked({
   );
 }
 
+/**
+ * The unit card: one unit's whole record, picked at the top.
+ *
+ * Reuses the panel the Units list draws, forced open — the figures and the
+ * breakdowns are the same question asked of one unit instead of all of them,
+ * and having two renderings of that would let them drift apart.
+ */
+function UnitScreen({
+  reg,
+  units,
+  onPick,
+  onCompare,
+  contextStats,
+  ticketShare,
+  openPlayer,
+  openRound,
+}: {
+  reg: RegimentStatRow | null;
+  units: RegimentStatRow[];
+  onPick: (unit: string) => void;
+  onCompare?: (unit: string) => void;
+  contextStats?: RegimentContextStats;
+  ticketShare?: TicketShare;
+  openPlayer: (key: string) => void;
+  openRound: (filename: string) => void;
+}) {
+  const named = [...units].sort((a, b) => a.regiment.localeCompare(b.regiment));
+  const noEdit: RegEdit = {
+    editMode: false, allRegiments: [], pending: {}, selected: new Set(),
+    stageMove: () => {}, toggleSelect: () => {}, rename: () => {}, merge: () => {}, removeRegiment: () => {},
+  };
+  return (
+    <>
+      <div className="panel">
+        <div className="ctl">
+          <span className="cap">Unit</span>
+          <select value={reg?.regiment ?? ''} onChange={(e) => onPick(e.target.value)} aria-label="Unit">
+            {named.length === 0 && <option value="">No units imported</option>}
+            {named.map((u) => <option key={u.regiment} value={u.regiment}>{u.regiment}</option>)}
+          </select>
+          {reg && onCompare && (
+            <button className="gh" onClick={() => onCompare(reg.regiment)}>Compare</button>
+          )}
+          <span className="rule" />
+          {reg && (
+            <span className="meta">
+              {reg.rounds} rounds · {reg.players} men seen · {Math.round(reg.avgPlayers)} fielded a round
+            </span>
+          )}
+        </div>
+      </div>
+      {!reg ? (
+        <Panel title="Unit card">
+          <EmptyHint>Import a scoreboard to see a unit's record</EmptyHint>
+        </Panel>
+      ) : (
+        <RegimentPanel
+          key={reg.regiment}
+          reg={reg}
+          contextStats={contextStats}
+          ticketShare={ticketShare}
+          openPlayer={openPlayer}
+          openRound={openRound}
+          edit={noEdit}
+          focusActive={false}
+          focusNonce={0}
+          field={units}
+          alwaysOpen
+        />
+      )}
+    </>
+  );
+}
+
 function RegimentPanel({
   reg,
   contextStats,
@@ -1430,6 +1549,7 @@ function RegimentPanel({
   combineTick,
   combined = false,
   field = [],
+  alwaysOpen = false,
 }: {
   reg: RegimentStatRow;
   contextStats?: RegimentContextStats;
@@ -1449,6 +1569,8 @@ function RegimentPanel({
   combined?: boolean;
   /** Every unit in view, so each figure can carry its rank in the field. */
   field?: RegimentStatRow[];
+  /** On the unit card there is one panel and nothing to collapse it for. */
+  alwaysOpen?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1488,9 +1610,9 @@ function RegimentPanel({
             {combined && <Pill tone="accent">combined</Pill>}
           </span>
         }
-        collapsible
-        defaultOpen={combined}
-        storageKey={combined ? undefined : `reg-panel-${reg.regiment}`}
+        collapsible={!alwaysOpen}
+        defaultOpen={combined || alwaysOpen}
+        storageKey={combined || alwaysOpen ? undefined : `reg-panel-${reg.regiment}`}
         openSignal={focusActive ? focusNonce : undefined}
         right={
           <>

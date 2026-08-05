@@ -176,9 +176,12 @@ const RAIL_NAV = [
   ]},
   { title: 'Player stats', items: [
     { key: 'stats-overview', label: 'Stats overview' },
+    { key: 'stats-round', label: 'Round matchup' },
     { key: 'stats-rounds', label: 'Rounds' },
     { key: 'stats-players', label: 'Players' },
+    { key: 'stats-player', label: 'Player card' },
     { key: 'stats-regiments', label: 'Units' },
+    { key: 'stats-unit', label: 'Unit card' },
     { key: 'stats-compare', label: 'Compare' },
     { key: 'stats-maps', label: 'Maps' },
   ]},
@@ -200,7 +203,10 @@ const STATS_SCREENS = new Set(
 /** Rail key → the sub-tab the stats panel should be showing. */
 const STATS_TAB_OF = {
   'stats-overview': 'overview',
+  'stats-round': 'round',
   'stats-rounds': 'rounds',
+  'stats-player': 'player',
+  'stats-unit': 'unit',
   'stats-players': 'players',
   'stats-regiments': 'regiments',
   'stats-compare': 'compare',
