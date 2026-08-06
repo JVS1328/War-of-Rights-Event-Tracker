@@ -10,6 +10,7 @@ import { Spine } from '../../ui/Spine';
 import { Scoreline } from '../../ui/Scoreline';
 import { StanceBar } from '../../ui/StanceBar';
 import { matchupScore, matchupRows, matchupKeys } from '../../../stats/roundMatchup';
+import { weaponLabel } from '../../../stats/labels';
 import type { Scoreboard } from '../../../stats/types';
 import type { StoredScoreboard } from '../../../stats/StatsRepository';
 import type { RoundAutofill } from '../../../stats/eventBinding';
@@ -147,7 +148,7 @@ export function SummaryTab({
             <tbody>
               {weaponKeys.map((w) =>
                 statRow(
-                  w,
+                  weaponLabel(w),
                   meta.deathsByWeapon.USA[w] ?? 0,
                   meta.deathsByWeapon.CSA[w] ?? 0,
                   usaWeaponTotal,

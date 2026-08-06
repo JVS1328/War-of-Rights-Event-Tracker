@@ -7,7 +7,7 @@
  * 3.00 K/D over two rounds is noise, and the prototype says so in the heading
  * rather than quietly filtering.
  */
-import { FORMATION_LABEL, TICKET_WEIGHT } from '../../stats/labels';
+import { FORMATION_LABEL, TICKET_WEIGHT, weaponLabel } from '../../stats/labels';
 import type { computeCombatTotals, Overview, PlayerStatRow, RoundSummary } from '../../stats/statsEngine';
 import type { Team } from '../../stats/types';
 
@@ -136,7 +136,10 @@ export function StatsOverview({
     .slice(0, 5);
 
   const weaponsFor = (team: Team): [string, number][] =>
-    Object.entries(combat.deathsByWeapon[team]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    Object.entries(combat.deathsByWeapon[team])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([w, v]) => [weaponLabel(w), v]);
   const stanceFor = (team: Team): [string, number][] => {
     const c = combat.casualties[team];
     return [
