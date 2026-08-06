@@ -133,7 +133,8 @@ const buildMapIndex = (weeks) => {
  * [0] teamA (int[])     [1] teamB (int[])
  * [2] r1Winner (0/1/2)  [3] r2Winner (0/1/2)   — 0=null, 1="A", 2="B"
  * [4] r1Map (int/-1)    [5] r2Map (int/-1)      — index into map array
- * [6] flags (bitmask)   — bit0=r1f, bit1=r2f, bit2=playoffs, bit3=singleRoundLeads
+ * [6] flags (bitmask)   — bit0=r1f, bit1=r2f, bit2=playoffs, bit3=singleRoundLeads,
+ *                         bit4=r1draw, bit5=r2draw, bit6=funRound
  * [7] leads ([la,lb,la1,lb1,la2,lb2]) — -1 for null, 0 if all null
  * [8] casualties ([c1a,c1b,c2a,c2b]) — 0 if all zero
  * [9] name (string)     — 0 if default "Week N"
@@ -151,7 +152,10 @@ const encodeWeek = (wk, i, u, m) => {
     | (wk.isPlayoffs ? 4 : 0)
     | (wk.isSingleRoundLeads ? 8 : 0)
     | (wk.round1Draw ? 16 : 0)
-    | (wk.round2Draw ? 32 : 0);
+    | (wk.round2Draw ? 32 : 0)
+    // Exhibition. Without its own bit a shared fun round comes back as a
+    // regular night, and then it pays points and moves Elo on the far side.
+    | (wk.isFunRound ? 64 : 0);
 
   const leads = [
     wk.leadA != null ? u.indexOf(wk.leadA) : -1,
@@ -257,6 +261,9 @@ const decodeWeek = (t, i, u, m) => {
     isSingleRoundLeads: !!(flags & 8),
     round1Draw: !!(flags & 16),
     round2Draw: !!(flags & 32),
+    // Links made before the bit existed carry no fun rounds to recover, so
+    // false is both the old behaviour and the right answer for them.
+    isFunRound: !!(flags & 64),
     leadA: L(0), leadB: L(1),
     leadA_r1: L(2), leadB_r1: L(3),
     leadA_r2: L(4), leadB_r2: L(5),

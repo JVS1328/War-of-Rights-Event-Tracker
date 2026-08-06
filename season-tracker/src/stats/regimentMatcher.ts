@@ -138,3 +138,20 @@ export function resolveRegiment(playerName: string, parsedList: RegimentListEntr
   const listMatch = matchPlayerToRegimentList(playerName, parsedList);
   return listMatch ?? extractRegimentTag(playerName);
 }
+
+/**
+ * A player → season regiment label lookup, or null when the player belongs to
+ * none. Manual assignments and season aliases live above this module, so a
+ * caller that has a season in hand supplies its own resolver; one that doesn't
+ * falls back to {@link tagRegimentResolver}.
+ *
+ * Steam id leads because it survives a name change — and because a player moved
+ * to another unit by hand keeps the old tag in their in-game name.
+ */
+export type RegimentResolver = (steamId: string | null, name: string) => string | null;
+
+/** The name-tag-only resolver: what a player's own name says they are. */
+export const tagRegimentResolver: RegimentResolver = (_steamId, name) => {
+  const tag = extractRegimentTag(name);
+  return tag === UNTAGGED ? null : tag;
+};

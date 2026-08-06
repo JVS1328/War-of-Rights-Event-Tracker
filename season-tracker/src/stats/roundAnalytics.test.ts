@@ -7,9 +7,11 @@ import {
   topTicketInflicted,
   topTicketReceived,
   topRegimentTicketInflicted,
+  topRegimentTicketReceived,
   firstAndLastDeath,
   computeNemeses,
 } from './roundAnalytics';
+import { tagRegimentResolver, type RegimentResolver } from './regimentMatcher';
 import type { Scoreboard, ScoreboardPlayer, Kill, ScoreboardMeta, Team, Formation } from './types';
 
 function mkPlayer(
@@ -193,6 +195,12 @@ describe('roundAnalytics', () => {
     expect(last).toBeNull();
   });
 
+  it('groups a round by name tag when no resolver is supplied', () => {
+    const rows = topLossRates(mkScoreboard(players), { minPlayers: 1 });
+    // 'Lone' has no bracket tag, so the first word stands in as one.
+    expect(rows.map((r) => r.regiment).sort()).toEqual(['1STTX', '2NDVA', 'LONE']);
+  });
+
   it('computes nemesis pairings, excluding self/environment and below threshold', () => {
     const kills = [
       mkKill('Hunter', 'Prey', '00:01:00'),
@@ -205,5 +213,66 @@ describe('roundAnalytics', () => {
     const rows = computeNemeses(mkScoreboard([], kills), { minKills: 2 });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ killer: 'Hunter', victim: 'Prey', count: 3 });
+  });
+});
+
+// Reassigning a player to another unit is an edit to who they count for, and
+// the round drawer's Players tab has always honoured it. These figures share
+// the drawer with it, so they have to read the round the same way — otherwise
+// the same unit shows one kill total under Players and a staler one under
+// Analytics, which is how the disagreement was found.
+describe('roundAnalytics under a season regiment resolver', () => {
+  // 'Lone' would be their own one-player unit by name; they have been moved
+  // to 1stTX by hand.
+  const assigned: RegimentResolver = (steamId, name) =>
+    steamId === 'Lone' ? '1STTX' : tagRegimentResolver(steamId, name);
+
+  it('counts a reassigned player under the unit they were moved to', () => {
+    const tx = topLossRates(mkScoreboard(players), { minPlayers: 2 }, assigned)
+      .find((r) => r.regiment === '1STTX')!;
+    expect(tx.players).toBe(3); // Alice, Bob, Lone
+    expect(tx.kills).toBe(9);   // 5 + 3 + 1
+    expect(tx.deaths).toBe(7);  // 2 + 4 + 1
+    expect(tx.lossRate).toBeCloseTo(7 / 3);
+  });
+
+  it('leaves the reassigned player out of their old unit entirely', () => {
+    const regiments = topLossRates(mkScoreboard(players), { minPlayers: 1 }, assigned)
+      .map((r) => r.regiment);
+    expect(regiments).not.toContain('LONE');
+  });
+
+  it('follows the reassignment into kill rates too', () => {
+    const tx = topKillRates(mkScoreboard(players), { minPlayers: 2 }, assigned)
+      .find((r) => r.regiment === '1STTX')!;
+    expect(tx.killRate).toBeCloseTo(3); // 9 kills / 3 players, was 8 / 2
+  });
+
+  it('labels an individual row with the resolved unit, not the name tag', () => {
+    const rows = topIndividualKills(mkScoreboard(players), undefined, assigned);
+    expect(rows.find((r) => r.name === 'Lone')?.regiment).toBe('1STTX');
+    const deaths = topIndividualDeaths(mkScoreboard(players), undefined, assigned);
+    expect(deaths.find((r) => r.name === 'Lone')?.regiment).toBe('1STTX');
+  });
+
+  it('folds a reassigned player\'s ticket damage into their new unit', () => {
+    const sb = mkScoreboard([
+      mkPlayer('1stTX | Alice', 'USA', 0, 2, { inForm: 2 }),
+      mkPlayer('Lone', 'USA', 0, 1, { oob: 1 }),
+    ]);
+    const byTag = topRegimentTicketReceived(sb);
+    expect(byTag.map((r) => r.regiment).sort()).toEqual(['1STTX', 'LONE']);
+
+    const resolved = topRegimentTicketReceived(sb, undefined, assigned);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toMatchObject({ regiment: '1STTX', unitPlayers: 2 });
+    // The whole round's damage now sits on one unit rather than two.
+    expect(resolved[0].damage).toBe(byTag[0].damage + byTag[1].damage);
+  });
+
+  it('resolves the unit on the first and last death of the round', () => {
+    const sb = mkScoreboard(players, [mkKill('2ndVA | Carol', 'Lone', '00:01:00')]);
+    expect(firstAndLastDeath(sb, assigned).first?.regiment).toBe('1STTX');
+    expect(firstAndLastDeath(sb).first?.regiment).toBe('LONE');
   });
 });
