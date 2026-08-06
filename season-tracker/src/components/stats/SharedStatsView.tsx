@@ -39,7 +39,8 @@ export default function SharedStatsView({
   }, [bundle.mapStats, seasonScope]);
 
   return (
-    <div className="app">
+    // `solo` because there is no rail here — see .app.solo in ledger.css.
+    <div className="app solo">
       <div className="main">
         <div className="crumb">
           <BarChart3 className="w-4 h-4" />

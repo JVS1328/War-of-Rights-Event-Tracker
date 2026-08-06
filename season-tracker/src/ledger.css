@@ -158,6 +158,13 @@ h2.cap svg, h3.cap svg, h4.cap svg { width: 12px; height: 12px; flex: none; opac
   min-height: 100vh;
 }
 
+/* A shared read-only page has no rail, so its main column is the whole grid.
+   Without this the lone .main lands in the rail's 198px track and every panel
+   reads as a narrow strip down the left with the page empty beside it. The
+   measured body is centred, since there is no rail to sit it against. */
+.app.solo { grid-template-columns: minmax(0, 1fr); }
+.app.solo .body { margin-inline: auto; }
+
 .rail {
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-1);
