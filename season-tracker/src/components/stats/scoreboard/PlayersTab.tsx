@@ -19,7 +19,7 @@ import {
   TICKET_INFLICTED_LABEL,
   TICKET_RECEIVED_LABEL,
 } from '../../../stats/labels';
-import { extractRegimentTag, UNTAGGED } from '../../../stats/regimentMatcher';
+import { tagRegimentResolver } from '../../../stats/regimentMatcher';
 import {
   type PlayerSort,
   type KillStance,
@@ -55,11 +55,9 @@ function formatTicket(avg: number | null): string {
   return avg == null ? '—' : avg.toFixed(1);
 }
 
-/** Name-tag fallback when no season resolver is supplied. */
-const tagResolver: RegimentResolver = (_steamId, name) => {
-  const t = extractRegimentTag(name);
-  return t === UNTAGGED ? null : t;
-};
+/** Name-tag fallback when no season resolver is supplied — the same one the
+ *  Analytics tab falls back to, so the two never disagree by default. */
+const tagResolver = tagRegimentResolver;
 
 export function PlayersTab({
   sb,

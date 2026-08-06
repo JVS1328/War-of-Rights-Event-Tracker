@@ -63,7 +63,9 @@ export function RoundScreen({
   canBind?: boolean;
   buildAutofill?: (sb: Scoreboard, flipped: boolean) => RoundAutofill;
   onApply?: (weekId: string, round: 1 | 2, af: RoundAutofill) => void;
-  /** Season regiment resolver, so the Players tab "unit" grouping matches the Regiments tab. */
+  /** Season regiment resolver, so the Players and Analytics tabs read a round
+   *  the way the season does — matching the Regiments tab, and following a
+   *  player who has been reassigned to another unit by hand. */
   resolveRegiment?: RegimentResolver;
 }) {
   const [tab, setTab] = useState<Tab>('summary');
@@ -156,7 +158,9 @@ export function RoundScreen({
             <PlayersTab sb={sb} onOpenPlayer={onOpenPlayer} resolveRegiment={resolveRegiment} />
           )}
           {tab === 'killfeed' && <KillfeedTab sb={sb} onOpenPlayer={onOpenPlayer} />}
-          {tab === 'analytics' && <AnalyticsTab sb={sb} onOpenPlayer={onOpenPlayer} />}
+          {tab === 'analytics' && (
+            <AnalyticsTab sb={sb} onOpenPlayer={onOpenPlayer} resolveRegiment={resolveRegiment} />
+          )}
         </div>
       )}
     </>

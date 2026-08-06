@@ -5,6 +5,7 @@
 // teams are 'USA'/'CSA' strings, and the killfeed uses `killer` (not
 // `killerName`). All functions are pure so they can be unit-tested in isolation.
 import type { ScoreboardPlayer, RosterEntry, Kill } from '../../../stats/types';
+import type { RegimentResolver } from '../../../stats/regimentMatcher';
 
 export type PlayerSort = 'unit' | 'name' | 'kills' | 'deaths' | 'kd';
 
@@ -153,8 +154,10 @@ export interface RegimentGroupModel {
   players: ScoreboardPlayer[];
 }
 
-/** Resolve a player's season regiment, mapping the untagged sentinel to null. */
-export type RegimentResolver = (steamId: string | null, name: string) => string | null;
+/** Resolve a player's season regiment, mapping the untagged sentinel to null.
+ *  Canonical definition lives with the matcher; re-exported here because the
+ *  drawer's tabs have always imported it from this module. */
+export type { RegimentResolver };
 
 /** Bucket players by their season-resolved regiment — the same label the
  *  Regiments tab shows, so the round drawer's "sort by unit" stays in sync with

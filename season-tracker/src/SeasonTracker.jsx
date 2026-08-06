@@ -1328,6 +1328,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const unitPerformances = {};
 
     weeksToProcess.forEach(week => {
+      // Exhibition — a fun round's result is nobody's win or loss, so it can't
+      // be read as a teammate's doing either.
+      if (week.isFunRound) return;
+
       const isPlayoffs = week.isPlayoffs || false;
       const isSingleRoundLeads = week.isSingleRoundLeads || false;
 
@@ -4704,6 +4708,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
 
             for (const season of seasons) {
               for (const week of season.weeks || []) {
+                // Exhibition — it sits beside each unit's Elo here, and a fun
+                // round is in neither figure.
+                if (week.isFunRound) continue;
                 const isPlayoffs = !!week.isPlayoffs;
                 const isSingleRoundLeads = !!week.isSingleRoundLeads;
                 const teamA = week.teamA || [];

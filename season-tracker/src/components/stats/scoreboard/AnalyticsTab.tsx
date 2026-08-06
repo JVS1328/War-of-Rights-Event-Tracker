@@ -22,6 +22,8 @@ import {
   computeNemeses,
 } from '../../../stats/roundAnalytics';
 import { TICKET_INFLICTED_LABEL, TICKET_RECEIVED_LABEL } from '../../../stats/labels';
+import { tagRegimentResolver } from '../../../stats/regimentMatcher';
+import type { RegimentResolver } from './playersModel';
 import { TicketPct } from '../drawerPrimitives';
 import type {
   UnitRateRow,
@@ -335,26 +337,32 @@ function NemesisRows({
 export function AnalyticsTab({
   sb,
   onOpenPlayer,
+  resolveRegiment,
 }: {
   sb: Scoreboard;
   onOpenPlayer: (key: string) => void;
+  /** Season regiment resolver, so every unit figure here counts a reassigned
+   *  player under the unit they were moved to — the same attribution the
+   *  Players tab groups by. Falls back to the name tag without one. */
+  resolveRegiment?: RegimentResolver;
 }) {
   const analytics = useMemo(() => {
-    const { first, last } = firstAndLastDeath(sb);
+    const resolve = resolveRegiment ?? tagRegimentResolver;
+    const { first, last } = firstAndLastDeath(sb, resolve);
     return {
-      lossRates: topLossRates(sb, { minPlayers: 2 }),
-      killRates: topKillRates(sb, { minPlayers: 2 }),
-      topKills: topIndividualKills(sb),
-      topDeaths: topIndividualDeaths(sb),
-      ticketInflictedPlayers: topTicketInflicted(sb),
-      ticketReceivedPlayers: topTicketReceived(sb),
-      ticketInflictedRegiments: topRegimentTicketInflicted(sb),
-      ticketReceivedRegiments: topRegimentTicketReceived(sb),
+      lossRates: topLossRates(sb, { minPlayers: 2 }, resolve),
+      killRates: topKillRates(sb, { minPlayers: 2 }, resolve),
+      topKills: topIndividualKills(sb, undefined, resolve),
+      topDeaths: topIndividualDeaths(sb, undefined, resolve),
+      ticketInflictedPlayers: topTicketInflicted(sb, undefined, resolve),
+      ticketReceivedPlayers: topTicketReceived(sb, undefined, resolve),
+      ticketInflictedRegiments: topRegimentTicketInflicted(sb, undefined, resolve),
+      ticketReceivedRegiments: topRegimentTicketReceived(sb, undefined, resolve),
       nemeses: computeNemeses(sb, { minKills: 2 }),
       firstDeath: first,
       lastDeath: last,
     };
-  }, [sb]);
+  }, [sb, resolveRegiment]);
 
   const hasAny =
     analytics.topKills.length > 0 ||
