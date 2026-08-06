@@ -21,8 +21,13 @@ const pct = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 
 const sum = (m: Record<string, number>, keys: string[]) =>
   keys.reduce((t, k) => t + (m[k] ?? 0), 0);
 
-/** Weapon keys the overlay reports for artillery. */
-const ARTILLERY_KEYS = ['canister', 'shell', 'round'];
+/**
+ * Weapon keys the guns account for: canister and shell, and nothing else. The
+ * meta block's `round` key is the smoothbore's round ball — an infantry
+ * projectile — not artillery round shot, and counting it here inflated every
+ * artillery figure by whatever the muskets did.
+ */
+const ARTILLERY_KEYS = ['canister', 'shell'];
 
 export interface MatchupScore {
   /** Enemy men this side put down — the objective in a ticket mode. */
@@ -106,7 +111,7 @@ export function matchupRows(sb: Scoreboard): (SpineRow | SpineTextRow)[] {
   if (uArt || cArt) {
     rows.push({
       label: 'Artillery deaths',
-      sub: 'canister, shell, round shot',
+      sub: 'canister and shell',
       a: uArt,
       b: cArt,
       lower: true,

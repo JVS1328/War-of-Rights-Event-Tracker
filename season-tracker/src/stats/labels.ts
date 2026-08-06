@@ -7,6 +7,30 @@ export const FORMATION_LABEL: Record<Formation, string> = {
   oob: 'Out of Line',
 };
 
+/**
+ * Display names for the meta block's deaths-by-weapon keys, which are terse
+ * enough to be read as something they aren't: `round` is the smoothbore's
+ * round ball, an infantry projectile, and nothing to do with artillery round
+ * shot. Only canister and shell come from the guns.
+ */
+export const WEAPON_LABEL: Record<string, string> = {
+  canister: 'Canister',
+  shell: 'Shell',
+  minie: 'Minié ball',
+  round: 'Round ball',
+  compression: 'Compression bullet',
+  pellet: 'Buckshot',
+  pistol: 'Pistol',
+  hexagonal: 'Hexagonal bullet',
+  melee: 'Melee',
+  env: 'Environment',
+};
+
+/** A weapon key's display name; an unknown key is capitalised as it stands. */
+export function weaponLabel(key: string): string {
+  return WEAPON_LABEL[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 /** Short labels for dense table headers. */
 export const FORMATION_SHORT: Record<Formation, string> = {
   in_form: 'IF',

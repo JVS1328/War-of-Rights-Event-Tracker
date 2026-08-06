@@ -124,17 +124,36 @@ describe('matchupRows', () => {
     expect(findRow(sb, 'Artillery deaths')).toBeUndefined();
   });
 
-  it('sums canister, shell and round shot into one artillery row', () => {
+  it('sums canister and shell into one artillery row', () => {
     const sb = board({
-      usaWeapons: { canister: 16, shell: 22, round: 11, minie: 121 },
-      csaWeapons: { canister: 8, shell: 3, round: 6 },
+      usaWeapons: { canister: 16, shell: 22, minie: 121 },
+      csaWeapons: { canister: 8, shell: 3 },
     });
     const r = findRow(sb, 'Artillery deaths')!;
     if (!isTextRow(r)) {
-      expect(r.a).toBe(49);
-      expect(r.b).toBe(17);
+      expect(r.a).toBe(38);
+      expect(r.b).toBe(11);
       expect(spineRow(r).winner).toBe('b'); // fewer lost to guns
     }
+  });
+
+  it('leaves round ball out of it — that is a musket, not a gun', () => {
+    // The meta block's `round` key is the smoothbore's round ball. Counting it
+    // as artillery put every musket death on the guns' tab.
+    const sb = board({
+      usaWeapons: { canister: 10, round: 200 },
+      csaWeapons: { canister: 10, round: 4 },
+    });
+    const r = findRow(sb, 'Artillery deaths')!;
+    if (!isTextRow(r)) {
+      expect(r.a).toBe(10);
+      expect(r.b).toBe(10);
+    }
+  });
+
+  it('has no artillery row for a round the guns never touched', () => {
+    const sb = board({ usaWeapons: { round: 40, minie: 60 }, csaWeapons: { round: 25 } });
+    expect(findRow(sb, 'Artillery deaths')).toBeUndefined();
   });
 
   it('adds morale as a text row only when the round recorded it', () => {

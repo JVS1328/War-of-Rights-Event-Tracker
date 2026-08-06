@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatCompany, ticketDamage, pctShare, formatPct } from './labels';
+import { formatCompany, ticketDamage, pctShare, formatPct, weaponLabel } from './labels';
 
 describe('ticketDamage', () => {
   it('weights In Formation·1 + Skirmish·3 + Out of Line·5', () => {
@@ -51,5 +51,25 @@ describe('formatCompany', () => {
 
   it('falls back to the original when the value is only "Company"', () => {
     expect(formatCompany('Company')).toBe('Company');
+  });
+});
+
+describe('weaponLabel', () => {
+  it('names the round ball for what it is, not artillery round shot', () => {
+    expect(weaponLabel('round')).toBe('Round ball');
+  });
+
+  it('names the two the guns actually fire', () => {
+    expect(weaponLabel('canister')).toBe('Canister');
+    expect(weaponLabel('shell')).toBe('Shell');
+  });
+
+  it('spells out the terse keys', () => {
+    expect(weaponLabel('minie')).toBe('Minié ball');
+    expect(weaponLabel('env')).toBe('Environment');
+  });
+
+  it('capitalises a key it has never seen rather than dropping it', () => {
+    expect(weaponLabel('rocket')).toBe('Rocket');
   });
 });
