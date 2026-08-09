@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target, Flag, Train, Waves, Shield, Package, Coins, Users } from 'lucide-react';
+import { HelpCircle, X, ChevronDown, ChevronRight, Map, Swords, Trophy, Zap, Clock, Target, Flag, Train, Waves, Shield, Package, Coins, Users, ScrollText } from 'lucide-react';
 
 const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
   const isGrand = campaignStyle === 'grand';
@@ -12,6 +12,8 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
     gcCombat: false,
     gcReplenishGarrison: false,
     gcVictory: false,
+    // Shared sections
+    dispatch: false,
     // Legacy sections
     overview: !isGrand,
     howToPlay: false,
@@ -235,6 +237,29 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
               </Section>
             </>
           )}
+
+          <Section id="dispatch" title="Turn Dispatch — the end-of-turn write-up" icon={ScrollText}>
+            <p className="mb-3">
+              The <strong className="text-brass-400">Dispatch</strong> button in the top bar reads a turn back
+              as a period field report: the weather and light each battle was fought under, who led the attack,
+              what it cost both sides in men and SP, what changed hands, and where the war stands heading
+              into the next month.
+            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>It opens on its own when you {isGrand ? 'roll into a new month' : 'click "Advance Turn"'},
+                  showing the turn that just closed.</li>
+              <li>Use the arrows in the footer to page back through earlier turns.</li>
+              <li><strong>Copy for Discord</strong> puts the whole dispatch on your clipboard with markdown
+                  formatting intact — paste it straight into your campaign channel.</li>
+              <li><strong>Copy + map link</strong> does the same and appends a share link to the live map,
+                  so readers can click through to the current campaign state.</li>
+            </ul>
+            <p className="mt-3 text-mist-400 text-xs">
+              The wording varies from battle to battle but never changes for the same battle — a dispatch you
+              posted last week still matches what the tracker shows today.
+            </p>
+          </Section>
+
           <Section id="overview" title={isGrand ? 'Legacy Campaign Notes' : 'What is the Campaign Tracker?'} icon={Map}>
             <p className="mb-3">
               The <strong className="text-brass-400">Campaign Tracker</strong> is a strategic meta-game layer for War of Rights events.
@@ -280,6 +305,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                   <li>Moves the campaign date forward 2 months</li>
                   <li>Generates SP for each side based on controlled territories</li>
                   <li>Reduces ability cooldowns</li>
+                  <li>Opens the Turn Dispatch for the turn that just closed, ready to copy into Discord</li>
                 </ul>
               </div>
             </div>
