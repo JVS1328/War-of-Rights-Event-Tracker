@@ -1,14 +1,13 @@
 /**
- * Turn Dispatch — the end-of-turn summary.
+ * Turn Dispatch: the end-of-turn summary.
  *
  * Takes the battle records belonging to a single turn and writes them up as a
- * field dispatch: who marched, who bled, what changed hands, and where the war
- * stands as the armies step off into the next month. The structured result is
- * rendered by TurnSummary.jsx and can be flattened to Discord-ready text with
- * `formatTurnSummaryText`.
+ * field dispatch. Who marched, who bled, what changed hands, and how the war
+ * looks as the armies step off into the next month. TurnSummary.jsx renders the
+ * structured result; `formatTurnSummaryText` flattens it to Discord text.
  *
  * Everything here is pure and deterministic. Word choice varies from battle to
- * battle, but every choice is seeded off stable ids — the dispatch you pasted
+ * battle, but every choice is seeded off stable ids, so the dispatch you pasted
  * into Discord last week still matches the one on screen today.
  */
 
@@ -19,7 +18,7 @@ import { WEATHER_CONDITIONS, TIME_CONDITIONS } from './battleConditions';
 // DETERMINISTIC VARIATION
 // ============================================================================
 
-/** FNV-1a. Small, fast, and stable across sessions — which is the point. */
+/** FNV-1a. Small, fast, and stable across sessions, which is the point. */
 function hashString(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -57,7 +56,7 @@ const num = (n) => (n || 0).toLocaleString('en-US');
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // ============================================================================
-// VOICE — how each side gets talked about
+// VOICE: how each side gets talked about
 // ============================================================================
 
 const SIDE_ADJECTIVE = { USA: 'Federal', CSA: 'Confederate', NEUTRAL: 'neutral' };
@@ -70,7 +69,7 @@ const SIDE_ARMY = {
   CSA: ['the Confederates', 'the Rebel columns', 'the boys in butternut', 'the Confederate brigades'],
 };
 
-/** "the Federals" / "the Rebel columns" — varied, but stable per seed. */
+/** "the Federals" / "the Rebel columns", varied but stable per seed. */
 const army = (side, seed) => pick(SIDE_ARMY[side] || ['the army'], seed);
 const adjective = (side) => SIDE_ADJECTIVE[side] || side;
 const plural = (side) => SIDE_PLURAL[side] || side;
@@ -93,7 +92,7 @@ const SEASON_LINES = {
   ],
   summer: [
     'Dust hangs behind every column, and the canteens run dry before noon.',
-    'High summer — the heat puts down nearly as many men as the volleys do.',
+    'High summer, and the heat puts down nearly as many men as the volleys do.',
     'Wheat stands ripe in fields that will be trampled flat before the month is out.',
   ],
   autumn: [
@@ -110,17 +109,38 @@ function seasonOf(month) {
   return 'autumn';
 }
 
-const WEATHER_PHRASE = {
-  clear: ['Clear skies', 'A hard blue sky', 'Fine weather'],
-  rain: ['A steady rain', 'Rain since before dawn', 'Wet ground and falling rain'],
-  inclement: ['A downpour', 'Rain coming down in sheets', 'Weather fit to drown a man'],
+const WEATHER_CLAUSE = {
+  clear: ['The sky stayed clear', 'Fine weather held', 'There was not a cloud over the field'],
+  rain: ['A steady rain came down', 'It had rained since before dawn', 'Rain fell through the morning'],
+  inclement: [
+    'Rain came down in sheets',
+    'A downpour turned the ground to soup',
+    'The weather was foul enough to drown a man',
+  ],
 };
 
-const TIME_PHRASE = {
-  dawn: 'at first light',
-  standard: 'in the full of the day',
-  dusk: 'as the light failed',
-  night: 'in pitch darkness',
+// Several stems per time of day, or every dispatch opens the same way.
+const LIGHT_CLAUSE = {
+  dawn: [
+    'the fighting opened at first light',
+    'the first volleys came at dawn',
+    'the lines went in before the mist had burned off',
+  ],
+  standard: [
+    'the fighting opened in the full of the day',
+    'the action ran through the middle of the day',
+    'the lines went in with the sun high',
+  ],
+  dusk: [
+    'the fighting opened as the light failed',
+    'the action ran on into the dusk',
+    'the last of the light went while they fought',
+  ],
+  night: [
+    'the fighting opened in pitch darkness',
+    'they went at it blind in the dark',
+    'the action carried on by muzzle flash',
+  ],
 };
 
 // ============================================================================
@@ -147,7 +167,7 @@ const ATTACKER_WON = [
 const ATTACKER_LOST = [
   'and were thrown back',
   'and broke on the defence',
-  'and were repulsed with the field left to the defenders',
+  'and left the field to the defenders',
   'and could not budge them',
   'and came apart short of the objective',
 ];
@@ -162,12 +182,12 @@ const SCALE_LABELS = [
 const LOPSIDED = [
   'It was one-sided business from the first volley.',
   'The losing side paid for every yard and got nothing for it.',
-  'The ledger was never close.',
+  'One side lost better than twice what the other did.',
 ];
 
 const NEAR_RUN = [
   'It was a near-run thing, decided by minutes.',
-  'A hand-width either way and the result flips.',
+  'Either side could have had it.',
   'Both sides walked off convinced they had nearly had it.',
 ];
 
@@ -205,40 +225,44 @@ function abilityName(campaign, side) {
   return campaign?.abilities?.[side]?.name || fallback[side] || 'their special order';
 }
 
-/** Weather / light / terrain scene-setter for one battle. */
+/**
+ * Weather, light, and terrain scene-setter for one battle. The map name is
+ * already in the engagement's headline, so this line only adds what the
+ * headline can't: the sky, the light, and the lie of the ground.
+ *
+ * Standard battles store condition ids; Grand Campaign battles store the
+ * rolled condition objects. Both carry the same ids underneath.
+ */
 function sceneLine(battle, seed) {
-  const parts = [];
+  const weatherId = battle.conditions?.weather || battle.weather?.id || null;
+  const timeId = battle.conditions?.time || battle.time?.id || null;
 
-  const weatherId = battle.conditions?.weather;
-  const timeId = battle.conditions?.time;
+  const weather = weatherId
+    ? pick(WEATHER_CLAUSE[weatherId] || [WEATHER_CONDITIONS[weatherId]?.name], seed + ':w')
+    : null;
+  const light = timeId
+    ? (LIGHT_CLAUSE[timeId]
+        ? pick(LIGHT_CLAUSE[timeId], seed + ':t')
+        : TIME_CONDITIONS[timeId]
+          ? `the fighting opened at ${TIME_CONDITIONS[timeId].name.toLowerCase()}`
+          : null)
+    : null;
+  const terrainWord = battle.terrainType ? String(battle.terrainType).toLowerCase() : null;
+  const terrain = terrainWord ? `${terrainWord} ground` : null;
 
-  // Grand Campaign stores resolved condition objects; standard battles store ids.
-  const weatherLabel = weatherId
-    ? pick(WEATHER_PHRASE[weatherId] || [WEATHER_CONDITIONS[weatherId]?.name], seed + ':w')
-    : battle.weather?.name || null;
-  const timeLabel = timeId
-    ? TIME_PHRASE[timeId] || TIME_CONDITIONS[timeId]?.name
-    : battle.time?.name
-      ? `at ${battle.time.name.toLowerCase()}`
-      : null;
-
-  if (weatherLabel) parts.push(weatherLabel);
-  if (timeLabel) parts.push(timeLabel);
-
-  // The map is already in the engagement's headline — the scene line only
-  // adds what the headline can't: sky, light, and the lie of the ground.
-  const head = parts.length ? parts.join(', ') : null;
-  const terrain = battle.terrainType ? `${String(battle.terrainType).toLowerCase()} ground` : null;
-
-  if (head && terrain) return `${head} — ${terrain}.`;
-  if (head) return `${head}.`;
-  if (terrain) return `${capitalize(terrain)}.`;
+  if (weather && light && terrain) return `${weather}, and ${light} over ${terrain}.`;
+  if (weather && light) return `${weather}, and ${light}.`;
+  if (weather && terrain) return `${weather} on ${terrain}.`;
+  if (light && terrain) return `${capitalize(light)} over ${terrain}.`;
+  if (weather) return `${weather}.`;
+  if (light) return `${capitalize(light)}.`;
+  if (terrain) return `The ground was ${terrainWord}.`;
   return null;
 }
 
 /**
- * Regiment names in this league run from "4th NC" to "CQB". Numbered ones
- * want a definite article; initialisms very much do not.
+ * Some regiment names are numbered ("4th NC"), others are initialisms ("CQB").
+ * Numbered ones want a definite article; initialisms very much do not.
  */
 const unitName = (name) => (/^\d/.test(name) ? `the ${name}` : name);
 
@@ -297,11 +321,11 @@ function narrateStandardBattle(campaign, battle, territory, index) {
       seed + ':bill'
     );
     const spClause = spEnabled
-      ? ` — ${num(attackerSP)} SP off ${capitalOf(attacker)}'s ledger, ` +
-        `${num(defenderSP)} off ${capitalOf(defender)}'s`
+      ? ` That cost ${capitalOf(attacker)} ${num(attackerSP)} SP and ` +
+        `${capitalOf(defender)} ${num(defenderSP)}.`
       : '';
     cost = `${opener} ${num(attackerCasualties)} ${plural(attacker)} against ` +
-      `${num(defenderCasualties)} ${plural(defender)}${spClause}.`;
+      `${num(defenderCasualties)} ${plural(defender)}.${spClause}`;
   } else if (spEnabled && (attackerSP || defenderSP)) {
     cost = `No returns were filed, but the supply trains still paid: ` +
       `${num(attackerSP)} SP ${adjective(attacker)}, ${num(defenderSP)} SP ${adjective(defender)}.`;
@@ -323,11 +347,11 @@ function narrateStandardBattle(campaign, battle, territory, index) {
     const usedBy = battle.abilityUsed;
     const label = abilityName(campaign, usedBy);
     if (usedBy === 'CSA') {
-      ability = `${label} kept the wagons rolling — the ${adjective(usedBy)} reckoning was halved.`;
+      ability = `${label} kept the wagons rolling and cut the ${adjective(usedBy)} reckoning in half.`;
     } else if (usedBy === 'USA' && attackerWon) {
-      ability = `${label} was in Federal hands before the first shot; the Confederacy paid three times over for it.`;
+      ability = `Federal officers had ${label} before the first shot, and the Confederacy paid three times over for it.`;
     } else if (usedBy === 'USA') {
-      ability = `${label} bought nothing but the ground staying out of Southern hands.`;
+      ability = `${label} bought nothing except keeping the ground out of Southern hands.`;
     } else {
       ability = `${label} was spent on this one.`;
     }
@@ -336,14 +360,14 @@ function narrateStandardBattle(campaign, battle, territory, index) {
   // --- Sentence 4: what it bought ----------------------------------------
   let consequence;
   if (winner === 'NEUTRAL') {
-    consequence = `${name} stays neutral ground — nobody's colours fly over it tonight.`;
+    consequence = `${name} stays neutral ground, and nobody's colours fly over it tonight.`;
   } else if (changedHands && attackerWon) {
     consequence = `${name} changes hands. ${num(vp)} VP to the ${adjective(winner)} column` +
       (defenderCommander ? `, and ${unitName(defenderCommander)} falls back off the position.` : '.');
   } else if (changedHands && !attackerWon) {
     // A failed attack on neutral ground handed to the defender by the rules.
-    consequence = `The ground passes to the ${adjective(winner)} side by default — ` +
-      `${num(vp)} VP the attack was supposed to take, gone the wrong way.`;
+    consequence = `The ground passes to the ${adjective(winner)} side by default. ` +
+      `The ${num(vp)} VP the attack was meant to take went the other way instead.`;
   } else if (!attackerWon) {
     consequence = defenderCommander
       ? `The colours over ${name} do not change; ${unitName(defenderCommander)} still held the position when the firing died.`
@@ -439,7 +463,7 @@ function narrateGrandBattle(campaign, battle, index) {
 
   const wipeLine = wipes.length
     ? wipes.map(w =>
-        `${w.name} ceased to exist as a fighting formation — ${w.vp} VP to the ${adjective(w.by)} cause.`
+        `${w.name} ceased to exist as a fighting formation, worth ${w.vp} VP to the ${adjective(w.by)} cause.`
       ).join(' ')
     : null;
 
@@ -581,7 +605,7 @@ function momentumLine(standings, engagements, seed) {
   if (engagements.length === 0) {
     return pick([
       'No general engagement was fought this turn. The pickets traded shots and the staff traded paper.',
-      'A quiet turn — foraging parties, drill, and the endless business of keeping an army fed.',
+      'A quiet turn, spent foraging and drilling while the commissary caught up.',
       'Nothing came to a general action. Both armies spent the month looking at each other.',
     ], seed + ':quiet');
   }
@@ -734,8 +758,8 @@ export function formatTurnSummaryText(summary, options = {}) {
   const lines = [];
 
   // --- Heading -----------------------------------------------------------
-  const dateBit = summary.dateLabel ? ` — ${summary.dateLabel}` : '';
-  lines.push(b(`Turn ${summary.turn} · Week ${summary.week} of ${summary.campaignName}${dateBit}`));
+  lines.push(b(`Turn ${summary.turn} · Week ${summary.week} of ${summary.campaignName}`));
+  if (summary.dateLabel) lines.push(i(summary.dateLabel));
   if (summary.seasonLine) {
     lines.push('');
     lines.push(i(summary.seasonLine));
@@ -748,8 +772,8 @@ export function formatTurnSummaryText(summary, options = {}) {
   } else {
     for (const e of summary.engagements) {
       lines.push('');
-      const vpBit = e.vp ? ` — ${e.vp} VP` : '';
-      const mapBit = e.subtitle ? ` — ${i(e.subtitle)}` : '';
+      const vpBit = e.vp ? ` · ${e.vp} VP` : '';
+      const mapBit = e.subtitle ? ` ${i(`(${e.subtitle})`)}` : '';
       lines.push(b(`${e.ordinal}. ${String(e.title).toUpperCase()}${vpBit}`) + mapBit);
       lines.push(e.prose);
       if (e.notes) lines.push(i(`Note: ${e.notes}`));
@@ -761,7 +785,7 @@ export function formatTurnSummaryText(summary, options = {}) {
     lines.push('');
     lines.push(b('Taken this month'));
     for (const c of summary.captures) {
-      lines.push(`• ${c.name}${c.isCapital ? ' (capital)' : ''} — now ${c.side}`);
+      lines.push(`• ${c.name}${c.isCapital ? ' (capital)' : ''}, now ${c.side}`);
     }
   }
 
@@ -770,7 +794,7 @@ export function formatTurnSummaryText(summary, options = {}) {
     lines.push('');
     lines.push(b('Still to be fought'));
     for (const p of summary.pending) {
-      lines.push(`• ${p.title}${p.subtitle ? ` — ${p.subtitle}` : ''} (${p.attacker} attacking)`);
+      lines.push(`• ${p.title}${p.subtitle ? `, ${p.subtitle}` : ''} (${p.attacker} attacking)`);
     }
   }
 
@@ -779,7 +803,7 @@ export function formatTurnSummaryText(summary, options = {}) {
   lines.push('');
   lines.push(b(summary.standingsLabel));
   lines.push(`USA ${num(s.usaVP)} VP · CSA ${num(s.csaVP)} VP` +
-    (s.leader ? ` — ${s.leader} leads by ${num(s.margin)}` : ' — dead even'));
+    (s.leader ? ` (${s.leader} leads by ${num(s.margin)})` : ' (dead even)'));
   if (s.spEnabled) {
     lines.push(`Supply: USA ${num(s.usaSP)} SP · CSA ${num(s.csaSP)} SP`);
   }

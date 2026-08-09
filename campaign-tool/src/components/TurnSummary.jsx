@@ -7,9 +7,9 @@ import { Modal, ScoreBoard, Row, Badge, SIDE_TEXT } from './ui/Primitives';
 import { buildTurnSummary, formatTurnSummaryText, getSummarisableTurns } from '../utils/turnSummary';
 
 /**
- * TurnSummary — the end-of-turn dispatch.
+ * TurnSummary: the end-of-turn dispatch.
  *
- * Reads a turn's battles back as a period field report: the weather, who went
+ * Reads a turn's battles back as a period field report. The weather, who went
  * in, what it cost, and what the map looks like heading into the next month.
  * The same text can be copied straight into Discord, optionally with a share
  * link to the live map.
@@ -31,8 +31,8 @@ const CopyButton = ({ label, icon: Icon = Copy, className = '', getText, onError
       try {
         await navigator.clipboard.writeText(text);
       } catch {
-        // Clipboard blocked (insecure context, denied permission) — fall back
-        // to a prompt the user can copy out of by hand.
+        // Clipboard blocked (insecure context, denied permission), so fall
+        // back to a prompt the user can copy out of by hand.
         window.prompt('Copy the dispatch:', text);
       }
       setDone(true);
@@ -176,7 +176,7 @@ const TurnSummary = ({ campaign, initialTurn = null, onClose, onRequestShareLink
     <Modal
       icon={<ScrollText className="w-5 h-5" />}
       title="Turn Dispatch"
-      subtitle={`${summary.campaignName} — Turn ${summary.turn}${summary.dateLabel ? ` · ${summary.dateLabel}` : ''}`}
+      subtitle={`${summary.campaignName} · Turn ${summary.turn}${summary.dateLabel ? ` · ${summary.dateLabel}` : ''}`}
       width="max-w-3xl"
       onClose={onClose}
       footer={

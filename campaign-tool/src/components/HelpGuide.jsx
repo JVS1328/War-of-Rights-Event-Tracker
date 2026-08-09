@@ -242,7 +242,7 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
             <p className="mb-3">
               The <strong className="text-brass-400">Dispatch</strong> button in the top bar reads a turn back
               as a period field report: the weather and light each battle was fought under, who led the attack,
-              what it cost both sides in men and SP, what changed hands, and where the war stands heading
+              what it cost both sides in men and SP, what changed hands, and how the war looks heading
               into the next month.
             </p>
             <ul className="list-disc pl-5 space-y-1">
@@ -250,12 +250,12 @@ const HelpGuide = ({ isOpen, onClose, campaignStyle = 'standard' }) => {
                   showing the turn that just closed.</li>
               <li>Use the arrows in the footer to page back through earlier turns.</li>
               <li><strong>Copy for Discord</strong> puts the whole dispatch on your clipboard with markdown
-                  formatting intact — paste it straight into your campaign channel.</li>
+                  formatting intact, ready to paste into your campaign channel.</li>
               <li><strong>Copy + map link</strong> does the same and appends a share link to the live map,
                   so readers can click through to the current campaign state.</li>
             </ul>
             <p className="mt-3 text-mist-400 text-xs">
-              The wording varies from battle to battle but never changes for the same battle — a dispatch you
+              The wording varies from battle to battle but never changes for the same battle, so a dispatch you
               posted last week still matches what the tracker shows today.
             </p>
           </Section>
