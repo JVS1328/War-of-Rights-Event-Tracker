@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit, HelpCircle, Share2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Map, Trophy, Plus, Download, Upload, Settings, Swords, SkipForward, AlertCircle, Edit, HelpCircle, Share2, ScrollText } from 'lucide-react';
 import MapView from './components/MapView';
 import CampaignStats from './components/CampaignStats';
 import TerritoryList from './components/TerritoryList';
@@ -21,6 +21,7 @@ import GarrisonModal from './components/GarrisonModal';
 import ReplenishModal from './components/ReplenishModal';
 import LSRetreatModal from './components/LSRetreatModal';
 import CommanderRollPanel from './components/CommanderRollPanel';
+import TurnSummary from './components/TurnSummary';
 import { ScoreBoard } from './components/ui/Primitives';
 import {
   isGrandCampaign,
@@ -84,6 +85,11 @@ const CampaignTracker = () => {
   const [battleRecorderInitialTerritory, setBattleRecorderInitialTerritory] = useState(null);
   const [territoryEditorTarget, setTerritoryEditorTarget] = useState(null);
 
+  // Turn Dispatch — the end-of-turn write-up. Holds the turn being read, or
+  // null when the dispatch is closed.
+  const [summaryTurn, setSummaryTurn] = useState(null);
+  const lastSeenTurnRef = useRef(null);
+
   // Grand Campaign: which token (if any) is currently in "click-to-place" mode
   const [moveModeTokenId, setMoveModeTokenId] = useState(null);
 
@@ -146,6 +152,19 @@ const CampaignTracker = () => {
       if (victory && !showVictory) {
         setShowVictory(victory);
       }
+    }
+  }, [campaign]);
+
+  // Grand Campaign months roll over on their own once both bags are empty, so
+  // there's no "Advance Turn" click to hang the dispatch off. Watch the turn
+  // counter instead and open the write-up for the month that just closed.
+  useEffect(() => {
+    if (!campaign) return;
+    const turn = campaign.currentTurn;
+    const previous = lastSeenTurnRef.current;
+    lastSeenTurnRef.current = turn;
+    if (previous != null && turn === previous + 1 && isGrandCampaign(campaign)) {
+      setSummaryTurn(previous);
     }
   }, [campaign]);
 
@@ -308,6 +327,9 @@ const CampaignTracker = () => {
     }
 
     setCampaign(campaignWithTransitions);
+
+    // The turn that just closed is the one worth reading about.
+    setSummaryTurn(campaign.currentTurn);
   };
 
   const newCampaign = () => {
@@ -422,16 +444,20 @@ const CampaignTracker = () => {
     event.target.value = '';
   };
 
+  /** Short share link when the server answers, long client-only link if not. */
+  const buildShareLink = async () => {
+    try {
+      return await generateShortShareUrl(campaign);
+    } catch {
+      // Server unavailable — fall back to client-only long URL
+      return generateShareUrl(campaign);
+    }
+  };
+
   const shareCampaignMap = async () => {
     if (!campaign) return;
 
-    let url;
-    try {
-      url = await generateShortShareUrl(campaign);
-    } catch {
-      // Server unavailable — fall back to client-only long URL
-      url = generateShareUrl(campaign);
-    }
+    const url = await buildShareLink();
 
     try {
       await navigator.clipboard.writeText(url);
@@ -925,6 +951,15 @@ const CampaignTracker = () => {
               </>
             )}
 
+            <button
+              onClick={() => setSummaryTurn(campaign.currentTurn)}
+              className="ui-btn ui-btn-ghost"
+              title="Read the end-of-turn dispatch"
+            >
+              <ScrollText className="w-4 h-4" />
+              <span className="hidden sm:inline">Dispatch</span>
+            </button>
+
             <div className="w-px h-6 bg-ink-700 mx-1" />
 
             <button onClick={shareCampaignMap} className="ui-btn ui-btn-quiet ui-btn-icon" title="Copy share link" aria-label="Share campaign map">
@@ -1162,6 +1197,17 @@ const CampaignTracker = () => {
             editingBattle={editingBattle}
             initialTerritoryId={battleRecorderInitialTerritory}
             onReserveCommander={handleReserveCommander}
+          />
+        )}
+
+        {/* Turn Dispatch — end-of-turn write-up */}
+        {summaryTurn != null && (
+          <TurnSummary
+            key={summaryTurn}
+            campaign={campaign}
+            initialTurn={summaryTurn}
+            onClose={() => setSummaryTurn(null)}
+            onRequestShareLink={buildShareLink}
           />
         )}
 
