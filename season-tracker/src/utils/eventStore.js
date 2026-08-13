@@ -2,6 +2,8 @@
 // registry at the event level. Single source of truth for defaults and
 // migration from the legacy flat shape.
 
+import { latestSeason, nextSeasonName } from './seasonOrder';
+
 export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_TEAM_NAMES = { A: 'USA', B: 'CSA' };
@@ -253,7 +255,20 @@ export const getActiveEvent = (appState) =>
 export const getActiveSeason = (appState) => {
   const event = getActiveEvent(appState);
   if (!event) return null;
-  return event.seasons.find(s => s.id === appState.activeSeasonId) ?? event.seasons[0] ?? null;
+  return event.seasons.find(s => s.id === appState.activeSeasonId) ?? latestSeason(event.seasons);
+};
+
+// Which season an event opens on when nothing has been picked yet: the most
+// recent one. Import order doesn't say which season is current, so the number
+// in the name decides — see utils/seasonOrder.
+export const defaultSeasonIdFor = (event) => latestSeason(event?.seasons || [])?.id ?? null;
+
+// Point the app state at the active event's most recent season. Applied when
+// the tracker loads: a season tracker is nearly always about the season being
+// played now, not whichever one happened to be imported last.
+export const openOnLatestSeason = (appState) => {
+  const seasonId = defaultSeasonIdFor(getActiveEvent(appState));
+  return seasonId ? { ...appState, activeSeasonId: seasonId } : appState;
 };
 
 export const updateActiveSeason = (appState, updater) => {
@@ -283,7 +298,7 @@ export const updateActiveEvent = (appState, updater) => {
 export const setActiveEvent = (appState, eventId) => {
   const event = appState.events.find(e => e.id === eventId);
   if (!event) return appState;
-  return { ...appState, activeEventId: eventId, activeSeasonId: event.seasons[0]?.id ?? null };
+  return { ...appState, activeEventId: eventId, activeSeasonId: defaultSeasonIdFor(event) };
 };
 
 export const setActiveSeason = (appState, seasonId) => {
@@ -330,7 +345,7 @@ export const addSeasonToActiveEvent = (appState, name) => {
   if (!event) return appState;
   const prev = getActiveSeason(appState);
   const season = makeDefaultSeason({
-    name: name || `Season ${event.seasons.length + 1}`,
+    name: name || nextSeasonName(event.seasons),
     units: prev ? [...prev.units] : [],
     nonTokenUnits: prev ? [...prev.nonTokenUnits] : [],
     unitPlayerCounts: prev ? { ...prev.unitPlayerCounts } : {},
@@ -352,15 +367,13 @@ export const renameActiveSeason = (appState, name) =>
 export const removeActiveSeason = (appState) => {
   const event = getActiveEvent(appState);
   if (!event || event.seasons.length <= 1) return appState;
-  const idx = event.seasons.findIndex(s => s.id === appState.activeSeasonId);
   const remaining = event.seasons.filter(s => s.id !== appState.activeSeasonId);
-  const next = remaining[Math.max(0, idx - 1)] ?? remaining[0];
   return {
     ...appState,
     events: appState.events.map(e =>
       e.id !== event.id ? e : { ...e, seasons: remaining }
     ),
-    activeSeasonId: next.id,
+    activeSeasonId: latestSeason(remaining)?.id ?? null,
   };
 };
 

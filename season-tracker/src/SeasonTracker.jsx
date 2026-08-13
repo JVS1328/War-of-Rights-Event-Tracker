@@ -45,7 +45,10 @@ import {
   removeUnitFromRegistry,
   isUnitReferencedInEvent,
   flattenActiveToLegacy,
+  defaultSeasonIdFor,
+  openOnLatestSeason,
 } from './utils/eventStore';
+import { nextSeasonName } from './utils/seasonOrder';
 import {
   replayEvent,
   replayActiveSeasonUpToWeek,
@@ -247,7 +250,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
   const [appState, setAppState] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return migrateToV2(saved ? JSON.parse(saved) : null);
+      // Every load opens on the most recent season, whatever was active when the
+      // tab was closed — the season being played now is the one you want.
+      return openOnLatestSeason(migrateToV2(saved ? JSON.parse(saved) : null));
     } catch (error) {
       console.error('Error loading from localStorage:', error);
       return makeDefaultAppState();
@@ -307,9 +312,11 @@ const SeasonTracker = ({ initialShareData = null }) => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
   // Player-stats season scope: when true, the stats view aggregates every
-  // season ("Overall"); when false it follows the active season. Stats-only —
-  // it never changes which season the tracker view is editing.
-  const [statsAllSeasons, setStatsAllSeasons] = useState(true);
+  // season ("Overall"); when false it follows the active season. Starts on the
+  // active season — which loads as the most recent one — because that is what
+  // "the stats" means day to day; Overall is a step back, not the starting
+  // point. Stats-only: it never changes which season the tracker is editing.
+  const [statsAllSeasons, setStatsAllSeasons] = useState(false);
   const [showCasualtyModal, setShowCasualtyModal] = useState(false);
   const [showMapBiasModal, setShowMapBiasModal] = useState(false);
   const [heatmapScope, setHeatmapScope] = useState('season'); // 'season' | 'event'
@@ -450,14 +457,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
             ...prev,
             events: [...prev.events, evt],
             activeEventId: evt.id,
-            activeSeasonId: evt.seasons[0]?.id ?? null,
+            activeSeasonId: defaultSeasonIdFor(evt),
           }));
         } else if (choice === 'replace') {
           setAppState(prev => ({
             ...prev,
             events: prev.events.map(e => e.id === prev.activeEventId ? evt : e),
             activeEventId: evt.id,
-            activeSeasonId: evt.seasons[0]?.id ?? null,
+            activeSeasonId: defaultSeasonIdFor(evt),
           }));
         }
         if (choice && sbCount) {
@@ -2005,14 +2012,14 @@ const SeasonTracker = ({ initialShareData = null }) => {
               ...prev,
               events: [...prev.events, evt],
               activeEventId: evt.id,
-              activeSeasonId: evt.seasons[0]?.id ?? null,
+              activeSeasonId: defaultSeasonIdFor(evt),
             }));
           } else if (choice === 'replace') {
             setAppState(prev => ({
               ...prev,
               events: prev.events.map(ev => ev.id === prev.activeEventId ? evt : ev),
               activeEventId: evt.id,
-              activeSeasonId: evt.seasons[0]?.id ?? null,
+              activeSeasonId: defaultSeasonIdFor(evt),
             }));
           }
           await restoreStats(evt.id);
@@ -4619,7 +4626,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
                   <span className="rule" />
                   <span className="meta wor-name">{activeEvent.name}</span>
                   <button className="gh" onClick={() => {
-                    const name = window.prompt('New season name:', `Season ${activeEvent.seasons.length + 1}`);
+                    const name = window.prompt('New season name:', nextSeasonName(activeEvent.seasons));
                     if (!name) return;
                     setAppState(prev => addSeasonToActiveEvent(prev, name.trim()));
                   }}>New season</button>
