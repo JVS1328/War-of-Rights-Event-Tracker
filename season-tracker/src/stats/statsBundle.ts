@@ -1,6 +1,7 @@
 import type { Scoreboard } from './types';
 import type { RegimentAssignmentMap, ScopedAssignments, ScoreboardBinding, StoredScoreboard } from './StatsRepository';
 import type { TrackerMapStats } from './statsEngine';
+import { byRecency } from '../utils/seasonOrder';
 
 /**
  * Portable player-stats payload: every scoreboard for an event plus its
@@ -226,6 +227,22 @@ export function weekIdsForScope(
   if (!seasons || scope === OVERALL_SCOPE) return null;
   const season = seasons.find((s) => s.id === scope);
   return season ? new Set(season.weekIds) : null;
+}
+
+/**
+ * Which scope a stats view opens on: the most recent season holding any of
+ * these scoreboards, else Overall. Newest-season-first is what people mean by
+ * "the stats" — but a season nobody has bound a round to yet would open blank,
+ * and unbound scoreboards only ever surface under Overall, so an event with
+ * nothing bound still starts there.
+ */
+export function defaultSeasonScope(
+  seasons: StatsBundleSeason[] | undefined,
+  stored: { binding?: ScoreboardBinding }[],
+): string {
+  const bound = new Set(stored.map((r) => r.binding?.weekId).filter(Boolean) as string[]);
+  const season = byRecency(seasons ?? []).find((s) => s.weekIds.some((w) => bound.has(String(w))));
+  return season?.id ?? OVERALL_SCOPE;
 }
 
 /** Structural guard for untrusted payloads (imported files / share links). */

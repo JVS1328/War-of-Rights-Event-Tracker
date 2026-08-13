@@ -55,6 +55,25 @@ npm run dev
 5. **Record Results**: Select round winners (Round 1 and Round 2)
 6. **View Standings**: Check the real-time standings based on points
 
+### Which Season You Land On
+
+An event's seasons sit in the order they were created or imported, which isn't
+the order they were played — import Season 4's file after Season 5's and the
+older one ends up last in the list. So anywhere the tracker picks a season for
+you, it goes by the number in the name instead:
+
+- **Opening the tracker** activates the most recent season, whichever one was
+  active when you closed the tab.
+- **The stats screens** start scoped to that season rather than to Overall.
+  **All seasons** is one click away in the header, next to the season's name.
+- **A shared player-stats link** opens on the most recent season that has rounds
+  bound to it, falling back to Overall when nothing is bound — an unbound
+  scoreboard only ever shows under Overall.
+- **New season** suggests one past the highest number in use, so adding to
+  Seasons 2–4 offers "Season 5" rather than a second "Season 4".
+
+Seasons whose names carry no number ("Preseason") fall back to list order.
+
 ### Balancer
 
 The balancer splits the night from the **season roster**, not from the units you

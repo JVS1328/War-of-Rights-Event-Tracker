@@ -4,6 +4,7 @@ import {
   isStatsBundle,
   storedFromBundle,
   weekIdsForScope,
+  defaultSeasonScope,
   OVERALL_SCOPE,
   SHARED_EVENT_ID,
   STATS_BUNDLE_VERSION,
@@ -149,6 +150,34 @@ describe('weekIdsForScope', () => {
     expect(weekIdsForScope(seasons, 'sea_404')).toBeNull();
     expect(weekIdsForScope(undefined, 'sea_1')).toBeNull();
     expect(weekIdsForScope([], 'sea_1')).toBeNull();
+  });
+});
+
+describe('defaultSeasonScope', () => {
+  // Season 4 was imported after Season 5, so array order names it last.
+  const seasons = [
+    { id: 'sea_2', name: 'Season 2', weekIds: ['1'] },
+    { id: 'sea_5', name: 'Season 5', weekIds: ['3'] },
+    { id: 'sea_4', name: 'Season 4', weekIds: ['2'] },
+  ];
+  const bound = (weekId: string) => ({ binding: { weekId, round: 1 as const } });
+
+  it('opens on the most recent season, not the last one imported', () => {
+    expect(defaultSeasonScope(seasons, [bound('1'), bound('2'), bound('3')])).toBe('sea_5');
+  });
+
+  it('skips a newer season that has no rounds bound to it yet', () => {
+    expect(defaultSeasonScope(seasons, [bound('1'), bound('2')])).toBe('sea_4');
+  });
+
+  it('falls back to Overall when nothing is bound to any season', () => {
+    expect(defaultSeasonScope(seasons, [{}, {}])).toBe(OVERALL_SCOPE);
+    expect(defaultSeasonScope(seasons, [])).toBe(OVERALL_SCOPE);
+  });
+
+  it('falls back to Overall for bundles shared before seasons were carried', () => {
+    expect(defaultSeasonScope(undefined, [bound('1')])).toBe(OVERALL_SCOPE);
+    expect(defaultSeasonScope([], [bound('1')])).toBe(OVERALL_SCOPE);
   });
 });
 

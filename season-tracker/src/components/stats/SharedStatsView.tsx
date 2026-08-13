@@ -3,7 +3,7 @@ import { BarChart3, ExternalLink } from 'lucide-react';
 import { StatsPanel } from './StatsArea';
 import { readOnlyStatsFromBundle } from './useStats';
 import { ThemeControls } from '../ThemeControls';
-import { OVERALL_SCOPE } from '../../stats/statsBundle';
+import { OVERALL_SCOPE, defaultSeasonScope } from '../../stats/statsBundle';
 import type { StatsBundle } from '../../stats/statsBundle';
 
 /**
@@ -25,10 +25,15 @@ export default function SharedStatsView({
   const count = stats.scoreboards.length;
   const title = eventName?.trim() || 'Player Stats';
 
-  // Season/Overall filter state. Bundles shared before seasons were carried
-  // simply lack them, so the panel keeps the row hidden and stays on Overall.
+  // Season/Overall filter state. Opens on the most recent season with rounds in
+  // it — a share link is nearly always about the season just played, and Overall
+  // buries it under every season before it. Bundles shared before seasons were
+  // carried simply lack them, so the panel keeps the row hidden and stays on
+  // Overall.
   const seasons = bundle.seasons ?? [];
-  const [seasonScope, setSeasonScope] = useState(OVERALL_SCOPE);
+  const [seasonScope, setSeasonScope] = useState(() =>
+    defaultSeasonScope(seasons, bundle.scoreboards ?? []),
+  );
 
   // Extract the tracker map stats slice that matches the active season filter.
   const trackerMapStats = useMemo(() => {
