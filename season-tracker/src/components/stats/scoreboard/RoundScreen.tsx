@@ -14,6 +14,7 @@ import type { RoundAutofill } from '../../../stats/eventBinding';
 import type { RegimentResolver } from './playersModel';
 import { SummaryTab } from './SummaryTab';
 import { PlayersTab } from './PlayersTab';
+import { UnitsTab } from './UnitsTab';
 import { KillfeedTab } from './KillfeedTab';
 import { AnalyticsTab } from './AnalyticsTab';
 
@@ -24,8 +25,20 @@ interface WeekRef {
   round2Flipped?: boolean;
 }
 
-type Tab = 'summary' | 'players' | 'killfeed' | 'analytics';
-const TABS: Tab[] = ['summary', 'players', 'killfeed', 'analytics'];
+type Tab = 'summary' | 'players' | 'units' | 'killfeed' | 'analytics';
+const TABS: Tab[] = ['summary', 'players', 'units', 'killfeed', 'analytics'];
+
+/**
+ * Tab captions. `units` says "in-game units" because the tracker's own "unit"
+ * means a competing regiment, and this tab means the game's formations.
+ */
+const TAB_LABEL: Record<Tab, string> = {
+  summary: 'summary',
+  players: 'players',
+  units: 'in-game units',
+  killfeed: 'killfeed',
+  analytics: 'analytics',
+};
 
 /**
  * How a round reads in the picker: when it was, where, who took it, and — since
@@ -157,6 +170,7 @@ export function RoundScreen({
           {tab === 'players' && (
             <PlayersTab sb={sb} onOpenPlayer={onOpenPlayer} resolveRegiment={resolveRegiment} />
           )}
+          {tab === 'units' && <UnitsTab sb={sb} onOpenPlayer={onOpenPlayer} />}
           {tab === 'killfeed' && <KillfeedTab sb={sb} onOpenPlayer={onOpenPlayer} />}
           {tab === 'analytics' && (
             <AnalyticsTab sb={sb} onOpenPlayer={onOpenPlayer} resolveRegiment={resolveRegiment} />
@@ -172,7 +186,7 @@ function Tabs({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
     <div className="ctl">
       <div className="seg">
         {TABS.map((t) => (
-          <button key={t} onClick={() => onChange(t)} aria-pressed={tab === t}>{t}</button>
+          <button key={t} onClick={() => onChange(t)} aria-pressed={tab === t}>{TAB_LABEL[t]}</button>
         ))}
       </div>
       <span className="rule" />
