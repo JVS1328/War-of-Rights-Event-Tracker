@@ -86,10 +86,13 @@ export function UnitStatRow({
   teamPlayers,
   showStats = true,
   strengthOf,
+  rateDenominator,
+  rateNote,
+  playersTitle,
 }: {
   /** The whole unit's figures — never a search-narrowed subset. */
   agg: UnitAgg;
-  /** Men the unit fielded, the denominator for the rates. */
+  /** Men the unit fielded. Also the rate denominator unless one is given. */
   players: number;
   /** Team-wide ticket damage inflicted / received — the share denominators. */
   teamInflicted: number;
@@ -101,9 +104,19 @@ export function UnitStatRow({
   /** Overrides the "of the N men this side fielded" hover — for company rows,
    *  which are sized against their regiment rather than the whole side. */
   strengthOf?: string;
+  /**
+   * Rate denominator when it isn't the head count — man-rounds, where men come
+   * and go and a man present for a third of the round is a third of a man.
+   */
+  rateDenominator?: number;
+  /** Appended to the kill/loss rate hovers, to say what the denominator was. */
+  rateNote?: string;
+  /** Replaces the strength hover outright. */
+  playersTitle?: string;
 }) {
-  const killRate = perPlayerRate(agg.kills, players);
-  const lossRate = perPlayerRate(agg.deaths, players);
+  const denom = rateDenominator ?? players;
+  const killRate = perPlayerRate(agg.kills, denom);
+  const lossRate = perPlayerRate(agg.deaths, denom);
   const unitInflicted = ticketDamage(agg.killInForm, agg.killSkirm, agg.killOob);
   const unitReceived = ticketDamage(agg.inForm, agg.skirm, agg.oob);
   const pctInflicted = teamInflicted > 0 ? unitInflicted / teamInflicted : null;
@@ -128,12 +141,12 @@ export function UnitStatRow({
           />
           <HeaderStat
             label="kr"
-            title={KILL_RATE_LABEL}
+            title={rateNote ? `${KILL_RATE_LABEL} — ${rateNote}` : KILL_RATE_LABEL}
             value={<span className="text-[color:var(--color-text-0)]">{formatRate(killRate)}</span>}
           />
           <HeaderStat
             label="lr"
-            title={LOSS_RATE_LABEL}
+            title={rateNote ? `${LOSS_RATE_LABEL} — ${rateNote}` : LOSS_RATE_LABEL}
             value={<span className="text-[color:var(--color-text-0)]">{formatRate(lossRate)}</span>}
           />
           <AvgT agg={agg} />
@@ -169,9 +182,9 @@ export function UnitStatRow({
             )}
           </>
         }
-        title={teamPlayers > 0
+        title={playersTitle ?? (teamPlayers > 0
           ? `${players} of the ${teamPlayers} men ${strengthOf ?? 'this side fielded'}`
-          : undefined}
+          : undefined)}
       />
     </span>
   );

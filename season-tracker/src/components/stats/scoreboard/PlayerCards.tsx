@@ -2,6 +2,7 @@
 // for a wide table, so each man gets a card with his role line, k/d, stance
 // splits and killfeed breakdowns. Shared by the Players tab and the In-game
 // units tab so a man reads the same under either grouping.
+import type { ReactNode } from 'react';
 import { roleLine } from '../drawerPrimitives';
 import type { ScoreboardPlayer, RosterEntry } from '../../../stats/types';
 import { avgTicketCost, AVG_TD_LABEL, AVG_TK_LABEL } from '../../../stats/labels';
@@ -10,10 +11,27 @@ import {
   type KillStance,
   type CauseIndex,
   type CauseCounts,
+  type UnitAgg,
   killedWithOf,
   diedToOf,
   playerKey,
 } from './playersModel';
+
+/**
+ * A man's card as one unit knew him, rather than as the round did — his figures
+ * for a single posting, the identity he held there, and a line saying how long
+ * he stayed. Supplied by the In-game units tab, where a man who moved company
+ * appears under each unit he served in.
+ */
+export interface PlayerCardSlice {
+  agg: UnitAgg;
+  /** The posting's own regiment / company / rank / class for the role line. */
+  entry?: RosterEntry;
+  /** Time served here, and what share of his round these figures are. */
+  note?: ReactNode;
+  /** His round is divided between postings, so the round-wide lines say so. */
+  split: boolean;
+}
 
 /** cause → count entries, most common first. */
 export function sortedCauses(counts: CauseCounts): [string, number][] {
@@ -28,6 +46,7 @@ export function PlayerCardList({
   causeIndex,
   onOpenPlayer,
   indent = false,
+  sliceOf,
 }: {
   rows: ScoreboardPlayer[];
   isOfficer: (name: string) => boolean;
@@ -36,11 +55,14 @@ export function PlayerCardList({
   causeIndex: CauseIndex;
   onOpenPlayer: (key: string) => void;
   indent?: boolean;
+  /** Read the card as one posting rather than the whole round. */
+  sliceOf?: (p: ScoreboardPlayer) => PlayerCardSlice | undefined;
 }) {
   return (
     <ul>
       {rows.map((p) => {
-        const r = lookup(p);
+        const slice = sliceOf?.(p);
+        const r = slice?.entry ?? lookup(p);
         // Full in-game identity (Regiment · Co. X · Rank · Class), matching the
         // player profile's round cards.
         const role = roleLine({
@@ -50,7 +72,21 @@ export function PlayerCardList({
           className: r?.className,
           battery: r ? /batter/i.test(r.regiment ?? '') : false,
         });
-        const ks = killStance(p);
+        // Figures: the posting's when a slice is supplied, else the round's.
+        const agg = slice?.agg;
+        const stance = killStance(p);
+        const ks: KillStance = agg
+          ? { inForm: agg.killInForm, skirm: agg.killSkirm, oob: agg.killOob }
+          : stance;
+        const kills = agg ? agg.kills : p.kills;
+        const deaths = agg ? agg.deaths : p.deaths;
+        const dIn = agg ? agg.inForm : p.deathsInForm;
+        const dSk = agg ? agg.skirm : p.deathsSkirm;
+        const dOob = agg ? agg.oob : p.deathsOob;
+        const kd = deaths > 0 ? kills / deaths : kills;
+        // The killfeed says nothing about which posting a man held at the time,
+        // so his weapons stay a round-wide reading and the label says as much.
+        const roundWide = slice?.split ?? false;
         const killedWith = sortedCauses(killedWithOf(p, causeIndex));
         const diedTo = sortedCauses(diedToOf(p, causeIndex));
         return (
@@ -70,10 +106,10 @@ export function PlayerCardList({
               </button>
               <span className="rule" />
               <span className="meta" style={{ display: 'flex', gap: 10, flex: 'none' }}>
-                <span>K/D <b style={{ color: 'var(--ink)', fontWeight: 400 }}>{p.kd.toFixed(2)}</b></span>
+                <span>K/D <b style={{ color: 'var(--ink)', fontWeight: 400 }}>{kd.toFixed(2)}</b></span>
                 <span title={AVG_TD_LABEL} style={{ cursor: 'help' }}>
                   ×Td <b style={{ color: 'var(--ink)', fontWeight: 400 }}>
-                    {formatTicket(avgTicketCost(p.deathsInForm, p.deathsSkirm, p.deathsOob))}
+                    {formatTicket(avgTicketCost(dIn, dSk, dOob))}
                   </b>
                 </span>
                 <span title={AVG_TK_LABEL} style={{ cursor: 'help' }}>
@@ -84,13 +120,14 @@ export function PlayerCardList({
               </span>
             </div>
             {role && <div className="note" style={{ marginTop: 3 }}>{role}</div>}
+            {slice?.note && <div className="note" style={{ marginTop: 3 }}>{slice.note}</div>}
             <div style={{ marginTop: 3, color: 'var(--ink-2)' }}>
-              {p.kills} kills · {p.deaths} deaths
+              {kills} kills · {deaths} deaths
             </div>
             <div className="note" style={{ marginTop: 3 }}>
-              d: <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsInForm}</b> form ·{' '}
-              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsSkirm}</b> skirm ·{' '}
-              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{p.deathsOob}</b> ool
+              d: <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{dIn}</b> form ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{dSk}</b> skirm ·{' '}
+              <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{dOob}</b> ool
             </div>
             <div className="note" style={{ marginTop: 3 }}>
               k: <b style={{ color: 'var(--ink-2)', fontWeight: 400 }}>{ks.inForm}</b> form ·{' '}
@@ -99,13 +136,13 @@ export function PlayerCardList({
             </div>
             {killedWith.length > 0 && (
               <div className="note" style={{ marginTop: 3 }}>
-                <span className="cap">killed with </span>
+                <span className="cap">killed with{roundWide ? ' (round)' : ''} </span>
                 <CauseInline data={killedWith} />
               </div>
             )}
             {diedTo.length > 0 && (
               <div className="note" style={{ marginTop: 3 }}>
-                <span className="cap">died to </span>
+                <span className="cap">died to{roundWide ? ' (round)' : ''} </span>
                 <CauseInline data={diedTo} />
               </div>
             )}
