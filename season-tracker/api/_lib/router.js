@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isAdmin, adminConfigured } from './auth.js';
 import { isSlug, isScoreboardId } from './slug.js';
 import * as store from './store.js';
@@ -49,16 +50,29 @@ const PUBLIC_CACHE = 'public, max-age=30, s-maxage=300, stale-while-revalidate=8
 const json = (res, code, body) => res.status(code).json(body);
 
 /**
- * Answer a public read, letting the browser and the CDN keep it.
+ * An ETag for `parts`, as a hash.
  *
- * `tag` identifies this exact content — the event's updated-at plus whatever
- * else the response depends on — so a caller holding it is told "unchanged"
- * instead of being sent the payload again. For a season of scoreboards that is
- * the difference between megabytes and an empty 304.
+ * Some of what identifies a response comes from the request — a scoreboard id,
+ * a list of week ids — and none of that belongs verbatim in a response header.
+ * Hashing keeps the tag short, opaque, and impossible to steer.
  */
-function cached(req, res, tag, body) {
+const tagOf = (...parts) =>
+  createHash('sha1').update(parts.join('\u0000')).digest('base64url').slice(0, 22);
+
+/**
+ * Answer a read, saying how long it may be kept.
+ *
+ * `shared` means the bytes are the same for everyone — a published event — so
+ * the browser and the CDN may hold them and a caller who already has them is
+ * told "unchanged" instead of being sent megabytes again.
+ *
+ * An unpublished event is the owner's alone. Its response must never reach a
+ * shared cache, because the next reader of that cache entry is a stranger: it
+ * is marked `private, no-store` and revalidates every time.
+ */
+function cached(req, res, { tag, shared, body }) {
   const etag = `W/"${tag}"`;
-  res.setHeader?.('Cache-Control', PUBLIC_CACHE);
+  res.setHeader?.('Cache-Control', shared ? PUBLIC_CACHE : 'private, no-store');
   res.setHeader?.('ETag', etag);
   if (req?.headers?.['if-none-match'] === etag) return res.status(304).end?.() ?? res.status(304).json({});
   return res.status(200).json(body);
@@ -159,14 +173,6 @@ function visible(meta, admin) {
   return meta && (admin || meta.published);
 }
 
-/** Keep the directory's scoreboard count honest after a scoreboard write. */
-async function refreshCount(slug) {
-  const meta = await store.getEvent(slug);
-  if (!meta) return;
-  const scoreboardCount = await store.countScoreboards(slug);
-  await store.putEvent(slug, { ...meta, scoreboardCount, updatedAt: new Date().toISOString() });
-}
-
 /**
  * Where each page of a bulk read starts and ends.
  *
@@ -225,6 +231,8 @@ export default async function handler(req, res) {
   // database, so signing in works even while the database is down.
   if (segments[0] === 'auth') {
     if (method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
+    // Whether a credential is good is nobody's to keep, least of all a CDN's.
+    res.setHeader?.('Cache-Control', 'private, no-store');
     return json(res, admin ? 200 : 401, { admin, configured: adminConfigured() });
   }
 
@@ -235,7 +243,12 @@ export default async function handler(req, res) {
     if (segments.length === 1) {
       if (method === 'GET') {
         const events = await store.listPublishedEvents();
-        return json(res, 200, { events });
+        // Published events and nothing else, so this is the same for everyone.
+        return cached(req, res, {
+          tag: tagOf('dir', ...events.map((e) => `${e.slug}.${versionOf(e)}`)),
+          shared: true,
+          body: { events },
+        });
       }
       if (method === 'POST') {
         if (!admin) return denied(res);
@@ -246,10 +259,10 @@ export default async function handler(req, res) {
           return json(res, 400, { error: 'Slug must be 2-48 characters of a-z, 0-9 and dashes' });
         }
         const existing = await store.getEvent(slug);
-        const meta = sanitizeMeta(body, existing, slug);
-        meta.scoreboardCount = await store.countScoreboards(slug);
-        await store.putEvent(slug, meta);
-        return json(res, existing ? 200 : 201, { event: meta });
+        // putEvent counts the event's rounds as it writes, so the row it hands
+        // back is what a reader would see.
+        const saved = await store.putEvent(slug, sanitizeMeta(body, existing, slug));
+        return json(res, existing ? 200 : 201, { event: saved });
       }
       return json(res, 405, { error: 'Method not allowed' });
     }
@@ -263,7 +276,11 @@ export default async function handler(req, res) {
       if (method === 'GET') {
         const one = await store.getEvent(slug);
         if (!visible(one, admin)) return notFound(res);
-        return cached(req, res, `event.${versionOf(one)}`, { event: one });
+        return cached(req, res, {
+          tag: tagOf('event', versionOf(one)),
+          shared: !!one.published,
+          body: { event: one },
+        });
       }
       if (method === 'DELETE') {
         if (!admin) return denied(res);
@@ -285,7 +302,11 @@ export default async function handler(req, res) {
       if (method === 'GET') {
         const state = await store.getTracker(slug);
         if (!state) return notFound(res);
-        return cached(req, res, `tracker.${versionOf(meta)}`, { state });
+        return cached(req, res, {
+          tag: tagOf('tracker', versionOf(meta)),
+          shared: !!meta.published,
+          body: { state },
+        });
       }
       if (method === 'PUT') {
         if (!admin) return denied(res);
@@ -311,15 +332,17 @@ export default async function handler(req, res) {
           ? query.weeks.split(',').filter(Boolean).slice(0, 2000)
           : null;
         const body = await fullPage(slug, index, withJoinLog, weeks);
-        const scope = weeks ? `w${weeks.length}:${weeks[0]}` : 'all';
-        return cached(
-          req,
-          res,
-          `sb.${versionOf(meta)}.${scope}.${body.page}.${withJoinLog ? 'log' : 'lean'}`,
+        return cached(req, res, {
+          tag: tagOf('sb', versionOf(meta), weeks?.join(',') ?? 'all', body.page, withJoinLog ? 'log' : 'lean'),
+          shared: !!meta.published,
           body,
-        );
+        });
       }
-      return cached(req, res, `sum.${versionOf(meta)}`, { scoreboards: await store.listSummaries(slug) });
+      return cached(req, res, {
+        tag: tagOf('sum', versionOf(meta)),
+        shared: !!meta.published,
+        body: { scoreboards: await store.listSummaries(slug) },
+      });
     }
 
     if (resource === 'scoreboard') {
@@ -328,7 +351,11 @@ export default async function handler(req, res) {
       if (method === 'GET') {
         const record = await store.getScoreboard(slug, id);
         if (!record) return notFound(res);
-        return cached(req, res, `one.${versionOf(meta)}.${id}`, { scoreboard: record });
+        return cached(req, res, {
+          tag: tagOf('one', versionOf(meta), id),
+          shared: !!meta.published,
+          body: { scoreboard: record },
+        });
       }
       if (!admin) return denied(res);
       if (method === 'PUT') {
@@ -337,12 +364,10 @@ export default async function handler(req, res) {
           return json(res, 400, { error: 'Expected { record, summary }' });
         }
         await store.putScoreboard(slug, id, { ...body.record, id, eventId: slug }, { ...body.summary, id, eventId: slug });
-        await refreshCount(slug);
         return json(res, 200, { id });
       }
       if (method === 'DELETE') {
         await store.deleteScoreboard(slug, id);
-        await refreshCount(slug);
         return json(res, 200, { deleted: true });
       }
       return json(res, 405, { error: 'Method not allowed' });
@@ -352,7 +377,11 @@ export default async function handler(req, res) {
       const read = resource === 'assignments' ? store.getAssignments : store.getAliases;
       const write = resource === 'assignments' ? store.putAssignments : store.putAliases;
       if (method === 'GET') {
-        return cached(req, res, `${resource}.${versionOf(meta)}`, { [resource]: await read(slug) });
+        return cached(req, res, {
+          tag: tagOf(resource, versionOf(meta)),
+          shared: !!meta.published,
+          body: { [resource]: await read(slug) },
+        });
       }
       if (method === 'PUT') {
         if (!admin) return denied(res);

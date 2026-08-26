@@ -32,9 +32,7 @@ export function getSql() {
 export function ensureSchema() {
   if (!schemaReady) {
     const sql = getSql();
-    schemaReady = (async () => {
-      for (const statement of SCHEMA) await sql.query(statement);
-    })().catch((err) => {
+    schemaReady = sql.query(SCHEMA).catch((err) => {
       // A failed migration must not be remembered as done, or every later
       // request in this instance would query tables that do not exist.
       schemaReady = undefined;

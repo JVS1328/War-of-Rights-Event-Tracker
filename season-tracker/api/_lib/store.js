@@ -106,7 +106,8 @@ export async function putEvent(slug, meta) {
        registry_units = EXCLUDED.registry_units,
        map_stats = EXCLUDED.map_stats,
        updated_at = now()
-     RETURNING slug, name, published, seasons, registry_units, map_stats, created_at, updated_at`,
+     RETURNING slug, name, published, seasons, registry_units, map_stats, created_at, updated_at,
+       (SELECT count(*) FROM wor_scoreboards s WHERE s.event_slug = $1) AS scoreboard_count`,
     [
       slug,
       meta.name,
@@ -116,7 +117,7 @@ export async function putEvent(slug, meta) {
       meta.mapStats == null ? null : sized(meta.mapStats),
     ],
   );
-  return toEvent({ ...rows[0], scoreboard_count: meta.scoreboardCount ?? 0 });
+  return toEvent(rows[0]);
 }
 
 /** Remove an event. Its rounds and documents go with it, by foreign key. */
@@ -207,10 +208,19 @@ export async function getScoreboards(slug, ids, { withJoinLog = false } = {}) {
 }
 
 /** Upsert one round: its payload, and the columns a list view reads. */
+/**
+ * Upsert one round and mark its event as changed, in a single statement.
+ *
+ * The timestamp matters because it is what a cached read is tagged with: a
+ * round replaced in place leaves the count alone, so without touching the event
+ * a stale copy would keep being served. Doing it in the same round trip means
+ * importing a season costs one query a round rather than four.
+ */
 export async function putScoreboard(slug, id, record, summary) {
   const payload = sized(record);
   await query(
-    `INSERT INTO wor_scoreboards
+    `WITH saved AS (
+     INSERT INTO wor_scoreboards
        (event_slug, id, source_filename, recorded_at, map, mode, area, winner, week_id, round, payload, payload_bytes)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
      ON CONFLICT (event_slug, id) DO UPDATE SET
@@ -223,7 +233,10 @@ export async function putScoreboard(slug, id, record, summary) {
        week_id = EXCLUDED.week_id,
        round = EXCLUDED.round,
        payload = EXCLUDED.payload,
-       payload_bytes = EXCLUDED.payload_bytes`,
+       payload_bytes = EXCLUDED.payload_bytes
+     RETURNING 1
+   )
+   UPDATE wor_events SET updated_at = now() WHERE slug = $1`,
     [
       slug,
       id,
@@ -242,16 +255,13 @@ export async function putScoreboard(slug, id, record, summary) {
 }
 
 export async function deleteScoreboard(slug, id) {
-  await query('DELETE FROM wor_scoreboards WHERE event_slug = $1 AND id = $2', [slug, id]);
-}
-
-/** How many rounds an event holds, without reading any of them. */
-export async function countScoreboards(slug) {
-  const rows = await query(
-    'SELECT count(*)::int AS n FROM wor_scoreboards WHERE event_slug = $1',
-    [slug],
+  await query(
+    `WITH gone AS (
+       DELETE FROM wor_scoreboards WHERE event_slug = $1 AND id = $2 RETURNING 1
+     )
+     UPDATE wor_events SET updated_at = now() WHERE slug = $1`,
+    [slug, id],
   );
-  return Number(rows[0]?.n ?? 0);
 }
 
 // --- Per-event documents --------------------------------------------------
