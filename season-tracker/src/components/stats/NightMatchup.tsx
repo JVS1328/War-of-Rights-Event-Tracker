@@ -24,6 +24,7 @@ import {
   nightPoints,
   nightFormations,
   effectiveTeams,
+  latestPlayedWeek,
   rollupNight,
   type NightWeek,
   type NightRoundScoreboard,
@@ -54,6 +55,7 @@ export function NightMatchup({
   options = {},
   onOpenRound,
   onEditNight,
+  readOnly = false,
 }: {
   weeks: NightWeek[];
   /** Every stored scoreboard for the event; bound ones are matched to a round. */
@@ -66,9 +68,13 @@ export function NightMatchup({
   onOpenRound?: (filename: string) => void;
   /** Jump to the tracker's night builder for this week. */
   onEditNight?: (weekId: string) => void;
+  /** On the public site there is nobody who could bind a scoreboard. */
+  readOnly?: boolean;
 }) {
-  const [weekId, setWeekId] = useState<string>(() => String(weeks[weeks.length - 1]?.id ?? ''));
-  const week = weeks.find((w) => String(w.id) === weekId) ?? weeks[weeks.length - 1] ?? null;
+  // Open on the night last played, not the last one scheduled — see
+  // latestPlayedWeek.
+  const [weekId, setWeekId] = useState<string>(() => String(latestPlayedWeek(weeks)?.id ?? ''));
+  const week = weeks.find((w) => String(w.id) === weekId) ?? latestPlayedWeek(weeks);
 
   if (!week) {
     return (
@@ -92,6 +98,7 @@ export function NightMatchup({
       options={options}
       onOpenRound={onOpenRound}
       onEditNight={onEditNight}
+      readOnly={readOnly}
     />
   );
 }
@@ -108,6 +115,7 @@ function NightBody({
   options,
   onOpenRound,
   onEditNight,
+  readOnly = false,
 }: {
   week: NightWeek;
   weeks: NightWeek[];
@@ -120,6 +128,7 @@ function NightBody({
   options: EngineOptions;
   onOpenRound?: (filename: string) => void;
   onEditNight?: (weekId: string) => void;
+  readOnly?: boolean;
 }) {
   const type = nightType(week);
   const perRound = hasPerRoundLeads(type);
@@ -305,8 +314,9 @@ function NightBody({
         <Spine rows={spineRows} aSide="usa" bSide="csa" />
         {!roll && (
           <p className="note" style={{ padding: '11px 13px 13px' }}>
-            The night's recorded results. Bind a scoreboard to a round and these figures come from it instead,
-            with the stance splits, the per-unit stats and the killfeed alongside.
+            {readOnly
+              ? "The night's recorded results. No scoreboard has been bound to either round, so there are no stance splits, per-unit stats or killfeed to show alongside them."
+              : "The night's recorded results. Bind a scoreboard to a round and these figures come from it instead, with the stance splits, the per-unit stats and the killfeed alongside."}
           </p>
         )}
       </Panel>

@@ -31,8 +31,16 @@ describe('parseRoute', () => {
     expect(parseRoute('#/admin')).toEqual({ kind: 'admin' });
   });
 
+  it('reads the screens that came from the tracker’s own rail', () => {
+    expect(parseRoute('#/e/ssl/nights')).toMatchObject({ screen: 'nights' });
+    expect(parseRoute('#/e/ssl/pairings')).toMatchObject({ screen: 'pairings' });
+  });
+
   it('round-trips through hrefFor', () => {
-    for (const hash of ['#/', '#/tools', '#/admin', '#/e/ssl/standings', '#/e/ssl/stats/sea_3']) {
+    for (const hash of [
+      '#/', '#/tools', '#/admin', '#/e/ssl/standings',
+      '#/e/ssl/nights', '#/e/ssl/pairings', '#/e/ssl/stats/sea_3',
+    ]) {
       expect(hrefFor(parseRoute(hash))).toBe(hash);
     }
   });

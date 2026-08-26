@@ -10,6 +10,8 @@ import {
   nightRows,
   nightPoints,
   nightKeys,
+  nightPlayed,
+  latestPlayedWeek,
   rollupNight,
   ticketsOf,
   type NightWeek,
@@ -556,5 +558,49 @@ describe('rollupNight', () => {
 describe('ticketsOf', () => {
   it('weights the three stances 1, 3 and 5', () => {
     expect(ticketsOf({ in_form: 2, skirm: 1, oob: 1 })).toBe(2 + 3 + 5);
+  });
+});
+
+describe('which night a season opens on', () => {
+  const night = (id: number, over: Partial<NightWeek> = {}): NightWeek =>
+    week({ id, name: `Night ${id}`, round1Winner: null, round2Winner: null, ...over });
+
+  it('reads a night with no result as unplayed', () => {
+    expect(nightPlayed(night(1))).toBe(false);
+    expect(nightPlayed(night(1, { round1Winner: 'A' }))).toBe(true);
+    // A draw is a result too — the round happened.
+    expect(nightPlayed(night(1, { round1Draw: true }))).toBe(true);
+  });
+
+  it('opens on the last night played, not the last one scheduled', () => {
+    const weeks = [
+      night(1, { round1Winner: 'A', round2Winner: 'B' }),
+      night(2, { round1Winner: 'A' }),
+      night(3),
+      night(4),
+    ];
+    expect(latestPlayedWeek(weeks)?.id).toBe(2);
+  });
+
+  it('falls back to the last night when a season has not started', () => {
+    expect(latestPlayedWeek([night(1), night(2), night(3)])?.id).toBe(3);
+  });
+
+  it('opens on the last night when every night has been played', () => {
+    const weeks = [night(1, { round1Winner: 'A' }), night(2, { round1Winner: 'B' })];
+    expect(latestPlayedWeek(weeks)?.id).toBe(2);
+  });
+
+  it('has nothing to open on in an empty season', () => {
+    expect(latestPlayedWeek([])).toBeNull();
+  });
+
+  it('skips past unplayed playoff nights sitting at the end of the schedule', () => {
+    const weeks = [
+      night(1, { round1Winner: 'A', round2Winner: 'A' }),
+      night(2, { isPlayoffs: true }),
+      night(3, { isPlayoffs: true }),
+    ];
+    expect(latestPlayedWeek(weeks)?.id).toBe(1);
   });
 });

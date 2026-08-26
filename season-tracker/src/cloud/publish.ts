@@ -5,6 +5,7 @@ import type { StatsBundle, StatsBundleSeason } from '../stats/statsBundle';
 import { migrateLegacyFlatToV2 } from '../utils/eventStore';
 import { cloudStatsRepo } from '../stats/repo';
 import type { TrackerMapStats } from '../stats/statsEngine';
+import type { NightWeek, PointSystem } from '../stats/nightMatchup';
 
 /**
  * Getting an event into the database, and back out again.
@@ -28,14 +29,17 @@ export interface TrackerStatePayload {
  * A season inside that tree. Only the fields the public screens read are named;
  * the rest is carried through untouched, because the shape is owned by
  * utils/eventStore (plain JS) and this module is not trying to re-declare it.
+ *
+ * A week is a {@link NightWeek} — stats/nightMatchup already declares the
+ * subset of a tracker week the screens read, structurally and in one place.
  */
 export interface TrackerSeason {
   id: string;
   name: string;
   units?: string[];
-  weeks?: { id: string | number; isPlayoffs?: boolean }[];
+  weeks?: NightWeek[];
   divisions?: { name: string; units: string[] }[];
-  pointSystem?: Record<string, number>;
+  pointSystem?: PointSystem;
   playoffConfig?: { enabled?: boolean; teamsPerDivision?: number };
   [key: string]: unknown;
 }

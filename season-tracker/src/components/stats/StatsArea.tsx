@@ -582,6 +582,7 @@ export function StatsPanel({
           options={{ regimentList, aliasMap: overallAlias }}
           onOpenRound={openRound}
           onEditNight={onEditNight}
+          readOnly={readOnly}
         />
       )}
 

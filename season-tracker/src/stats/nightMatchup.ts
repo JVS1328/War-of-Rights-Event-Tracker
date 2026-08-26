@@ -231,6 +231,25 @@ export function nightScore(w: NightWeek): NightScore {
   };
 }
 
+/** True once either round of a night has a result recorded against it. */
+export const nightPlayed = (w: NightWeek): boolean => nightScore(w).played > 0;
+
+/**
+ * The night a season should open on: the most recent one with a round entered.
+ *
+ * A season is built ahead of itself — the schedule runs to a final long before
+ * it is played — so the last week on the list is usually empty, and opening on
+ * it shows a matchup that has not happened. Falling back to the last week when
+ * nothing has been played keeps a brand-new season on something rather than
+ * nothing.
+ */
+export function latestPlayedWeek<T extends NightWeek>(weeks: T[]): T | null {
+  for (let i = weeks.length - 1; i >= 0; i -= 1) {
+    if (nightPlayed(weeks[i])) return weeks[i];
+  }
+  return weeks[weeks.length - 1] ?? null;
+}
+
 const addForm = (t: FormationCounts, f: FormationCounts | null | undefined) => {
   if (!f) return t;
   t.in_form += f.in_form;
