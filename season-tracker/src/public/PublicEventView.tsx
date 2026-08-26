@@ -114,18 +114,22 @@ export function PublicEventView({
   const goScope = (next: string) =>
     navigate({ kind: 'event', slug, screen, season: next });
 
+  // A stats-only event — one published without a season behind it — gets no
+  // season rail, since every screen in it would be empty.
   const nav = [
-    {
-      title: 'Season',
-      items: PUBLIC_SCREENS.filter((s) => s.key !== 'stats').map((s) => ({
-        key: s.key,
-        label: s.label,
-        count:
-          s.key === 'schedule' ? activeSeason?.weeks?.length ?? null
-          : s.key === 'roster' ? activeSeason?.units?.length ?? null
-          : null,
-      })),
-    },
+    ...(activeSeason
+      ? [{
+          title: 'Season',
+          items: PUBLIC_SCREENS.filter((s) => s.key !== 'stats').map((s) => ({
+            key: s.key,
+            label: s.label,
+            count:
+              s.key === 'schedule' ? activeSeason.weeks?.length ?? null
+              : s.key === 'roster' ? activeSeason.units?.length ?? null
+              : null,
+          })),
+        }]
+      : []),
     {
       title: 'Stats',
       items: [{ key: 'stats', label: 'Player stats', count: meta.scoreboardCount || null }],

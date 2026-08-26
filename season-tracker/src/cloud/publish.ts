@@ -124,6 +124,8 @@ export interface PublishInput {
 export interface PublishResult {
   event: CloudEvent;
   scoreboards: number;
+  /** Rounds that would not go up, and why. Empty on a clean publish. */
+  failed: { sourceFilename: string; reason: string }[];
 }
 
 /**
@@ -151,19 +153,30 @@ export async function publishEvent(input: PublishInput): Promise<PublishResult> 
   await putTrackerState(slug, { v: TRACKER_STATE_VERSION, event } satisfies TrackerStatePayload);
 
   let scoreboards = 0;
+  const failed: PublishResult['failed'] = [];
   if (stats?.scoreboards?.length || stats?.assignments || stats?.aliases) {
     const total = stats.scoreboards?.length ?? 0;
     onProgress?.(0, total);
     for (const [i, entry] of (stats.scoreboards ?? []).entries()) {
-      await cloudStatsRepo.saveScoreboard(slug, entry.scoreboard, entry.binding);
-      scoreboards += 1;
+      try {
+        await cloudStatsRepo.saveScoreboard(slug, entry.scoreboard, entry.binding);
+        scoreboards += 1;
+      } catch (err) {
+        // One round the database will not take — an enormous killfeed, most
+        // likely — must not cost the other forty. Carry on and name it at the
+        // end, so a migration is never half-done and silent about it.
+        failed.push({
+          sourceFilename: entry.sourceFilename,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
       onProgress?.(i + 1, total);
     }
     // Pins and renames go up as one document each, after the rounds they describe.
     await cloudStatsRepo.importEventStats(slug, { ...stats, scoreboards: [] });
   }
 
-  return { event: meta, scoreboards };
+  return { event: meta, scoreboards, failed };
 }
 
 /**

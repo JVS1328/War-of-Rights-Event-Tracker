@@ -484,6 +484,7 @@ export function StatsPanel({
           combat={combat}
           hasData={hasData}
           scopeName={seasons.find((s) => s.id === seasonScope)?.name ?? eventName}
+          readOnly={readOnly}
           onOpenRound={openRound}
           onOpenPlayer={openPlayer}
         />

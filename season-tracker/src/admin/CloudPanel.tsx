@@ -27,6 +27,14 @@ export interface CloudPanelProps {
 
 type Busy = null | { what: string; done?: number; total?: number };
 
+/** Name the rounds the database would not take, rather than quietly dropping them. */
+const describeFailures = (failed: { sourceFilename: string; reason: string }[]): string => {
+  if (!failed.length) return '';
+  const names = failed.slice(0, 3).map((f) => f.sourceFilename).join(', ');
+  const rest = failed.length > 3 ? ` and ${failed.length - 3} more` : '';
+  return ` ${failed.length} round${failed.length === 1 ? '' : 's'} would not go up (${names}${rest}) — ${failed[0].reason}`;
+};
+
 /**
  * Publish to the site.
  *
@@ -90,7 +98,7 @@ export function CloudPanel({ event, slug, onSlug, buildStats, mapStats, onPulled
         onProgress: report,
       });
       onSlug(draft);
-      return `${result.event.name} is ${published ? 'live' : 'saved but unpublished'} — ${result.scoreboards} round${result.scoreboards === 1 ? '' : 's'} uploaded.`;
+      return `${result.event.name} is ${published ? 'live' : 'saved but unpublished'} — ${result.scoreboards} round${result.scoreboards === 1 ? '' : 's'} uploaded.${describeFailures(result.failed)}`;
     });
 
   const pull = () =>
@@ -115,7 +123,7 @@ export function CloudPanel({ event, slug, onSlug, buildStats, mapStats, onPulled
         published: true,
         onProgress: report,
       });
-      return `Imported "${result.event.name}" from ${file.name} — ${result.scoreboards} round${result.scoreboards === 1 ? '' : 's'}. It is live on the site.`;
+      return `Imported "${result.event.name}" from ${file.name} — ${result.scoreboards} round${result.scoreboards === 1 ? '' : 's'}. It is live on the site.${describeFailures(result.failed)}`;
     });
 
   const togglePublished = (target: CloudEvent) =>
