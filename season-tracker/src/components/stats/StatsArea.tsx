@@ -164,9 +164,18 @@ interface StatsAreaProps {
    * The shared/read-only view omits this and falls back to scoreboard data.
    */
   trackerMapStats?: TrackerMapStats;
+  /**
+   * Hide the Import tab and every editing affordance. The public site reads the
+   * same repository the tracker writes, so this is what keeps a visitor from
+   * being shown controls that would only ever come back 401.
+   */
+  readOnly?: boolean;
 }
 
-/** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
+/**
+ * Live stats area — reads the event's scoreboards from a repository: this
+ * browser's IndexedDB in the tracker, the database on the public site.
+ */
 export default function StatsArea(props: StatsAreaProps) {
   const stats = useStats(props.eventId, props.repo);
   return <StatsPanel {...props} stats={stats} />;

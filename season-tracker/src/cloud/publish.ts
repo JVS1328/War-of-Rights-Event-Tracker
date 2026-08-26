@@ -25,14 +25,31 @@ export interface TrackerStatePayload {
 }
 
 /**
+ * A season inside that tree. Only the fields the public screens read are named;
+ * the rest is carried through untouched, because the shape is owned by
+ * utils/eventStore (plain JS) and this module is not trying to re-declare it.
+ */
+export interface TrackerSeason {
+  id: string;
+  name: string;
+  units?: string[];
+  weeks?: { id: string | number; isPlayoffs?: boolean }[];
+  divisions?: { name: string; units: string[] }[];
+  pointSystem?: Record<string, number>;
+  playoffConfig?: { enabled?: boolean; teamsPerDivision?: number };
+  [key: string]: unknown;
+}
+
+/**
  * The tracker's event tree. Typed loosely on purpose: it is defined by
  * utils/eventStore (plain JS) and this module only ever carries it around.
  */
 export interface TrackerEvent {
   id: string;
   name: string;
-  seasons: { id: string; name: string; weeks?: { id: string | number }[] }[];
+  seasons: TrackerSeason[];
   unitRegistry?: Record<string, { name: string }>;
+  eloSystem?: Record<string, number>;
   [key: string]: unknown;
 }
 
@@ -89,6 +106,12 @@ export const registryUnitsOf = (event: TrackerEvent): string[] =>
 export interface PublishInput {
   slug: string;
   event: TrackerEvent;
+  /**
+   * What to call it on the site. Old flat-shape season files carry no event
+   * name at all and migrate in as "Default Event", so the owner needs a say.
+   * Falls back to the event's own name.
+   */
+  name?: string;
   /** Player stats to upload. Omit to leave whatever is already stored alone. */
   stats?: StatsBundle | null;
   published?: boolean;
@@ -110,11 +133,15 @@ export interface PublishResult {
  * platform's body limit.
  */
 export async function publishEvent(input: PublishInput): Promise<PublishResult> {
-  const { slug, event, stats, mapStats, onProgress } = input;
+  const { slug, stats, mapStats, onProgress } = input;
+  // The name goes on the event itself, not just the directory row, so pulling
+  // it back down later brings the name with it.
+  const name = input.name?.trim() || input.event.name;
+  const event = name === input.event.name ? input.event : { ...input.event, name };
 
   const meta = await saveEvent({
     slug,
-    name: event.name,
+    name,
     published: input.published,
     seasons: seasonRefsOf(event),
     registryUnits: registryUnitsOf(event),

@@ -60,6 +60,15 @@ export function resetRedis() {
   client = undefined;
 }
 
+/**
+ * Install a client of your own. The dev server uses this to run the whole API
+ * against an in-memory store, so `npm run dev` works with no database
+ * provisioned; nothing in production calls it.
+ */
+export function setRedis(custom) {
+  client = custom;
+}
+
 /** Thrown when a single value would exceed what Upstash accepts. */
 export class ValueTooLargeError extends Error {
   constructor(bytes) {

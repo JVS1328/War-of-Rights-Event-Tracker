@@ -97,6 +97,7 @@ import {
 } from './utils/playoffPlanner';
 import { balanceTeams, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
 import { nightLeadPairs } from './utils/nightLeads';
+import { CloudPanel } from './admin/CloudPanel';
 import {
   getEffectiveTeams,
   seasonPoints,
@@ -207,8 +208,12 @@ const RAIL_NAV = [
     { key: 'settings', label: 'Settings' },
     { key: 'stats-import', label: 'Import rounds' },
     { key: 'share', label: 'Share & export' },
+    { key: 'cloud', label: 'Publish to the site' },
   ]},
 ];
+
+/** Screens where "add a week" is the next thing to do, and so worth saying. */
+const SEASON_SCREENS = new Set(RAIL_NAV[0].items.map(i => i.key));
 
 /** Screens the season/all-seasons scope changes the meaning of. */
 const STATS_SCREENS = new Set(
@@ -1633,21 +1638,34 @@ const SeasonTracker = ({ initialShareData = null }) => {
     alert('New season started! All data has been cleared.');
   };
 
+  /**
+   * The active event's player stats as a portable bundle — every scoreboard,
+   * the regiment pins and renames, and the map tallies the Elo engine derives.
+   * Share, export and publish all need precisely this, so it is built once.
+   */
+  const buildEventStatsBundle = async () => {
+    let bundle;
+    try {
+      bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs);
+    } catch {
+      return null;
+    }
+    bundle.mapStats = eventMapStats();
+    return bundle;
+  };
+
+  /** Map win/loss tallies for the event overall and for each season in it. */
+  const eventMapStats = () => ({
+    overall: calculateMapStats(),
+    bySeason: Object.fromEntries(activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])),
+  });
+
   // Share — offers active season or whole event. Single-season events skip
   // the dialog and share the season directly (matches legacy behavior).
   const shareSeason = async () => {
     const multi = activeEvent.seasons.length > 1;
     // Pull the event's player stats so we can offer a combined link.
-    let bundle = null;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); } catch { bundle = null; }
-    if (bundle) {
-      bundle.mapStats = {
-        overall: calculateMapStats(),
-        bySeason: Object.fromEntries(
-          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-        ),
-      };
-    }
+    const bundle = await buildEventStatsBundle();
     const sbCount = bundle?.scoreboards.length ?? 0;
     const hasStats = sbCount > 0;
 
@@ -1717,19 +1735,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // active event). Recipients open it to a read-only, stats-only page — no
   // tracker data, no editing (see SharedStatsView).
   const shareStats = async () => {
-    let bundle;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
-    catch { alert('Could not read player stats for this event.'); return; }
+    const bundle = await buildEventStatsBundle();
+    if (!bundle) { alert('Could not read player stats for this event.'); return; }
     if (!bundle.scoreboards.length) {
       alert('No scoreboards imported for this event yet — nothing to share.');
       return;
     }
-    bundle.mapStats = {
-      overall: calculateMapStats(),
-      bySeason: Object.fromEntries(
-        activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-      ),
-    };
     let url;
     try { url = await generateShortStatsShareUrl(bundle, activeEvent.name); }
     catch { alert("Couldn't create share link — try again."); return; }
@@ -1757,17 +1768,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const isEvent = activeEvent.seasons.length > 1;
     // Bundle the event's player stats (scoreboards + regiment assignments) so a
     // single file is a complete backup. Best-effort — never block the export.
-    let stats;
-    try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
-    catch { stats = undefined; }
-    if (stats) {
-      stats.mapStats = {
-        overall: calculateMapStats(),
-        bySeason: Object.fromEntries(
-          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-        ),
-      };
-    }
+    const stats = await buildEventStatsBundle();
     const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
 
     const data = isEvent
@@ -4294,6 +4295,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
     >
         <div>
           {screen === 'splitter' && <CompanySplitter />}
+
+          {/* Copy this event up to the database the public site reads. */}
+          {screen === 'cloud' && (
+            <CloudPanel
+              event={activeEvent}
+              slug={activeEvent.cloudSlug ?? ''}
+              onSlug={(slug) => setAppState(prev => updateActiveEvent(prev, e => ({ ...e, cloudSlug: slug })))}
+              buildStats={buildEventStatsBundle}
+              mapStats={eventMapStats}
+              onPulled={(pulled) => setAppState(prev => ({
+                // Same event id means this is the machine's copy coming back;
+                // anything else arrives as a new event rather than overwriting.
+                ...prev,
+                events: prev.events.some(e => e.id === pulled.id)
+                  ? prev.events.map(e => (e.id === pulled.id ? pulled : e))
+                  : [...prev.events, pulled],
+                activeEventId: pulled.id,
+                activeSeasonId: defaultSeasonIdFor(pulled),
+              }))}
+            />
+          )}
 
           {/* Events & seasons — what the header strip used to carry. */}
           {screen === 'events' && (
@@ -6975,8 +6997,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
-          {/* Empty State */}
-          {viewMode === 'tracker' && weeks.length === 0 && (
+          {/* Empty State — only where adding a week is the point of the screen. */}
+          {viewMode === 'tracker' && weeks.length === 0 && SEASON_SCREENS.has(screen) && (
             <div className="panel pb">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg">Add a week to get started</p>
