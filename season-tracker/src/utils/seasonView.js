@@ -8,6 +8,7 @@
 // in step by hand.
 
 import { nightLeadPairs } from './nightLeads';
+import { nightPlayed } from '../stats/nightMatchup';
 import { buildEloLadder } from './eloLadder';
 import { replayActiveSeasonUpToWeekFromAppState, replayEventFromAppState } from './eloEngine';
 
@@ -234,7 +235,7 @@ export const nightRows = (season) => (season?.weeks || []).map((w, i) => {
     sidesB: (w.teamB || []).length,
     r1: w.round1Winner || null,
     r2: w.round2Winner || null,
-    played: !!(w.round1Winner || w.round2Winner || w.round1Draw || w.round2Draw),
+    played: nightPlayed(w),
     playoffs: !!w.isPlayoffs,
   };
 });

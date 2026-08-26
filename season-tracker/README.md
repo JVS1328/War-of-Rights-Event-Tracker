@@ -21,8 +21,9 @@ there: no rail group, no season picker, no screens.
 
 - `#/` — the directory. Every published event, plus a box to type one's short
   name into.
-- `#/e/<short-name>` — an event. Add a screen (`/standings`, `/stats`, …) and a
-  season (`/sea_abc123`, or `overall`) to link straight to a view.
+- `#/e/<short-name>` — an event. Add a screen (`/standings`, `/nights`,
+  `/pairings`, `/stats`, …) and a season (`/sea_abc123`, or `overall`) to link
+  straight to a view.
 - `#/tools` — the side balancer and company splitter, which need no event at
   all.
 
@@ -261,6 +262,18 @@ The overflow menu's **Simulate** builds a season's worth of weeks from a lead sc
 - **Schedule Only** stops at the leads — no teams, maps or results.
 
 The summary popup afterwards reports season length, average/shortest/longest gap between a unit's leads against the ideal gap, a per-unit breakdown, and — when rounds were simulated — the lead vs assist point split. It also renders the schedule as a tab-separated block you can copy straight into a matchup sheet, or download as CSV.
+
+### Which Night the Matchup Opens On
+
+Night matchup opens on the **most recent night with a round entered**, not the
+last one on the schedule. A season is built ahead of itself — the fixtures run
+to a final long before they are played — so the last week is usually empty, and
+opening on it shows a matchup that has not happened.
+
+A season nobody has played yet falls back to its last night, so a brand-new one
+still lands on something. The rule is `latestPlayedWeek` in
+`stats/nightMatchup`, which is also where the schedule's played/unplayed flag
+comes from — one definition of "this night happened", read by both.
 
 ### Playoffs on the public site
 

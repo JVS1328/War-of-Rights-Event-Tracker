@@ -75,7 +75,7 @@ describe('what the database is told about an event', () => {
     name: 'SSL',
     unitRegistry: { '1sttx': { name: '1stTX' }, '2ndsc': { name: '2ndSC' } },
     seasons: [
-      { id: 's1', name: 'Season 1', weeks: [{ id: 11 }, { id: 12 }] },
+      { id: 's1', name: 'Season 1', weeks: [{ id: 11, name: 'Night 1' }, { id: 12, name: 'Night 2' }] },
       { id: 's2', name: 'Season 2', weeks: [] },
     ],
   };

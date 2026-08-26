@@ -4,6 +4,7 @@ import { Shell } from '../components/Shell';
 import { SeasonOverview, StandingsScreen, ScheduleScreen } from '../components/season/SeasonScreens';
 import { RosterScreen } from '../components/season/Roster';
 import { Playoffs } from '../components/season/Playoffs';
+import { PairingsScreen } from '../components/season/PairingsScreen';
 import { EloLadder } from '../components/EloLadder';
 import StatsArea from '../components/stats/StatsArea';
 import { cloudStatsRepo } from '../stats/repo';
@@ -21,8 +22,11 @@ import {
   seasonKpis,
   rosterRows,
   eloLadderRows,
+  tokenUnitsOf,
 } from '../utils/seasonView';
 import { bracketSlots } from '../utils/playoffBracket';
+import { buildPairHeatmap } from '../utils/pairHeatmap';
+import type { PairMode } from '../utils/pairHeatmap';
 
 /**
  * One event, as anyone may read it: the season the tracker keeps and the player
@@ -176,8 +180,17 @@ export function PublicEventView({
         </>
       }
     >
-      {here === 'stats' ? (
-        <PublicStats slug={slug} meta={meta} scope={scope} onScope={goScope} />
+      {here === 'stats' || here === 'nights' ? (
+        <PublicStats
+          slug={slug}
+          meta={meta}
+          scope={scope}
+          onScope={goScope}
+          season={activeSeason}
+          // The night matchup is a stats tab in the tracker too; naming it
+          // here is what turns the panel into that one screen.
+          tab={here === 'nights' ? 'nights' : undefined}
+        />
       ) : activeSeason ? (
         <SeasonScreen
           screen={here}
@@ -220,6 +233,15 @@ function SeasonScreen({
     [event, season],
   );
 
+  // Pairings read either this season or the whole event — a unit's history with
+  // another one does not reset in January.
+  const [pairMode, setPairMode] = useState<PairMode>('together');
+  const [pairScope, setPairScope] = useState<'season' | 'event'>('season');
+  const pairings = useMemo(() => {
+    const scanned = pairScope === 'event' ? event.seasons ?? [] : [season];
+    return buildPairHeatmap(scanned.flatMap((s) => s.weeks ?? []));
+  }, [pairScope, event, season]);
+
   const divisions = season.divisions ?? [];
 
   switch (screen) {
@@ -240,6 +262,18 @@ function SeasonScreen({
           nightsAvailable={(season.weeks ?? []).filter((w) => w.isPlayoffs).length}
           // No planner on the public site: choosing a format is the owner's job.
           formats={[]}
+        />
+      );
+    case 'pairings':
+      return (
+        <PairingsScreen
+          map={pairings}
+          mode={pairMode}
+          onMode={setPairMode}
+          scope={pairScope}
+          onScope={setPairScope}
+          seasonName={season.name}
+          seasonCount={event.seasons?.length ?? 1}
         />
       );
     case 'ladder':
@@ -278,11 +312,17 @@ function PublicStats({
   meta,
   scope,
   onScope,
+  season,
+  tab,
 }: {
   slug: string;
   meta: CloudEvent;
   scope: string;
   onScope: (scope: string) => void;
+  /** The season whose nights the Night matchup screen reads. */
+  season: TrackerSeason | null;
+  /** Pin the panel to one tab — the rail is the navigation for that screen. */
+  tab?: 'nights';
 }) {
   const seasons = meta.seasons ?? [];
 
@@ -303,6 +343,10 @@ function PublicStats({
       seasonScope={scope}
       onSeasonScope={onScope}
       trackerMapStats={trackerMapStats}
+      weeks={(season?.weeks ?? []).map((w) => ({ ...w, id: String(w.id) }))}
+      pointSystem={season?.pointSystem}
+      tokenUnits={tokenUnitsOf(season)}
+      tab={tab}
       readOnly
     />
   );

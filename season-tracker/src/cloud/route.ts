@@ -19,19 +19,24 @@
 export type PublicScreen =
   | 'overview'
   | 'standings'
-  | 'schedule'
   | 'roster'
+  | 'schedule'
+  | 'nights'
   | 'playoffs'
   | 'ladder'
+  | 'pairings'
   | 'stats';
 
+/** In the tracker's own rail order, minus everything that edits a season. */
 export const PUBLIC_SCREENS: { key: PublicScreen; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'standings', label: 'Standings' },
-  { key: 'schedule', label: 'Schedule' },
   { key: 'roster', label: 'Roster' },
+  { key: 'schedule', label: 'Schedule' },
+  { key: 'nights', label: 'Night matchup' },
   { key: 'playoffs', label: 'Playoffs' },
   { key: 'ladder', label: 'Elo ladder' },
+  { key: 'pairings', label: 'Pairings' },
   { key: 'stats', label: 'Player stats' },
 ];
 
