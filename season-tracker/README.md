@@ -235,6 +235,17 @@ The overflow menu's **Simulate** builds a season's worth of weeks from a lead sc
 
 The summary popup afterwards reports season length, average/shortest/longest gap between a unit's leads against the ideal gap, a per-unit breakdown, and — when rounds were simulated — the lead vs assist point split. It also renders the schedule as a tab-separated block you can copy straight into a matchup sheet, or download as CSV.
 
+### Playoffs on the public site
+
+The public playoff screen draws the **projected** bracket, not just the nights
+already played: who qualifies on the table as it sits, how they seed, and which
+matchups that produces down to the final. It is the same seeding the tracker
+runs — `utils/playoffBracket` — so a visitor and the owner see one bracket
+rather than two that have to agree.
+
+What it does not carry is the format planner. Choosing a bracket is the owner's
+job; reading the one that was chosen is everybody's.
+
 ### Playoff Formats
 
 Playoffs draw in one of two styles, set under **Bracket Style** (Stats → Playoffs):
