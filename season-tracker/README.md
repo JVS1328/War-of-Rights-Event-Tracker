@@ -1,6 +1,77 @@
 # War of Rights Season Tracker
 
-A React-based web application for tracking regiment performance across a War of Rights competitive season. Built with the same design patterns as the Log Analyzer.
+A React-based web application for tracking regiment performance across a War of
+Rights competitive season. Built with the same design patterns as the Log
+Analyzer.
+
+## Two sites, one build
+
+The deployment serves two things off the same URL.
+
+**The public site** is what the address gives you. Anyone can open it, find the
+event they play in, and read it: standings, schedule, roster, playoff bracket,
+Elo ladder and the whole player-stats panel — every season, no link required
+and nothing shared with them first. It is entirely read-only; there is not a
+control on it that would change anything.
+
+- `#/` — the directory. Every published event, plus a box to type one's short
+  name into.
+- `#/e/<short-name>` — an event. Add a screen (`/standings`, `/stats`, …) and a
+  season (`/sea_abc123`, or `overall`) to link straight to a view.
+- `#/tools` — the side balancer and company splitter, which need no event at
+  all.
+
+**The admin site** is the tracker, at `#/admin`, behind the owner's token. That
+is where events are created, nights recorded, rounds imported and seasons
+published. Everything it does is what it always did; what is new is a **Publish
+to the site** screen under Setup.
+
+Writes are refused by the server without the token, so the gate on `#/admin` is
+a courtesy — it stops the tracker opening in a state where every save is about
+to fail — rather than the thing keeping strangers out.
+
+## The database
+
+Player stats and season data live in Upstash Redis, reached through
+`/api/db` (see `api/_lib/`). Reads are public; every write needs
+`Authorization: Bearer <WOR_ADMIN_TOKEN>`.
+
+### Deploying
+
+Two environment variables:
+
+| Variable | What it is |
+| --- | --- |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Injected by the Upstash integration on Vercel. `KV_REST_API_URL` / `KV_REST_API_TOKEN` are accepted too. |
+| `WOR_ADMIN_TOKEN` | A secret you choose, at least 16 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
+
+Nothing else needs configuring: `api/db/[...path].js` is one serverless
+function, and hash routing means no rewrite rules.
+
+### Running it locally
+
+`npm run dev` serves the API as well as the app. With no Upstash credentials in
+the environment it runs against an in-memory store that lasts as long as the dev
+server, and prints an owner token to paste into `#/admin` — so the whole site
+works on a laptop with nothing provisioned.
+
+### Getting your existing seasons in
+
+Nothing migrates itself; the tracker still keeps its own copy in this browser
+and works offline exactly as before. Publishing is a copy up, not a move.
+
+- **A season you are running now.** Open it in the tracker, go to Setup →
+  Publish to the site, give it a name and a short name, and hit Publish. Every
+  imported round goes up with it.
+- **A season that only exists as a file.** Same screen, *Import a file straight
+  into the database* — it reads any export the suite has ever written,
+  including the flat season files from before events existed, and puts it on the
+  site without opening it in the tracker first.
+- **A different machine.** Pull into the tracker brings a published event back
+  down.
+
+Unpublishing hides an event from the site without deleting it. Deleting removes
+it from the database and leaves your browser's copy alone.
 
 ## Features
 
@@ -15,8 +86,9 @@ A React-based web application for tracking regiment performance across a War of 
 - **Playoff Brackets**: Seeded knockout (any number of groups) or two-conference format, with group qualification and wildcards
 - **Playoff Format Planner**: Audits the playoff settings you have and recommends the ones that fit your league and your remaining nights, one click to apply
 - **Standings**: Real-time standings based on performance
-- **Data Persistence**: Automatic saving to browser localStorage
+- **Data Persistence**: Automatic saving to browser localStorage, and publishing to a database the public site reads
 - **Import/Export**: Save and load season data as JSON files
+- **Side Balancer**: A standalone split — paste the coord sheet, pin a unit or two to a side, get an even USA/CSA night — with no event behind it
 
 ## Getting Started
 
@@ -73,6 +145,20 @@ you, it goes by the number in the name instead:
   Seasons 2–4 offers "Season 5" rather than a second "Season 4".
 
 Seasons whose names carry no number ("Preseason") fall back to list order.
+
+### Side Balancer (public, no event needed)
+
+`#/tools` carries a balancer that needs nothing behind it. Paste the coord sheet
+— name, min, max, one unit a line — click a unit or two onto a side to hold them
+there, and it splits the rest into an even USA/CSA night. A unit listed twice has
+its numbers added together, and 0–0 men is a night off.
+
+It runs the same engine the season balancer does, minus everything that needs a
+season: no teammate history, no divisions, no Elo, no playoff pedigree. What is
+left is how even the head counts are, how evenly the units are spread, and how
+alike the two sides' min–max spreads look.
+
+The company splitter sits on the same page.
 
 ### Balancer
 
@@ -159,7 +245,8 @@ This application follows the KISS (Keep It Simple, Stupid), DRY (Don't Repeat Yo
 - **Vite**: Build tool and dev server
 - **Tailwind CSS 4**: Styling
 - **Lucide React**: Icons
-- **localStorage**: Data persistence
+- **localStorage + IndexedDB**: What the tracker keeps in this browser
+- **Upstash Redis**: What the public site reads, behind `/api/db`
 
 ## Building for Production
 

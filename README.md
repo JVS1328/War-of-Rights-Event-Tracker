@@ -130,6 +130,23 @@ After finding the best possible solution, the algorithm checks if it satisfies t
 
 A modern React-based web application for tracking regiment performance across a War of Rights competitive season. This tool provides a streamlined, browser-based alternative to the Python tracker with real-time data updates and a clean interface.
 
+### Two sites, one build
+
+The deployment serves a **public site** and an **admin site** off the same URL.
+
+Visitors land on the public one: they find the event they play in and read all
+of it — standings, schedule, roster, playoff bracket, Elo ladder and the full
+player-stats panel, any season — without being sent a link or handed a file.
+`#/tools` carries the side balancer and company splitter, which need no event
+at all.
+
+The tracker itself is the admin site, at `#/admin`, behind an owner token. It
+still keeps its own copy of everything in the browser and still works offline;
+publishing an event copies it up to the database the public site reads.
+
+Both halves talk to Upstash Redis through `/api/db`, which is public to read
+and refuses every write without `WOR_ADMIN_TOKEN`.
+
 ### Features
 
 - **Week Management**: Create and manage weekly matches
@@ -139,8 +156,10 @@ A modern React-based web application for tracking regiment performance across a 
 - **Real-Time Standings**: Automatically calculated standings based on performance
 - **Playoff Brackets**: Seeded knockout for any number of groups, or a two-conference format, with group qualification and wildcards
 - **Playoff Format Planner**: Audits your playoff settings and recommends formats that fit the league and the nights left, one click to apply
-- **Data Persistence**: Automatic saving to browser localStorage
-- **Import/Export**: Save and load season data as JSON files
+- **Public Event Pages**: Every published event readable by anyone, no link or file needed
+- **Side Balancer**: Paste a coord sheet, pin a unit or two to a side, get an even USA/CSA split — no event required
+- **Data Persistence**: Automatic saving to browser localStorage, and publishing to a database
+- **Import/Export**: Save and load season data as JSON files, or send one straight into the database
 
 ### Getting Started
 
@@ -168,13 +187,21 @@ npm run dev
 
 4. Open your browser to the URL shown (typically http://localhost:5173)
 
+The dev server serves the database API as well as the app. With no Upstash
+credentials in the environment it runs against an in-memory store and prints an
+owner token to paste into `#/admin`, so the whole site works with nothing
+provisioned.
+
 #### Building for Production
 
 ```bash
 npm run build
 ```
 
-The built files will be in the `dist` directory and can be deployed to any static hosting service.
+The built files land in `dist`. The serverless functions under `api/` need a
+host that runs them (Vercel) plus two environment variables — Upstash's REST
+URL and token, and `WOR_ADMIN_TOKEN` for write access. Without a database the
+public site has nothing to read, though the tracker itself still runs offline.
 
 ### Point System Configuration
 
@@ -192,6 +219,7 @@ Configure point allocations in Settings:
 - **Vite**: Build tool and dev server
 - **Tailwind CSS 4**: Styling
 - **Lucide React**: Icons
+- **Upstash Redis**: What the public site reads, behind `/api/db`
 
 See [`season-tracker/README.md`](season-tracker/README.md) for detailed documentation.
 
