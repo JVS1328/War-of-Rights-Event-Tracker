@@ -7,12 +7,12 @@ import * as store from './store.js';
  *
  * Reads are public — that is the point of the thing: anyone can open the site,
  * find the event they play in and read its season and its player stats without
- * being handed a link. Every write needs the owner's bearer token (see
- * _lib/auth.js), because there is exactly one person who runs the league. One
- * function rather than a dozen files keeps the deployment inside Vercel's
+ * being handed a link. Every write needs the admin pass as a bearer credential
+ * (see _lib/auth.js), because there is exactly one person who runs the league.
+ * One function rather than a dozen files keeps the deployment inside Vercel's
  * per-project function budget.
  *
- *   GET    /api/db/auth                              is my token good?
+ *   GET    /api/db/auth                              is my admin pass good?
  *   GET    /api/db/events                            published events
  *   POST   /api/db/events                       (w)  create/update an event
  *   GET    /api/db/events/:slug                      one event's meta
@@ -38,8 +38,8 @@ const json = (res, code, body) => res.status(code).json(body);
 const notFound = (res) => json(res, 404, { error: 'Not found' });
 const denied = (res) => json(res, 401, {
   error: adminConfigured()
-    ? 'This action needs the owner token'
-    : 'No owner token is configured on this deployment, so writes are refused',
+    ? 'This action needs the admin pass'
+    : 'No admin pass is configured on this deployment, so writes are refused',
 });
 
 /** Path segments after /api/db, from the platform's catch-all or the raw URL. */
@@ -140,8 +140,8 @@ export default async function handler(req, res) {
   const admin = isAdmin(req);
   const query = req.query ?? {};
 
-  // Does the token in my browser still work? Answered without touching Redis so
-  // the tracker's sign-in stays responsive even if the database is down.
+  // Does the pass in my browser still work? Answered without touching the
+  // database, so signing in works even while the database is down.
   if (segments[0] === 'auth') {
     if (method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
     return json(res, admin ? 200 : 401, { admin, configured: adminConfigured() });
@@ -274,7 +274,7 @@ export default async function handler(req, res) {
     }
     // A missing/misconfigured database is the deployment's problem, not the
     // caller's — say so plainly instead of a bare 500.
-    if (/Upstash Redis is not configured/.test(String(err?.message))) {
+    if (/No database is configured/.test(String(err?.message))) {
       return json(res, 503, { error: err.message });
     }
     return json(res, 500, { error: 'Database request failed' });

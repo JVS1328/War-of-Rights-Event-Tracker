@@ -2,8 +2,8 @@ import { getAdminToken } from './session';
 
 /**
  * Talking to the database API (see api/_lib/router.js). Reads need nothing;
- * writes carry the owner's token in an Authorization header, never in the URL,
- * so it stays out of browser history and server logs.
+ * writes carry the admin pass in an Authorization header, never in the URL, so
+ * it stays out of browser history and server logs.
  */
 
 const BASE = '/api/db';

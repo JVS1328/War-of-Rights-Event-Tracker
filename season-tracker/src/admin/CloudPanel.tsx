@@ -327,7 +327,7 @@ export function CloudPanel({ event, slug, onSlug, buildStats, mapStats, onPulled
         </header>
         <div className="pb">
           <p className="note">
-            The owner token is remembered here so you are not asked for it every visit. Forget it if
+            The admin pass is remembered here so you are not asked for it every visit. Forget it if
             this is not your machine.
           </p>
           <button
@@ -335,7 +335,7 @@ export function CloudPanel({ event, slug, onSlug, buildStats, mapStats, onPulled
             style={{ marginTop: 9 }}
             onClick={() => { clearAdminToken(); window.location.reload(); }}
           >
-            Forget the owner token
+            Forget the admin pass
           </button>
         </div>
       </div>

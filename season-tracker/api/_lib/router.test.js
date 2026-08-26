@@ -1,62 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-
-// In-memory stand-in for Upstash. Only the commands store.js actually issues
-// are implemented, with the same return shapes the SDK gives.
-const { strings, sets, hashes } = vi.hoisted(() => ({
-  strings: new Map(),
-  sets: new Map(),
-  hashes: new Map(),
-}));
-
-vi.mock('@upstash/redis', () => ({
-  Redis: class {
-    async set(key, value) { strings.set(key, value); return 'OK'; }
-    async get(key) { return strings.has(key) ? strings.get(key) : null; }
-    async mget(...keys) { return keys.map((k) => (strings.has(k) ? strings.get(k) : null)); }
-    async del(...keys) {
-      let n = 0;
-      for (const k of keys) {
-        if (strings.delete(k)) n += 1;
-        if (hashes.delete(k)) n += 1;
-      }
-      return n;
-    }
-    async sadd(key, ...members) {
-      const set = sets.get(key) ?? new Set();
-      members.forEach((m) => set.add(m));
-      sets.set(key, set);
-      return members.length;
-    }
-    async srem(key, ...members) {
-      const set = sets.get(key) ?? new Set();
-      members.forEach((m) => set.delete(m));
-      sets.set(key, set);
-      return members.length;
-    }
-    async smembers(key) { return [...(sets.get(key) ?? [])]; }
-    async hset(key, obj) {
-      const hash = hashes.get(key) ?? new Map();
-      for (const [f, v] of Object.entries(obj)) hash.set(f, v);
-      hashes.set(key, hash);
-      return Object.keys(obj).length;
-    }
-    async hgetall(key) {
-      const hash = hashes.get(key);
-      return hash ? Object.fromEntries(hash) : null;
-    }
-    async hdel(key, ...fields) {
-      const hash = hashes.get(key) ?? new Map();
-      fields.forEach((f) => hash.delete(f));
-      return fields.length;
-    }
-    async hlen(key) { return hashes.get(key)?.size ?? 0; }
-  },
-}));
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { startTestDb, truncateAll } from './testDb.js';
 
 const { default: handler } = await import('./router.js');
-const { resetRedis } = await import('./store.js');
 
-const TOKEN = 'owner-token-that-is-long-enough';
+const PASS = 'admin-pass-long-enough';
+let db;
 
 const makeRes = () => {
   const res = { statusCode: 200, body: undefined };
@@ -65,14 +13,14 @@ const makeRes = () => {
   return res;
 };
 
-/** Issue a request. `auth: true` presents the owner token. */
+/** Issue a request. `auth: true` presents the admin pass. */
 const call = async (method, path, { body, query = {}, auth = false } = {}) => {
   const res = makeRes();
   const req = {
     method,
     body,
     query: { path: path.split('/').filter(Boolean), ...query },
-    headers: auth ? { authorization: `Bearer ${TOKEN}` } : {},
+    headers: auth ? { authorization: `Bearer ${PASS}` } : {},
   };
   await handler(req, res);
   return res;
@@ -89,27 +37,30 @@ const summaryOf = (id, name) => ({
   map: 'Bloody Lane', mode: 'Skirmish', area: null, winner: 'USA',
 });
 
-beforeEach(() => {
-  strings.clear();
-  sets.clear();
-  hashes.clear();
-  resetRedis();
-  process.env.UPSTASH_REDIS_REST_URL = 'http://localhost';
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  process.env.WOR_ADMIN_TOKEN = TOKEN;
+beforeAll(async () => { db = await startTestDb(); });
+afterAll(async () => { await db?.close(); });
+
+beforeEach(async () => {
+  await truncateAll(db);
+  process.env.ADMIN_PASS = PASS;
 });
 
 describe('auth', () => {
-  it('accepts the owner token and rejects everything else', async () => {
+  it('accepts the admin pass and rejects everything else', async () => {
     expect((await call('GET', 'auth', { auth: true })).body).toEqual({ admin: true, configured: true });
     expect((await call('GET', 'auth')).statusCode).toBe(401);
   });
 
-  it('refuses every write when no token is configured at all', async () => {
-    delete process.env.WOR_ADMIN_TOKEN;
+  it('refuses every write when no admin pass is configured at all', async () => {
+    delete process.env.ADMIN_PASS;
     const res = await call('POST', 'events', { body: { slug: 'ssl' }, auth: true });
     expect(res.statusCode).toBe(401);
-    expect(res.body.error).toMatch(/No owner token is configured/);
+    expect(res.body.error).toMatch(/No admin pass is configured/);
+  });
+
+  it('refuses a pass too short to be worth having', async () => {
+    process.env.ADMIN_PASS = 'short';
+    expect((await call('GET', 'auth', { auth: true })).statusCode).toBe(401);
   });
 });
 
@@ -274,21 +225,13 @@ describe('deleting an event', () => {
     expect((await call('DELETE', 'events/ssl', { auth: true })).body).toEqual({ deleted: true, scoreboards: 1 });
     expect((await call('GET', 'events/ssl')).statusCode).toBe(404);
     expect((await call('GET', 'events')).body.events).toEqual([]);
-    expect(strings.size).toBe(0);
+    // The rounds and the side tables go with it, by foreign key.
+    expect((await db.query('SELECT count(*)::int AS n FROM wor_scoreboards'))[0].n).toBe(0);
+    expect((await db.query('SELECT count(*)::int AS n FROM wor_event_docs'))[0].n).toBe(0);
   });
 });
 
 describe('failure modes', () => {
-  it('says so plainly when the database is not configured', async () => {
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.KV_REST_API_URL;
-    delete process.env.upstash_KV_REST_API_URL;
-    resetRedis();
-    const res = await call('GET', 'events');
-    expect(res.statusCode).toBe(503);
-    expect(res.body.error).toMatch(/not configured/);
-  });
-
   it('405s an unsupported method and 404s an unknown resource', async () => {
     expect((await call('PATCH', 'events')).statusCode).toBe(405);
     expect((await call('GET', 'nonsense')).statusCode).toBe(404);

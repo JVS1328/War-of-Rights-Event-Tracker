@@ -1,55 +1,31 @@
-import { Redis } from '@upstash/redis';
+import { getShareChunk, putShareChunk } from './_lib/store.js';
 
-// A single Upstash REST value/request is capped near 1 MB, so the client splits
-// large share payloads into sub-1MB string chunks stored under separate keys,
-// with a manifest (`{"n":<count>}`) recording how many. This removes the old
-// single-value size ceiling — short links now work regardless of payload size.
-const MAX_CHUNK = 600_000;       // per-chunk char limit — keeps each request < ~1MB
-const MAX_CHUNKS = 1024;         // ~512MB backstop so a runaway upload can't hammer Redis
-const SHARE_TTL = 31_536_000;    // 1 year, in seconds — abandoned/orphan chunks self-clean
+// The client splits a large share payload into chunks and records how many in a
+// manifest, so a short link works regardless of payload size. That was
+// originally a way around a per-value ceiling in the store; it still holds
+// because a single enormous row is a bad idea in any database.
+const MAX_CHUNK = 600_000;       // per-chunk char limit
+const MAX_CHUNKS = 1024;         // a backstop, so a runaway upload can't hammer the database
+
+// The manifest lives at index -1, out of the way of the chunks it counts.
+const MANIFEST_INDEX = -1;
 
 const ID_RE = /^[0-9a-f]{8}$/;
 
-// The Upstash Vercel integration injects REST URL/token under either the Upstash
-// names or Vercel's KV-prefixed names depending on how it was added; accept both.
-let redis;
-function getRedis() {
-  if (!redis) {
-    const url = process.env.UPSTASH_REDIS_REST_URL
-      || process.env.KV_REST_API_URL
-      || process.env.upstash_KV_REST_API_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN
-      || process.env.KV_REST_API_TOKEN
-      || process.env.upstash_KV_REST_API_TOKEN;
-    if (!url || !token) {
-      throw new Error('Upstash Redis is not configured (missing REST URL/token)');
-    }
-    // Payloads are opaque base64 strings — disable JSON (de)serialization so they
-    // round-trip byte-for-byte.
-    redis = new Redis({ url, token, automaticDeserialization: false });
-  }
-  return redis;
-}
-
-// Write-once set with TTL. Ids are content hashes, so an existing key already
-// holds these exact bytes — NX means a re-upload is a no-op and, crucially,
-// that nobody can replace the content behind someone else's already-shared
-// link (the id arrives from the client, so without NX any known link could be
-// silently rewritten). On a dedupe hit, refresh the TTL instead so a re-shared
-// link doesn't expire a year after the *first* share.
-async function setOnce(client, key, value) {
-  const created = await client.set(key, value, { nx: true, ex: SHARE_TTL });
-  if (created === null) await client.expire(key, SHARE_TTL);
-}
-
 export default async function handler(req, res) {
-  let client;
   try {
-    client = getRedis();
+    return await route(req, res);
   } catch (err) {
-    return res.status(503).json({ error: err.message });
+    // A missing or unreachable database is the deployment's problem, not the
+    // caller's — say so plainly rather than returning a bare 500.
+    if (/No database is configured/.test(String(err?.message))) {
+      return res.status(503).json({ error: err.message });
+    }
+    return res.status(500).json({ error: 'Database request failed' });
   }
+}
 
+async function route(req, res) {
   if (req.method === 'POST') {
     const { id, index, chunk, total } = req.body || {};
     if (typeof id !== 'string' || !ID_RE.test(id)) {
@@ -65,7 +41,7 @@ export default async function handler(req, res) {
       if (total > MAX_CHUNKS) {
         return res.status(413).json({ error: 'Too many chunks' });
       }
-      await setOnce(client, `season-share:${id}`, JSON.stringify({ n: total }));
+      await putShareChunk(id, MANIFEST_INDEX, JSON.stringify({ n: total }));
       return res.status(200).json({ id });
     }
 
@@ -79,7 +55,7 @@ export default async function handler(req, res) {
     if (chunk.length > MAX_CHUNK) {
       return res.status(413).json({ error: 'Chunk too large' });
     }
-    await setOnce(client, `season-share:${id}:${index}`, chunk);
+    await putShareChunk(id, index, chunk);
     return res.status(200).json({ ok: true });
   }
 
@@ -95,14 +71,14 @@ export default async function handler(req, res) {
       if (!Number.isInteger(i) || i < 0) {
         return res.status(400).json({ error: 'Invalid chunk index' });
       }
-      const value = await client.get(`season-share:${id}:${i}`);
+      const value = await getShareChunk(id, i);
       if (value == null) return res.status(404).json({ error: 'Not found' });
       return res.status(200).json({ chunk: value });
     }
 
     // Manifest (new links) vs. raw payload (legacy single-value links). A
     // manifest is JSON and starts with '{'; base64 payloads never do.
-    const value = await client.get(`season-share:${id}`);
+    const value = await getShareChunk(id, MANIFEST_INDEX);
     if (value == null) return res.status(404).json({ error: 'Not found' });
     if (typeof value === 'string' && value.startsWith('{')) {
       try {

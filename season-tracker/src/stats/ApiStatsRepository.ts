@@ -16,7 +16,7 @@ import type { ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundl
  * The database-backed StatsRepository: the same contract LocalStatsRepository
  * fulfils out of IndexedDB, fulfilled instead out of /api/db. Reads work for
  * anyone — that is what makes a public stats page possible — while writes carry
- * the owner's token and fail with a 401 for everyone else.
+ * the admin pass and fail with a 401 for everyone else.
  *
  * `eventId` here is the event's public slug, which is also the prefix of every
  * scoreboard id, so an id alone says which event to ask about.

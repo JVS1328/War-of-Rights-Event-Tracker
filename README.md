@@ -144,8 +144,8 @@ The tracker itself is the admin site, at `#/admin`, behind an owner token. It
 still keeps its own copy of everything in the browser and still works offline;
 publishing an event copies it up to the database the public site reads.
 
-Both halves talk to Upstash Redis through `/api/db`, which is public to read
-and refuses every write without `WOR_ADMIN_TOKEN`.
+Both halves talk to Postgres on Neon through `/api/db`, which is public to read
+and refuses every write without `ADMIN_PASS`.
 
 ### Features
 
@@ -187,10 +187,11 @@ npm run dev
 
 4. Open your browser to the URL shown (typically http://localhost:5173)
 
-The dev server serves the database API as well as the app. With no Upstash
-credentials in the environment it runs against an in-memory store and prints an
-owner token to paste into `#/admin`, so the whole site works with nothing
-provisioned.
+The dev server serves the database API as well as the app. With no
+`WOR_DATABASE_URL` in the environment it runs against PGlite — Postgres in
+WebAssembly, in memory — and prints an admin pass to enter at `#/admin`, so the
+whole site works with nothing provisioned, against the same SQL the deployment
+runs.
 
 #### Building for Production
 
@@ -199,9 +200,10 @@ npm run build
 ```
 
 The built files land in `dist`. The serverless functions under `api/` need a
-host that runs them (Vercel) plus two environment variables — Upstash's REST
-URL and token, and `WOR_ADMIN_TOKEN` for write access. Without a database the
-public site has nothing to read, though the tracker itself still runs offline.
+host that runs them (Vercel) plus two environment variables — `WOR_DATABASE_URL`
+for the Neon connection string and `ADMIN_PASS` for write access. The schema
+builds itself on first request. Without a database the public site has nothing
+to read, though the tracker itself still runs offline.
 
 ### Point System Configuration
 
@@ -219,7 +221,7 @@ Configure point allocations in Settings:
 - **Vite**: Build tool and dev server
 - **Tailwind CSS 4**: Styling
 - **Lucide React**: Icons
-- **Upstash Redis**: What the public site reads, behind `/api/db`
+- **Neon (Postgres)**: What the public site reads, behind `/api/db`
 
 See [`season-tracker/README.md`](season-tracker/README.md) for detailed documentation.
 

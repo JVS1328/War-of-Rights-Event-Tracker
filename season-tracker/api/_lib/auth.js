@@ -2,17 +2,21 @@ import { timingSafeEqual } from 'node:crypto';
 
 /**
  * Write access to the database is a single-owner affair: one shared secret in
- * the `WOR_ADMIN_TOKEN` environment variable, presented as `Authorization:
- * Bearer <token>`. There are no accounts to manage because there is exactly one
- * person who edits events and imports rounds — everyone else only ever reads.
+ * the `ADMIN_PASS` environment variable, presented as `Authorization: Bearer
+ * <pass>`. There are no accounts to manage because there is exactly one person
+ * who edits events and imports rounds — everyone else only ever reads.
  *
- * The token travels in a header rather than the query string so it never lands
- * in a browser history entry, a referrer, or a platform access log.
+ * It travels in a header rather than the query string so it never lands in a
+ * browser history entry, a referrer, or a platform access log. Twelve characters
+ * is the floor: this is one secret guarding every write, and it is typed once
+ * and then remembered, so there is no reason for it to be short.
  */
 
-/** True when the deployment has a token configured at all. */
+const MIN_LENGTH = 12;
+
+/** True when the deployment has an admin pass configured at all. */
 export function adminConfigured() {
-  return typeof process.env.WOR_ADMIN_TOKEN === 'string' && process.env.WOR_ADMIN_TOKEN.length >= 16;
+  return typeof process.env.ADMIN_PASS === 'string' && process.env.ADMIN_PASS.length >= MIN_LENGTH;
 }
 
 /** Constant-time string compare, safe on differing lengths. */
@@ -30,7 +34,7 @@ function sameSecret(a, b) {
   return timingSafeEqual(l, r) && left.length === right.length;
 }
 
-/** Pull the bearer token out of a request, or '' when absent/malformed. */
+/** Pull the bearer credential out of a request, or '' when absent/malformed. */
 export function bearerFrom(req) {
   const header = req?.headers?.authorization ?? req?.headers?.Authorization ?? '';
   const match = /^Bearer (.+)$/.exec(String(header));
@@ -38,13 +42,13 @@ export function bearerFrom(req) {
 }
 
 /**
- * True when the request carries the owner's token. Fails closed: a deployment
- * with no token configured accepts no writes at all, rather than silently
- * letting the world edit the database.
+ * True when the request carries the owner's pass. Fails closed: a deployment
+ * with none configured accepts no writes at all, rather than silently letting
+ * the world edit the database.
  */
 export function isAdmin(req) {
   if (!adminConfigured()) return false;
   const presented = bearerFrom(req);
   if (!presented) return false;
-  return sameSecret(presented, process.env.WOR_ADMIN_TOKEN);
+  return sameSecret(presented, process.env.ADMIN_PASS);
 }

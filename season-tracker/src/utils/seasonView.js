@@ -336,31 +336,3 @@ export const eventEloRatings = (appState, eventId) => {
   const result = replayEventFromAppState(appState, eventId);
   return { eloRatings: result.unitElo, roundsPlayed: result.roundsPlayed };
 };
-
-/**
- * The playoff bracket as it was actually played: one row per playoff night,
- * with the two leads that met and how the rounds fell.
- *
- * The tracker also projects a bracket forward from the standings — who would
- * qualify, who would meet whom — which is a planning tool and needs the
- * season's playoff settings. A visitor wants the record, so this reads only
- * what happened.
- */
-export const playedBracketSlots = (season) => {
-  const playoffWeeks = (season?.weeks || []).filter(w => w.isPlayoffs);
-  return playoffWeeks.map((w, i) => {
-    const { first } = nightLeadPairs(w);
-    const roundsFor = side =>
-      (w.round1Winner === side ? 1 : 0) + (w.round2Winner === side ? 1 : 0);
-    return {
-      stage: i === playoffWeeks.length - 1 && playoffWeeks.length > 1 ? 'Final' : `Round ${i + 1}`,
-      night: w.name || `Night ${i + 1}`,
-      a: first?.a ?? 'TBD',
-      b: first?.b ?? 'TBD',
-      roundsA: roundsFor('A'),
-      roundsB: roundsFor('B'),
-      map1: w.round1Map || null,
-      map2: w.round2Map || null,
-    };
-  });
-};

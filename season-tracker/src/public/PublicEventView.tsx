@@ -21,8 +21,8 @@ import {
   seasonKpis,
   rosterRows,
   eloLadderRows,
-  playedBracketSlots,
 } from '../utils/seasonView';
+import { bracketSlots } from '../utils/playoffBracket';
 
 /**
  * One event, as anyone may read it: the season the tracker keeps and the player
@@ -97,6 +97,14 @@ export function PublicEventView({
     return named ?? latestSeason(seasons) ?? seasons[0];
   }, [seasons, scope]);
 
+  /**
+   * Plenty of events are scoreboards and nothing else — rounds imported for the
+   * stats, with no season ever built around them. Standings, a schedule and a
+   * bracket are all empty for one of those, so the season half of the site
+   * simply is not there: no rail group, no season picker, no screens.
+   */
+  const hasSeason = seasons.some((s) => (s.weeks?.length ?? 0) > 0);
+
   if (state === 'loading') return <Waiting message="Loading the event…" />;
   if (state === 'missing') {
     return (
@@ -108,16 +116,18 @@ export function PublicEventView({
   }
   if (state === 'error' || !meta) return <Waiting message={error ?? 'Could not load this event.'} />;
 
+  // With no season behind the event there is only one screen, whatever the URL
+  // was pointing at when it arrived.
+  const here: PublicScreen = hasSeason ? screen : 'stats';
+
   const goScreen = (next: string) =>
     navigate({ kind: 'event', slug, screen: next as PublicScreen, season: scope });
 
   const goScope = (next: string) =>
-    navigate({ kind: 'event', slug, screen, season: next });
+    navigate({ kind: 'event', slug, screen: here, season: next });
 
-  // A stats-only event — one published without a season behind it — gets no
-  // season rail, since every screen in it would be empty.
   const nav = [
-    ...(activeSeason
+    ...(hasSeason && activeSeason
       ? [{
           title: 'Season',
           items: PUBLIC_SCREENS.filter((s) => s.key !== 'stats').map((s) => ({
@@ -139,7 +149,7 @@ export function PublicEventView({
   return (
     <Shell
       nav={nav}
-      screen={screen}
+      screen={here}
       onScreen={goScreen}
       title="War of Rights"
       subtitle={meta.name}
@@ -149,7 +159,7 @@ export function PublicEventView({
             <ArrowLeft className="w-3 h-3" /> Events
           </a>
           <span className="wor-name">{meta.name}</span>
-          {seasons.length > 0 && (
+          {seasons.length > 0 && hasSeason && (
             <select value={scope} onChange={(e) => goScope(e.target.value)} aria-label="Season">
               {seasons.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -159,33 +169,24 @@ export function PublicEventView({
               <option value={OVERALL_SCOPE}>All seasons</option>
             </select>
           )}
-          {scope === OVERALL_SCOPE && screen !== 'stats' && activeSeason && (
+          {scope === OVERALL_SCOPE && here !== 'stats' && activeSeason && (
             <span className="cap">showing {activeSeason.name}</span>
           )}
           <span className="tag q">read only</span>
         </>
       }
     >
-      {screen === 'stats' ? (
+      {here === 'stats' ? (
         <PublicStats slug={slug} meta={meta} scope={scope} onScope={goScope} />
       ) : activeSeason ? (
         <SeasonScreen
-          screen={screen}
+          screen={here}
           event={tracker!}
           season={activeSeason}
           eventName={meta.name}
           onOpenUnit={() => goScreen('standings')}
         />
-      ) : (
-        <div className="panel">
-          <div className="pb">
-            <p className="note">
-              This event has player stats but no season recorded — open{' '}
-              <a href={hrefFor({ kind: 'event', slug, screen: 'stats', season: null })}>Player stats</a>.
-            </p>
-          </div>
-        </div>
-      )}
+      ) : null}
     </Shell>
   );
 }
@@ -212,7 +213,12 @@ function SeasonScreen({
     () => eloLadderRows(appStateForEvent(event), event, season),
     [event, season],
   );
-  const bracket = useMemo(() => playedBracketSlots(season), [season]);
+  // The projected bracket, not just the nights already played — the same
+  // seeding the tracker runs, so a visitor sees who is on course to meet whom.
+  const bracket = useMemo(
+    () => bracketSlots({ appState: appStateForEvent(event), event, season }),
+    [event, season],
+  );
 
   const divisions = season.divisions ?? [];
 

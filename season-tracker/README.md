@@ -14,6 +14,11 @@ Elo ladder and the whole player-stats panel — every season, no link required
 and nothing shared with them first. It is entirely read-only; there is not a
 control on it that would change anything.
 
+An event with no nights recorded — rounds imported for the stats and nothing
+else, which plenty of them are — shows only the player stats. Standings, a
+schedule and a bracket would all be empty, so that half of the site is not
+there: no rail group, no season picker, no screens.
+
 - `#/` — the directory. Every published event, plus a box to type one's short
   name into.
 - `#/e/<short-name>` — an event. Add a screen (`/standings`, `/stats`, …) and a
@@ -21,20 +26,36 @@ control on it that would change anything.
 - `#/tools` — the side balancer and company splitter, which need no event at
   all.
 
-**The admin site** is the tracker, at `#/admin`, behind the owner's token. That
-is where events are created, nights recorded, rounds imported and seasons
+**The admin site** is the tracker, at `#/admin`, behind the admin pass. That is
+where events are created, nights recorded, rounds imported and seasons
 published. Everything it does is what it always did; what is new is a **Publish
 to the site** screen under Setup.
 
-Writes are refused by the server without the token, so the gate on `#/admin` is
-a courtesy — it stops the tracker opening in a state where every save is about
-to fail — rather than the thing keeping strangers out.
+Writes are refused by the server without the pass, so the gate on `#/admin` is a
+courtesy — it stops the tracker opening in a state where every save is about to
+fail — rather than the thing keeping strangers out.
 
 ## The database
 
-Player stats and season data live in Upstash Redis, reached through
-`/api/db` (see `api/_lib/`). Reads are public; every write needs
-`Authorization: Bearer <WOR_ADMIN_TOKEN>`.
+Everything the site serves — events, seasons, rounds, regiment pins and the
+share-link store — lives in Postgres on Neon, reached through `/api/db` (see
+`api/_lib/`). Reads are public; every write needs
+`Authorization: Bearer <ADMIN_PASS>`.
+
+### Tables
+
+Five, and the shape follows how the site reads (`api/_lib/schema.js`):
+
+| Table | Holds |
+| --- | --- |
+| `wor_events` | One row per event: name, published flag, its seasons and unit registry. This is what the directory lists. |
+| `wor_scoreboards` | One row per imported round. The summary columns — map, mode, winner, the night it is bound to — sit beside the payload so a list view never loads a killfeed. |
+| `wor_event_docs` | An event's regiment pins, its renames, and the tracker's own state: one JSON document each, because that is exactly how the screens hold them and nothing queries inside them. |
+| `wor_shares` | The short-link store, so the deployment needs one database rather than two. |
+
+The DDL is idempotent and runs on the first request after a cold start, so a
+fresh Neon database needs no migration step — point `WOR_DATABASE_URL` at it and
+it builds what it needs.
 
 ### Deploying
 
@@ -42,18 +63,28 @@ Two environment variables:
 
 | Variable | What it is |
 | --- | --- |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Injected by the Upstash integration on Vercel. `KV_REST_API_URL` / `KV_REST_API_TOKEN` are accepted too. |
-| `WOR_ADMIN_TOKEN` | A secret you choose, at least 16 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
+| `WOR_DATABASE_URL` | Your Neon connection string. `DATABASE_URL` and `POSTGRES_URL` are accepted too, which is what Vercel's Neon integration sets. Use the **pooled** endpoint. |
+| `ADMIN_PASS` | A secret you choose, at least 12 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
 
 Nothing else needs configuring: `api/db/[...path].js` is one serverless
 function, and hash routing means no rewrite rules.
 
+The driver is `@neondatabase/serverless`, which speaks Postgres over HTTP — no
+connection pool to keep warm and no socket to lose between invocations, which is
+what makes it usable from a serverless function at all.
+
 ### Running it locally
 
-`npm run dev` serves the API as well as the app. With no Upstash credentials in
-the environment it runs against an in-memory store that lasts as long as the dev
-server, and prints an owner token to paste into `#/admin` — so the whole site
-works on a laptop with nothing provisioned.
+`npm run dev` serves the API as well as the app. With no `WOR_DATABASE_URL` in
+the environment it runs against **PGlite** — Postgres compiled to WebAssembly,
+in memory, gone when the dev server stops — and prints an admin pass to enter at
+`#/admin`. So the whole site works on a laptop with nothing provisioned, and
+against the same SQL the deployment runs.
+
+The tests use PGlite too, which means the queries in `api/_lib/store.js` are
+genuinely executed rather than mocked: a typo, a missing column or a conflict
+clause that does not do what it looks like fails a test rather than a
+deployment.
 
 ### Getting your existing seasons in
 
@@ -246,7 +277,8 @@ This application follows the KISS (Keep It Simple, Stupid), DRY (Don't Repeat Yo
 - **Tailwind CSS 4**: Styling
 - **Lucide React**: Icons
 - **localStorage + IndexedDB**: What the tracker keeps in this browser
-- **Upstash Redis**: What the public site reads, behind `/api/db`
+- **Neon (Postgres)**: What the public site reads, behind `/api/db`
+- **PGlite**: Postgres in WebAssembly, for local development and tests
 
 ## Building for Production
 

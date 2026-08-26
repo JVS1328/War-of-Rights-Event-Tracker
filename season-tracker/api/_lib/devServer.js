@@ -1,5 +1,5 @@
-import { createMemoryRedis } from './memoryRedis.js';
-import { setRedis } from './store.js';
+import { createPglite } from './pgliteClient.js';
+import { ensureSchema, setSql } from './sql.js';
 import router from './router.js';
 
 /**
@@ -7,23 +7,26 @@ import router from './router.js';
  * serves the same routes the deployment does. Without it the public site has
  * nothing to read from locally and every page shows a network error.
  *
- * With Upstash credentials in the environment it talks to the real database;
- * without them it runs against an in-memory store that lasts as long as the dev
- * server does. Either way the handler under test is the production one.
+ * With a database URL in the environment it talks to that database; without one
+ * it runs against PGlite — Postgres in WebAssembly — which lasts as long as the
+ * dev server does and speaks the same SQL Neon does. Either way the handler is
+ * the production one.
  */
 export function devApi() {
   return {
     name: 'wor-dev-api',
     apply: 'serve',
-    configureServer(server) {
-      const live = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    async configureServer(server) {
+      const live = process.env.WOR_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL;
       if (!live) {
-        setRedis(createMemoryRedis());
-        // Dev needs *a* token or every write 401s; it is printed so it can be
-        // pasted into the admin screen, and it only exists on this machine.
-        process.env.WOR_ADMIN_TOKEN ??= 'dev-owner-token-not-a-secret';
+        const pglite = await createPglite();
+        setSql(pglite);
+        await ensureSchema();
+        // Dev needs *a* password or every write 401s; it is printed so it can
+        // be pasted into the admin screen, and it only exists on this machine.
+        process.env.ADMIN_PASS ??= 'dev-admin-pass-not-a-secret';
         server.config.logger.info(
-          `  ➜  database: in-memory (dev) · owner token: ${process.env.WOR_ADMIN_TOKEN}`,
+          `  ➜  database: PGlite, in memory · admin pass: ${process.env.ADMIN_PASS}`,
         );
       }
 

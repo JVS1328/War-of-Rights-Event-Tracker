@@ -2,12 +2,12 @@ import { ApiError } from './api';
 
 /**
  * The owner's session. There is one person who edits this league, so "signing
- * in" is pasting the deployment's admin token once and having the browser
+ * in" is entering the deployment's admin pass once and having the browser
  * remember it — no accounts, no password reset, nothing to administer.
  *
- * The token lives in localStorage, which means anyone with the machine has it.
- * That is the same trust boundary the tracker has always had: until now the
- * entire season lived in that same localStorage.
+ * It lives in localStorage, which means anyone with the machine has it. That is
+ * the same trust boundary the tracker has always had: until now the entire
+ * season lived in that same localStorage.
  */
 
 const TOKEN_KEY = 'wor-admin-token';
@@ -46,9 +46,9 @@ export interface AuthCheck {
 }
 
 /**
- * Ask the server whether the token in hand is the right one. Called on the
- * admin screen at open and after a sign-in, so a stale or rotated token is
- * reported as such instead of failing at the first save.
+ * Ask the server whether the pass in hand is the right one. Called on the admin
+ * screen at open and after a sign-in, so a stale or rotated one is reported as
+ * such instead of failing at the first save.
  */
 export async function checkAdmin(): Promise<AuthCheck> {
   const token = getAdminToken();
@@ -63,6 +63,6 @@ export async function checkAdmin(): Promise<AuthCheck> {
     const body = await response.json().catch(() => ({ configured: true }));
     return { admin: false, configured: !!body.configured };
   }
-  if (!response.ok) throw new ApiError(response.status, 'Could not check the owner token.');
+  if (!response.ok) throw new ApiError(response.status, 'Could not check the admin pass.');
   return (await response.json()) as AuthCheck;
 }

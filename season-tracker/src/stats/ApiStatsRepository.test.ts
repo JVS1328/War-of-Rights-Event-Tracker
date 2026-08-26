@@ -1,61 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+import { startTestDb, truncateAll } from '../../api/_lib/testDb.js';
 
-// The repository is exercised against the real API router, with only Upstash
-// faked out. That way a change to either side of the wire — a renamed field, a
-// moved route — fails here rather than in production.
-const { strings, sets, hashes } = vi.hoisted(() => ({
-  strings: new Map<string, string>(),
-  sets: new Map<string, Set<string>>(),
-  hashes: new Map<string, Map<string, string>>(),
-}));
-
-vi.mock('@upstash/redis', () => ({
-  Redis: class {
-    async set(key: string, value: string) { strings.set(key, value); return 'OK'; }
-    async get(key: string) { return strings.has(key) ? strings.get(key) : null; }
-    async mget(...keys: string[]) { return keys.map((k) => strings.get(k) ?? null); }
-    async del(...keys: string[]) {
-      keys.forEach((k) => { strings.delete(k); hashes.delete(k); });
-      return keys.length;
-    }
-    async sadd(key: string, ...members: string[]) {
-      const set = sets.get(key) ?? new Set<string>();
-      members.forEach((m) => set.add(m));
-      sets.set(key, set);
-      return members.length;
-    }
-    async srem(key: string, ...members: string[]) {
-      const set = sets.get(key) ?? new Set<string>();
-      members.forEach((m) => set.delete(m));
-      sets.set(key, set);
-      return members.length;
-    }
-    async smembers(key: string) { return [...(sets.get(key) ?? [])]; }
-    async hset(key: string, obj: Record<string, string>) {
-      const hash = hashes.get(key) ?? new Map<string, string>();
-      Object.entries(obj).forEach(([f, v]) => hash.set(f, v));
-      hashes.set(key, hash);
-      return Object.keys(obj).length;
-    }
-    async hgetall(key: string) {
-      const hash = hashes.get(key);
-      return hash ? Object.fromEntries(hash) : null;
-    }
-    async hdel(key: string, ...fields: string[]) {
-      fields.forEach((f) => hashes.get(key)?.delete(f));
-      return fields.length;
-    }
-    async hlen(key: string) { return hashes.get(key)?.size ?? 0; }
-  },
-}));
-
+// The repository is exercised against the real API router and a real Postgres
+// (PGlite), with only fetch redirected. A change to either side of the wire — a
+// renamed field, a moved route, a query that does not run — fails here rather
+// than in production.
 const { default: handler } = await import('../../api/_lib/router.js');
 const { ApiStatsRepository } = await import('./ApiStatsRepository');
 const { setAdminToken, clearAdminToken } = await import('../cloud/session');
 const { OVERALL_SCOPE } = await import('./statsBundle');
 import type { Scoreboard } from './types';
 
-const TOKEN = 'owner-token-that-is-long-enough';
+const PASS = 'admin-pass-long-enough';
+let db: { query: (t: string, p?: unknown[]) => Promise<unknown[]>; close: () => Promise<void> };
 
 /** Route fetch() straight into the serverless handler. */
 const fakeFetch = async (url: string, init?: RequestInit) => {
@@ -107,13 +64,12 @@ const scoreboard = (filename: string, recordedAt: string): Scoreboard => ({
 
 let repo: InstanceType<typeof ApiStatsRepository>;
 
+beforeAll(async () => { db = await startTestDb(); });
+afterAll(async () => { await db?.close(); });
+
 beforeEach(async () => {
-  strings.clear();
-  sets.clear();
-  hashes.clear();
-  process.env.UPSTASH_REDIS_REST_URL = 'http://localhost';
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-  process.env.WOR_ADMIN_TOKEN = TOKEN;
+  await truncateAll(db);
+  process.env.ADMIN_PASS = PASS;
   vi.stubGlobal('fetch', fakeFetch);
   const store = new Map<string, string>();
   vi.stubGlobal('localStorage', {
@@ -121,13 +77,13 @@ beforeEach(async () => {
     setItem: (k: string, v: string) => { store.set(k, v); },
     removeItem: (k: string) => { store.delete(k); },
   });
-  setAdminToken(TOKEN);
+  setAdminToken(PASS);
   repo = new ApiStatsRepository();
 
   // Every test needs an event to file rounds under.
   await fakeFetch('/api/db/events', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${TOKEN}` },
+    headers: { Authorization: `Bearer ${PASS}` },
     body: JSON.stringify({ slug: 'ssl', name: 'SSL', published: true }),
   });
 });
@@ -192,7 +148,7 @@ describe('ApiStatsRepository', () => {
 
     await fakeFetch('/api/db/events', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${TOKEN}` },
+      headers: { Authorization: `Bearer ${PASS}` },
       body: JSON.stringify({ slug: 'snf', name: 'SNF', published: true }),
     });
     expect(await repo.importEventStats('snf', bundle)).toBe(1);
@@ -212,7 +168,7 @@ describe('ApiStatsRepository', () => {
 
     await expect(
       visitor.saveScoreboard('ssl', scoreboard('r2.csv', '2026-01-02T00:00:00Z')),
-    ).rejects.toThrow(/owner token/);
+    ).rejects.toThrow(/admin pass/);
   });
 
   it('reports a 404 for an event that is not published', async () => {

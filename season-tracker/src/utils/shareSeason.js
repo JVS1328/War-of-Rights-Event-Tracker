@@ -355,11 +355,10 @@ export const decodeSharePayload = (encoded) => {
 };
 
 // --- Short-link storage (chunked upload/download) --------------------------
-// A single Upstash REST value/request is capped near 1 MB, so the encoded
-// payload is split into sub-1MB string chunks stored under separate keys, with
-// a small manifest recording the count. Chunking both directions also clears
-// Vercel's ~4.5MB per-request body limit, so short links work regardless of
-// payload size.
+// The encoded payload is split into chunks stored as separate rows, with a
+// small manifest recording the count. Chunking both directions clears Vercel's
+// ~4.5MB per-request body limit, so short links work regardless of payload
+// size — and keeps any one row a sane size, which no database minds.
 
 const CHUNK_SIZE = 500_000;   // chars per chunk — safely under the ~1MB/request cap
 const SHARE_CONCURRENCY = 5;  // bounded parallelism for chunk up/downloads

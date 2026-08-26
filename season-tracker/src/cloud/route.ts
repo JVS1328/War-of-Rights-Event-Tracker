@@ -10,7 +10,7 @@
  *   #/e/<slug>/<screen>     an event, on a named screen
  *   #/e/<slug>/<screen>/<season>   ...scoped to one season
  *   #/tools                 the balancer and splitter, no event needed
- *   #/admin                 the tracker, for whoever holds the owner token
+ *   #/admin                 the tracker, for whoever holds the admin pass
  *
  * Legacy share links (#s=, #share=) are left alone: App checks those first and
  * never asks this module about them.

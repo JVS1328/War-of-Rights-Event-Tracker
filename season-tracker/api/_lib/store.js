@@ -1,75 +1,31 @@
-import { Redis } from '@upstash/redis';
+import { query } from './sql.js';
+import { DOC_KINDS } from './schema.js';
 
 /**
  * The database behind the public stats site.
  *
- * Storage is Upstash Redis over its HTTP API — the same instance the share
- * links already use, so the deployment gains a database without gaining any
- * infrastructure. Everything the API touches goes through this module, which is
- * the only file that knows a key layout exists; moving to Postgres later is a
- * rewrite of this file and nothing else.
+ * Storage is Postgres on Neon, reached over HTTP by the serverless driver.
+ * Everything the API touches goes through this module, which is the only file
+ * that knows a table layout exists — the router above it asks for events and
+ * rounds and never writes a query.
  *
- * Key layout
- *   wor:events              SET   published event slugs (the public directory)
- *   wor:e:<slug>            JSON  event meta (name, seasons, registry, mapStats)
- *   wor:e:<slug>:sum        HASH  scoreboard id -> summary row (for list views)
- *   wor:e:<slug>:sb:<id>    JSON  one full scoreboard record
- *   wor:e:<slug>:asg        JSON  season-scoped steam-id pins
- *   wor:e:<slug>:alias      JSON  season-scoped regiment renames/merges
- *   wor:e:<slug>:tracker    JSON  the event's tracker state (never public)
- *
- * Summaries live in a hash rather than one JSON blob so two imports landing at
- * once each update their own field instead of overwriting each other's.
+ * See schema.js for the tables. The shape follows how the site reads: a
+ * scoreboard's summary columns sit beside its payload so a list view never
+ * loads a killfeed, and an event's pins, renames and tracker state are single
+ * JSON documents because that is exactly how the screens hold them.
  */
-
-/** Upstash caps a single request near 1 MB; refuse anything close to it. */
-export const MAX_VALUE_BYTES = 900_000;
-
-const EVENTS_SET = 'wor:events';
-const eventKey = (slug) => `wor:e:${slug}`;
-const sumKey = (slug) => `wor:e:${slug}:sum`;
-const sbKey = (slug, id) => `wor:e:${slug}:sb:${id}`;
-const asgKey = (slug) => `wor:e:${slug}:asg`;
-const aliasKey = (slug) => `wor:e:${slug}:alias`;
-const trackerKey = (slug) => `wor:e:${slug}:tracker`;
-
-// The Upstash Vercel integration injects REST URL/token under either the
-// Upstash names or Vercel's KV-prefixed names depending on how it was added;
-// accept both (matching api/share.js).
-let client;
-export function getRedis() {
-  if (!client) {
-    const url = process.env.UPSTASH_REDIS_REST_URL
-      || process.env.KV_REST_API_URL
-      || process.env.upstash_KV_REST_API_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN
-      || process.env.KV_REST_API_TOKEN
-      || process.env.upstash_KV_REST_API_TOKEN;
-    if (!url || !token) {
-      throw new Error('Upstash Redis is not configured (missing REST URL/token)');
-    }
-    // Values are JSON strings this module encodes and decodes itself, so the
-    // SDK's own (de)serialization would double-encode them.
-    client = new Redis({ url, token, automaticDeserialization: false });
-  }
-  return client;
-}
-
-/** Test seam: drop the memoized client so a fresh env is picked up. */
-export function resetRedis() {
-  client = undefined;
-}
 
 /**
- * Install a client of your own. The dev server uses this to run the whole API
- * against an in-memory store, so `npm run dev` works with no database
- * provisioned; nothing in production calls it.
+ * Neon's HTTP endpoint will take a much larger row than this, but a scoreboard
+ * past a megabyte is a sign something has gone wrong upstream rather than a
+ * round anyone recorded — and refusing it with a clear message beats a timeout.
  */
-export function setRedis(custom) {
-  client = custom;
-}
+export const MAX_VALUE_BYTES = 4_000_000;
 
-/** Thrown when a single value would exceed what Upstash accepts. */
+/** Share links live a year, which is long enough that nobody notices. */
+const SHARE_TTL_SECONDS = 31_536_000;
+
+/** Thrown when a single value is too large to store. */
 export class ValueTooLargeError extends Error {
   constructor(bytes) {
     super(`Value is ${bytes} bytes, over the ${MAX_VALUE_BYTES}-byte limit`);
@@ -78,131 +34,247 @@ export class ValueTooLargeError extends Error {
   }
 }
 
-function encode(value) {
-  const json = JSON.stringify(value);
+function sized(value) {
+  const json = JSON.stringify(value ?? null);
   const bytes = Buffer.byteLength(json, 'utf8');
   if (bytes > MAX_VALUE_BYTES) throw new ValueTooLargeError(bytes);
   return json;
 }
 
-function decode(raw) {
-  if (raw == null) return null;
-  if (typeof raw === 'object') return raw; // an SDK that deserialized for us
+/** A row's JSONB column, whether the driver handed it back parsed or as text. */
+function asJson(value, fallback = null) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(value);
   } catch {
-    return null; // corrupt value reads as absent rather than crashing a page
+    return fallback;
   }
 }
 
 // --- Events ---------------------------------------------------------------
 
-/** Every published event's meta, newest update first. */
+/** An event row as the API talks about it. */
+function toEvent(row) {
+  if (!row) return null;
+  return {
+    slug: row.slug,
+    name: row.name,
+    published: !!row.published,
+    seasons: asJson(row.seasons, []),
+    registryUnits: asJson(row.registry_units, []),
+    mapStats: asJson(row.map_stats, null),
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+    scoreboardCount: Number(row.scoreboard_count ?? 0),
+  };
+}
+
+// The directory and the event page both want the round count, and counting in
+// the same statement beats keeping a denormalised tally honest.
+const EVENT_COLUMNS = `
+  e.slug, e.name, e.published, e.seasons, e.registry_units, e.map_stats,
+  e.created_at, e.updated_at,
+  (SELECT count(*) FROM wor_scoreboards s WHERE s.event_slug = e.slug) AS scoreboard_count
+`;
+
+/** Every published event, most recently updated first. */
 export async function listPublishedEvents() {
-  const redis = getRedis();
-  const slugs = (await redis.smembers(EVENTS_SET)) ?? [];
-  if (!slugs.length) return [];
-  const raw = await redis.mget(...slugs.map(eventKey));
-  return slugs
-    .map((slug, i) => decode(raw?.[i]))
-    .filter((meta) => meta && meta.published)
-    .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')));
+  const rows = await query(
+    `SELECT ${EVENT_COLUMNS} FROM wor_events e WHERE e.published ORDER BY e.updated_at DESC`,
+  );
+  return rows.map(toEvent);
 }
 
 export async function getEvent(slug) {
-  return decode(await getRedis().get(eventKey(slug)));
+  const rows = await query(`SELECT ${EVENT_COLUMNS} FROM wor_events e WHERE e.slug = $1`, [slug]);
+  return toEvent(rows[0]);
 }
 
 /**
- * Write an event's meta and keep the public directory in step: publishing adds
- * the slug to the set, unpublishing takes it out, so an unpublished event stops
- * being discoverable the moment the flag flips.
+ * Create or update an event. `createdAt` is left alone on an update — it is the
+ * one field about an event that is not the caller's to revise.
  */
 export async function putEvent(slug, meta) {
-  const redis = getRedis();
-  await redis.set(eventKey(slug), encode(meta));
-  if (meta.published) await redis.sadd(EVENTS_SET, slug);
-  else await redis.srem(EVENTS_SET, slug);
-  return meta;
+  const rows = await query(
+    `INSERT INTO wor_events (slug, name, published, seasons, registry_units, map_stats, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, now())
+     ON CONFLICT (slug) DO UPDATE SET
+       name = EXCLUDED.name,
+       published = EXCLUDED.published,
+       seasons = EXCLUDED.seasons,
+       registry_units = EXCLUDED.registry_units,
+       map_stats = EXCLUDED.map_stats,
+       updated_at = now()
+     RETURNING slug, name, published, seasons, registry_units, map_stats, created_at, updated_at`,
+    [
+      slug,
+      meta.name,
+      !!meta.published,
+      sized(meta.seasons ?? []),
+      sized(meta.registryUnits ?? []),
+      meta.mapStats == null ? null : sized(meta.mapStats),
+    ],
+  );
+  return toEvent({ ...rows[0], scoreboard_count: meta.scoreboardCount ?? 0 });
 }
 
-/** Remove an event and everything filed under it. */
+/** Remove an event. Its rounds and documents go with it, by foreign key. */
 export async function deleteEvent(slug) {
-  const redis = getRedis();
-  const ids = Object.keys((await redis.hgetall(sumKey(slug))) ?? {});
-  const keys = [
-    eventKey(slug), sumKey(slug), asgKey(slug), aliasKey(slug), trackerKey(slug),
-    ...ids.map((id) => sbKey(slug, id)),
-  ];
-  // Chunked so a long-running event's scoreboards don't build one huge command.
-  for (let i = 0; i < keys.length; i += 128) await redis.del(...keys.slice(i, i + 128));
-  await redis.srem(EVENTS_SET, slug);
-  return ids.length;
+  const rows = await query(
+    `WITH gone AS (DELETE FROM wor_scoreboards WHERE event_slug = $1 RETURNING 1)
+     SELECT count(*)::int AS n FROM gone`,
+    [slug],
+  );
+  await query('DELETE FROM wor_events WHERE slug = $1', [slug]);
+  return Number(rows[0]?.n ?? 0);
 }
 
 // --- Scoreboards ----------------------------------------------------------
 
-/** Summary rows for every scoreboard in an event (the list view's payload). */
+function toSummary(row) {
+  return {
+    id: row.id,
+    eventId: row.event_slug,
+    ...(row.week_id ? { binding: { weekId: row.week_id, round: Number(row.round) } } : {}),
+    sourceFilename: row.source_filename,
+    recordedAt: row.recorded_at,
+    map: row.map,
+    mode: row.mode,
+    area: row.area,
+    winner: row.winner,
+  };
+}
+
+/** Summary rows for every round in an event — the list view's whole payload. */
 export async function listSummaries(slug) {
-  const raw = (await getRedis().hgetall(sumKey(slug))) ?? {};
-  return Object.values(raw).map(decode).filter(Boolean);
+  const rows = await query(
+    `SELECT id, event_slug, source_filename, recorded_at, map, mode, area, winner, week_id, round
+       FROM wor_scoreboards WHERE event_slug = $1 ORDER BY recorded_at DESC NULLS LAST, id`,
+    [slug],
+  );
+  return rows.map(toSummary);
 }
 
 export async function getScoreboard(slug, id) {
-  return decode(await getRedis().get(sbKey(slug, id)));
+  const rows = await query(
+    'SELECT payload FROM wor_scoreboards WHERE event_slug = $1 AND id = $2',
+    [slug, id],
+  );
+  return rows.length ? asJson(rows[0].payload) : null;
 }
 
-/** Fetch several scoreboards at once — the read path behind a whole event. */
+/** Several rounds at once, in the order asked for. */
 export async function getScoreboards(slug, ids) {
   if (!ids.length) return [];
-  const raw = await getRedis().mget(...ids.map((id) => sbKey(slug, id)));
-  return ids.map((_, i) => decode(raw?.[i])).filter(Boolean);
+  const rows = await query(
+    'SELECT id, payload FROM wor_scoreboards WHERE event_slug = $1 AND id = ANY($2)',
+    [slug, ids],
+  );
+  const byId = new Map(rows.map((r) => [r.id, asJson(r.payload)]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
 }
 
-/** Upsert one scoreboard plus its summary row. */
+/** Upsert one round: its payload, and the columns a list view reads. */
 export async function putScoreboard(slug, id, record, summary) {
-  const redis = getRedis();
-  await redis.set(sbKey(slug, id), encode(record));
-  await redis.hset(sumKey(slug), { [id]: encode(summary) });
+  await query(
+    `INSERT INTO wor_scoreboards
+       (event_slug, id, source_filename, recorded_at, map, mode, area, winner, week_id, round, payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+     ON CONFLICT (event_slug, id) DO UPDATE SET
+       source_filename = EXCLUDED.source_filename,
+       recorded_at = EXCLUDED.recorded_at,
+       map = EXCLUDED.map,
+       mode = EXCLUDED.mode,
+       area = EXCLUDED.area,
+       winner = EXCLUDED.winner,
+       week_id = EXCLUDED.week_id,
+       round = EXCLUDED.round,
+       payload = EXCLUDED.payload`,
+    [
+      slug,
+      id,
+      String(summary.sourceFilename ?? ''),
+      summary.recordedAt ?? null,
+      summary.map ?? null,
+      summary.mode ?? null,
+      summary.area ?? null,
+      summary.winner ?? null,
+      summary.binding?.weekId != null ? String(summary.binding.weekId) : null,
+      summary.binding?.round ?? null,
+      sized(record),
+    ],
+  );
 }
 
 export async function deleteScoreboard(slug, id) {
-  const redis = getRedis();
-  await redis.del(sbKey(slug, id));
-  await redis.hdel(sumKey(slug), id);
+  await query('DELETE FROM wor_scoreboards WHERE event_slug = $1 AND id = $2', [slug, id]);
 }
 
-// --- Assignments / aliases / tracker state --------------------------------
-
-export async function getAssignments(slug) {
-  return decode(await getRedis().get(asgKey(slug))) ?? {};
+/** How many rounds an event holds, without reading any of them. */
+export async function countScoreboards(slug) {
+  const rows = await query(
+    'SELECT count(*)::int AS n FROM wor_scoreboards WHERE event_slug = $1',
+    [slug],
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 
-export async function putAssignments(slug, scoped) {
-  await getRedis().set(asgKey(slug), encode(scoped));
+// --- Per-event documents --------------------------------------------------
+
+async function getDoc(slug, kind, fallback) {
+  const rows = await query(
+    'SELECT doc FROM wor_event_docs WHERE event_slug = $1 AND kind = $2',
+    [slug, kind],
+  );
+  return rows.length ? asJson(rows[0].doc, fallback) : fallback;
 }
 
-export async function getAliases(slug) {
-  return decode(await getRedis().get(aliasKey(slug))) ?? {};
+async function putDoc(slug, kind, doc) {
+  await query(
+    `INSERT INTO wor_event_docs (event_slug, kind, doc, updated_at)
+     VALUES ($1, $2, $3::jsonb, now())
+     ON CONFLICT (event_slug, kind) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()`,
+    [slug, kind, sized(doc)],
+  );
 }
 
-export async function putAliases(slug, scoped) {
-  await getRedis().set(aliasKey(slug), encode(scoped));
-}
+export const getAssignments = (slug) => getDoc(slug, DOC_KINDS.assignments, {});
+export const putAssignments = (slug, scoped) => putDoc(slug, DOC_KINDS.assignments, scoped);
+
+export const getAliases = (slug) => getDoc(slug, DOC_KINDS.aliases, {});
+export const putAliases = (slug, scoped) => putDoc(slug, DOC_KINDS.aliases, scoped);
 
 /**
- * The tracker's own state (weeks, rosters, standings settings). Stored beside
- * the stats but never served publicly — the public site is player stats only.
+ * The tracker's own state — weeks, rosters, settings, brackets. Public to read
+ * once the event is published, since the site shows the season as well as the
+ * player stats; owner-only to write.
  */
-export async function getTracker(slug) {
-  return decode(await getRedis().get(trackerKey(slug)));
+export const getTracker = (slug) => getDoc(slug, DOC_KINDS.tracker, null);
+export const putTracker = (slug, state) => putDoc(slug, DOC_KINDS.tracker, state);
+
+// --- Share links ----------------------------------------------------------
+
+/**
+ * Share chunks are content-addressed and written once: the id is a hash of the
+ * payload, so a row that exists already holds these exact bytes. Insert-or-
+ * ignore means a re-share is a no-op and — the part that matters — nobody can
+ * rewrite what sits behind a link somebody else already has. A repeat share
+ * pushes the expiry out instead, so it does not lapse a year after the first.
+ */
+export async function putShareChunk(id, idx, chunk) {
+  await query(
+    `INSERT INTO wor_shares (id, idx, chunk, expires_at)
+     VALUES ($1, $2, $3, now() + ($4 || ' seconds')::interval)
+     ON CONFLICT (id, idx) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+    [id, idx, chunk, String(SHARE_TTL_SECONDS)],
+  );
 }
 
-export async function putTracker(slug, state) {
-  await getRedis().set(trackerKey(slug), encode(state));
-}
-
-/** How many scoreboards an event holds, without reading any of them. */
-export async function countScoreboards(slug) {
-  return (await getRedis().hlen(sumKey(slug))) ?? 0;
+export async function getShareChunk(id, idx) {
+  const rows = await query(
+    'SELECT chunk FROM wor_shares WHERE id = $1 AND idx = $2 AND expires_at > now()',
+    [id, idx],
+  );
+  return rows.length ? rows[0].chunk : null;
 }
