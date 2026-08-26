@@ -12,6 +12,12 @@ import { timingSafeEqual } from 'node:crypto';
  * and then remembered, so there is no reason for it to be short.
  */
 
+/**
+ * The floor, not the recommendation. This one secret guards every write, it is
+ * typed once and then remembered, and the endpoint that checks it does no
+ * database work — so it is the one thing on the deployment worth guessing at.
+ * Use a long random string; see the README.
+ */
 const MIN_LENGTH = 12;
 
 /** True when the deployment has an admin pass configured at all. */

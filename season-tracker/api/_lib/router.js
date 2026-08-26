@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isAdmin, adminConfigured } from './auth.js';
 import { isSlug, isScoreboardId } from './slug.js';
 import * as store from './store.js';
@@ -34,7 +35,51 @@ import * as store from './store.js';
 const PAGE_BYTES = 3_000_000;
 const PAGE_LIMIT = 200;
 
+/**
+ * How long a public read may be reused.
+ *
+ * An event changes when its owner publishes, which is rarely, and every reader
+ * wants the same bytes — so the CDN holds them and the database is not asked
+ * again. `stale-while-revalidate` means the one reader who arrives after a
+ * publish still gets an instant answer while the edge refreshes behind them.
+ * Every response carries an ETag as well, so even an expired copy costs a 304
+ * rather than a re-download.
+ */
+const PUBLIC_CACHE = 'public, max-age=30, s-maxage=300, stale-while-revalidate=86400';
+
 const json = (res, code, body) => res.status(code).json(body);
+
+/**
+ * An ETag for `parts`, as a hash.
+ *
+ * Some of what identifies a response comes from the request — a scoreboard id,
+ * a list of week ids — and none of that belongs verbatim in a response header.
+ * Hashing keeps the tag short, opaque, and impossible to steer.
+ */
+const tagOf = (...parts) =>
+  createHash('sha1').update(parts.join('\u0000')).digest('base64url').slice(0, 22);
+
+/**
+ * Answer a read, saying how long it may be kept.
+ *
+ * `shared` means the bytes are the same for everyone — a published event — so
+ * the browser and the CDN may hold them and a caller who already has them is
+ * told "unchanged" instead of being sent megabytes again.
+ *
+ * An unpublished event is the owner's alone. Its response must never reach a
+ * shared cache, because the next reader of that cache entry is a stranger: it
+ * is marked `private, no-store` and revalidates every time.
+ */
+function cached(req, res, { tag, shared, body }) {
+  const etag = `W/"${tag}"`;
+  res.setHeader?.('Cache-Control', shared ? PUBLIC_CACHE : 'private, no-store');
+  res.setHeader?.('ETag', etag);
+  if (req?.headers?.['if-none-match'] === etag) return res.status(304).end?.() ?? res.status(304).json({});
+  return res.status(200).json(body);
+}
+
+/** An event's version, as far as anything derived from it is concerned. */
+const versionOf = (meta) => `${meta?.updatedAt ?? '0'}.${meta?.scoreboardCount ?? 0}`;
 const notFound = (res) => json(res, 404, { error: 'Not found' });
 const denied = (res) => json(res, 401, {
   error: adminConfigured()
@@ -128,34 +173,52 @@ function visible(meta, admin) {
   return meta && (admin || meta.published);
 }
 
-/** Keep the directory's scoreboard count honest after a scoreboard write. */
-async function refreshCount(slug) {
-  const meta = await store.getEvent(slug);
-  if (!meta) return;
-  const scoreboardCount = await store.countScoreboards(slug);
-  await store.putEvent(slug, { ...meta, scoreboardCount, updatedAt: new Date().toISOString() });
-}
-
-/** Full scoreboards in id order, cut off at a byte budget with a resume cursor. */
-async function fullPage(slug, after) {
-  const ids = (await store.listSummaries(slug)).map((s) => s.id).filter(Boolean).sort();
-  const start = after ? ids.findIndex((id) => id > after) : 0;
-  if (start < 0) return { items: [], next: null };
-  const window = ids.slice(start, start + PAGE_LIMIT);
-  const records = await store.getScoreboards(slug, window);
-  const items = [];
+/**
+ * Where each page of a bulk read starts and ends.
+ *
+ * Boundaries come from the payload sizes alone — no round is read to work out
+ * how big it is — so they are the same for every caller and every request. That
+ * is what lets a client ask for page 0, learn how many there are, and then
+ * fetch the rest at once instead of walking a cursor one round trip at a time.
+ */
+function pagesOf(sizes) {
+  const pages = [];
+  let current = [];
   let bytes = 0;
-  for (const record of records) {
-    const size = JSON.stringify(record).length;
-    // Always take the first record even if it is oversized on its own, so a
-    // single fat round can never wedge the pager into an infinite loop.
-    if (items.length && bytes + size > PAGE_BYTES) break;
-    items.push(record);
+  for (const { id, bytes: size } of sizes) {
+    // Always take the first round of a page even if it is oversized on its own,
+    // so one fat killfeed cannot wedge the pager.
+    if (current.length && (bytes + size > PAGE_BYTES || current.length >= PAGE_LIMIT)) {
+      pages.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(id);
     bytes += size;
   }
-  const lastTaken = items.length ? items[items.length - 1].id : window[window.length - 1];
-  const more = start + items.length < ids.length;
-  return { items, next: more ? lastTaken : null };
+  if (current.length) pages.push(current);
+  return pages;
+}
+
+/**
+ * One page of full scoreboards, and how many pages there are in total.
+ *
+ * `weekIds` narrows the read to the nights of one season. A visitor lands on a
+ * single season, so without it a four-season event ships four seasons of
+ * killfeed to draw one of them.
+ */
+async function fullPage(slug, index, withJoinLog, weekIds) {
+  const pages = pagesOf(await store.scoreboardSizes(slug, weekIds));
+  if (!pages.length) return { items: [], page: 0, pages: 0, next: null };
+  const page = Math.min(Math.max(index, 0), pages.length - 1);
+  const items = await store.getScoreboards(slug, pages[page], { withJoinLog });
+  return {
+    items,
+    page,
+    pages: pages.length,
+    // Kept so a caller written against the old cursor still walks the whole set.
+    next: page + 1 < pages.length ? String(page + 1) : null,
+  };
 }
 
 export default async function handler(req, res) {
@@ -168,6 +231,8 @@ export default async function handler(req, res) {
   // database, so signing in works even while the database is down.
   if (segments[0] === 'auth') {
     if (method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
+    // Whether a credential is good is nobody's to keep, least of all a CDN's.
+    res.setHeader?.('Cache-Control', 'private, no-store');
     return json(res, admin ? 200 : 401, { admin, configured: adminConfigured() });
   }
 
@@ -178,7 +243,12 @@ export default async function handler(req, res) {
     if (segments.length === 1) {
       if (method === 'GET') {
         const events = await store.listPublishedEvents();
-        return json(res, 200, { events });
+        // Published events and nothing else, so this is the same for everyone.
+        return cached(req, res, {
+          tag: tagOf('dir', ...events.map((e) => `${e.slug}.${versionOf(e)}`)),
+          shared: true,
+          body: { events },
+        });
       }
       if (method === 'POST') {
         if (!admin) return denied(res);
@@ -189,10 +259,10 @@ export default async function handler(req, res) {
           return json(res, 400, { error: 'Slug must be 2-48 characters of a-z, 0-9 and dashes' });
         }
         const existing = await store.getEvent(slug);
-        const meta = sanitizeMeta(body, existing, slug);
-        meta.scoreboardCount = await store.countScoreboards(slug);
-        await store.putEvent(slug, meta);
-        return json(res, existing ? 200 : 201, { event: meta });
+        // putEvent counts the event's rounds as it writes, so the row it hands
+        // back is what a reader would see.
+        const saved = await store.putEvent(slug, sanitizeMeta(body, existing, slug));
+        return json(res, existing ? 200 : 201, { event: saved });
       }
       return json(res, 405, { error: 'Method not allowed' });
     }
@@ -204,9 +274,13 @@ export default async function handler(req, res) {
     // /api/db/events/:slug
     if (!resource) {
       if (method === 'GET') {
-        const meta = await store.getEvent(slug);
-        if (!visible(meta, admin)) return notFound(res);
-        return json(res, 200, { event: meta });
+        const one = await store.getEvent(slug);
+        if (!visible(one, admin)) return notFound(res);
+        return cached(req, res, {
+          tag: tagOf('event', versionOf(one)),
+          shared: !!one.published,
+          body: { event: one },
+        });
       }
       if (method === 'DELETE') {
         if (!admin) return denied(res);
@@ -227,7 +301,12 @@ export default async function handler(req, res) {
     if (resource === 'tracker') {
       if (method === 'GET') {
         const state = await store.getTracker(slug);
-        return state ? json(res, 200, { state }) : notFound(res);
+        if (!state) return notFound(res);
+        return cached(req, res, {
+          tag: tagOf('tracker', versionOf(meta)),
+          shared: !!meta.published,
+          body: { state },
+        });
       }
       if (method === 'PUT') {
         if (!admin) return denied(res);
@@ -244,10 +323,26 @@ export default async function handler(req, res) {
     if (resource === 'scoreboards') {
       if (method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
       if (query.full === '1' || query.full === 'true') {
-        const after = typeof query.after === 'string' ? query.after : '';
-        return json(res, 200, await fullPage(slug, after));
+        // `page` is the index; `after` is the older cursor, which carried the
+        // same number once pages became deterministic.
+        const asked = Number(query.page ?? query.after ?? 0);
+        const index = Number.isFinite(asked) ? asked : 0;
+        const withJoinLog = query.log === '1';
+        const weeks = typeof query.weeks === 'string' && query.weeks
+          ? query.weeks.split(',').filter(Boolean).slice(0, 2000)
+          : null;
+        const body = await fullPage(slug, index, withJoinLog, weeks);
+        return cached(req, res, {
+          tag: tagOf('sb', versionOf(meta), weeks?.join(',') ?? 'all', body.page, withJoinLog ? 'log' : 'lean'),
+          shared: !!meta.published,
+          body,
+        });
       }
-      return json(res, 200, { scoreboards: await store.listSummaries(slug) });
+      return cached(req, res, {
+        tag: tagOf('sum', versionOf(meta)),
+        shared: !!meta.published,
+        body: { scoreboards: await store.listSummaries(slug) },
+      });
     }
 
     if (resource === 'scoreboard') {
@@ -255,7 +350,12 @@ export default async function handler(req, res) {
       if (!isScoreboardId(id, slug)) return json(res, 400, { error: 'Missing or invalid id' });
       if (method === 'GET') {
         const record = await store.getScoreboard(slug, id);
-        return record ? json(res, 200, { scoreboard: record }) : notFound(res);
+        if (!record) return notFound(res);
+        return cached(req, res, {
+          tag: tagOf('one', versionOf(meta), id),
+          shared: !!meta.published,
+          body: { scoreboard: record },
+        });
       }
       if (!admin) return denied(res);
       if (method === 'PUT') {
@@ -264,12 +364,10 @@ export default async function handler(req, res) {
           return json(res, 400, { error: 'Expected { record, summary }' });
         }
         await store.putScoreboard(slug, id, { ...body.record, id, eventId: slug }, { ...body.summary, id, eventId: slug });
-        await refreshCount(slug);
         return json(res, 200, { id });
       }
       if (method === 'DELETE') {
         await store.deleteScoreboard(slug, id);
-        await refreshCount(slug);
         return json(res, 200, { deleted: true });
       }
       return json(res, 405, { error: 'Method not allowed' });
@@ -278,7 +376,13 @@ export default async function handler(req, res) {
     if (resource === 'assignments' || resource === 'aliases') {
       const read = resource === 'assignments' ? store.getAssignments : store.getAliases;
       const write = resource === 'assignments' ? store.putAssignments : store.putAliases;
-      if (method === 'GET') return json(res, 200, { [resource]: await read(slug) });
+      if (method === 'GET') {
+        return cached(req, res, {
+          tag: tagOf(resource, versionOf(meta)),
+          shared: !!meta.published,
+          body: { [resource]: await read(slug) },
+        });
+      }
       if (method === 'PUT') {
         if (!admin) return denied(res);
         const body = bodyOf(req);

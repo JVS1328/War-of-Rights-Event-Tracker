@@ -66,7 +66,7 @@ Two environment variables:
 | Variable | What it is |
 | --- | --- |
 | `WOR_DATABASE_URL` | Your Neon connection string. `DATABASE_URL` and `POSTGRES_URL` are accepted too, which is what Vercel's Neon integration sets. Use the **pooled** endpoint. |
-| `ADMIN_PASS` | A secret you choose, at least 12 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
+| `ADMIN_PASS` | A secret you choose, at least 12 characters — make it a long random one (`openssl rand -base64 32`). Without it the database refuses **every** write, which is the safe default rather than an open door. |
 
 `vercel.json` routes every `/api/db/...` path to the single function in
 `api/db.js`. That rewrite is not optional: a `[...path]` filename matched only
@@ -91,6 +91,92 @@ The tests use PGlite too, which means the queries in `api/_lib/store.js` are
 genuinely executed rather than mocked: a typo, a missing column or a conflict
 clause that does not do what it looks like fails a test rather than a
 deployment.
+
+### Who Can Do What
+
+One secret, `ADMIN_PASS`, guards every write. The rules are in
+`api/_lib/auth.js` and `api/_lib/router.js`, and `api/_lib/security.test.js`
+holds them in place:
+
+- **Every write needs the pass** — creating events, importing rounds, editing
+  pins, publishing, deleting. Presented as `Authorization: Bearer`, never in a
+  URL, and compared in constant time.
+- **No pass configured means no writes at all.** A deployment that has not been
+  given one refuses every write rather than accepting them from anyone.
+- **The gate on `/#/admin` is a courtesy, not the boundary.** It stops the
+  tracker opening in a state where every save is about to fail. The server
+  checks the pass on every write regardless of what the browser did.
+- **An unpublished event is invisible** — its meta, season, rounds, pins and
+  renames all 404 for anyone without the pass, and it answers exactly as an
+  event that never existed, so the directory cannot be probed for drafts.
+- **A round id carries its event**, so one event's id cannot be used to read
+  another's.
+
+Two things to know about the trust model:
+
+- The pass is kept in `localStorage`, so anyone with the machine has it. That is
+  the same boundary the tracker has always had — until this change the entire
+  season lived in that same storage.
+- There is no rate limiting beyond the platform's own. The pass is the only
+  thing standing in front of writes, so it should be long and random rather than
+  memorable.
+
+### What a Shared Cache May Keep
+
+Caching a response that was not public is how private data leaks, so the rule
+is explicit rather than implied:
+
+- A **published** event's reads are the same bytes for everyone, whoever asked,
+  so they carry `public` cache headers and Vercel's CDN answers repeat readers
+  without waking the database.
+- An **unpublished** event is the owner's alone. Its reads carry
+  `private, no-store` — never held by a proxy, revalidated every time.
+- The **sign-in check** is never stored by anything.
+- **Nothing a caller sent reaches a response header.** A round id or a list of
+  week ids identifies a response, so it goes into the ETag as a hash.
+
+Unpublishing takes effect at the edge within the `s-maxage` window (five
+minutes), after which one reader may be served a stale copy while the edge
+refreshes behind them. For a stats site that is the right trade; if you need an
+event hidden the moment you click, delete it instead.
+
+### What Makes a Page Load Fast
+
+A season of scoreboards is the one request a visitor waits on, so five things
+stand between them and the numbers:
+
+- **Only the season on screen is fetched.** A visitor lands on one season; a
+  four-season event used to download all four to draw one of them. `weekIds`
+  narrows the read, and switching to All seasons fetches the rest once.
+- **The join/leave log stays behind.** No stat or view reads it and it is a
+  twelfth of what a round weighs. Postgres drops it from the document before
+  the row is sent; the stored round still has it, and a backup still asks for it.
+- **Page boundaries are computed from recorded sizes.** Each round's byte count
+  is written down when it is stored, so cutting pages costs one cheap query
+  rather than re-serializing every killfeed in the event — which the first
+  version did, once per page.
+- **Pages are fetched together.** Because the boundaries depend only on those
+  sizes, page 0 also says how many pages there are, and the rest go out at once
+  instead of walking a cursor one round trip at a time.
+- **Every public read carries an ETag.** An unchanged event costs a 304 — one
+  cheap query and no payload — and Vercel's CDN answers repeat readers without
+  waking the database at all.
+- **Writes cost one round trip each.** Saving a round updates the round and its
+  event's timestamp in a single statement; the event's round count is counted
+  where it is read rather than kept in step by hand.
+- **The schema is one statement.** It is created on the first request after a
+  cold start, and nine separate `CREATE`s meant nine round trips before anything
+  could be read.
+
+Measured on a four-season event of 72 full rounds (18 MB of scoreboards), in
+development, where React's StrictMode fetches everything twice: landing on a
+season takes ~3.4 s the first time and ~1.4 s on a reload. Before these
+changes the same page took ~5 s cold and ~7.5 s reloading, and read every
+season to show one.
+
+What is left is inherent to computing the stats in the browser: the rounds have
+to arrive and be parsed. Going further means publishing precomputed leaderboards
+alongside the rounds and reading those instead.
 
 ### What a round row holds
 

@@ -50,20 +50,40 @@ export interface UseStats {
  * An event's player stats, wherever they live. `repo` defaults to this
  * browser's IndexedDB — what the admin tracker uses — and the public site hands
  * in the database-backed one instead. Nothing else about the screens changes.
+ *
+ * `weekIds` is the season on screen. A remote repository reads only those
+ * rounds, which is the difference between downloading one season and four to
+ * draw one of them; a local one ignores it and the screens filter as before.
+ * Null means every round, which is what Overall wants.
  */
-export function useStats(eventId: string, repo: StatsRepository = statsRepo): UseStats {
+export function useStats(
+  eventId: string,
+  repo: StatsRepository = statsRepo,
+  weekIds: string[] | null = null,
+): UseStats {
   const [stored, setStored] = useState<StoredScoreboard[]>([]);
   const [assignments, setAssignments] = useState<ScopedAssignments>({});
   const [aliases, setAliasesState] = useState<ScopedAliases>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // A stable identity for the scope, so re-rendering with an equal-but-new
+  // array does not re-run the load.
+  const scopeKey = weekIds ? [...weekIds].sort().join(',') : '';
+
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      setStored(await repo.readAllScoreboards(eventId));
-      setAssignments(await repo.getRegimentAssignmentsScoped(eventId));
-      setAliasesState(await repo.getRegimentAliasesScoped(eventId));
+      // Three independent reads — over a network, waiting for each in turn is
+      // two round trips of nothing happening.
+      const [scoreboards, assigned, aliased] = await Promise.all([
+        repo.readAllScoreboards(eventId, { weekIds: scopeKey ? scopeKey.split(',') : null }),
+        repo.getRegimentAssignmentsScoped(eventId),
+        repo.getRegimentAliasesScoped(eventId),
+      ]);
+      setStored(scoreboards);
+      setAssignments(assigned);
+      setAliasesState(aliased);
       setError(null);
     } catch (err) {
       // A local repository fails only if the browser broke; a remote one fails
@@ -75,7 +95,7 @@ export function useStats(eventId: string, repo: StatsRepository = statsRepo): Us
       setError(err instanceof Error ? err.message : 'Could not load player stats.');
     }
     setLoading(false);
-  }, [eventId, repo]);
+  }, [eventId, repo, scopeKey]);
 
   useEffect(() => {
     void reload();

@@ -1,6 +1,20 @@
 import type { Scoreboard, Team } from './types';
 import type { BundleOptions, ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
 
+export interface ReadOptions {
+  /**
+   * Ask for the join/leave log too. No stat or view reads it, so a remote
+   * repository leaves it behind by default; a backup asks for it.
+   */
+  withJoinLog?: boolean;
+  /**
+   * Only the rounds bound to these nights. A viewer is looking at one season,
+   * and without this a four-season event is downloaded to draw one of them.
+   * Absent means every round, which is what Overall wants.
+   */
+  weekIds?: string[] | null;
+}
+
 /** Optional link from a scoreboard to a specific Week/Round in the tracker. */
 export interface ScoreboardBinding {
   weekId: string;
@@ -58,9 +72,15 @@ export interface StatsRepository {
    * Every scoreboard in an event, in one go. Callers that need the whole event
    * (the stats screens do) should prefer this over list-then-get-each: locally
    * it is one transaction instead of N, and over the network it is a handful of
-   * paged requests instead of one per round.
+   * paged requests fetched together rather than one per round.
+   *
+   * `withJoinLog` asks for the join/leave log too. No stat or view reads it, so
+   * a remote repository leaves it behind by default; a backup asks for it.
    */
-  readAllScoreboards(eventId: string): Promise<StoredScoreboard[]>;
+  readAllScoreboards(
+    eventId: string,
+    options?: ReadOptions,
+  ): Promise<StoredScoreboard[]>;
 
   /** Event-wide (Overall) pins — a view over the Overall scope of the scoped map. */
   getRegimentAssignments(eventId: string): Promise<RegimentAssignmentMap>;

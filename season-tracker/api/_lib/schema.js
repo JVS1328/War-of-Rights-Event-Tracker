@@ -12,64 +12,87 @@
  * needs no migration step: point WOR_DATABASE_URL at it and the first request
  * builds what it needs.
  */
-export const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS wor_events (
-     slug             TEXT PRIMARY KEY,
-     name             TEXT NOT NULL,
-     published        BOOLEAN NOT NULL DEFAULT FALSE,
-     seasons          JSONB NOT NULL DEFAULT '[]'::jsonb,
-     registry_units   JSONB NOT NULL DEFAULT '[]'::jsonb,
-     map_stats        JSONB,
-     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-   )`,
+/**
+ * One statement, because it is nine round trips otherwise.
+ *
+ * The schema is created on the first request after a cold start rather than by
+ * a migration step, so a fresh Neon database needs nothing but its URL. Sending
+ * each CREATE separately meant the first visitor after an idle period waited
+ * for nine round trips before anything was read; a DO block is one.
+ *
+ * Everything here is idempotent, so it is safe to run against a database that
+ * already has it all.
+ */
+export const SCHEMA = `DO $$ BEGIN
 
-  // The directory only ever lists published events, and orders them by when
-  // they were last touched.
-  `CREATE INDEX IF NOT EXISTS wor_events_published_idx
-     ON wor_events (published, updated_at DESC)`,
+  CREATE TABLE IF NOT EXISTS wor_events (
+    slug             TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    published        BOOLEAN NOT NULL DEFAULT FALSE,
+    seasons          JSONB NOT NULL DEFAULT '[]'::jsonb,
+    registry_units   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    map_stats        JSONB,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
 
-  `CREATE TABLE IF NOT EXISTS wor_scoreboards (
-     event_slug       TEXT NOT NULL REFERENCES wor_events(slug) ON DELETE CASCADE,
-     id               TEXT NOT NULL,
-     source_filename  TEXT NOT NULL,
-     recorded_at      TEXT,
-     map              TEXT,
-     mode             TEXT,
-     area             TEXT,
-     winner           TEXT,
-     week_id          TEXT,
-     round            SMALLINT,
-     payload          JSONB NOT NULL,
-     PRIMARY KEY (event_slug, id)
-   )`,
+  -- The directory lists published events, most recently touched first.
+  CREATE INDEX IF NOT EXISTS wor_events_published_idx
+    ON wor_events (published, updated_at DESC);
 
-  // A round list is "every scoreboard in this event, newest first", which is
-  // the one query this table serves outside of fetching a round by id.
-  `CREATE INDEX IF NOT EXISTS wor_scoreboards_event_idx
-     ON wor_scoreboards (event_slug, recorded_at DESC)`,
+  CREATE TABLE IF NOT EXISTS wor_scoreboards (
+    event_slug       TEXT NOT NULL REFERENCES wor_events(slug) ON DELETE CASCADE,
+    id               TEXT NOT NULL,
+    source_filename  TEXT NOT NULL,
+    recorded_at      TEXT,
+    map              TEXT,
+    mode             TEXT,
+    area             TEXT,
+    winner           TEXT,
+    week_id          TEXT,
+    round            SMALLINT,
+    payload          JSONB NOT NULL,
+    -- How big the payload is, recorded when it is written. Paging a bulk read
+    -- needs every round's size to decide where to cut, and asking Postgres
+    -- (octet_length(payload::text)) re-serializes every killfeed in the event
+    -- to answer -- for every page. Writing it down once makes that free.
+    payload_bytes    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (event_slug, id)
+  );
 
-  `CREATE TABLE IF NOT EXISTS wor_event_docs (
-     event_slug       TEXT NOT NULL REFERENCES wor_events(slug) ON DELETE CASCADE,
-     kind             TEXT NOT NULL,
-     doc              JSONB NOT NULL,
-     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-     PRIMARY KEY (event_slug, kind)
-   )`,
+  ALTER TABLE wor_scoreboards ADD COLUMN IF NOT EXISTS payload_bytes INTEGER NOT NULL DEFAULT 0;
 
-  // Share links: the pre-existing short-link store, moved off Redis so the
-  // deployment needs one database rather than two. Chunks are content-addressed
-  // and write-once; a manifest row (idx = -1) says how many there are.
-  `CREATE TABLE IF NOT EXISTS wor_shares (
-     id               TEXT NOT NULL,
-     idx              INTEGER NOT NULL,
-     chunk            TEXT NOT NULL,
-     expires_at       TIMESTAMPTZ NOT NULL,
-     PRIMARY KEY (id, idx)
-   )`,
+  -- A round list is "every scoreboard in this event, newest first".
+  CREATE INDEX IF NOT EXISTS wor_scoreboards_event_idx
+    ON wor_scoreboards (event_slug, recorded_at DESC);
 
-  `CREATE INDEX IF NOT EXISTS wor_shares_expiry_idx ON wor_shares (expires_at)`,
-];
+  -- A visitor reads one season, so the hot read filters on the night a round
+  -- is bound to.
+  CREATE INDEX IF NOT EXISTS wor_scoreboards_week_idx
+    ON wor_scoreboards (event_slug, week_id);
+
+  CREATE TABLE IF NOT EXISTS wor_event_docs (
+    event_slug       TEXT NOT NULL REFERENCES wor_events(slug) ON DELETE CASCADE,
+    kind             TEXT NOT NULL,
+    doc              JSONB NOT NULL,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (event_slug, kind)
+  );
+
+  -- Share links: the short-link store, on the same database as everything else.
+  -- Chunks are content-addressed and write-once; a manifest row (idx = -1) says
+  -- how many there are.
+  CREATE TABLE IF NOT EXISTS wor_shares (
+    id               TEXT NOT NULL,
+    idx              INTEGER NOT NULL,
+    chunk            TEXT NOT NULL,
+    expires_at       TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (id, idx)
+  );
+
+  CREATE INDEX IF NOT EXISTS wor_shares_expiry_idx ON wor_shares (expires_at);
+
+END $$;`;
 
 /** The three documents an event owns beside its rounds. */
 export const DOC_KINDS = { assignments: 'assignments', aliases: 'aliases', tracker: 'tracker' };
