@@ -315,8 +315,14 @@ export function ScheduleScreen({
   onNewNight,
   onGenerate,
   onDeleteNight,
+  readOnly = false,
 }: {
   nights: NightRow[];
+  /**
+   * The public site's fixture list: the same rows, with nothing on them that
+   * would change the season — no new night, no generate, no edit or remove.
+   */
+  readOnly?: boolean;
   /** A played night opens its matchup. */
   onOpenNight?: (index: number) => void;
   /** An unplayed one, and the Edit button, open the builder. */
@@ -333,27 +339,29 @@ export function ScheduleScreen({
         <span className="rule" />
         <span className="meta">{nights.length} night{nights.length === 1 ? '' : 's'}</span>
       </header>
-      <div className="ctl">
-        <button className="gh" onClick={onNewNight}>＋ New night</button>
-        <button className="gh" onClick={onGenerate}>Generate a season</button>
-        <span className="rule" />
-        <span className="meta">a played night opens its matchup · Edit opens the builder</span>
-      </div>
+      {!readOnly && (
+        <div className="ctl">
+          <button className="gh" onClick={onNewNight}>＋ New night</button>
+          <button className="gh" onClick={onGenerate}>Generate a season</button>
+          <span className="rule" />
+          <span className="meta">a played night opens its matchup · Edit opens the builder</span>
+        </div>
+      )}
       <div className="pb flush scroll-x">
         <table>
           <thead>
             <tr>
               <th /><th>Night</th><th>Leads</th>
               <th>Round 1 map</th><th>Round 2 map</th>
-              <th className="num">Sides</th><th>Result</th><th className="num" />
+              <th className="num">Sides</th><th>Result</th>{!readOnly && <th className="num" />}
             </tr>
           </thead>
           <tbody>
             {nights.map((w) => (
               <tr
                 key={w.index}
-                className="click"
-                onClick={() => (w.played ? onOpenNight?.(w.index) : onEditNight?.(w.index))}
+                className={readOnly ? undefined : 'click'}
+                onClick={readOnly ? undefined : () => (w.played ? onOpenNight?.(w.index) : onEditNight?.(w.index))}
               >
                 <td style={{ color: 'var(--ink-3)' }}>{w.playoffs ? 'PO' : `W${w.n}`}</td>
                 <td className="wor-name">{w.name}</td>
@@ -362,28 +370,34 @@ export function ScheduleScreen({
                 <td style={{ color: 'var(--ink-2)' }}>{w.map2 ?? '—'}</td>
                 <td className="num">{w.sidesA}v{w.sidesB}</td>
                 <td><NightResult r1={w.r1} r2={w.r2} played={w.played} /></td>
-                <td className="num" style={{ whiteSpace: 'nowrap' }}>
-                  <button
-                    className="gh"
-                    onClick={(e) => { e.stopPropagation(); onEditNight?.(w.index); }}
-                  >
-                    Edit
-                  </button>
-                  {onDeleteNight && (
+                {!readOnly && (
+                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
                     <button
-                      className="gh c-danger"
-                      style={{ marginLeft: 5 }}
-                      onClick={(e) => { e.stopPropagation(); onDeleteNight(w.index); }}
-                      title={`Remove ${w.name} from the season`}
+                      className="gh"
+                      onClick={(e) => { e.stopPropagation(); onEditNight?.(w.index); }}
                     >
-                      Remove
+                      Edit
                     </button>
-                  )}
-                </td>
+                    {onDeleteNight && (
+                      <button
+                        className="gh c-danger"
+                        style={{ marginLeft: 5 }}
+                        onClick={(e) => { e.stopPropagation(); onDeleteNight(w.index); }}
+                        title={`Remove ${w.name} from the season`}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {nights.length === 0 && (
-              <tr><td colSpan={8} style={{ color: 'var(--ink-3)' }}>No nights yet — add one above.</td></tr>
+              <tr>
+                <td colSpan={readOnly ? 7 : 8} style={{ color: 'var(--ink-3)' }}>
+                  {readOnly ? 'No nights recorded for this season.' : 'No nights yet — add one above.'}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

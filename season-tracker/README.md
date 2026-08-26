@@ -1,6 +1,131 @@
 # War of Rights Season Tracker
 
-A React-based web application for tracking regiment performance across a War of Rights competitive season. Built with the same design patterns as the Log Analyzer.
+A React-based web application for tracking regiment performance across a War of
+Rights competitive season. Built with the same design patterns as the Log
+Analyzer.
+
+## Two sites, one build
+
+The deployment serves two things off the same URL.
+
+**The public site** is what the address gives you. Anyone can open it, find the
+event they play in, and read it: standings, schedule, roster, playoff bracket,
+Elo ladder and the whole player-stats panel — every season, no link required
+and nothing shared with them first. It is entirely read-only; there is not a
+control on it that would change anything.
+
+An event with no nights recorded — rounds imported for the stats and nothing
+else, which plenty of them are — shows only the player stats. Standings, a
+schedule and a bracket would all be empty, so that half of the site is not
+there: no rail group, no season picker, no screens.
+
+- `#/` — the directory. Every published event, plus a box to type one's short
+  name into.
+- `#/e/<short-name>` — an event. Add a screen (`/standings`, `/stats`, …) and a
+  season (`/sea_abc123`, or `overall`) to link straight to a view.
+- `#/tools` — the side balancer and company splitter, which need no event at
+  all.
+
+**The admin site** is the tracker, at **`/#/admin`** — your deployment's URL
+with `#/admin` on the end — behind the admin pass. That is
+where events are created, nights recorded, rounds imported and seasons
+published. Everything it does is what it always did; what is new is a **Publish
+to the site** screen under Setup.
+
+Writes are refused by the server without the pass, so the gate on `#/admin` is a
+courtesy — it stops the tracker opening in a state where every save is about to
+fail — rather than the thing keeping strangers out.
+
+## The database
+
+Everything the site serves — events, seasons, rounds, regiment pins and the
+share-link store — lives in Postgres on Neon, reached through `/api/db` (see
+`api/_lib/`). Reads are public; every write needs
+`Authorization: Bearer <ADMIN_PASS>`.
+
+### Tables
+
+Five, and the shape follows how the site reads (`api/_lib/schema.js`):
+
+| Table | Holds |
+| --- | --- |
+| `wor_events` | One row per event: name, published flag, its seasons and unit registry. This is what the directory lists. |
+| `wor_scoreboards` | One row per imported round. `payload` is the **whole** parsed scoreboard; the summary columns beside it — map, mode, winner, the night it is bound to — are copies, so a list view never has to load a killfeed. |
+| `wor_event_docs` | An event's regiment pins, its renames, and the tracker's own state: one JSON document each, because that is exactly how the screens hold them and nothing queries inside them. |
+| `wor_shares` | The short-link store, so the deployment needs one database rather than two. |
+
+The DDL is idempotent and runs on the first request after a cold start, so a
+fresh Neon database needs no migration step — point `WOR_DATABASE_URL` at it and
+it builds what it needs.
+
+### Deploying
+
+Two environment variables:
+
+| Variable | What it is |
+| --- | --- |
+| `WOR_DATABASE_URL` | Your Neon connection string. `DATABASE_URL` and `POSTGRES_URL` are accepted too, which is what Vercel's Neon integration sets. Use the **pooled** endpoint. |
+| `ADMIN_PASS` | A secret you choose, at least 12 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
+
+Nothing else needs configuring: `api/db/[...path].js` is one serverless
+function, and hash routing means no rewrite rules.
+
+The driver is `@neondatabase/serverless`, which speaks Postgres over HTTP — no
+connection pool to keep warm and no socket to lose between invocations, which is
+what makes it usable from a serverless function at all.
+
+### Running it locally
+
+`npm run dev` serves the API as well as the app. With no `WOR_DATABASE_URL` in
+the environment it runs against **PGlite** — Postgres compiled to WebAssembly,
+in memory, gone when the dev server stops — and prints an admin pass to enter at
+`#/admin`. So the whole site works on a laptop with nothing provisioned, and
+against the same SQL the deployment runs.
+
+The tests use PGlite too, which means the queries in `api/_lib/store.js` are
+genuinely executed rather than mocked: a typo, a missing column or a conflict
+clause that does not do what it looks like fails a test rather than a
+deployment.
+
+### What a round row holds
+
+`payload` is the entire scoreboard the parser produced, not a summary of it:
+meta, players, the officer command log, the roster, the per-posting service log,
+the killfeed and the join/leave log. `src/stats/roundTrip.test.ts` walks a real
+overlay CSV all the way — parse, publish, store, read back as a visitor — and
+asserts the round that comes out equals the round that went in, field for field.
+
+Two things that would be easy to get wrong, and are tested:
+
+- **Steam ids stay strings.** A SteamID64 is past `Number.MAX_SAFE_INTEGER`, so
+  anything that treated one as a number would hand back different digits.
+- **`joinLeaves` is kept.** It is stripped from share links and export files,
+  where it is dead weight nothing reads and the payload has to stay small. The
+  database is meant to be the record, so publishing sends the whole thing.
+
+One caveat worth knowing: a bundle inside an **old export file** had
+`joinLeaves` stripped when that file was written, so importing one cannot put
+back what the file never carried. Everything else in it comes across whole.
+Publishing straight from the tracker is unaffected — it reads IndexedDB, which
+has the full round.
+
+### Getting your existing seasons in
+
+Nothing migrates itself; the tracker still keeps its own copy in this browser
+and works offline exactly as before. Publishing is a copy up, not a move.
+
+- **A season you are running now.** Open it in the tracker, go to Setup →
+  Publish to the site, give it a name and a short name, and hit Publish. Every
+  imported round goes up with it.
+- **A season that only exists as a file.** Same screen, *Import a file straight
+  into the database* — it reads any export the suite has ever written,
+  including the flat season files from before events existed, and puts it on the
+  site without opening it in the tracker first.
+- **A different machine.** Pull into the tracker brings a published event back
+  down.
+
+Unpublishing hides an event from the site without deleting it. Deleting removes
+it from the database and leaves your browser's copy alone.
 
 ## Features
 
@@ -15,8 +140,9 @@ A React-based web application for tracking regiment performance across a War of 
 - **Playoff Brackets**: Seeded knockout (any number of groups) or two-conference format, with group qualification and wildcards
 - **Playoff Format Planner**: Audits the playoff settings you have and recommends the ones that fit your league and your remaining nights, one click to apply
 - **Standings**: Real-time standings based on performance
-- **Data Persistence**: Automatic saving to browser localStorage
+- **Data Persistence**: Automatic saving to browser localStorage, and publishing to a database the public site reads
 - **Import/Export**: Save and load season data as JSON files
+- **Side Balancer**: A standalone split — paste the coord sheet, pin a unit or two to a side, get an even USA/CSA night — with no event behind it
 
 ## Getting Started
 
@@ -74,6 +200,20 @@ you, it goes by the number in the name instead:
 
 Seasons whose names carry no number ("Preseason") fall back to list order.
 
+### Side Balancer (public, no event needed)
+
+`#/tools` carries a balancer that needs nothing behind it. Paste the coord sheet
+— name, min, max, one unit a line — click a unit or two onto a side to hold them
+there, and it splits the rest into an even USA/CSA night. A unit listed twice has
+its numbers added together, and 0–0 men is a night off.
+
+It runs the same engine the season balancer does, minus everything that needs a
+season: no teammate history, no divisions, no Elo, no playoff pedigree. What is
+left is how even the head counts are, how evenly the units are spread, and how
+alike the two sides' min–max spreads look.
+
+The company splitter sits on the same page.
+
 ### Balancer
 
 The balancer splits the night from the **season roster**, not from the units you
@@ -118,6 +258,17 @@ The overflow menu's **Simulate** builds a season's worth of weeks from a lead sc
 
 The summary popup afterwards reports season length, average/shortest/longest gap between a unit's leads against the ideal gap, a per-unit breakdown, and — when rounds were simulated — the lead vs assist point split. It also renders the schedule as a tab-separated block you can copy straight into a matchup sheet, or download as CSV.
 
+### Playoffs on the public site
+
+The public playoff screen draws the **projected** bracket, not just the nights
+already played: who qualifies on the table as it sits, how they seed, and which
+matchups that produces down to the final. It is the same seeding the tracker
+runs — `utils/playoffBracket` — so a visitor and the owner see one bracket
+rather than two that have to agree.
+
+What it does not carry is the format planner. Choosing a bracket is the owner's
+job; reading the one that was chosen is everybody's.
+
 ### Playoff Formats
 
 Playoffs draw in one of two styles, set under **Bracket Style** (Stats → Playoffs):
@@ -159,7 +310,9 @@ This application follows the KISS (Keep It Simple, Stupid), DRY (Don't Repeat Yo
 - **Vite**: Build tool and dev server
 - **Tailwind CSS 4**: Styling
 - **Lucide React**: Icons
-- **localStorage**: Data persistence
+- **localStorage + IndexedDB**: What the tracker keeps in this browser
+- **Neon (Postgres)**: What the public site reads, behind `/api/db`
+- **PGlite**: Postgres in WebAssembly, for local development and tests
 
 ## Building for Production
 

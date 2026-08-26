@@ -89,6 +89,7 @@ export function StatsOverview({
   roundsPlayed,
   onOpenRound,
   onOpenPlayer,
+  readOnly = false,
 }: {
   o: Overview;
   players: PlayerStatRow[];
@@ -99,6 +100,8 @@ export function StatsOverview({
   scopeName: string;
   /** Rounds the tracker has scheduled, so imports read as a share of them. */
   roundsPlayed?: number;
+  /** On the public site there is no Import screen to point an empty page at. */
+  readOnly?: boolean;
   onOpenRound?: (filename: string) => void;
   onOpenPlayer?: (key: string) => void;
 }) {
@@ -108,8 +111,9 @@ export function StatsOverview({
         <header className="ph"><h2>Imported stats</h2><span className="rule" /><span className="meta">{scopeName}</span></header>
         <div className="pb">
           <p className="note">
-            Nothing imported yet. Drop scoreboard files on the Import screen and every figure on this
-            page fills in from them.
+            {readOnly
+              ? 'No rounds have been imported for this event yet. When they are, every figure on this page fills in from them.'
+              : 'Nothing imported yet. Drop scoreboard files on the Import screen and every figure on this page fills in from them.'}
           </p>
         </div>
       </div>

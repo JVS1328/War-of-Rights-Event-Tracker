@@ -3,6 +3,7 @@ import { Upload, Trash2, Pencil, X, GitMerge, Layers } from 'lucide-react';
 import { Panel, Picker, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
+import type { StatsRepository } from '../../stats/StatsRepository';
 import {
   computePlayerLeaderboard,
   computeRegimentBreakdown,
@@ -116,6 +117,11 @@ function Pager({
 
 interface StatsAreaProps {
   eventId: string;
+  /**
+   * Where the stats come from. Defaults to this browser's IndexedDB (the admin
+   * tracker); the public site passes the database-backed repository instead.
+   */
+  repo?: StatsRepository;
   eventName: string;
   registryUnits?: string[];
   /** Weeks of the active season, for binding scoreboards to a round. */
@@ -158,11 +164,20 @@ interface StatsAreaProps {
    * The shared/read-only view omits this and falls back to scoreboard data.
    */
   trackerMapStats?: TrackerMapStats;
+  /**
+   * Hide the Import tab and every editing affordance. The public site reads the
+   * same repository the tracker writes, so this is what keeps a visitor from
+   * being shown controls that would only ever come back 401.
+   */
+  readOnly?: boolean;
 }
 
-/** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
+/**
+ * Live stats area — reads the event's scoreboards from a repository: this
+ * browser's IndexedDB in the tracker, the database on the public site.
+ */
 export default function StatsArea(props: StatsAreaProps) {
-  const stats = useStats(props.eventId);
+  const stats = useStats(props.eventId, props.repo);
   return <StatsPanel {...props} stats={stats} />;
 }
 
@@ -469,6 +484,7 @@ export function StatsPanel({
           combat={combat}
           hasData={hasData}
           scopeName={seasons.find((s) => s.id === seasonScope)?.name ?? eventName}
+          readOnly={readOnly}
           onOpenRound={openRound}
           onOpenPlayer={openPlayer}
         />

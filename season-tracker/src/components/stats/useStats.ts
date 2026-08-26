@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { statsRepo as repo } from '../../stats/repo';
-import type { RegimentAssignmentMap, ScopedAssignments, ScoreboardBinding, StoredScoreboard } from '../../stats/StatsRepository';
+import { statsRepo } from '../../stats/repo';
+import type {
+  RegimentAssignmentMap,
+  ScopedAssignments,
+  ScoreboardBinding,
+  StatsRepository,
+  StoredScoreboard,
+} from '../../stats/StatsRepository';
 import { parseScoreboard } from '../../stats/parseScoreboard';
 import type { Scoreboard } from '../../stats/types';
 import { resolveRegiment } from '../../stats/regimentMatcher';
@@ -9,6 +15,8 @@ import type { ScopedAliases, StatsBundle } from '../../stats/statsBundle';
 
 export interface UseStats {
   loading: boolean;
+  /** Why the last load failed, when it did — otherwise null. */
+  error?: string | null;
   stored: StoredScoreboard[];
   /** Scoreboards sorted oldest→newest (so the freshest name wins in aggregates). */
   scoreboards: Scoreboard[];
@@ -38,21 +46,36 @@ export interface UseStats {
   reload: () => Promise<void>;
 }
 
-export function useStats(eventId: string): UseStats {
+/**
+ * An event's player stats, wherever they live. `repo` defaults to this
+ * browser's IndexedDB — what the admin tracker uses — and the public site hands
+ * in the database-backed one instead. Nothing else about the screens changes.
+ */
+export function useStats(eventId: string, repo: StatsRepository = statsRepo): UseStats {
   const [stored, setStored] = useState<StoredScoreboard[]>([]);
   const [assignments, setAssignments] = useState<ScopedAssignments>({});
   const [aliases, setAliasesState] = useState<ScopedAliases>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const summaries = await repo.listScoreboards({ eventId });
-    const full = await Promise.all(summaries.map((s) => repo.getScoreboard(s.id)));
-    setStored(full.filter((s): s is StoredScoreboard => s != null));
-    setAssignments(await repo.getRegimentAssignmentsScoped(eventId));
-    setAliasesState(await repo.getRegimentAliasesScoped(eventId));
+    try {
+      setStored(await repo.readAllScoreboards(eventId));
+      setAssignments(await repo.getRegimentAssignmentsScoped(eventId));
+      setAliasesState(await repo.getRegimentAliasesScoped(eventId));
+      setError(null);
+    } catch (err) {
+      // A local repository fails only if the browser broke; a remote one fails
+      // whenever the network does, and the screens need to say so rather than
+      // draw an empty season as though it were a real one.
+      setStored([]);
+      setAssignments({});
+      setAliasesState({});
+      setError(err instanceof Error ? err.message : 'Could not load player stats.');
+    }
     setLoading(false);
-  }, [eventId]);
+  }, [eventId, repo]);
 
   useEffect(() => {
     void reload();
@@ -75,7 +98,7 @@ export function useStats(eventId: string): UseStats {
       await reload();
       return { imported, failed };
     },
-    [eventId, reload],
+    [eventId, repo, reload],
   );
 
   const remove = useCallback(
@@ -83,7 +106,7 @@ export function useStats(eventId: string): UseStats {
       await repo.deleteScoreboard(id);
       await reload();
     },
-    [reload],
+    [repo, reload],
   );
 
   const bind = useCallback(
@@ -93,7 +116,7 @@ export function useStats(eventId: string): UseStats {
       await repo.saveScoreboard(eventId, s.scoreboard, binding);
       await reload();
     },
-    [eventId, stored, reload],
+    [eventId, repo, stored, reload],
   );
 
   /** Re-resolve every known player against a pasted regiment list and persist. */
@@ -110,7 +133,7 @@ export function useStats(eventId: string): UseStats {
       await repo.setRegimentAssignments(eventId, map);
       await reload();
     },
-    [eventId, stored, reload],
+    [eventId, repo, stored, reload],
   );
 
   const setAssignment = useCallback(
@@ -118,7 +141,7 @@ export function useStats(eventId: string): UseStats {
       await repo.setRegimentAssignmentScoped(eventId, scope, steamId, regiment);
       await reload();
     },
-    [eventId, reload],
+    [eventId, repo, reload],
   );
 
   const bulkAssign = useCallback(
@@ -126,7 +149,7 @@ export function useStats(eventId: string): UseStats {
       if (Object.keys(entries).length) await repo.setRegimentAssignmentsScoped(eventId, scope, entries);
       await reload();
     },
-    [eventId, reload],
+    [eventId, repo, reload],
   );
 
   const setAlias = useCallback(
@@ -140,7 +163,7 @@ export function useStats(eventId: string): UseStats {
       await repo.setRegimentAliasesScoped(eventId, next);
       await reload();
     },
-    [eventId, aliases, reload],
+    [eventId, repo, aliases, reload],
   );
 
   const removeAlias = useCallback(
@@ -153,7 +176,7 @@ export function useStats(eventId: string): UseStats {
       await repo.setRegimentAliasesScoped(eventId, next);
       await reload();
     },
-    [eventId, aliases, reload],
+    [eventId, repo, aliases, reload],
   );
 
   const scoreboards = [...stored]
@@ -162,6 +185,7 @@ export function useStats(eventId: string): UseStats {
 
   return {
     loading,
+    error,
     stored,
     scoreboards,
     assignments,
@@ -191,6 +215,7 @@ export function readOnlyStatsFromBundle(bundle: StatsBundle): UseStats {
   const noop = async () => {};
   return {
     loading: false,
+    error: null,
     stored,
     scoreboards,
     assignments: normalizeScopedMap(bundle.assignmentsScoped ?? bundle.assignments),

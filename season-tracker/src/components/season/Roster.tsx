@@ -25,22 +25,28 @@ export interface RosterUnit {
 export function RosterScreen({
   seasonName,
   units,
-  draft,
+  draft = '',
   onDraft,
   onAdd,
   onRename,
   onToggleToken,
   onRemove,
+  readOnly = false,
 }: {
   seasonName: string;
   units: RosterUnit[];
-  /** The name being typed into the add field. */
-  draft: string;
-  onDraft: (name: string) => void;
-  onAdd: () => void;
-  onRename: (unit: string) => void;
-  onToggleToken: (unit: string) => void;
-  onRemove: (unit: string) => void;
+  /** The name being typed into the add field. Unused when read-only. */
+  draft?: string;
+  onDraft?: (name: string) => void;
+  onAdd?: () => void;
+  onRename?: (unit: string) => void;
+  onToggleToken?: (unit: string) => void;
+  onRemove?: (unit: string) => void;
+  /**
+   * The public site's roster: the same table, with nothing on it that would
+   * change the season. Adding, renaming, removing and the token toggle all go.
+   */
+  readOnly?: boolean;
 }) {
   const tokens = units.filter((u) => u.token).length;
   const taken = new Set(units.map((u) => u.name.trim().toLowerCase()));
@@ -57,24 +63,26 @@ export function RosterScreen({
             {units.length - tokens} guest
           </span>
         </header>
-        <div className="ctl">
-          <input
-            type="text"
-            value={draft}
-            onChange={(e) => onDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !duplicate) onAdd(); }}
-            placeholder="Unit name…"
-            aria-label="New unit name"
-            style={{ minWidth: 220 }}
-          />
-          <button className="gh live" onClick={onAdd} disabled={!draft.trim() || duplicate}>
-            ＋ Add unit
-          </button>
-          <span className="rule" />
-          <span className="meta">
-            {duplicate ? `${draft.trim()} is already on the roster` : 'added to this season and to the event registry'}
-          </span>
-        </div>
+        {!readOnly && (
+          <div className="ctl">
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => onDraft?.(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !duplicate) onAdd?.(); }}
+              placeholder="Unit name…"
+              aria-label="New unit name"
+              style={{ minWidth: 220 }}
+            />
+            <button className="gh live" onClick={onAdd} disabled={!draft.trim() || duplicate}>
+              ＋ Add unit
+            </button>
+            <span className="rule" />
+            <span className="meta">
+              {duplicate ? `${draft.trim()} is already on the roster` : 'added to this season and to the event registry'}
+            </span>
+          </div>
+        )}
         <div className="pb flush scroll-x">
           <table>
             <thead>
@@ -84,7 +92,7 @@ export function RosterScreen({
                 <th>Division</th>
                 <th className="num">Nights</th>
                 <th className="num">Men</th>
-                <th className="num" />
+                {!readOnly && <th className="num" />}
               </tr>
             </thead>
             <tbody>
@@ -92,41 +100,51 @@ export function RosterScreen({
                 <tr key={u.name}>
                   <td className="wor-name">{u.name}</td>
                   <td>
-                    <button
-                      className="gh"
-                      onClick={() => onToggleToken(u.name)}
-                      style={u.token ? undefined : { borderColor: 'var(--live)', color: 'var(--live)' }}
-                      title={
-                        u.token
-                          ? `${u.name} holds a token — click to make it a guest unit that scores nothing`
-                          : `${u.name} is a guest unit and scores nothing — click to give it a token`
-                      }
-                    >
-                      {u.token ? 'Token' : 'Guest'}
-                    </button>
+                    {readOnly ? (
+                      <span className="tag q">{u.token ? 'Token' : 'Guest'}</span>
+                    ) : (
+                      <button
+                        className="gh"
+                        onClick={() => onToggleToken?.(u.name)}
+                        style={u.token ? undefined : { borderColor: 'var(--live)', color: 'var(--live)' }}
+                        title={
+                          u.token
+                            ? `${u.name} holds a token — click to make it a guest unit that scores nothing`
+                            : `${u.name} is a guest unit and scores nothing — click to give it a token`
+                        }
+                      >
+                        {u.token ? 'Token' : 'Guest'}
+                      </button>
+                    )}
                   </td>
                   <td>{u.division ? <span className="tag q">{u.division}</span> : <span style={{ color: 'var(--ink-3)' }}>—</span>}</td>
                   <td className="num" style={{ color: 'var(--ink-2)' }}>{u.nights || <span style={{ color: 'var(--ink-3)' }}>—</span>}</td>
                   <td className="num" style={{ color: 'var(--ink-2)' }}>
                     {u.men == null || u.men === 0 ? <span style={{ color: 'var(--ink-3)' }}>—</span> : `~${u.men.toFixed(0)}`}
                   </td>
-                  <td className="num" style={{ whiteSpace: 'nowrap' }}>
-                    <button className="gh" onClick={() => onRename(u.name)} title="Renames it across every season in the event">
-                      Rename
-                    </button>
-                    <button
-                      className="gh c-danger"
-                      style={{ marginLeft: 5 }}
-                      onClick={() => onRemove(u.name)}
-                      title={`Take ${u.name} out of ${seasonName}`}
-                    >
-                      Remove
-                    </button>
-                  </td>
+                  {!readOnly && (
+                    <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                      <button className="gh" onClick={() => onRename?.(u.name)} title="Renames it across every season in the event">
+                        Rename
+                      </button>
+                      <button
+                        className="gh c-danger"
+                        style={{ marginLeft: 5 }}
+                        onClick={() => onRemove?.(u.name)}
+                        title={`Take ${u.name} out of ${seasonName}`}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {units.length === 0 && (
-                <tr><td colSpan={6} style={{ color: 'var(--ink-3)' }}>No units in this season yet — add one above.</td></tr>
+                <tr>
+                  <td colSpan={readOnly ? 5 : 6} style={{ color: 'var(--ink-3)' }}>
+                    {readOnly ? 'No units recorded for this season.' : 'No units in this season yet — add one above.'}
+                  </td>
+                </tr>
               )}
             </tbody>
             <tfoot>

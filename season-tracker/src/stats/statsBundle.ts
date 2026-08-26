@@ -163,6 +163,18 @@ export interface StatsBundle {
   };
 }
 
+export interface BundleOptions {
+  /**
+   * Carry every field the parser produced, `joinLeaves` included.
+   *
+   * The default drops it, because a share link has to survive being pasted into
+   * a chat window and nothing reads that log anyway. A database has no such
+   * pressure and is meant to be the record, so the publish path asks for the
+   * whole thing — what goes in is what came out of the scoreboard.
+   */
+  full?: boolean;
+}
+
 /**
  * Pack stored scoreboards + assignments + aliases into an event-agnostic bundle.
  * `aliases` is the flat Overall map (back-compat); pass `scopedAliases` to also
@@ -179,6 +191,7 @@ export function buildStatsBundle(
   seasons: StatsBundleSeason[] = [],
   scopedAliases?: ScopedAliases,
   scopedAssignments?: ScopedAssignments,
+  options: BundleOptions = {},
 ): StatsBundle {
   const scoped = scopedAliases
     ? normalizeScopedAliases(scopedAliases)
@@ -196,9 +209,10 @@ export function buildStatsBundle(
     v: STATS_BUNDLE_VERSION,
     scoreboards: records.map((r) => ({
       sourceFilename: r.scoreboard.sourceFilename,
-      // Drop joinLeaves — it's parsed but never read by any stat or view, and is
-      // dead weight that bloats share links / export files.
-      scoreboard: { ...r.scoreboard, joinLeaves: [] },
+      // joinLeaves is parsed but read by no stat or view, so it is dead weight
+      // in a share link or an export file — see BundleOptions.full for when it
+      // is kept.
+      scoreboard: options.full ? r.scoreboard : { ...r.scoreboard, joinLeaves: [] },
       ...(r.binding ? { binding: r.binding } : {}),
     })),
     assignments: { ...overallAsg },

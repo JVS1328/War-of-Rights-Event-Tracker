@@ -97,6 +97,17 @@ import {
 } from './utils/playoffPlanner';
 import { balanceTeams, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
 import { nightLeadPairs } from './utils/nightLeads';
+import { CloudPanel } from './admin/CloudPanel';
+import { generatePlayoffBracket as buildPlayoffBracket, bracketSlots } from './utils/playoffBracket';
+import {
+  getEffectiveTeams,
+  seasonPoints,
+  standingRows as standingRowsOf,
+  nightRows as nightRowsOf,
+  seasonKpis as seasonKpisOf,
+  rosterRows as rosterRowsOf,
+  eloLadderRows as eloLadderRowsOf,
+} from './utils/seasonView';
 import {
   parseSchedulePaste,
   auditSchedule,
@@ -198,8 +209,12 @@ const RAIL_NAV = [
     { key: 'settings', label: 'Settings' },
     { key: 'stats-import', label: 'Import rounds' },
     { key: 'share', label: 'Share & export' },
+    { key: 'cloud', label: 'Publish to the site' },
   ]},
 ];
+
+/** Screens where "add a week" is the next thing to do, and so worth saying. */
+const SEASON_SCREENS = new Set(RAIL_NAV[0].items.map(i => i.key));
 
 /** Screens the season/all-seasons scope changes the meaning of. */
 const STATS_SCREENS = new Set(
@@ -652,18 +667,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Get effective teams for a specific round, accounting for unit swaps
-  const getEffectiveTeams = (week, roundNum) => {
-    const baseTeamA = week.teamA || [];
-    const baseTeamB = week.teamB || [];
-    const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
-
-    if (swaps.size === 0) return { teamA: baseTeamA, teamB: baseTeamB };
-
-    const teamA = baseTeamA.filter(u => !swaps.has(u)).concat(baseTeamB.filter(u => swaps.has(u)));
-    const teamB = baseTeamB.filter(u => !swaps.has(u)).concat(baseTeamA.filter(u => swaps.has(u)));
-    return { teamA, teamB };
-  };
-
   // Team Management
   // Move a unit onto a side, or — with 'bench' — off the night entirely. The
   // unit is always removed from wherever it was first, so a drag can never
@@ -696,188 +699,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
     updateWeek(selectedWeek.id, updates);
   };
 
-  // Calculate Points up to a specific week
-  const calculatePointsUpToWeek = (maxWeekIdx = null) => {
-    const stats = {};
-    
-    units.forEach(unit => {
-      // Skip non-token units in point calculations
-      if (nonTokenUnits.includes(unit)) return;
-      
-      stats[unit] = {
-        points: 0,
-        leadWins: 0,
-        leadLosses: 0,
-        assistWins: 0,
-        assistLosses: 0
-      };
-    });
-
-    const weeksToProcess = maxWeekIdx !== null ? weeks.slice(0, maxWeekIdx + 1) : weeks;
-
-    weeksToProcess.forEach(week => {
-      if (!week.round1Winner && !week.round2Winner) return;
-      // Fun rounds are exhibition: no points and no win/loss record.
-      if (week.isFunRound) return;
-
-      const isPlayoffs = week.isPlayoffs || false;
-      const isSingleRoundLeads = week.isSingleRoundLeads || false;
-
-      // Process each round
-      [1, 2].forEach(roundNum => {
-        const winner = week[`round${roundNum}Winner`];
-        if (!winner) return;
-
-        const effective = getEffectiveTeams(week, roundNum);
-        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
-        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
-
-        // Get leads based on playoffs or single round leads mode
-        let leadWinner, leadLoser;
-        if (isPlayoffs || isSingleRoundLeads) {
-          leadWinner = week[`lead${winner}_r${roundNum}`];
-          leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
-        } else {
-          leadWinner = week[`lead${winner}`];
-          leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
-        }
-
-        // Award points to winning team (skip in playoffs)
-        if (!isPlayoffs) {
-          winningTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadWinner) {
-              stats[unit].points += pointSystem.winLead;
-              stats[unit].leadWins++;
-            } else {
-              stats[unit].points += pointSystem.winAssist;
-              stats[unit].assistWins++;
-            }
-          });
-
-          // Award points to losing team
-          losingTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadLoser) {
-              stats[unit].points += pointSystem.lossLead;
-              stats[unit].leadLosses++;
-            } else {
-              stats[unit].points += pointSystem.lossAssist;
-              stats[unit].assistLosses++;
-            }
-          });
-        } else {
-          // In playoffs, still track wins/losses but no points
-          winningTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadWinner) {
-              stats[unit].leadWins++;
-            } else {
-              stats[unit].assistWins++;
-            }
-          });
-          
-          losingTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadLoser) {
-              stats[unit].leadLosses++;
-            } else {
-              stats[unit].assistLosses++;
-            }
-          });
-        }
-      });
-
-      // 2-0 Sweep Bonus (skip in playoffs)
-      if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
-        const sweepWinner = week.round1Winner;
-        // Only units on the winning side in BOTH rounds get the sweep bonus
-        const effectiveR1 = getEffectiveTeams(week, 1);
-        const effectiveR2 = getEffectiveTeams(week, 2);
-        const r1WinTeam = new Set(sweepWinner === 'A' ? effectiveR1.teamA : effectiveR1.teamB);
-        const r2WinTeam = new Set(sweepWinner === 'A' ? effectiveR2.teamA : effectiveR2.teamB);
-        const sweepTeam = [...r1WinTeam].filter(u => r2WinTeam.has(u));
-
-        if (isSingleRoundLeads) {
-          const r1Lead = week[`lead${sweepWinner}_r1`];
-          const r2Lead = week[`lead${sweepWinner}_r2`];
-          const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
-
-          sweepTeam.forEach(unit => {
-            if (!stats[unit]) return;
-
-            if (sweepLeads.has(unit)) {
-              stats[unit].points += pointSystem.bonus2_0Lead;
-            } else {
-              stats[unit].points += pointSystem.bonus2_0Assist;
-            }
-          });
-        } else {
-          const sweepLead = week[`lead${sweepWinner}`];
-
-          sweepTeam.forEach(unit => {
-            if (!stats[unit]) return;
-
-            if (unit === sweepLead) {
-              stats[unit].points += pointSystem.bonus2_0Lead;
-            } else {
-              stats[unit].points += pointSystem.bonus2_0Assist;
-            }
-          });
-        }
-      }
-    });
-
-    // Apply balance points (skip playoff weeks — no points are awarded during
-    // playoffs — and fun rounds, which are exhibition).
-    if (pointSystem.balancePoints) {
-      weeksToProcess.forEach(week => {
-        if (week.isPlayoffs || week.isFunRound) return;
-        const r1Swaps = week.roundSwaps?.r1 || [];
-        const r2Swaps = week.roundSwaps?.r2 || [];
-
-        if (pointSystem.balancePointsStyle === 'perRound') {
-          r1Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-          r2Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-        } else if (pointSystem.balancePointsStyle === 'perRoundLoss') {
-          // Per round, but only for a balanced unit that ended up on the
-          // losing side of that round ("balance and lose → get the point").
-          [1, 2].forEach(roundNum => {
-            const winner = week[`round${roundNum}Winner`];
-            if (!winner) return;
-            const swaps = roundNum === 1 ? r1Swaps : r2Swaps;
-            if (swaps.length === 0) return;
-            const effective = getEffectiveTeams(week, roundNum);
-            const losers = new Set(winner === 'A' ? effective.teamB : effective.teamA);
-            swaps.forEach(unit => {
-              if (stats[unit] && losers.has(unit)) stats[unit].points += pointSystem.balancePoints;
-            });
-          });
-        } else {
-          // perNight: each unit gets balance points at most once per week
-          const balanced = new Set([...r1Swaps, ...r2Swaps]);
-          balanced.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-        }
-      });
-    }
-
-    // Apply manual adjustments
-    Object.entries(manualAdjustments).forEach(([unit, adjustment]) => {
-      if (stats[unit]) {
-        stats[unit].points += adjustment;
-      }
-    });
-
-    return stats;
-  };
+  // Points and record per token unit, from the shared season derivations so
+  // the public site's standings are the same numbers as these.
+  const calculatePointsUpToWeek = (maxWeekIdx = null) => seasonPoints(activeSeason, maxWeekIdx);
 
   // Calculate Points (for entire season)
   const calculatePoints = () => {
@@ -1815,21 +1639,40 @@ const SeasonTracker = ({ initialShareData = null }) => {
     alert('New season started! All data has been cleared.');
   };
 
+  /**
+   * The active event's player stats as a portable bundle — every scoreboard,
+   * the regiment pins and renames, and the map tallies the Elo engine derives.
+   * Share, export and publish all need precisely this, so it is built once.
+   *
+   * `full` keeps every field the parser produced. A share link is trimmed
+   * because it has to stay pasteable; the database is meant to be the record,
+   * so publishing sends the whole scoreboard.
+   */
+  const buildEventStatsBundle = async ({ full = false } = {}) => {
+    let bundle;
+    try {
+      bundle = await statsRepo.exportEventStats(
+        appState.activeEventId, registryUnitNames, statsSeasonRefs, { full },
+      );
+    } catch {
+      return null;
+    }
+    bundle.mapStats = eventMapStats();
+    return bundle;
+  };
+
+  /** Map win/loss tallies for the event overall and for each season in it. */
+  const eventMapStats = () => ({
+    overall: calculateMapStats(),
+    bySeason: Object.fromEntries(activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])),
+  });
+
   // Share — offers active season or whole event. Single-season events skip
   // the dialog and share the season directly (matches legacy behavior).
   const shareSeason = async () => {
     const multi = activeEvent.seasons.length > 1;
     // Pull the event's player stats so we can offer a combined link.
-    let bundle = null;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); } catch { bundle = null; }
-    if (bundle) {
-      bundle.mapStats = {
-        overall: calculateMapStats(),
-        bySeason: Object.fromEntries(
-          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-        ),
-      };
-    }
+    const bundle = await buildEventStatsBundle();
     const sbCount = bundle?.scoreboards.length ?? 0;
     const hasStats = sbCount > 0;
 
@@ -1899,19 +1742,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
   // active event). Recipients open it to a read-only, stats-only page — no
   // tracker data, no editing (see SharedStatsView).
   const shareStats = async () => {
-    let bundle;
-    try { bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
-    catch { alert('Could not read player stats for this event.'); return; }
+    const bundle = await buildEventStatsBundle();
+    if (!bundle) { alert('Could not read player stats for this event.'); return; }
     if (!bundle.scoreboards.length) {
       alert('No scoreboards imported for this event yet — nothing to share.');
       return;
     }
-    bundle.mapStats = {
-      overall: calculateMapStats(),
-      bySeason: Object.fromEntries(
-        activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-      ),
-    };
     let url;
     try { url = await generateShortStatsShareUrl(bundle, activeEvent.name); }
     catch { alert("Couldn't create share link — try again."); return; }
@@ -1939,17 +1775,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
     const isEvent = activeEvent.seasons.length > 1;
     // Bundle the event's player stats (scoreboards + regiment assignments) so a
     // single file is a complete backup. Best-effort — never block the export.
-    let stats;
-    try { stats = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs); }
-    catch { stats = undefined; }
-    if (stats) {
-      stats.mapStats = {
-        overall: calculateMapStats(),
-        bySeason: Object.fromEntries(
-          activeEvent.seasons.map(s => [s.id, mapStatsForSeasons([s])])
-        ),
-      };
-    }
+    const stats = await buildEventStatsBundle();
     const hasStats = stats && (stats.scoreboards.length || Object.keys(stats.assignments).length);
 
     const data = isEvent
@@ -3166,21 +2992,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   }, [units, unitPlayerCounts, selectedWeek]);
 
   /** The season roster, with what each unit has done in it. */
-  const rosterRows = useMemo(() => {
-    const divisionOf = {};
-    (divisions || []).forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
-    const nights = {};
-    (weeks || []).forEach(w => {
-      new Set([...(w.teamA || []), ...(w.teamB || [])]).forEach(u => { nights[u] = (nights[u] || 0) + 1; });
-    });
-    return [...units].sort().map(u => ({
-      name: u,
-      token: !nonTokenUnits.includes(u),
-      division: divisionOf[u] ?? null,
-      nights: nights[u] || 0,
-      men: unitPlayerCounts[u] ? ((unitPlayerCounts[u].min || 0) + (unitPlayerCounts[u].max || 0)) / 2 : null,
-    }));
-  }, [units, nonTokenUnits, divisions, weeks, unitPlayerCounts]);
+  const rosterRows = useMemo(() => rosterRowsOf(activeSeason), [activeSeason]);
 
   /** The night builder names round types the way the prototype does. */
   const nightBuilderType = !selectedWeek ? 'Regular'
@@ -3216,79 +3028,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return m;
   }, [divisions]);
 
-  const standingRows = useMemo(() => {
-    const stats = calculatePointsUpToWeek();
-    return Object.entries(stats)
-      .map(([unit, d]) => {
-        const w = (d.leadWins || 0) + (d.assistWins || 0);
-        const l = (d.leadLosses || 0) + (d.assistLosses || 0);
-        return {
-          unit,
-          division: divisionOfUnit[unit] ?? null,
-          points: d.points || 0,
-          leadWins: d.leadWins || 0,
-          leadLosses: d.leadLosses || 0,
-          assistWins: d.assistWins || 0,
-          assistLosses: d.assistLosses || 0,
-          w, l,
-          wr: w + l > 0 ? Math.round((w / (w + l)) * 100) : 0,
-        };
-      })
-      .sort((a, b) => b.points - a.points || a.unit.localeCompare(b.unit))
-      .map((r, i) => ({ ...r, pos: i + 1 }));
-    // calculatePointsUpToWeek reads the season off appState.
-  }, [weeks, divisionOfUnit, pointSystem, manualAdjustments, appState]);
+  const standingRows = useMemo(() => standingRowsOf(activeSeason), [activeSeason]);
 
-  const nightRows = useMemo(() => weeks.map((w, i) => {
-    // Both of a split-lead night's matchups, not just the first — see
-    // utils/nightLeads.
-    const { first, second } = nightLeadPairs(w);
-    return {
-      index: i,
-      n: i + 1,
-      name: w.name,
-      leadA: first?.a ?? null,
-      leadB: first?.b ?? null,
-      leadA2: second?.a ?? null,
-      leadB2: second?.b ?? null,
-      map1: w.round1Map || null,
-      map2: w.round2Map || null,
-      sidesA: (w.teamA || []).length,
-      sidesB: (w.teamB || []).length,
-      r1: w.round1Winner || null,
-      r2: w.round2Winner || null,
-      played: !!(w.round1Winner || w.round2Winner || w.round1Draw || w.round2Draw),
-      playoffs: !!w.isPlayoffs,
-    };
-  }), [weeks]);
+  const nightRows = useMemo(() => nightRowsOf(activeSeason), [activeSeason]);
 
   /** Season-at-a-glance figures. */
-  const seasonKpis = useMemo(() => {
-    let roundsPlayed = 0;
-    let regular = 0;
-    let usaCasualties = 0;
-    let csaCasualties = 0;
-    for (const w of weeks) {
-      if (w.round1Winner || w.round1Draw) roundsPlayed += 1;
-      if (w.round2Winner || w.round2Draw) roundsPlayed += 1;
-      if (!w.isPlayoffs) regular += 1;
-      // Which side is which faction flips per round, so read the flag first.
-      for (const r of [1, 2]) {
-        const a = w[`r${r}CasualtiesA`] || 0;
-        const b = w[`r${r}CasualtiesB`] || 0;
-        if (w[`round${r}Flipped`]) { usaCasualties += b; csaCasualties += a; }
-        else { usaCasualties += a; csaCasualties += b; }
-      }
-    }
-    const totalCasualties = usaCasualties + csaCasualties;
-    return [
-      { head: 'Units', value: units.length, hint: `${divisions.length} division${divisions.length === 1 ? '' : 's'}` },
-      { head: 'Nights', value: weeks.length, hint: `${regular} regular · ${weeks.length - regular} playoff` },
-      { head: 'Rounds played', value: roundsPlayed, hint: `of ${weeks.length * 2} scheduled` },
-      { head: 'Token units', value: tokenUnits.length, hint: `${units.length - tokenUnits.length} score nothing` },
-      { head: 'Casualties', value: totalCasualties.toLocaleString(), hint: `${usaCasualties.toLocaleString()} USA · ${csaCasualties.toLocaleString()} CSA` },
-    ];
-  }, [weeks, units, divisions, tokenUnits]);
+  const seasonKpis = useMemo(() => seasonKpisOf(activeSeason), [activeSeason]);
 
   /**
    * The pairing grid. Scope decides whether it reads this season or every
@@ -3308,31 +3053,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
    * season is a couple of dozen weeks, so this is cheap enough to memoize
    * rather than cache.
    */
-  const eloLadderRows = useMemo(() => {
-    const weekElo = weeks.map((_, i) => calculateEloRatings(i).eloRatings);
-    const { roundsPlayed } = weeks.length > 0
-      ? calculateEloRatings(weeks.length - 1)
-      : { roundsPlayed: {} };
-    const divisionOf = {};
-    divisions.forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
-    // Where each unit sits on points, so the ladder can show the two orderings
-    // side by side and say where they disagree.
-    const byPoints = Object.entries(calculatePointsUpToWeek())
-      .sort((a, b) => (b[1].points ?? 0) - (a[1].points ?? 0));
-    const pointsRank = {};
-    byPoints.forEach(([unit], i) => { pointsRank[unit] = i + 1; });
-    return buildEloLadder({
-      units: tokenUnits,
-      initialElo: eloSystem.initialElo,
-      weekElo,
-      roundsPlayed,
-      provisionalRounds: eloSystem.provisionalRounds || 0,
-      divisionOf,
-      pointsRank,
-    });
-    // calculateEloRatings reads appState, so the season identity is the dependency.
-  }, [weeks, tokenUnits, divisions, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
-
+  const eloLadderRows = useMemo(
+    () => eloLadderRowsOf(appState, activeEvent, activeSeason),
+    [appState, activeEvent, activeSeason],
+  );
 
   // The league as the playoff planner sees it: who can qualify, how they are
   // grouped, and how many nights the post-season has to work with.
@@ -3692,555 +3416,28 @@ const SeasonTracker = ({ initialShareData = null }) => {
   );
 
   // Generate playoff bracket based on current standings
-  const generatePlayoffBracket = (weekIndex = null) => {
-    if (!playoffConfig.enabled) return null;
-    
-    const currentWeekIdx = weekIndex !== null ? weekIndex : (selectedWeek ? weeks.findIndex(w => w.id === selectedWeek.id) : weeks.length - 1);
-    
-    // Get standings up to the specified week
-    const currentStats = calculatePointsUpToWeek(currentWeekIdx);
-    const { eloRatings, roundsPlayed } = calculateEloRatings(currentWeekIdx);
-    
-    const standings = Object.entries(currentStats)
-      .map(([unit, data]) => ({
-        unit,
-        ...data,
-        elo: eloRatings[unit] || eloSystem.initialElo,
-        rounds: roundsPlayed[unit] || 0
-      }))
-      .sort((a, b) => b.points - a.points);
-    
-    // Filter to only token units
-    const tokenStandings = standings.filter(s => !nonTokenUnits.includes(s.unit));
-
-    // A matchup is only credited when BOTH teams' units were the per-round
-    // leads of opposing sides — being a supporting unit on the winning roster
-    // doesn't count as a playoff win.
-    const playoffWeeks = weeks.filter(w => w.isPlayoffs);
-
-    const roundLeads = (week, r) => ({
-      leadA: week[`leadA_r${r}`] || week.leadA || null,
-      leadB: week[`leadB_r${r}`] || week.leadB || null,
-    });
-
-    const resolveMatch = (team1, team2, roundsPerMatch) => {
-      if (!team1 || !team2) return null;
-      let t1Wins = 0;
-      let t2Wins = 0;
-      for (const w of playoffWeeks) {
-        for (const r of [1, 2]) {
-          const winner = w[`round${r}Winner`];
-          if (!winner) continue;
-          const { leadA, leadB } = roundLeads(w, r);
-          if (!leadA || !leadB) continue;
-          const winningLead = winner === 'A' ? leadA : leadB;
-          const losingLead = winner === 'A' ? leadB : leadA;
-          // Only count this round if it pits team1's lead against team2's lead.
-          const isMatch =
-            (winningLead === team1.unit && losingLead === team2.unit) ||
-            (winningLead === team2.unit && losingLead === team1.unit);
-          if (!isMatch) continue;
-          if (winningLead === team1.unit) t1Wins++;
-          else if (winningLead === team2.unit) t2Wins++;
-        }
-      }
-      const needed = Math.floor((roundsPerMatch || 1) / 2) + 1;
-      if (t1Wins >= needed && t1Wins > t2Wins) return team1;
-      if (t2Wins >= needed && t2Wins > t1Wins) return team2;
-      return null;
-    };
-
-    // Seeded knockout: one flat field, whatever the groups behind it look like.
-    // Groups send their top N, wildcards go to the best of everyone left over
-    // regardless of group, and the field is reseeded 1..N on total points
-    // before being paired 1-vs-N down the bracket.
-    if ((playoffConfig.bracketStyle || 'conference') === 'knockout') {
-      let qualifiers = [];
-
-      if (playoffConfig.useDivisions && divisions.length > 0) {
-        divisions.forEach(division => {
-          const divUnits = new Set(division.units);
-          tokenStandings
-            .filter(s => divUnits.has(s.unit))
-            .slice(0, playoffConfig.teamsPerDivision)
-            .forEach(team => qualifiers.push({ ...team, division: division.name }));
-        });
-
-        const claimed = new Set(qualifiers.map(t => t.unit));
-        const inAGroup = new Set(divisions.flatMap(d => d.units));
-        tokenStandings
-          .filter(s => inAGroup.has(s.unit) && !claimed.has(s.unit))
-          .slice(0, playoffConfig.wildcardTeams)
-          .forEach(team => qualifiers.push({
-            ...team,
-            division: divisions.find(d => d.units.includes(team.unit))?.name,
-            isWildcard: true,
-          }));
-      } else {
-        qualifiers = tokenStandings
-          .slice(0, playoffConfig.wildcardTeams || 4)
-          .map(team => ({ ...team }));
-      }
-
-      // Group seat or wildcard, everyone is reseeded on total points.
-      qualifiers.sort((a, b) => b.points - a.points);
-      qualifiers.forEach((team, idx) => { team.seed = idx + 1; });
-
-      const knockout = { teams: qualifiers, rounds: [], conferenceNames: [] };
-      if (qualifiers.length < MIN_PLAYOFF_FIELD || qualifiers.length > MAX_KNOCKOUT_FIELD) {
-        return knockout;
-      }
-
-      const slots = nextPowerOfTwo(qualifiers.length);
-      const roundCount = Math.round(Math.log2(slots));
-      // Indexed by seed, not a Map — `Map` is the lucide icon in this file.
-      const bySeed = [];
-      qualifiers.forEach(team => { bySeed[team.seed] = team; });
-      // Seeds beyond the field are empty slots, which become byes for the
-      // top seeds they would have faced.
-      let slotTeams = knockoutSeedOrder(slots).map(seed => bySeed[seed] || null);
-      // A slot the previous round has not settled yet carries a label instead
-      // of a team, so the whole bracket is visible before anything is played.
-      let slotLabels = slotTeams.map(() => null);
-
-      for (let round = 0; round < roundCount; round++) {
-        const entering = slotTeams.length;
-        const roundName = knockoutRoundName(entering);
-        const roundsPerMatch = playoffConfig.roundFormats[knockoutStageKey(roundCount, round)] || 1;
-        const matchups = [];
-        const advancing = [];
-        const advancingLabels = [];
-
-        for (let pair = 0; pair * 2 < slotTeams.length; pair++) {
-          const team1 = slotTeams[pair * 2];
-          const team2 = slotTeams[pair * 2 + 1];
-          const label1 = slotLabels[pair * 2];
-          const label2 = slotLabels[pair * 2 + 1];
-
-          // Called after the matchup is pushed, so matchups.length numbers it.
-          const pending = () => {
-            advancing.push(null);
-            advancingLabels.push(`Winner of ${roundName} ${matchups.length}`);
-          };
-
-          if (team1 && team2) {
-            const matchup = { seed1: team1.seed, seed2: team2.seed, team1, team2 };
-            const winner = resolveMatch(team1, team2, roundsPerMatch);
-            if (winner) {
-              matchup.winner = winner;
-              matchup.loser = winner === team1 ? team2 : team1;
-            }
-            matchups.push(matchup);
-            advancing.push(winner || null);
-            advancingLabels.push(winner ? null : `Winner of #${team1.seed} vs #${team2.seed}`);
-          } else if (team1 || team2) {
-            const solo = team1 || team2;
-            const otherLabel = team1 ? label2 : label1;
-            if (otherLabel) {
-              // One side is in, the other is still coming out of the last round.
-              matchups.push({
-                seed1: solo.seed, team1: solo, seed2: null, team2: null, slot2Label: otherLabel,
-              });
-              pending();
-            } else {
-              // Nobody to play: an unfilled slot is a bye for the seed beside it.
-              matchups.push({ seed1: solo.seed, seed2: null, team1: solo, team2: null, bye: true });
-              advancing.push(solo);
-              advancingLabels.push(null);
-            }
-          } else if (label1 || label2) {
-            matchups.push({
-              seed1: null, seed2: null, team1: null, team2: null,
-              slot1Label: label1 || 'To be decided',
-              slot2Label: label2 || 'To be decided',
-            });
-            pending();
-          } else {
-            advancing.push(null);
-            advancingLabels.push(null);
-          }
-        }
-
-        knockout.rounds.push({ name: roundName, roundsPerMatch, matchups });
-        slotTeams = advancing;
-        slotLabels = advancingLabels;
-      }
-
-      return knockout;
-    }
-
-    let playoffTeams = [];
-    let conferenceNames = [];
-
-    if (playoffConfig.useDivisions && divisions.length > 0) {
-      // Helper: Extract conference name from division name
-      const getConferenceName = (divisionName) => {
-        // Find common word in division names (e.g., "Smoke" from "Smoke North" and "Smoke South")
-        const words = divisionName.split(/\s+/);
-        // Return first word as conference identifier
-        return words[0] || divisionName;
-      };
-      
-      // Group divisions into conferences
-      const conferences = {};
-      divisions.forEach(division => {
-        const confName = getConferenceName(division.name);
-        if (!conferences[confName]) {
-          conferences[confName] = [];
-        }
-        conferences[confName].push(division);
-      });
-      
-      // Store conference names for later use
-      conferenceNames = Object.keys(conferences);
-      
-      // Build conference standings
-      const conferenceTeams = {};
-      Object.entries(conferences).forEach(([confName, confDivisions]) => {
-        conferenceTeams[confName] = [];
-        
-        // Get division winners from this conference
-        confDivisions.forEach(division => {
-          const divUnits = new Set(division.units);
-          const divisionStandings = tokenStandings
-            .filter(s => divUnits.has(s.unit))
-            .slice(0, playoffConfig.teamsPerDivision);
-          
-          divisionStandings.forEach(team => {
-            conferenceTeams[confName].push({ ...team, division: division.name });
-          });
-        });
-        
-        // Sort conference teams by points
-        conferenceTeams[confName].sort((a, b) => b.points - a.points);
-        
-        // Add wildcards for this conference
-        if (playoffConfig.wildcardTeams > 0) {
-          const divisionQualifiers = new Set(conferenceTeams[confName].map(t => t.unit));
-          
-          // Get all units in this conference's divisions
-          const confUnits = new Set(confDivisions.flatMap(d => d.units));
-          
-          // Find wildcards from this conference only
-          const confWildcards = tokenStandings
-            .filter(s => confUnits.has(s.unit) && !divisionQualifiers.has(s.unit))
-            .slice(0, playoffConfig.wildcardTeams);
-          
-          confWildcards.forEach(team => {
-            // Find which division this unit belongs to
-            const unitDivision = confDivisions.find(d => d.units.includes(team.unit));
-            conferenceTeams[confName].push({ ...team, division: unitDivision?.name, isWildcard: true });
-          });
-        }
-        
-        // Re-sort after adding wildcards and assign conference seeds
-        conferenceTeams[confName].sort((a, b) => b.points - a.points);
-        conferenceTeams[confName].forEach((team, idx) => {
-          team.conferenceSeed = idx + 1;
-          team.conference = confName;
-        });
-      });
-      
-      // Combine all conference teams
-      Object.values(conferenceTeams).forEach(confTeams => {
-        playoffTeams.push(...confTeams);
-      });
-      
-      // Assign global seeds (for display purposes)
-      playoffTeams.sort((a, b) => b.points - a.points);
-      playoffTeams.forEach((team, idx) => {
-        team.seed = idx + 1;
-      });
-    } else {
-      // Simple top-N playoffs
-      const totalTeams = playoffConfig.wildcardTeams || 4;
-      playoffTeams = tokenStandings.slice(0, totalTeams);
-      
-      // Seed teams by rank
-      playoffTeams.forEach((team, idx) => {
-        team.seed = idx + 1;
-      });
-    }
-    
-    // Generate bracket matchups
-    const bracket = {
-      teams: playoffTeams,
-      rounds: [],
-      conferenceNames
-    };
-    
-    // Determine bracket structure
-    const teamCount = playoffTeams.length;
-    const hasConferences = playoffConfig.useDivisions && conferenceNames.length > 0;
-    
-    if (teamCount >= 8 && hasConferences) {
-      // Conference-based playoffs with 8+ teams
-      // Separate teams by conference
-      const confTeamsByConf = {};
-      conferenceNames.forEach(conf => {
-        confTeamsByConf[conf] = playoffTeams.filter(t => t.conference === conf);
-      });
-      
-      // Wildcard round - within each conference (lower seeds play, top seeds get bye)
-      const wildcardMatchups = [];
-      conferenceNames.forEach(confName => {
-        const confTeams = confTeamsByConf[confName];
-        if (confTeams.length >= 6) {
-          // 6+ teams: #1 and #2 get byes, #3 vs #6, #4 vs #5
-          wildcardMatchups.push(
-            { seed1: confTeams[2].conferenceSeed, seed2: confTeams[5].conferenceSeed, team1: confTeams[2], team2: confTeams[5], conference: confName },
-            { seed1: confTeams[3].conferenceSeed, seed2: confTeams[4].conferenceSeed, team1: confTeams[3], team2: confTeams[4], conference: confName }
-          );
-        } else if (confTeams.length === 5) {
-          // 5 teams: #1 gets bye, #2 vs #5, #3 vs #4
-          wildcardMatchups.push(
-            { seed1: confTeams[1].conferenceSeed, seed2: confTeams[4].conferenceSeed, team1: confTeams[1], team2: confTeams[4], conference: confName },
-            { seed1: confTeams[2].conferenceSeed, seed2: confTeams[3].conferenceSeed, team1: confTeams[2], team2: confTeams[3], conference: confName }
-          );
-        }
-        // With exactly 4 teams, no wildcard round needed (go straight to divisional)
-      });
-      
-      if (wildcardMatchups.length > 0) {
-        bracket.rounds.push({
-          name: 'Wildcard',
-          roundsPerMatch: playoffConfig.roundFormats.wildcard,
-          matchups: wildcardMatchups
-        });
-      }
-      
-      // Divisional round - within each conference
-      const divisionalMatchups = [];
-      conferenceNames.forEach(confName => {
-        const confTeams = confTeamsByConf[confName];
-        if (confTeams.length >= 6) {
-          // 6+ teams with wildcards: #1 vs lower wildcard winner, #2 vs higher wildcard winner
-          divisionalMatchups.push(
-            { seed1: 1, seed2: 'WC2', team1: confTeams[0], label: `Winner of #${confTeams[2].conferenceSeed} vs #${confTeams[5].conferenceSeed}`, conference: confName },
-            { seed1: 2, seed2: 'WC1', team1: confTeams[1], label: `Winner of #${confTeams[3].conferenceSeed} vs #${confTeams[4].conferenceSeed}`, conference: confName }
-          );
-        } else if (confTeams.length === 5) {
-          // 5 teams: #1 (bye) vs winner of (#2 vs #5), winner of (#3 vs #4) advances
-          divisionalMatchups.push(
-            { seed1: 1, seed2: 'WC1', team1: confTeams[0], label: `Winner of #${confTeams[1].conferenceSeed} vs #${confTeams[4].conferenceSeed}`, conference: confName },
-            { seed1: 'WC2', seed2: 'WC2', label: `Winner of #${confTeams[2].conferenceSeed} vs #${confTeams[3].conferenceSeed}`, conference: confName }
-          );
-        } else if (confTeams.length >= 4) {
-          // 4 teams without wildcards: #1 vs #4, #2 vs #3
-          divisionalMatchups.push(
-            { seed1: confTeams[0].conferenceSeed, seed2: confTeams[3].conferenceSeed, team1: confTeams[0], team2: confTeams[3], conference: confName },
-            { seed1: confTeams[1].conferenceSeed, seed2: confTeams[2].conferenceSeed, team1: confTeams[1], team2: confTeams[2], conference: confName }
-          );
-        }
-      });
-      
-      if (divisionalMatchups.length > 0) {
-        bracket.rounds.push({
-          name: 'Divisional',
-          roundsPerMatch: playoffConfig.roundFormats.divisional,
-          matchups: divisionalMatchups
-        });
-      }
-      
-      // Conference Finals - within each conference
-      const conferenceMatchups = [];
-      conferenceNames.forEach(confName => {
-        conferenceMatchups.push({
-          seed1: 'W1',
-          seed2: 'W2',
-          label: `${confName} Conference Final`,
-          conference: confName
-        });
-      });
-      
-      bracket.rounds.push({
-        name: 'Conference Finals',
-        roundsPerMatch: playoffConfig.roundFormats.conference,
-        matchups: conferenceMatchups
-      });
-      
-      // Championship - winners from each conference
-      if (conferenceNames.length >= 2) {
-        bracket.rounds.push({
-          name: 'Championship',
-          roundsPerMatch: playoffConfig.roundFormats.finals,
-          matchups: [
-            {
-              seed1: 'W1',
-              seed2: 'W2',
-              label: `Winner of ${conferenceNames[0]} vs Winner of ${conferenceNames[1]}`,
-              conference: 'Championship'
-            }
-          ]
-        });
-      }
-    } else if (teamCount >= 8) {
-      // Non-conference 8+ team playoffs
-      // Wildcard round: #3 vs #6, #4 vs #5 (#1 and #2 get byes)
-      bracket.rounds.push({
-        name: 'Wildcard',
-        roundsPerMatch: playoffConfig.roundFormats.wildcard,
-        matchups: [
-          { seed1: 3, seed2: 6, team1: playoffTeams[2], team2: playoffTeams[5] },
-          { seed1: 4, seed2: 5, team1: playoffTeams[3], team2: playoffTeams[4] }
-        ]
-      });
-      
-      // Divisional round: #1 vs lower wildcard winner, #2 vs higher wildcard winner
-      bracket.rounds.push({
-        name: 'Divisional',
-        roundsPerMatch: playoffConfig.roundFormats.divisional,
-        matchups: [
-          { seed1: 1, seed2: 'WC2', team1: playoffTeams[0], label: 'Winner of #3 vs #6' },
-          { seed1: 2, seed2: 'WC1', team1: playoffTeams[1], label: 'Winner of #4 vs #5' }
-        ]
-      });
-      
-      bracket.rounds.push({
-        name: 'Conference Finals',
-        roundsPerMatch: playoffConfig.roundFormats.conference,
-        matchups: [
-          { seed1: 'W1', seed2: 'W2', label: 'Winner of Divisional Games' }
-        ]
-      });
-      
-      bracket.rounds.push({
-        name: 'Championship',
-        roundsPerMatch: playoffConfig.roundFormats.finals,
-        matchups: [
-          { seed1: 'W1', seed2: 'W2', label: 'Conference Winners' }
-        ]
-      });
-    } else if (teamCount >= 4) {
-      // 4-team playoffs
-      bracket.rounds.push({
-        name: 'Semifinals',
-        roundsPerMatch: playoffConfig.roundFormats.conference,
-        matchups: [
-          { seed1: 1, seed2: 4, team1: playoffTeams[0], team2: playoffTeams[3] },
-          { seed1: 2, seed2: 3, team1: playoffTeams[1], team2: playoffTeams[2] }
-        ]
-      });
-      
-      bracket.rounds.push({
-        name: 'Finals',
-        roundsPerMatch: playoffConfig.roundFormats.finals,
-        matchups: [
-          { seed1: 'W1', seed2: 'W2', label: 'Winner 1 vs Winner 2' }
-        ]
-      });
-    }
-
-    const seedLabel = (team) => team?.conferenceSeed ?? team?.seed;
-
-    // Resolve winners of already-played playoff matchups and propagate them
-    // forward into the next round's matchups.
-    for (let rIdx = 0; rIdx < bracket.rounds.length; rIdx++) {
-      const round = bracket.rounds[rIdx];
-
-      // Resolve winners for any matchup with both teams known.
-      round.matchups.forEach(m => {
-        if (m.team1 && m.team2 && !m.winner) {
-          const winner = resolveMatch(m.team1, m.team2, round.roundsPerMatch);
-          if (winner) {
-            m.winner = winner;
-            m.loser = winner === m.team1 ? m.team2 : m.team1;
-          }
-        }
-      });
-
-      // Propagate winners into next round.
-      const next = bracket.rounds[rIdx + 1];
-      if (!next) continue;
-
-      if (round.name === 'Wildcard') {
-        if (conferenceNames.length > 0) {
-          conferenceNames.forEach(confName => {
-            const wc = round.matchups.filter(m => m.conference === confName);
-            const div = next.matchups.filter(m => m.conference === confName);
-            // wc[0] = #3 vs #6 (or #2 vs #5 for 5-team) → fills team2 of div[0] (the #1 seed slot)
-            // wc[1] = #4 vs #5 (or #3 vs #4 for 5-team) → fills team2 of div[1] (the #2 seed slot)
-            if (wc[0]?.winner && div[0] && !div[0].team2) {
-              div[0].team2 = wc[0].winner;
-              div[0].seed2 = seedLabel(wc[0].winner);
-            }
-            if (wc[1]?.winner && div[1] && !div[1].team2) {
-              div[1].team2 = wc[1].winner;
-              div[1].seed2 = seedLabel(wc[1].winner);
-            }
-          });
-        } else {
-          if (round.matchups[0]?.winner && next.matchups[0] && !next.matchups[0].team2) {
-            next.matchups[0].team2 = round.matchups[0].winner;
-            next.matchups[0].seed2 = seedLabel(round.matchups[0].winner);
-          }
-          if (round.matchups[1]?.winner && next.matchups[1] && !next.matchups[1].team2) {
-            next.matchups[1].team2 = round.matchups[1].winner;
-            next.matchups[1].seed2 = seedLabel(round.matchups[1].winner);
-          }
-        }
-      } else if (round.name === 'Divisional' || round.name === 'Semifinals') {
-        if (conferenceNames.length > 0 && next.name === 'Conference Finals') {
-          conferenceNames.forEach(confName => {
-            const div = round.matchups.filter(m => m.conference === confName);
-            const cf = next.matchups.find(m => m.conference === confName);
-            if (cf && div[0]?.winner && div[1]?.winner) {
-              cf.team1 = div[0].winner;
-              cf.team2 = div[1].winner;
-              cf.seed1 = seedLabel(div[0].winner);
-              cf.seed2 = seedLabel(div[1].winner);
-            }
-          });
-        } else if (next.matchups.length === 1 && round.matchups.length >= 2) {
-          if (round.matchups[0]?.winner && round.matchups[1]?.winner) {
-            next.matchups[0].team1 = round.matchups[0].winner;
-            next.matchups[0].team2 = round.matchups[1].winner;
-            next.matchups[0].seed1 = seedLabel(round.matchups[0].winner);
-            next.matchups[0].seed2 = seedLabel(round.matchups[1].winner);
-          }
-        }
-      } else if (round.name === 'Conference Finals') {
-        const cfWinners = round.matchups.filter(m => m.winner).map(m => m.winner);
-        const champ = next.matchups[0];
-        if (champ && cfWinners.length >= 2) {
-          champ.team1 = cfWinners[0];
-          champ.team2 = cfWinners[1];
-          champ.seed1 = seedLabel(cfWinners[0]);
-          champ.seed2 = seedLabel(cfWinners[1]);
-        }
-      }
-    }
-
-    return bracket;
-  };
+  /**
+   * The bracket this season's standings project. The seeding itself lives in
+   * utils/playoffBracket so the public site draws the same one.
+   */
+  const generatePlayoffBracket = (weekIndex = null) => buildPlayoffBracket({
+    appState,
+    event: activeEvent,
+    season: activeSeason,
+    weekIndex,
+    selectedWeekId: selectedWeek?.id ?? null,
+  });
 
   /** The drawn bracket, as slots the Playoffs screen can render. */
-  const playoffBracketSlots = useMemo(() => {
-    const b = generatePlayoffBracket();
-    if (!b || !Array.isArray(b.rounds)) return [];
-    const out = [];
-    b.rounds.forEach((rd, ri) => {
-      (rd.matchups || []).forEach(m => {
-        if (!m.team1 && !m.team2) return;
-        const wk = weeks.filter(w => w.isPlayoffs)[ri];
-        const rounds = (side) => {
-          if (!wk) return 0;
-          return (wk.round1Winner === side ? 1 : 0) + (wk.round2Winner === side ? 1 : 0);
-        };
-        out.push({
-          stage: rd.name || (ri === b.rounds.length - 1 ? 'Final' : `Round ${ri + 1}`),
-          night: wk?.name ?? 'unscheduled',
-          a: m.team1?.unit ?? m.slot1Label ?? 'TBD',
-          b: m.team2?.unit ?? m.slot2Label ?? (m.bye ? 'Bye' : 'TBD'),
-          roundsA: rounds('A'),
-          roundsB: rounds('B'),
-          map1: wk?.round1Map ?? null,
-          map2: wk?.round2Map ?? null,
-        });
-      });
-    });
-    return out;
-  }, [weeks, playoffConfig, appState]);
+  const playoffBracketSlots = useMemo(
+    () => bracketSlots({
+      appState,
+      event: activeEvent,
+      season: activeSeason,
+      selectedWeekId: selectedWeek?.id ?? null,
+    }),
+    [appState, activeEvent, activeSeason, selectedWeek],
+  );
 
   /** Formats the planner rates, as the screen's cards. */
   const playoffFormatOptions = useMemo(() => playoffSuggestions.map(plan => ({
@@ -4578,6 +3775,27 @@ const SeasonTracker = ({ initialShareData = null }) => {
     >
         <div>
           {screen === 'splitter' && <CompanySplitter />}
+
+          {/* Copy this event up to the database the public site reads. */}
+          {screen === 'cloud' && (
+            <CloudPanel
+              event={activeEvent}
+              slug={activeEvent.cloudSlug ?? ''}
+              onSlug={(slug) => setAppState(prev => updateActiveEvent(prev, e => ({ ...e, cloudSlug: slug })))}
+              buildStats={() => buildEventStatsBundle({ full: true })}
+              mapStats={eventMapStats}
+              onPulled={(pulled) => setAppState(prev => ({
+                // Same event id means this is the machine's copy coming back;
+                // anything else arrives as a new event rather than overwriting.
+                ...prev,
+                events: prev.events.some(e => e.id === pulled.id)
+                  ? prev.events.map(e => (e.id === pulled.id ? pulled : e))
+                  : [...prev.events, pulled],
+                activeEventId: pulled.id,
+                activeSeasonId: defaultSeasonIdFor(pulled),
+              }))}
+            />
+          )}
 
           {/* Events & seasons — what the header strip used to carry. */}
           {screen === 'events' && (
@@ -7259,8 +6477,8 @@ const SeasonTracker = ({ initialShareData = null }) => {
             </div>
           )}
 
-          {/* Empty State */}
-          {viewMode === 'tracker' && weeks.length === 0 && (
+          {/* Empty State — only where adding a week is the point of the screen. */}
+          {viewMode === 'tracker' && weeks.length === 0 && SEASON_SCREENS.has(screen) && (
             <div className="panel pb">
               <Calendar className="w-16 h-16 mx-auto mb-4 opacity-50" />
               <p className="text-lg">Add a week to get started</p>
