@@ -145,6 +145,12 @@ export class LocalStatsRepository implements StatsRepository {
     await this.tx(SCOREBOARDS, 'readwrite', (s) => reqAsPromise(s.delete(id)));
   }
 
+  async readAllScoreboards(eventId: string): Promise<StoredScoreboard[]> {
+    return this.tx(SCOREBOARDS, 'readonly', (s) =>
+      reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
+    );
+  }
+
   // Overall pins keep the legacy per-steam-id key so existing data and the flat
   // API are unaffected; season pins get a scope segment.
   private static asgKey(eventId: string, scope: string, steamId: string): string {
@@ -237,9 +243,7 @@ export class LocalStatsRepository implements StatsRepository {
     registryUnits: string[] = [],
     seasons: StatsBundleSeason[] = [],
   ): Promise<StatsBundle> {
-    const records = await this.tx(SCOREBOARDS, 'readonly', (s) =>
-      reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),
-    );
+    const records = await this.readAllScoreboards(eventId);
     const scopedAsg = await this.getRegimentAssignmentsScoped(eventId);
     const scoped = await this.getRegimentAliasesScoped(eventId);
     return buildStatsBundle(

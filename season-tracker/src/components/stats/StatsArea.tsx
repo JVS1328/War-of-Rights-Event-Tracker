@@ -3,6 +3,7 @@ import { Upload, Trash2, Pencil, X, GitMerge, Layers } from 'lucide-react';
 import { Panel, Picker, Pill, DataTable, EmptyHint } from '../ui';
 import type { Column } from '../ui';
 import { useStats, type UseStats } from './useStats';
+import type { StatsRepository } from '../../stats/StatsRepository';
 import {
   computePlayerLeaderboard,
   computeRegimentBreakdown,
@@ -116,6 +117,11 @@ function Pager({
 
 interface StatsAreaProps {
   eventId: string;
+  /**
+   * Where the stats come from. Defaults to this browser's IndexedDB (the admin
+   * tracker); the public site passes the database-backed repository instead.
+   */
+  repo?: StatsRepository;
   eventName: string;
   registryUnits?: string[];
   /** Weeks of the active season, for binding scoreboards to a round. */
@@ -162,7 +168,7 @@ interface StatsAreaProps {
 
 /** Live stats area — reads the event's scoreboards from the repo (IndexedDB). */
 export default function StatsArea(props: StatsAreaProps) {
-  const stats = useStats(props.eventId);
+  const stats = useStats(props.eventId, props.repo);
   return <StatsPanel {...props} stats={stats} />;
 }
 

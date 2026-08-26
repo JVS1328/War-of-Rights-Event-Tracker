@@ -43,15 +43,24 @@ export type RegimentAssignmentMap = Record<string, string>;
 export type ScopedAssignments = Record<string, RegimentAssignmentMap>;
 
 /**
- * Storage-agnostic stats persistence. The client uses LocalStatsRepository
- * (IndexedDB); a future ApiStatsRepository (backend) can implement the same
- * interface without any UI changes.
+ * Storage-agnostic stats persistence. LocalStatsRepository keeps an event in
+ * this browser (IndexedDB); ApiStatsRepository keeps it in the database behind
+ * /api/db. The screens are written against this interface and cannot tell which
+ * one they were handed.
  */
 export interface StatsRepository {
   saveScoreboard(eventId: string, scoreboard: Scoreboard, binding?: ScoreboardBinding): Promise<string>;
   getScoreboard(id: string): Promise<StoredScoreboard | null>;
   listScoreboards(query: ListQuery): Promise<ScoreboardSummary[]>;
   deleteScoreboard(id: string): Promise<void>;
+
+  /**
+   * Every scoreboard in an event, in one go. Callers that need the whole event
+   * (the stats screens do) should prefer this over list-then-get-each: locally
+   * it is one transaction instead of N, and over the network it is a handful of
+   * paged requests instead of one per round.
+   */
+  readAllScoreboards(eventId: string): Promise<StoredScoreboard[]>;
 
   /** Event-wide (Overall) pins — a view over the Overall scope of the scoped map. */
   getRegimentAssignments(eventId: string): Promise<RegimentAssignmentMap>;
