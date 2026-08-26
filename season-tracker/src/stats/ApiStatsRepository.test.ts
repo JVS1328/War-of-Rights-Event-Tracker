@@ -115,11 +115,11 @@ beforeEach(async () => {
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   process.env.WOR_ADMIN_TOKEN = TOKEN;
   vi.stubGlobal('fetch', fakeFetch);
+  const store = new Map<string, string>();
   vi.stubGlobal('localStorage', {
-    store: new Map<string, string>(),
-    getItem(k: string) { return this.store.get(k) ?? null; },
-    setItem(k: string, v: string) { this.store.set(k, v); },
-    removeItem(k: string) { this.store.delete(k); },
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => { store.set(k, v); },
+    removeItem: (k: string) => { store.delete(k); },
   });
   setAdminToken(TOKEN);
   repo = new ApiStatsRepository();
