@@ -140,7 +140,7 @@ player-stats panel, any season — without being sent a link or handed a file.
 `#/tools` carries the side balancer and company splitter, which need no event
 at all.
 
-The tracker itself is the admin site, at `#/admin`, behind an owner token. It
+The tracker itself is the admin site, at `/#/admin`, behind an admin pass. It
 still keeps its own copy of everything in the browser and still works offline;
 publishing an event copies it up to the database the public site reads.
 

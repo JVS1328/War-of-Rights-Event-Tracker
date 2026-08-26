@@ -1643,11 +1643,17 @@ const SeasonTracker = ({ initialShareData = null }) => {
    * The active event's player stats as a portable bundle — every scoreboard,
    * the regiment pins and renames, and the map tallies the Elo engine derives.
    * Share, export and publish all need precisely this, so it is built once.
+   *
+   * `full` keeps every field the parser produced. A share link is trimmed
+   * because it has to stay pasteable; the database is meant to be the record,
+   * so publishing sends the whole scoreboard.
    */
-  const buildEventStatsBundle = async () => {
+  const buildEventStatsBundle = async ({ full = false } = {}) => {
     let bundle;
     try {
-      bundle = await statsRepo.exportEventStats(appState.activeEventId, registryUnitNames, statsSeasonRefs);
+      bundle = await statsRepo.exportEventStats(
+        appState.activeEventId, registryUnitNames, statsSeasonRefs, { full },
+      );
     } catch {
       return null;
     }
@@ -3776,7 +3782,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
               event={activeEvent}
               slug={activeEvent.cloudSlug ?? ''}
               onSlug={(slug) => setAppState(prev => updateActiveEvent(prev, e => ({ ...e, cloudSlug: slug })))}
-              buildStats={buildEventStatsBundle}
+              buildStats={() => buildEventStatsBundle({ full: true })}
               mapStats={eventMapStats}
               onPulled={(pulled) => setAppState(prev => ({
                 // Same event id means this is the machine's copy coming back;

@@ -10,7 +10,7 @@ import type {
 } from './StatsRepository';
 import { apiDelete, apiGet, apiPut, qs } from '../cloud/api';
 import { buildStatsBundle, normalizeScopedAliases, normalizeScopedMap, OVERALL_SCOPE } from './statsBundle';
-import type { ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
+import type { BundleOptions, ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
 
 /**
  * The database-backed StatsRepository: the same contract LocalStatsRepository
@@ -200,6 +200,7 @@ export class ApiStatsRepository implements StatsRepository {
     eventId: string,
     registryUnits: string[] = [],
     seasons: StatsBundleSeason[] = [],
+    options: BundleOptions = {},
   ): Promise<StatsBundle> {
     const records = await this.readAllScoreboards(eventId);
     const scopedAsg = await this.getRegimentAssignmentsScoped(eventId);
@@ -212,6 +213,7 @@ export class ApiStatsRepository implements StatsRepository {
       seasons,
       scoped,
       scopedAsg,
+      options,
     );
   }
 

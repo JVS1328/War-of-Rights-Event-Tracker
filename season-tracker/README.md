@@ -26,7 +26,8 @@ there: no rail group, no season picker, no screens.
 - `#/tools` — the side balancer and company splitter, which need no event at
   all.
 
-**The admin site** is the tracker, at `#/admin`, behind the admin pass. That is
+**The admin site** is the tracker, at **`/#/admin`** — your deployment's URL
+with `#/admin` on the end — behind the admin pass. That is
 where events are created, nights recorded, rounds imported and seasons
 published. Everything it does is what it always did; what is new is a **Publish
 to the site** screen under Setup.
@@ -49,7 +50,7 @@ Five, and the shape follows how the site reads (`api/_lib/schema.js`):
 | Table | Holds |
 | --- | --- |
 | `wor_events` | One row per event: name, published flag, its seasons and unit registry. This is what the directory lists. |
-| `wor_scoreboards` | One row per imported round. The summary columns — map, mode, winner, the night it is bound to — sit beside the payload so a list view never loads a killfeed. |
+| `wor_scoreboards` | One row per imported round. `payload` is the **whole** parsed scoreboard; the summary columns beside it — map, mode, winner, the night it is bound to — are copies, so a list view never has to load a killfeed. |
 | `wor_event_docs` | An event's regiment pins, its renames, and the tracker's own state: one JSON document each, because that is exactly how the screens hold them and nothing queries inside them. |
 | `wor_shares` | The short-link store, so the deployment needs one database rather than two. |
 
@@ -85,6 +86,28 @@ The tests use PGlite too, which means the queries in `api/_lib/store.js` are
 genuinely executed rather than mocked: a typo, a missing column or a conflict
 clause that does not do what it looks like fails a test rather than a
 deployment.
+
+### What a round row holds
+
+`payload` is the entire scoreboard the parser produced, not a summary of it:
+meta, players, the officer command log, the roster, the per-posting service log,
+the killfeed and the join/leave log. `src/stats/roundTrip.test.ts` walks a real
+overlay CSV all the way — parse, publish, store, read back as a visitor — and
+asserts the round that comes out equals the round that went in, field for field.
+
+Two things that would be easy to get wrong, and are tested:
+
+- **Steam ids stay strings.** A SteamID64 is past `Number.MAX_SAFE_INTEGER`, so
+  anything that treated one as a number would hand back different digits.
+- **`joinLeaves` is kept.** It is stripped from share links and export files,
+  where it is dead weight nothing reads and the payload has to stay small. The
+  database is meant to be the record, so publishing sends the whole thing.
+
+One caveat worth knowing: a bundle inside an **old export file** had
+`joinLeaves` stripped when that file was written, so importing one cannot put
+back what the file never carried. Everything else in it comes across whole.
+Publishing straight from the tracker is unaffected — it reads IndexedDB, which
+has the full round.
 
 ### Getting your existing seasons in
 

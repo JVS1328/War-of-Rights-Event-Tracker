@@ -9,7 +9,7 @@ import type {
   StoredScoreboard,
 } from './StatsRepository';
 import { buildStatsBundle, normalizeScopedAliases, normalizeScopedMap, OVERALL_SCOPE } from './statsBundle';
-import type { ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
+import type { BundleOptions, ScopedAliases, StatsBundle, StatsBundleSeason } from './statsBundle';
 
 const SCOREBOARDS = 'scoreboards';
 const ASSIGNMENTS = 'assignments';
@@ -242,6 +242,7 @@ export class LocalStatsRepository implements StatsRepository {
     eventId: string,
     registryUnits: string[] = [],
     seasons: StatsBundleSeason[] = [],
+    options: BundleOptions = {},
   ): Promise<StatsBundle> {
     const records = await this.readAllScoreboards(eventId);
     const scopedAsg = await this.getRegimentAssignmentsScoped(eventId);
@@ -254,6 +255,7 @@ export class LocalStatsRepository implements StatsRepository {
       seasons,
       scoped,
       scopedAsg,
+      options,
     );
   }
 
