@@ -34,7 +34,38 @@ import * as store from './store.js';
 const PAGE_BYTES = 3_000_000;
 const PAGE_LIMIT = 200;
 
+/**
+ * How long a public read may be reused.
+ *
+ * An event changes when its owner publishes, which is rarely, and every reader
+ * wants the same bytes — so the CDN holds them and the database is not asked
+ * again. `stale-while-revalidate` means the one reader who arrives after a
+ * publish still gets an instant answer while the edge refreshes behind them.
+ * Every response carries an ETag as well, so even an expired copy costs a 304
+ * rather than a re-download.
+ */
+const PUBLIC_CACHE = 'public, max-age=30, s-maxage=300, stale-while-revalidate=86400';
+
 const json = (res, code, body) => res.status(code).json(body);
+
+/**
+ * Answer a public read, letting the browser and the CDN keep it.
+ *
+ * `tag` identifies this exact content — the event's updated-at plus whatever
+ * else the response depends on — so a caller holding it is told "unchanged"
+ * instead of being sent the payload again. For a season of scoreboards that is
+ * the difference between megabytes and an empty 304.
+ */
+function cached(req, res, tag, body) {
+  const etag = `W/"${tag}"`;
+  res.setHeader?.('Cache-Control', PUBLIC_CACHE);
+  res.setHeader?.('ETag', etag);
+  if (req?.headers?.['if-none-match'] === etag) return res.status(304).end?.() ?? res.status(304).json({});
+  return res.status(200).json(body);
+}
+
+/** An event's version, as far as anything derived from it is concerned. */
+const versionOf = (meta) => `${meta?.updatedAt ?? '0'}.${meta?.scoreboardCount ?? 0}`;
 const notFound = (res) => json(res, 404, { error: 'Not found' });
 const denied = (res) => json(res, 401, {
   error: adminConfigured()
@@ -136,26 +167,52 @@ async function refreshCount(slug) {
   await store.putEvent(slug, { ...meta, scoreboardCount, updatedAt: new Date().toISOString() });
 }
 
-/** Full scoreboards in id order, cut off at a byte budget with a resume cursor. */
-async function fullPage(slug, after) {
-  const ids = (await store.listSummaries(slug)).map((s) => s.id).filter(Boolean).sort();
-  const start = after ? ids.findIndex((id) => id > after) : 0;
-  if (start < 0) return { items: [], next: null };
-  const window = ids.slice(start, start + PAGE_LIMIT);
-  const records = await store.getScoreboards(slug, window);
-  const items = [];
+/**
+ * Where each page of a bulk read starts and ends.
+ *
+ * Boundaries come from the payload sizes alone — no round is read to work out
+ * how big it is — so they are the same for every caller and every request. That
+ * is what lets a client ask for page 0, learn how many there are, and then
+ * fetch the rest at once instead of walking a cursor one round trip at a time.
+ */
+function pagesOf(sizes) {
+  const pages = [];
+  let current = [];
   let bytes = 0;
-  for (const record of records) {
-    const size = JSON.stringify(record).length;
-    // Always take the first record even if it is oversized on its own, so a
-    // single fat round can never wedge the pager into an infinite loop.
-    if (items.length && bytes + size > PAGE_BYTES) break;
-    items.push(record);
+  for (const { id, bytes: size } of sizes) {
+    // Always take the first round of a page even if it is oversized on its own,
+    // so one fat killfeed cannot wedge the pager.
+    if (current.length && (bytes + size > PAGE_BYTES || current.length >= PAGE_LIMIT)) {
+      pages.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(id);
     bytes += size;
   }
-  const lastTaken = items.length ? items[items.length - 1].id : window[window.length - 1];
-  const more = start + items.length < ids.length;
-  return { items, next: more ? lastTaken : null };
+  if (current.length) pages.push(current);
+  return pages;
+}
+
+/**
+ * One page of full scoreboards, and how many pages there are in total.
+ *
+ * `weekIds` narrows the read to the nights of one season. A visitor lands on a
+ * single season, so without it a four-season event ships four seasons of
+ * killfeed to draw one of them.
+ */
+async function fullPage(slug, index, withJoinLog, weekIds) {
+  const pages = pagesOf(await store.scoreboardSizes(slug, weekIds));
+  if (!pages.length) return { items: [], page: 0, pages: 0, next: null };
+  const page = Math.min(Math.max(index, 0), pages.length - 1);
+  const items = await store.getScoreboards(slug, pages[page], { withJoinLog });
+  return {
+    items,
+    page,
+    pages: pages.length,
+    // Kept so a caller written against the old cursor still walks the whole set.
+    next: page + 1 < pages.length ? String(page + 1) : null,
+  };
 }
 
 export default async function handler(req, res) {
@@ -204,9 +261,9 @@ export default async function handler(req, res) {
     // /api/db/events/:slug
     if (!resource) {
       if (method === 'GET') {
-        const meta = await store.getEvent(slug);
-        if (!visible(meta, admin)) return notFound(res);
-        return json(res, 200, { event: meta });
+        const one = await store.getEvent(slug);
+        if (!visible(one, admin)) return notFound(res);
+        return cached(req, res, `event.${versionOf(one)}`, { event: one });
       }
       if (method === 'DELETE') {
         if (!admin) return denied(res);
@@ -227,7 +284,8 @@ export default async function handler(req, res) {
     if (resource === 'tracker') {
       if (method === 'GET') {
         const state = await store.getTracker(slug);
-        return state ? json(res, 200, { state }) : notFound(res);
+        if (!state) return notFound(res);
+        return cached(req, res, `tracker.${versionOf(meta)}`, { state });
       }
       if (method === 'PUT') {
         if (!admin) return denied(res);
@@ -244,10 +302,24 @@ export default async function handler(req, res) {
     if (resource === 'scoreboards') {
       if (method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
       if (query.full === '1' || query.full === 'true') {
-        const after = typeof query.after === 'string' ? query.after : '';
-        return json(res, 200, await fullPage(slug, after));
+        // `page` is the index; `after` is the older cursor, which carried the
+        // same number once pages became deterministic.
+        const asked = Number(query.page ?? query.after ?? 0);
+        const index = Number.isFinite(asked) ? asked : 0;
+        const withJoinLog = query.log === '1';
+        const weeks = typeof query.weeks === 'string' && query.weeks
+          ? query.weeks.split(',').filter(Boolean).slice(0, 2000)
+          : null;
+        const body = await fullPage(slug, index, withJoinLog, weeks);
+        const scope = weeks ? `w${weeks.length}:${weeks[0]}` : 'all';
+        return cached(
+          req,
+          res,
+          `sb.${versionOf(meta)}.${scope}.${body.page}.${withJoinLog ? 'log' : 'lean'}`,
+          body,
+        );
       }
-      return json(res, 200, { scoreboards: await store.listSummaries(slug) });
+      return cached(req, res, `sum.${versionOf(meta)}`, { scoreboards: await store.listSummaries(slug) });
     }
 
     if (resource === 'scoreboard') {
@@ -255,7 +327,8 @@ export default async function handler(req, res) {
       if (!isScoreboardId(id, slug)) return json(res, 400, { error: 'Missing or invalid id' });
       if (method === 'GET') {
         const record = await store.getScoreboard(slug, id);
-        return record ? json(res, 200, { scoreboard: record }) : notFound(res);
+        if (!record) return notFound(res);
+        return cached(req, res, `one.${versionOf(meta)}.${id}`, { scoreboard: record });
       }
       if (!admin) return denied(res);
       if (method === 'PUT') {
@@ -278,7 +351,9 @@ export default async function handler(req, res) {
     if (resource === 'assignments' || resource === 'aliases') {
       const read = resource === 'assignments' ? store.getAssignments : store.getAliases;
       const write = resource === 'assignments' ? store.putAssignments : store.putAliases;
-      if (method === 'GET') return json(res, 200, { [resource]: await read(slug) });
+      if (method === 'GET') {
+        return cached(req, res, `${resource}.${versionOf(meta)}`, { [resource]: await read(slug) });
+      }
       if (method === 'PUT') {
         if (!admin) return denied(res);
         const body = bodyOf(req);

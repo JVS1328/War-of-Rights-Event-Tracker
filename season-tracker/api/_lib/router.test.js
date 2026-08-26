@@ -152,7 +152,7 @@ describe('scoreboards', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('pages full records and reports when there are no more', async () => {
+  it('serves every round in one page when they fit, and says so', async () => {
     await call('POST', 'events', { body: { slug: 'ssl', published: true }, auth: true });
     for (const n of ['a', 'b', 'c']) {
       await call('PUT', 'events/ssl/scoreboard', {
@@ -162,11 +162,49 @@ describe('scoreboards', () => {
       });
     }
     const page = await call('GET', 'events/ssl/scoreboards', { query: { full: '1' } });
-    expect(page.body.items).toHaveLength(3);
-    expect(page.body.next).toBeNull();
+    expect(page.body.items.map((i) => i.id)).toEqual(['ssl::a.csv', 'ssl::b.csv', 'ssl::c.csv']);
+    // One page, so a client knows immediately there is nothing else to ask for.
+    expect(page.body).toMatchObject({ page: 0, pages: 1, next: null });
+  });
 
-    const after = await call('GET', 'events/ssl/scoreboards', { query: { full: '1', after: 'ssl::a.csv' } });
-    expect(after.body.items.map((i) => i.id)).toEqual(['ssl::b.csv', 'ssl::c.csv']);
+  it('numbers its pages, so a client can ask for them all at once', async () => {
+    await call('POST', 'events', { body: { slug: 'ssl', published: true }, auth: true });
+    for (const n of ['a', 'b', 'c']) {
+      await call('PUT', 'events/ssl/scoreboard', {
+        query: { id: `ssl::${n}.csv` },
+        body: { record: { scoreboard: scoreboardOf(`${n}.csv`) }, summary: summaryOf(`ssl::${n}.csv`, `${n}.csv`) },
+        auth: true,
+      });
+    }
+    // Page boundaries come from the payload sizes alone, so asking twice gives
+    // the same answer — which is what makes fetching them in parallel safe.
+    const first = await call('GET', 'events/ssl/scoreboards', { query: { full: '1', page: '0' } });
+    const again = await call('GET', 'events/ssl/scoreboards', { query: { full: '1', page: '0' } });
+    expect(again.body.items.map((i) => i.id)).toEqual(first.body.items.map((i) => i.id));
+
+    // A page past the end clamps rather than erroring, so a stale count is safe.
+    const past = await call('GET', 'events/ssl/scoreboards', { query: { full: '1', page: '99' } });
+    expect(past.body.page).toBe(first.body.pages - 1);
+  });
+
+  it('leaves the join/leave log out of a bulk read, and includes it when asked', async () => {
+    await call('POST', 'events', { body: { slug: 'ssl', published: true }, auth: true });
+    const sb = { ...scoreboardOf('a.csv'), joinLeaves: [{ tsInRound: '00:01', name: 'Pvt. Smith', steamId: '1', action: 'joined' }] };
+    await call('PUT', 'events/ssl/scoreboard', {
+      query: { id: 'ssl::a.csv' },
+      body: { record: { scoreboard: sb }, summary: summaryOf('ssl::a.csv', 'a.csv') },
+      auth: true,
+    });
+
+    const lean = await call('GET', 'events/ssl/scoreboards', { query: { full: '1' } });
+    expect(lean.body.items[0].scoreboard.joinLeaves).toBeUndefined();
+
+    const full = await call('GET', 'events/ssl/scoreboards', { query: { full: '1', log: '1' } });
+    expect(full.body.items[0].scoreboard.joinLeaves).toHaveLength(1);
+
+    // The stored round is untouched either way — one round read whole still has it.
+    const one = await call('GET', 'events/ssl/scoreboard', { query: { id: 'ssl::a.csv' } });
+    expect(one.body.scoreboard.scoreboard.joinLeaves).toHaveLength(1);
   });
 });
 

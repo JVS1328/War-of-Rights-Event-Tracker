@@ -125,9 +125,30 @@ describe('a scoreboard, all the way to Postgres and back', () => {
     await repo.saveScoreboard('ssl', original, { weekId: 'w1', round: 2 });
     repo.invalidate();
 
-    const [back] = await repo.readAllScoreboards('ssl');
+    const [back] = await repo.readAllScoreboards('ssl', { withJoinLog: true });
     expect(back.scoreboard).toEqual(original);
     expect(back.binding).toEqual({ weekId: 'w1', round: 2 });
+  });
+
+  it('leaves the join/leave log out of the read the screens make', async () => {
+    const repo = new ApiStatsRepository();
+    const original = parseScoreboard(CSV, 'round1.csv');
+    expect(original.joinLeaves.length).toBeGreaterThan(0);
+
+    await repo.saveScoreboard('ssl', original);
+    repo.invalidate();
+
+    // No stat or view reads that log, and it is a twelfth of what a round
+    // weighs — so the request a visitor waits on does not carry it.
+    const [lean] = await repo.readAllScoreboards('ssl');
+    expect(lean.scoreboard.joinLeaves).toBeUndefined();
+    expect(lean.scoreboard.players).toEqual(original.players);
+    expect(lean.scoreboard.kills).toEqual(original.kills);
+
+    // It is still in the database — nothing was thrown away on the way in.
+    repo.invalidate();
+    const full = await repo.getScoreboard('ssl::round1.csv');
+    expect(full?.scoreboard.joinLeaves).toEqual(original.joinLeaves);
   });
 
   it('keeps a steam id as a string, so a SteamID64 is not rounded off', async () => {

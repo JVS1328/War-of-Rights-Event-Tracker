@@ -146,6 +146,29 @@ function toSummary(row) {
   };
 }
 
+/**
+ * Every round's id and payload size, in id order. The cheap half of a bulk
+ * read: it is what lets the server cut pages on a byte budget without pulling
+ * a single killfeed to find out how big one is.
+ */
+export async function scoreboardSizes(slug, weekIds = null) {
+  // pg_column_size covers rounds stored before the size was recorded: it reads
+  // the compressed on-disk size without decompressing, so it is cheap and close
+  // enough to cut pages by.
+  const size = 'COALESCE(NULLIF(payload_bytes, 0), pg_column_size(payload)) AS bytes';
+  const rows = weekIds
+    ? await query(
+        `SELECT id, ${size} FROM wor_scoreboards
+          WHERE event_slug = $1 AND week_id = ANY($2) ORDER BY id`,
+        [slug, weekIds],
+      )
+    : await query(
+        `SELECT id, ${size} FROM wor_scoreboards WHERE event_slug = $1 ORDER BY id`,
+        [slug],
+      );
+  return rows.map((r) => ({ id: r.id, bytes: Number(r.bytes) }));
+}
+
 /** Summary rows for every round in an event — the list view's whole payload. */
 export async function listSummaries(slug) {
   const rows = await query(
@@ -164,11 +187,19 @@ export async function getScoreboard(slug, id) {
   return rows.length ? asJson(rows[0].payload) : null;
 }
 
-/** Several rounds at once, in the order asked for. */
-export async function getScoreboards(slug, ids) {
+/**
+ * Several rounds at once, in the order asked for.
+ *
+ * `withJoinLog` keeps the join/leave log. It is off by default because no stat
+ * or view reads that log while it is a twelfth of what a round weighs, and the
+ * bulk read is the one request a visitor waits on. Postgres drops it from the
+ * document before the row is ever sent, so it costs nothing to leave out.
+ */
+export async function getScoreboards(slug, ids, { withJoinLog = false } = {}) {
   if (!ids.length) return [];
+  const payload = withJoinLog ? 'payload' : `payload #- '{scoreboard,joinLeaves}'`;
   const rows = await query(
-    'SELECT id, payload FROM wor_scoreboards WHERE event_slug = $1 AND id = ANY($2)',
+    `SELECT id, ${payload} AS payload FROM wor_scoreboards WHERE event_slug = $1 AND id = ANY($2)`,
     [slug, ids],
   );
   const byId = new Map(rows.map((r) => [r.id, asJson(r.payload)]));
@@ -177,10 +208,11 @@ export async function getScoreboards(slug, ids) {
 
 /** Upsert one round: its payload, and the columns a list view reads. */
 export async function putScoreboard(slug, id, record, summary) {
+  const payload = sized(record);
   await query(
     `INSERT INTO wor_scoreboards
-       (event_slug, id, source_filename, recorded_at, map, mode, area, winner, week_id, round, payload)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+       (event_slug, id, source_filename, recorded_at, map, mode, area, winner, week_id, round, payload, payload_bytes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
      ON CONFLICT (event_slug, id) DO UPDATE SET
        source_filename = EXCLUDED.source_filename,
        recorded_at = EXCLUDED.recorded_at,
@@ -190,7 +222,8 @@ export async function putScoreboard(slug, id, record, summary) {
        winner = EXCLUDED.winner,
        week_id = EXCLUDED.week_id,
        round = EXCLUDED.round,
-       payload = EXCLUDED.payload`,
+       payload = EXCLUDED.payload,
+       payload_bytes = EXCLUDED.payload_bytes`,
     [
       slug,
       id,
@@ -202,7 +235,8 @@ export async function putScoreboard(slug, id, record, summary) {
       summary.winner ?? null,
       summary.binding?.weekId != null ? String(summary.binding.weekId) : null,
       summary.binding?.round ?? null,
-      sized(record),
+      payload,
+      Buffer.byteLength(payload, 'utf8'),
     ],
   );
 }

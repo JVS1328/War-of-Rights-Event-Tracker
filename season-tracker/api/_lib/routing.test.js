@@ -120,3 +120,82 @@ describe('routing, oddities', () => {
     expect([400, 404]).toContain(res.statusCode);
   });
 });
+
+describe('bulk reads, narrowed and cacheable', () => {
+  const round = (n) => ({
+    sourceFilename: `r${n}.csv`, recordedAt: `2026-01-0${n}T00:00:00Z`,
+    meta: { map: 'Bloody Lane', mode: 'Skirmish', area: null, winner: 'USA' },
+    players: [], kills: [], joinLeaves: [],
+  });
+
+  beforeEach(async () => {
+    await send({ method: 'POST', url: '/api/db?path=events', query: { path: 'events' },
+      body: { slug: 'ssl', name: 'SSL', published: true } });
+    for (const [n, week] of [[1, 'w1'], [2, 'w1'], [3, 'w2']]) {
+      const id = `ssl::r${n}.csv`;
+      await send({
+        method: 'PUT', url: `/api/db?path=events/ssl/scoreboard`,
+        query: { path: 'events/ssl/scoreboard', id },
+        body: {
+          record: { scoreboard: round(n) },
+          summary: { id, eventId: 'ssl', sourceFilename: `r${n}.csv`, recordedAt: `2026-01-0${n}T00:00:00Z`, binding: { weekId: week, round: 1 } },
+        },
+      });
+    }
+  });
+
+  const read = (query) => send({ method: 'GET', url: '/api/db?path=events/ssl/scoreboards', query: { path: 'events/ssl/scoreboards', ...query } });
+
+  it('reads every round when no season is named', async () => {
+    const res = await read({ full: '1' });
+    expect(res.body.items).toHaveLength(3);
+  });
+
+  it('reads only the rounds bound to the season on screen', async () => {
+    const res = await read({ full: '1', weeks: 'w1' });
+    expect(res.body.items.map((i) => i.id)).toEqual(['ssl::r1.csv', 'ssl::r2.csv']);
+  });
+
+  it('leaves a round bound to no night out of a season read', async () => {
+    const id = 'ssl::loose.csv';
+    await send({ method: 'PUT', url: '/api/db?path=events/ssl/scoreboard', query: { path: 'events/ssl/scoreboard', id },
+      body: { record: { scoreboard: round(9) }, summary: { id, eventId: 'ssl', sourceFilename: 'loose.csv', recordedAt: null } } });
+
+    expect((await read({ full: '1', weeks: 'w1,w2' })).body.items).toHaveLength(3);
+    // Unbound rounds surface only under Overall, which is what a full read is.
+    expect((await read({ full: '1' })).body.items).toHaveLength(4);
+  });
+
+  it('tags a read so an unchanged one costs nothing to re-fetch', async () => {
+    const headers = {};
+    const res = { statusCode: 200, body: undefined, setHeader: (k, v) => { headers[k.toLowerCase()] = v; }, end: () => res };
+    res.status = (c) => { res.statusCode = c; return res; };
+    res.json = (o) => { res.body = o; return res; };
+    await handler({ method: 'GET', url: '/api/db?path=events/ssl/scoreboards', query: { path: 'events/ssl/scoreboards', full: '1' }, headers: {} }, res);
+    expect(headers.etag).toBeTruthy();
+    expect(headers['cache-control']).toMatch(/public/);
+
+    // The same caller, holding that tag, is told nothing changed.
+    const again = { statusCode: 200, body: undefined, setHeader: () => {}, end: () => again };
+    again.status = (c) => { again.statusCode = c; return again; };
+    again.json = (o) => { again.body = o; return again; };
+    await handler({ method: 'GET', url: '/api/db?path=events/ssl/scoreboards', query: { path: 'events/ssl/scoreboards', full: '1' }, headers: { 'if-none-match': headers.etag } }, again);
+    expect(again.statusCode).toBe(304);
+  });
+
+  it('changes the tag when a round is added, so a stale copy is not served', async () => {
+    const tagOf = async () => {
+      const headers = {};
+      const res = { statusCode: 200, setHeader: (k, v) => { headers[k.toLowerCase()] = v; }, end: () => res };
+      res.status = (c) => { res.statusCode = c; return res; };
+      res.json = () => res;
+      await handler({ method: 'GET', url: '/api/db?path=events/ssl/scoreboards', query: { path: 'events/ssl/scoreboards', full: '1' }, headers: {} }, res);
+      return headers.etag;
+    };
+    const before = await tagOf();
+    const id = 'ssl::r4.csv';
+    await send({ method: 'PUT', url: '/api/db?path=events/ssl/scoreboard', query: { path: 'events/ssl/scoreboard', id },
+      body: { record: { scoreboard: round(4) }, summary: { id, eventId: 'ssl', sourceFilename: 'r4.csv', recordedAt: null } } });
+    expect(await tagOf()).not.toBe(before);
+  });
+});

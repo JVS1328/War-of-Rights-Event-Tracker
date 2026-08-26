@@ -92,6 +92,37 @@ genuinely executed rather than mocked: a typo, a missing column or a conflict
 clause that does not do what it looks like fails a test rather than a
 deployment.
 
+### What Makes a Page Load Fast
+
+A season of scoreboards is the one request a visitor waits on, so five things
+stand between them and the numbers:
+
+- **Only the season on screen is fetched.** A visitor lands on one season; a
+  four-season event used to download all four to draw one of them. `weekIds`
+  narrows the read, and switching to All seasons fetches the rest once.
+- **The join/leave log stays behind.** No stat or view reads it and it is a
+  twelfth of what a round weighs. Postgres drops it from the document before
+  the row is sent; the stored round still has it, and a backup still asks for it.
+- **Page boundaries are computed from recorded sizes.** Each round's byte count
+  is written down when it is stored, so cutting pages costs one cheap query
+  rather than re-serializing every killfeed in the event — which the first
+  version did, once per page.
+- **Pages are fetched together.** Because the boundaries depend only on those
+  sizes, page 0 also says how many pages there are, and the rest go out at once
+  instead of walking a cursor one round trip at a time.
+- **Every public read carries an ETag.** An unchanged event costs a 304, and
+  Vercel's CDN answers repeat readers without waking the database at all.
+
+Measured on a four-season event of 72 full rounds (18 MB of scoreboards), in
+development, where React's StrictMode fetches everything twice: landing on a
+season takes ~3.4 s the first time and ~1.4 s on a reload. Before these
+changes the same page took ~5 s cold and ~7.5 s reloading, and read every
+season to show one.
+
+What is left is inherent to computing the stats in the browser: the rounds have
+to arrive and be parsed. Going further means publishing precomputed leaderboards
+alongside the rounds and reading those instead.
+
 ### What a round row holds
 
 `payload` is the entire scoreboard the parser produced, not a summary of it:

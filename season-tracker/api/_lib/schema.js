@@ -41,8 +41,16 @@ export const SCHEMA = [
      week_id          TEXT,
      round            SMALLINT,
      payload          JSONB NOT NULL,
+     -- How big the payload is, recorded when it is written. Paging a bulk read
+     -- needs every round's size to decide where to cut, and asking Postgres
+     -- (octet_length(payload::text)) re-serializes every killfeed in the event
+     -- to answer — for every page. Writing it down once makes that free.
+     payload_bytes    INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (event_slug, id)
    )`,
+
+  // Added after the table existed, so it has to arrive on its own.
+  `ALTER TABLE wor_scoreboards ADD COLUMN IF NOT EXISTS payload_bytes INTEGER NOT NULL DEFAULT 0`,
 
   // A round list is "every scoreboard in this event, newest first", which is
   // the one query this table serves outside of fetching a round by id.

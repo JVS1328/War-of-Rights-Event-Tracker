@@ -1,6 +1,7 @@
 import type { Scoreboard } from './types';
 import type {
   ListQuery,
+  ReadOptions,
   RegimentAssignmentMap,
   ScopedAssignments,
   ScoreboardBinding,
@@ -59,8 +60,11 @@ export class ApiStatsRepository implements StatsRepository {
 
   /** Forget an event's cached rounds — call after anything that changes them. */
   invalidate(eventId?: string): void {
-    if (eventId) this.cache.delete(eventId);
-    else this.cache.clear();
+    if (!eventId) return this.cache.clear();
+    // One event has a cache entry per scope, so drop them all.
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(`${eventId}::`)) this.cache.delete(key);
+    }
   }
 
   async saveScoreboard(
@@ -80,8 +84,10 @@ export class ApiStatsRepository implements StatsRepository {
 
   async getScoreboard(id: string): Promise<StoredScoreboard | null> {
     const eventId = ApiStatsRepository.eventOf(id);
-    const cached = this.cache.get(eventId)?.find((r) => r.id === id);
-    if (cached) return cached;
+    for (const rounds of this.cache.values()) {
+      const hit = rounds.find((r) => r.id === id);
+      if (hit) return hit;
+    }
     const body = await apiGet<{ scoreboard: StoredScoreboard }>(
       `${ApiStatsRepository.base(eventId)}/scoreboard${qs({ id })}`,
     );
@@ -89,12 +95,11 @@ export class ApiStatsRepository implements StatsRepository {
   }
 
   async listScoreboards(query: ListQuery): Promise<ScoreboardSummary[]> {
-    const cached = this.cache.get(query.eventId);
-    const summaries = cached
-      ? cached.map(ApiStatsRepository.summaryOf)
-      : (await apiGet<{ scoreboards: ScoreboardSummary[] }>(
-          `${ApiStatsRepository.base(query.eventId)}/scoreboards`,
-        )).scoreboards ?? [];
+    // The summary list is small and covers every round, so it is asked for
+    // directly rather than derived from whichever scope happens to be cached.
+    const summaries = (await apiGet<{ scoreboards: ScoreboardSummary[] }>(
+      `${ApiStatsRepository.base(query.eventId)}/scoreboards`,
+    )).scoreboards ?? [];
     return [...summaries].sort((a, b) => (b.recordedAt ?? '').localeCompare(a.recordedAt ?? ''));
   }
 
@@ -105,28 +110,40 @@ export class ApiStatsRepository implements StatsRepository {
   }
 
   /**
-   * Every round in the event, walked page by page. The server cuts each page at
-   * a byte budget and hands back the id to resume from, so a season with a
-   * hundred killfeeds arrives in a few large responses rather than a hundred
-   * small ones.
+   * Every round in the event.
+   *
+   * The server cuts pages on a byte budget at boundaries that depend only on
+   * the payload sizes, so page 0 also says how many pages there are — and the
+   * rest are fetched together rather than one round trip after another. A
+   * season of scoreboards is the one request a visitor waits on, and walking a
+   * cursor through it spent most of that wait doing nothing.
    */
-  async readAllScoreboards(eventId: string): Promise<StoredScoreboard[]> {
-    const cached = this.cache.get(eventId);
+  async readAllScoreboards(
+    eventId: string,
+    { withJoinLog = false, weekIds = null }: ReadOptions = {},
+  ): Promise<StoredScoreboard[]> {
+    // Cached per scope, since a season's rounds and the whole event's are
+    // different reads. Switching to Overall fetches the rest once.
+    const key = `${eventId}::${withJoinLog ? 'log' : 'lean'}::${weekIds ? [...weekIds].sort().join(',') : 'all'}`;
+    const cached = this.cache.get(key);
     if (cached) return cached;
 
-    const all: StoredScoreboard[] = [];
-    let after: string | undefined;
-    // Bounded so a server that kept handing back the same cursor could not spin
-    // the browser forever.
-    for (let page = 0; page < 500; page += 1) {
-      const body = await apiGet<{ items: StoredScoreboard[]; next: string | null }>(
-        `${ApiStatsRepository.base(eventId)}/scoreboards${qs({ full: '1', after })}`,
-      );
-      all.push(...(body.items ?? []));
-      if (!body.next || body.next === after) break;
-      after = body.next;
-    }
-    this.cache.set(eventId, all);
+    const url = (page: number) =>
+      `${ApiStatsRepository.base(eventId)}/scoreboards${qs({
+        full: '1',
+        page: String(page),
+        ...(withJoinLog ? { log: '1' } : {}),
+        ...(weekIds?.length ? { weeks: [...weekIds].sort().join(',') } : {}),
+      })}`;
+
+    type Page = { items: StoredScoreboard[]; page: number; pages: number };
+    const first = await apiGet<Page>(url(0));
+    const rest = await Promise.all(
+      Array.from({ length: Math.max(0, (first.pages ?? 1) - 1) }, (_, i) => apiGet<Page>(url(i + 1))),
+    );
+
+    const all = [first, ...rest].flatMap((p) => p.items ?? []);
+    this.cache.set(key, all);
     return all;
   }
 
@@ -202,9 +219,12 @@ export class ApiStatsRepository implements StatsRepository {
     seasons: StatsBundleSeason[] = [],
     options: BundleOptions = {},
   ): Promise<StatsBundle> {
-    const records = await this.readAllScoreboards(eventId);
-    const scopedAsg = await this.getRegimentAssignmentsScoped(eventId);
-    const scoped = await this.getRegimentAliasesScoped(eventId);
+    // A full export is a backup, so it takes the join/leave log the screens skip.
+    const [records, scopedAsg, scoped] = await Promise.all([
+      this.readAllScoreboards(eventId, { withJoinLog: !!options.full }),
+      this.getRegimentAssignmentsScoped(eventId),
+      this.getRegimentAliasesScoped(eventId),
+    ]);
     return buildStatsBundle(
       records,
       scopedAsg[OVERALL_SCOPE] ?? {},

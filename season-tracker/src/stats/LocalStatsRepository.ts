@@ -145,6 +145,9 @@ export class LocalStatsRepository implements StatsRepository {
     await this.tx(SCOREBOARDS, 'readwrite', (s) => reqAsPromise(s.delete(id)));
   }
 
+  // The read options are a remote repository's concern — nothing is saved by
+  // narrowing a read of the browser's own database, and the screens filter what
+  // they are given anyway.
   async readAllScoreboards(eventId: string): Promise<StoredScoreboard[]> {
     return this.tx(SCOREBOARDS, 'readonly', (s) =>
       reqAsPromise<StoredScoreboard[]>(s.index('eventId').getAll(eventId)),

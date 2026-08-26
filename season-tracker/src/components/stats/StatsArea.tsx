@@ -177,7 +177,17 @@ interface StatsAreaProps {
  * browser's IndexedDB in the tracker, the database on the public site.
  */
 export default function StatsArea(props: StatsAreaProps) {
-  const stats = useStats(props.eventId, props.repo);
+  // Load only the season on screen. Overall resolves to null, which is every
+  // round — see useStats.
+  const scopeWeekIds = useMemo(
+    () => weekIdsForScope(props.seasons ?? [], props.seasonScope ?? OVERALL_SCOPE),
+    [props.seasons, props.seasonScope],
+  );
+  const stats = useStats(
+    props.eventId,
+    props.repo,
+    scopeWeekIds ? [...scopeWeekIds] : null,
+  );
   return <StatsPanel {...props} stats={stats} />;
 }
 
@@ -296,15 +306,20 @@ export function StatsPanel({
   // Computed per arm rather than by filtering `players`, because the filter is
   // per player-round: someone who rode one round and marched the next belongs
   // to both counts and to neither exclusively.
+  //
+  // That is three more passes over every round, so they are only built for the
+  // screens that show the buttons. On a season of scoreboards those passes cost
+  // more than everything else the overview does put together.
+  const wantsBranchCounts = tab === 'players' || tab === 'regiments';
   const branchCounts = useMemo(() => {
     const out = {} as Record<PlayerType, number>;
     for (const { key } of ARM_FILTERS) {
-      out[key] = key === typeFilter
+      out[key] = key === typeFilter || !wantsBranchCounts
         ? players.length
         : computePlayerLeaderboard(sbs, overallAssignments, { ...opts, type: key }).length;
     }
     return out;
-  }, [sbs, overallAssignments, opts, players.length, typeFilter]);
+  }, [sbs, overallAssignments, opts, players.length, typeFilter, wantsBranchCounts]);
   const regiments = useMemo(() => computeRegimentBreakdown(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentContext = useMemo(() => computeRegimentContextStats(sbs, overallAssignments, opts), [sbs, overallAssignments, opts]);
   const regimentTicketShares = useMemo(
