@@ -98,6 +98,15 @@ import {
 import { balanceTeams, describeFailure as describeBalanceFailure } from './utils/balanceTeams';
 import { nightLeadPairs } from './utils/nightLeads';
 import {
+  getEffectiveTeams,
+  seasonPoints,
+  standingRows as standingRowsOf,
+  nightRows as nightRowsOf,
+  seasonKpis as seasonKpisOf,
+  rosterRows as rosterRowsOf,
+  eloLadderRows as eloLadderRowsOf,
+} from './utils/seasonView';
+import {
   parseSchedulePaste,
   auditSchedule,
   scheduleWeeks,
@@ -652,18 +661,6 @@ const SeasonTracker = ({ initialShareData = null }) => {
   };
 
   // Get effective teams for a specific round, accounting for unit swaps
-  const getEffectiveTeams = (week, roundNum) => {
-    const baseTeamA = week.teamA || [];
-    const baseTeamB = week.teamB || [];
-    const swaps = new Set(week.roundSwaps?.[`r${roundNum}`] || []);
-
-    if (swaps.size === 0) return { teamA: baseTeamA, teamB: baseTeamB };
-
-    const teamA = baseTeamA.filter(u => !swaps.has(u)).concat(baseTeamB.filter(u => swaps.has(u)));
-    const teamB = baseTeamB.filter(u => !swaps.has(u)).concat(baseTeamA.filter(u => swaps.has(u)));
-    return { teamA, teamB };
-  };
-
   // Team Management
   // Move a unit onto a side, or — with 'bench' — off the night entirely. The
   // unit is always removed from wherever it was first, so a drag can never
@@ -696,188 +693,9 @@ const SeasonTracker = ({ initialShareData = null }) => {
     updateWeek(selectedWeek.id, updates);
   };
 
-  // Calculate Points up to a specific week
-  const calculatePointsUpToWeek = (maxWeekIdx = null) => {
-    const stats = {};
-    
-    units.forEach(unit => {
-      // Skip non-token units in point calculations
-      if (nonTokenUnits.includes(unit)) return;
-      
-      stats[unit] = {
-        points: 0,
-        leadWins: 0,
-        leadLosses: 0,
-        assistWins: 0,
-        assistLosses: 0
-      };
-    });
-
-    const weeksToProcess = maxWeekIdx !== null ? weeks.slice(0, maxWeekIdx + 1) : weeks;
-
-    weeksToProcess.forEach(week => {
-      if (!week.round1Winner && !week.round2Winner) return;
-      // Fun rounds are exhibition: no points and no win/loss record.
-      if (week.isFunRound) return;
-
-      const isPlayoffs = week.isPlayoffs || false;
-      const isSingleRoundLeads = week.isSingleRoundLeads || false;
-
-      // Process each round
-      [1, 2].forEach(roundNum => {
-        const winner = week[`round${roundNum}Winner`];
-        if (!winner) return;
-
-        const effective = getEffectiveTeams(week, roundNum);
-        const winningTeam = winner === 'A' ? effective.teamA : effective.teamB;
-        const losingTeam = winner === 'A' ? effective.teamB : effective.teamA;
-
-        // Get leads based on playoffs or single round leads mode
-        let leadWinner, leadLoser;
-        if (isPlayoffs || isSingleRoundLeads) {
-          leadWinner = week[`lead${winner}_r${roundNum}`];
-          leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}_r${roundNum}`];
-        } else {
-          leadWinner = week[`lead${winner}`];
-          leadLoser = week[`lead${winner === 'A' ? 'B' : 'A'}`];
-        }
-
-        // Award points to winning team (skip in playoffs)
-        if (!isPlayoffs) {
-          winningTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadWinner) {
-              stats[unit].points += pointSystem.winLead;
-              stats[unit].leadWins++;
-            } else {
-              stats[unit].points += pointSystem.winAssist;
-              stats[unit].assistWins++;
-            }
-          });
-
-          // Award points to losing team
-          losingTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadLoser) {
-              stats[unit].points += pointSystem.lossLead;
-              stats[unit].leadLosses++;
-            } else {
-              stats[unit].points += pointSystem.lossAssist;
-              stats[unit].assistLosses++;
-            }
-          });
-        } else {
-          // In playoffs, still track wins/losses but no points
-          winningTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadWinner) {
-              stats[unit].leadWins++;
-            } else {
-              stats[unit].assistWins++;
-            }
-          });
-          
-          losingTeam.forEach(unit => {
-            // Skip non-token units
-            if (!stats[unit]) return;
-            
-            if (unit === leadLoser) {
-              stats[unit].leadLosses++;
-            } else {
-              stats[unit].assistLosses++;
-            }
-          });
-        }
-      });
-
-      // 2-0 Sweep Bonus (skip in playoffs)
-      if (!isPlayoffs && week.round1Winner && week.round1Winner === week.round2Winner) {
-        const sweepWinner = week.round1Winner;
-        // Only units on the winning side in BOTH rounds get the sweep bonus
-        const effectiveR1 = getEffectiveTeams(week, 1);
-        const effectiveR2 = getEffectiveTeams(week, 2);
-        const r1WinTeam = new Set(sweepWinner === 'A' ? effectiveR1.teamA : effectiveR1.teamB);
-        const r2WinTeam = new Set(sweepWinner === 'A' ? effectiveR2.teamA : effectiveR2.teamB);
-        const sweepTeam = [...r1WinTeam].filter(u => r2WinTeam.has(u));
-
-        if (isSingleRoundLeads) {
-          const r1Lead = week[`lead${sweepWinner}_r1`];
-          const r2Lead = week[`lead${sweepWinner}_r2`];
-          const sweepLeads = new Set([r1Lead, r2Lead].filter(Boolean));
-
-          sweepTeam.forEach(unit => {
-            if (!stats[unit]) return;
-
-            if (sweepLeads.has(unit)) {
-              stats[unit].points += pointSystem.bonus2_0Lead;
-            } else {
-              stats[unit].points += pointSystem.bonus2_0Assist;
-            }
-          });
-        } else {
-          const sweepLead = week[`lead${sweepWinner}`];
-
-          sweepTeam.forEach(unit => {
-            if (!stats[unit]) return;
-
-            if (unit === sweepLead) {
-              stats[unit].points += pointSystem.bonus2_0Lead;
-            } else {
-              stats[unit].points += pointSystem.bonus2_0Assist;
-            }
-          });
-        }
-      }
-    });
-
-    // Apply balance points (skip playoff weeks — no points are awarded during
-    // playoffs — and fun rounds, which are exhibition).
-    if (pointSystem.balancePoints) {
-      weeksToProcess.forEach(week => {
-        if (week.isPlayoffs || week.isFunRound) return;
-        const r1Swaps = week.roundSwaps?.r1 || [];
-        const r2Swaps = week.roundSwaps?.r2 || [];
-
-        if (pointSystem.balancePointsStyle === 'perRound') {
-          r1Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-          r2Swaps.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-        } else if (pointSystem.balancePointsStyle === 'perRoundLoss') {
-          // Per round, but only for a balanced unit that ended up on the
-          // losing side of that round ("balance and lose → get the point").
-          [1, 2].forEach(roundNum => {
-            const winner = week[`round${roundNum}Winner`];
-            if (!winner) return;
-            const swaps = roundNum === 1 ? r1Swaps : r2Swaps;
-            if (swaps.length === 0) return;
-            const effective = getEffectiveTeams(week, roundNum);
-            const losers = new Set(winner === 'A' ? effective.teamB : effective.teamA);
-            swaps.forEach(unit => {
-              if (stats[unit] && losers.has(unit)) stats[unit].points += pointSystem.balancePoints;
-            });
-          });
-        } else {
-          // perNight: each unit gets balance points at most once per week
-          const balanced = new Set([...r1Swaps, ...r2Swaps]);
-          balanced.forEach(unit => { if (stats[unit]) stats[unit].points += pointSystem.balancePoints; });
-        }
-      });
-    }
-
-    // Apply manual adjustments
-    Object.entries(manualAdjustments).forEach(([unit, adjustment]) => {
-      if (stats[unit]) {
-        stats[unit].points += adjustment;
-      }
-    });
-
-    return stats;
-  };
+  // Points and record per token unit, from the shared season derivations so
+  // the public site's standings are the same numbers as these.
+  const calculatePointsUpToWeek = (maxWeekIdx = null) => seasonPoints(activeSeason, maxWeekIdx);
 
   // Calculate Points (for entire season)
   const calculatePoints = () => {
@@ -3166,21 +2984,7 @@ const SeasonTracker = ({ initialShareData = null }) => {
   }, [units, unitPlayerCounts, selectedWeek]);
 
   /** The season roster, with what each unit has done in it. */
-  const rosterRows = useMemo(() => {
-    const divisionOf = {};
-    (divisions || []).forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
-    const nights = {};
-    (weeks || []).forEach(w => {
-      new Set([...(w.teamA || []), ...(w.teamB || [])]).forEach(u => { nights[u] = (nights[u] || 0) + 1; });
-    });
-    return [...units].sort().map(u => ({
-      name: u,
-      token: !nonTokenUnits.includes(u),
-      division: divisionOf[u] ?? null,
-      nights: nights[u] || 0,
-      men: unitPlayerCounts[u] ? ((unitPlayerCounts[u].min || 0) + (unitPlayerCounts[u].max || 0)) / 2 : null,
-    }));
-  }, [units, nonTokenUnits, divisions, weeks, unitPlayerCounts]);
+  const rosterRows = useMemo(() => rosterRowsOf(activeSeason), [activeSeason]);
 
   /** The night builder names round types the way the prototype does. */
   const nightBuilderType = !selectedWeek ? 'Regular'
@@ -3216,79 +3020,12 @@ const SeasonTracker = ({ initialShareData = null }) => {
     return m;
   }, [divisions]);
 
-  const standingRows = useMemo(() => {
-    const stats = calculatePointsUpToWeek();
-    return Object.entries(stats)
-      .map(([unit, d]) => {
-        const w = (d.leadWins || 0) + (d.assistWins || 0);
-        const l = (d.leadLosses || 0) + (d.assistLosses || 0);
-        return {
-          unit,
-          division: divisionOfUnit[unit] ?? null,
-          points: d.points || 0,
-          leadWins: d.leadWins || 0,
-          leadLosses: d.leadLosses || 0,
-          assistWins: d.assistWins || 0,
-          assistLosses: d.assistLosses || 0,
-          w, l,
-          wr: w + l > 0 ? Math.round((w / (w + l)) * 100) : 0,
-        };
-      })
-      .sort((a, b) => b.points - a.points || a.unit.localeCompare(b.unit))
-      .map((r, i) => ({ ...r, pos: i + 1 }));
-    // calculatePointsUpToWeek reads the season off appState.
-  }, [weeks, divisionOfUnit, pointSystem, manualAdjustments, appState]);
+  const standingRows = useMemo(() => standingRowsOf(activeSeason), [activeSeason]);
 
-  const nightRows = useMemo(() => weeks.map((w, i) => {
-    // Both of a split-lead night's matchups, not just the first — see
-    // utils/nightLeads.
-    const { first, second } = nightLeadPairs(w);
-    return {
-      index: i,
-      n: i + 1,
-      name: w.name,
-      leadA: first?.a ?? null,
-      leadB: first?.b ?? null,
-      leadA2: second?.a ?? null,
-      leadB2: second?.b ?? null,
-      map1: w.round1Map || null,
-      map2: w.round2Map || null,
-      sidesA: (w.teamA || []).length,
-      sidesB: (w.teamB || []).length,
-      r1: w.round1Winner || null,
-      r2: w.round2Winner || null,
-      played: !!(w.round1Winner || w.round2Winner || w.round1Draw || w.round2Draw),
-      playoffs: !!w.isPlayoffs,
-    };
-  }), [weeks]);
+  const nightRows = useMemo(() => nightRowsOf(activeSeason), [activeSeason]);
 
   /** Season-at-a-glance figures. */
-  const seasonKpis = useMemo(() => {
-    let roundsPlayed = 0;
-    let regular = 0;
-    let usaCasualties = 0;
-    let csaCasualties = 0;
-    for (const w of weeks) {
-      if (w.round1Winner || w.round1Draw) roundsPlayed += 1;
-      if (w.round2Winner || w.round2Draw) roundsPlayed += 1;
-      if (!w.isPlayoffs) regular += 1;
-      // Which side is which faction flips per round, so read the flag first.
-      for (const r of [1, 2]) {
-        const a = w[`r${r}CasualtiesA`] || 0;
-        const b = w[`r${r}CasualtiesB`] || 0;
-        if (w[`round${r}Flipped`]) { usaCasualties += b; csaCasualties += a; }
-        else { usaCasualties += a; csaCasualties += b; }
-      }
-    }
-    const totalCasualties = usaCasualties + csaCasualties;
-    return [
-      { head: 'Units', value: units.length, hint: `${divisions.length} division${divisions.length === 1 ? '' : 's'}` },
-      { head: 'Nights', value: weeks.length, hint: `${regular} regular · ${weeks.length - regular} playoff` },
-      { head: 'Rounds played', value: roundsPlayed, hint: `of ${weeks.length * 2} scheduled` },
-      { head: 'Token units', value: tokenUnits.length, hint: `${units.length - tokenUnits.length} score nothing` },
-      { head: 'Casualties', value: totalCasualties.toLocaleString(), hint: `${usaCasualties.toLocaleString()} USA · ${csaCasualties.toLocaleString()} CSA` },
-    ];
-  }, [weeks, units, divisions, tokenUnits]);
+  const seasonKpis = useMemo(() => seasonKpisOf(activeSeason), [activeSeason]);
 
   /**
    * The pairing grid. Scope decides whether it reads this season or every
@@ -3308,31 +3045,10 @@ const SeasonTracker = ({ initialShareData = null }) => {
    * season is a couple of dozen weeks, so this is cheap enough to memoize
    * rather than cache.
    */
-  const eloLadderRows = useMemo(() => {
-    const weekElo = weeks.map((_, i) => calculateEloRatings(i).eloRatings);
-    const { roundsPlayed } = weeks.length > 0
-      ? calculateEloRatings(weeks.length - 1)
-      : { roundsPlayed: {} };
-    const divisionOf = {};
-    divisions.forEach(d => (d.units || []).forEach(u => { divisionOf[u] = d.name; }));
-    // Where each unit sits on points, so the ladder can show the two orderings
-    // side by side and say where they disagree.
-    const byPoints = Object.entries(calculatePointsUpToWeek())
-      .sort((a, b) => (b[1].points ?? 0) - (a[1].points ?? 0));
-    const pointsRank = {};
-    byPoints.forEach(([unit], i) => { pointsRank[unit] = i + 1; });
-    return buildEloLadder({
-      units: tokenUnits,
-      initialElo: eloSystem.initialElo,
-      weekElo,
-      roundsPlayed,
-      provisionalRounds: eloSystem.provisionalRounds || 0,
-      divisionOf,
-      pointsRank,
-    });
-    // calculateEloRatings reads appState, so the season identity is the dependency.
-  }, [weeks, tokenUnits, divisions, eloSystem.initialElo, eloSystem.provisionalRounds, appState]);
-
+  const eloLadderRows = useMemo(
+    () => eloLadderRowsOf(appState, activeEvent, activeSeason),
+    [appState, activeEvent, activeSeason],
+  );
 
   // The league as the playoff planner sees it: who can qualify, how they are
   // grouped, and how many nights the post-season has to work with.
