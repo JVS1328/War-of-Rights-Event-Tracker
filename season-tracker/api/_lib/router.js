@@ -42,13 +42,37 @@ const denied = (res) => json(res, 401, {
     : 'No admin pass is configured on this deployment, so writes are refused',
 });
 
-/** Path segments after /api/db, from the platform's catch-all or the raw URL. */
+/** An unexpanded route filename — "[...path]", "[slug]" — never a real segment. */
+const PLACEHOLDER = /^\[.*\]$/;
+
+const decode = (segment) => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment; // a stray % is a bad segment, not a reason to 500
+  }
+};
+
+/**
+ * The path segments after /api/db.
+ *
+ * The rewrite in vercel.json hands them over as `?path=a/b/c`. A platform that
+ * routes by filename instead names the parameter after the bracket contents —
+ * `...path` rather than `path` — and may pass the segments as an array, so both
+ * are accepted. Failing all that, the raw URL is parsed, minus any route
+ * filename a rewrite left sitting in it.
+ */
 function segmentsOf(req) {
-  const fromQuery = req?.query?.path;
-  if (Array.isArray(fromQuery)) return fromQuery.filter(Boolean);
-  if (typeof fromQuery === 'string' && fromQuery) return fromQuery.split('/').filter(Boolean);
+  const fromQuery = req?.query?.path ?? req?.query?.['...path'];
+  if (Array.isArray(fromQuery)) return fromQuery.filter(Boolean).map(String);
+  if (typeof fromQuery === 'string' && fromQuery) return fromQuery.split('/').filter(Boolean).map(decode);
+
   const pathname = String(req?.url ?? '').split('?')[0];
-  return pathname.replace(/^.*\/api\/db\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  return pathname
+    .replace(/^.*\/api\/db\/?/, '')
+    .split('/')
+    .filter((segment) => segment && !PLACEHOLDER.test(segment))
+    .map(decode);
 }
 
 /** Vercel parses JSON bodies for us, but a raw string body is still possible. */

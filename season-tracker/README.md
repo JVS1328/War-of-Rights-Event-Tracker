@@ -67,8 +67,12 @@ Two environment variables:
 | `WOR_DATABASE_URL` | Your Neon connection string. `DATABASE_URL` and `POSTGRES_URL` are accepted too, which is what Vercel's Neon integration sets. Use the **pooled** endpoint. |
 | `ADMIN_PASS` | A secret you choose, at least 12 characters. Without it the database refuses **every** write, which is the safe default rather than an open door. |
 
-Nothing else needs configuring: `api/db/[...path].js` is one serverless
-function, and hash routing means no rewrite rules.
+`vercel.json` routes every `/api/db/...` path to the single function in
+`api/db.js`. That rewrite is not optional: a `[...path]` filename matched only
+one segment on the deployment, so `/api/db/events` ran while
+`/api/db/events/<slug>/tracker` got the platform's own 404 before the function
+was ever invoked. The app itself uses hash routing, so it needs no rewrite of
+its own.
 
 The driver is `@neondatabase/serverless`, which speaks Postgres over HTTP — no
 connection pool to keep warm and no socket to lose between invocations, which is
