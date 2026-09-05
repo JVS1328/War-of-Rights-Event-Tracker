@@ -23,6 +23,7 @@ import LSRetreatModal from './components/LSRetreatModal';
 import CommanderRollPanel from './components/CommanderRollPanel';
 import TurnSummary from './components/TurnSummary';
 import { ScoreBoard } from './components/ui/Primitives';
+import { ActionBar } from './components/ui/ActionBar';
 import {
   isGrandCampaign,
   addToken as gcAddToken,
@@ -89,6 +90,9 @@ const CampaignTracker = () => {
   // null when the dispatch is closed.
   const [summaryTurn, setSummaryTurn] = useState(null);
   const lastSeenTurnRef = useRef(null);
+
+  // One hidden file input, driven by the Import action wherever it renders.
+  const importInputRef = useRef(null);
 
   // Grand Campaign: which token (if any) is currently in "click-to-place" mode
   const [moveModeTokenId, setMoveModeTokenId] = useState(null);
@@ -908,91 +912,89 @@ const CampaignTracker = () => {
   const battlesFought = campaign.battles.filter(b => b.status !== 'pending' && b.winner).length;
   const battlesPending = campaign.battles.filter(b => b.status === 'pending' || !b.winner).length;
 
+  // App-bar actions, declared once. ActionBar shows the whole row on a wide
+  // screen and tucks everything but the pinned actions into a menu on a phone.
+  const appBarActions = [
+    !isGC && {
+      key: 'battle', label: 'Record Battle', icon: Swords, variant: 'primary', pinned: true,
+      onClick: () => setShowBattleRecorder(true),
+    },
+    !isGC && {
+      key: 'advance', label: 'Advance Turn', icon: SkipForward, variant: 'ghost',
+      title: 'Advance to the next turn', onClick: advanceTurn,
+    },
+    {
+      key: 'dispatch', label: 'Dispatch', icon: ScrollText, variant: 'ghost',
+      title: 'Read the end-of-turn dispatch',
+      onClick: () => setSummaryTurn(campaign.currentTurn),
+    },
+    { key: 'share', label: 'Share Map', icon: Share2, divider: true, title: 'Copy share link', onClick: shareCampaignMap },
+    { key: 'export', label: 'Export JSON', icon: Download, onClick: exportCampaign },
+    { key: 'import', label: 'Import JSON', icon: Upload, onClick: () => importInputRef.current?.click() },
+    { key: 'edit-map', label: 'Edit Map', icon: Edit, onClick: editCampaignMap },
+    { key: 'new', label: 'New Campaign', icon: Plus, onClick: newCampaign },
+    { key: 'settings', label: 'Settings', icon: Settings, onClick: () => setShowSettings(true) },
+    { key: 'guide', label: 'Guide', icon: HelpCircle, onClick: () => setShowHelpGuide(true) },
+  ].filter(Boolean);
+
+  // Turn / date / battle counts. Sits under the campaign name on a wide
+  // screen; on a phone the name and the actions fill that row, so it moves
+  // to one of its own rather than stacking three words deep.
+  const campaignMeta = (
+    <>
+      <span className="text-mist-400">Turn {campaign.currentTurn}</span>
+      {campaign.campaignDate?.displayString && (
+        <>
+          <span className="text-ink-600">·</span>
+          <span>{campaign.campaignDate.displayString}</span>
+        </>
+      )}
+      <span className="text-ink-600">·</span>
+      <span>{battlesFought} {battlesFought === 1 ? 'battle' : 'battles'}</span>
+      {battlesPending > 0 && (
+        <span className="ui-badge ui-badge-warn">{battlesPending} pending</span>
+      )}
+      {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
+    </>
+  );
+
   return (
     <div className="app-shell">
       {/* ── App bar ─────────────────────────────────────────────────── */}
       <header className="app-bar sticky top-0 z-30">
-        <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
+        <div className="max-w-[110rem] mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 sm:gap-x-4">
+          <div className="flex flex-1 items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
               <Map className="w-5 h-5 text-brass-300" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-mist-100 truncate leading-tight">{campaign.name}</h1>
-              <div className="flex items-center gap-2 mt-0.5 text-xs text-mist-500">
-                <span className="text-mist-400">Turn {campaign.currentTurn}</span>
-                {campaign.campaignDate?.displayString && (
-                  <>
-                    <span className="text-ink-600">·</span>
-                    <span>{campaign.campaignDate.displayString}</span>
-                  </>
-                )}
-                <span className="text-ink-600">·</span>
-                <span>{battlesFought} {battlesFought === 1 ? 'battle' : 'battles'}</span>
-                {battlesPending > 0 && (
-                  <span className="ui-badge ui-badge-warn">{battlesPending} pending</span>
-                )}
-                {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
+              <h1 className="text-base sm:text-lg font-bold text-mist-100 truncate leading-tight">{campaign.name}</h1>
+              <div className="hidden sm:flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5 text-xs text-mist-500">
+                {campaignMeta}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {!isGC && (
-              <>
-                <button onClick={() => setShowBattleRecorder(true)} className="ui-btn ui-btn-primary">
-                  <Swords className="w-4 h-4" />
-                  Record Battle
-                </button>
-                <button onClick={advanceTurn} className="ui-btn ui-btn-ghost" title="Advance to the next turn">
-                  <SkipForward className="w-4 h-4" />
-                  <span className="hidden sm:inline">Advance Turn</span>
-                </button>
-              </>
-            )}
+          <ActionBar actions={appBarActions} />
 
-            <button
-              onClick={() => setSummaryTurn(campaign.currentTurn)}
-              className="ui-btn ui-btn-ghost"
-              title="Read the end-of-turn dispatch"
-            >
-              <ScrollText className="w-4 h-4" />
-              <span className="hidden sm:inline">Dispatch</span>
-            </button>
-
-            <div className="w-px h-6 bg-ink-700 mx-1" />
-
-            <button onClick={shareCampaignMap} className="ui-btn ui-btn-quiet ui-btn-icon" title="Copy share link" aria-label="Share campaign map">
-              <Share2 className="w-4 h-4" />
-            </button>
-            <button onClick={exportCampaign} className="ui-btn ui-btn-quiet ui-btn-icon" title="Export campaign JSON" aria-label="Export campaign">
-              <Download className="w-4 h-4" />
-            </button>
-            <label className="ui-btn ui-btn-quiet ui-btn-icon cursor-pointer" title="Import campaign JSON">
-              <Upload className="w-4 h-4" />
-              <input type="file" accept=".json" onChange={importCampaign} className="hidden" />
-            </label>
-            <button onClick={editCampaignMap} className="ui-btn ui-btn-quiet ui-btn-icon" title="Edit campaign map" aria-label="Edit campaign map">
-              <Edit className="w-4 h-4" />
-            </button>
-            <button onClick={newCampaign} className="ui-btn ui-btn-quiet ui-btn-icon" title="New campaign" aria-label="New campaign">
-              <Plus className="w-4 h-4" />
-            </button>
-            <button onClick={() => setShowSettings(true)} className="ui-btn ui-btn-quiet ui-btn-icon" title="Settings" aria-label="Settings">
-              <Settings className="w-4 h-4" />
-            </button>
-            <button onClick={() => setShowHelpGuide(true)} className="ui-btn ui-btn-quiet ui-btn-icon" title="Guide" aria-label="Guide">
-              <HelpCircle className="w-4 h-4" />
-            </button>
+          <div className="flex sm:hidden w-full items-center flex-wrap gap-x-2 gap-y-1 text-xs text-mist-500">
+            {campaignMeta}
           </div>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json"
+            onChange={importCampaign}
+            className="hidden"
+          />
         </div>
       </header>
 
-      <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5">
+      <div className="max-w-[110rem] mx-auto px-3 sm:px-6 py-4 sm:py-5">
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-5 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5 mb-4 sm:mb-5 items-start">
           {/* Map View - Takes 2 columns */}
-          <div className="xl:col-span-2 space-y-5">
+          <div className="xl:col-span-2 space-y-4 sm:space-y-5">
             <MapView
               territories={campaign.territories}
               selectedTerritory={selectedTerritory}
@@ -1293,7 +1295,7 @@ const CampaignTracker = () => {
           const maxInches = lsRetreatPicking.maxMP * campaign.grandCampaign.settings.marchInchesPerMP;
           const maxMiles = gcInchesToMiles(maxInches, campaign.grandCampaign.settings);
           return (
-            <div className="fixed top-24 right-6 z-40 ui-card border-orange-500/60 p-3 w-72">
+            <div className="ui-hud ui-card border-orange-500/60 p-3">
               <div className="ui-eyebrow text-orange-300 mb-1">LS Retreat — pick a spot</div>
               <div className="text-xs text-mist-300">
                 Click within <span className="text-mist-100 font-semibold">{maxMiles} miles</span> of {token.name}.

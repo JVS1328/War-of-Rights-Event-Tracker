@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Map, Loader } from 'lucide-react';
+import { Map, Loader, Plus, Minus, Maximize2 } from 'lucide-react';
 import { usaStates } from '../data/usaStates';
 import { getMaxBattleCPCosts, getVPMultiplier } from '../utils/cpSystem';
 import { isTerritorySupplied } from '../utils/supplyLines';
 import { generateTerrainPatterns, resolvePatternId, DEFAULT_TERRAIN_VIZ } from '../utils/terrainPatterns.jsx';
+import { usePanZoom } from '../utils/usePanZoom';
+import { useCoarsePointer } from '../utils/useMediaQuery';
 
 // Cache for county GeoJSON data
 let countyGeoJsonCache = null;
@@ -137,12 +139,12 @@ const MapView = ({
   const [loadError, setLoadError] = useState(null);
   const [bounds, setBounds] = useState(null);
 
-  // Zoom and pan state
-  const [zoom, setZoom] = useState(1);
-  const [panX, setPanX] = useState(0);
-  const [panY, setPanY] = useState(0);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  // Pan/zoom lives in a hook so mouse, wheel and touch all drive one view.
+  const panZoom = usePanZoom(1000);
+
+  // Touch devices have no hover and no modifier keys, so the Ctrl-gated
+  // gestures below need a tap-shaped equivalent.
+  const isTouch = useCoarsePointer();
 
   // Mouse position relative to map container (for tooltip placement)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -156,7 +158,7 @@ const MapView = ({
   const lastClickEventRef = useRef(null);
 
   // SVG refs used for coordinate conversion (Grand Campaign move-mode placement)
-  const svgRef = useRef(null);
+  const svgRef = panZoom.elementRef;
   const transformGroupRef = useRef(null);
 
   // Track whether Ctrl/Cmd is currently held — the territory tooltip only
@@ -194,7 +196,7 @@ const MapView = ({
 
   // Territory click routing:
   //   Ctrl+single-click  → pin / unpin the tooltip (onTerritoryClick)
-  //   Plain single-click → no-op
+  //   Plain single-click → no-op with a mouse, pins on touch
   //   Double-click       → open battle recorder
   //   Ctrl+double-click  → open territory editor
   const handleTerritoryPathClick = useCallback((territory, e) => {
@@ -216,11 +218,13 @@ const MapView = ({
       clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
         lastClickEventRef.current = null;
-        // Only Ctrl/Cmd + click pins; plain single-click is a no-op.
-        if (wasCtrlSingle) onTerritoryClick(territory);
+        // Ctrl/Cmd + click pins. A plain click is a no-op with a mouse, where
+        // hovering already shows the tooltip — but on touch it is the only
+        // gesture there is, so a tap pins.
+        if (wasCtrlSingle || isTouch) onTerritoryClick(territory);
       }, 250);
     }
-  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool, interactionLocked]);
+  }, [onTerritoryClick, onTerritoryDoubleClick, onTerritoryCtrlDoubleClick, moveModeTokenId, featureTool, interactionLocked, isTouch]);
 
   // Map-level click for token move mode OR feature edit tools OR setup
   // placement — fires onMapClick with { x, y, territoryId } in SVG coords.
@@ -354,44 +358,9 @@ const MapView = ({
     return hasCountyData ? '0.5' : '2';
   };
 
-  // Zoom and pan handlers
-  // React attaches onWheel as a passive listener, so preventDefault() is a
-  // no-op there. Install a non-passive wheel listener on the SVG element
-  // directly via a callback ref — plain useEffect won't re-run when the SVG
-  // finally mounts after the county-data loading screen.
-  const attachSvg = useCallback((node) => {
-    // Detach from the previous element, if any.
-    if (svgRef.current && svgRef.current._wheelCleanup) {
-      svgRef.current._wheelCleanup();
-      svgRef.current._wheelCleanup = null;
-    }
-    svgRef.current = node;
-    if (!node) return;
-    const onWheel = (e) => {
-      if (!e.shiftKey) return;
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(z => Math.max(0.5, Math.min(5, z * delta)));
-    };
-    node.addEventListener('wheel', onWheel, { passive: false });
-    node._wheelCleanup = () => node.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const handleMouseDown = (e) => {
-    const shouldPan = e.button === 1 || (e.button === 0 && e.shiftKey);
-    if (shouldPan) {
-      e.preventDefault();
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
-    }
-  };
-
+  // Panning and zooming belong to usePanZoom; this only tracks where the
+  // cursor is, for the tooltip and the movement ruler.
   const handleMouseMove = (e) => {
-    if (isPanning) {
-      setPanX(e.clientX - panStart.x);
-      setPanY(e.clientY - panStart.y);
-    }
-    // Track mouse position relative to map container for tooltip placement
     if (mapContainerRef.current) {
       const rect = mapContainerRef.current.getBoundingClientRect();
       setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -403,10 +372,6 @@ const MapView = ({
     } else if (svgCursor) {
       setSvgCursor(null);
     }
-  };
-
-  const handleMouseUp = () => {
-    setIsPanning(false);
   };
 
   // Render loading state for county view
@@ -592,28 +557,58 @@ const MapView = ({
           Campaign Map
           {hasCountyData && <span className="text-mist-500 font-normal normal-case tracking-normal">County view</span>}
         </h2>
-        <div className="flex items-center gap-3 text-[11px]">
-          <span className="flex items-center gap-1.5 text-mist-400">
-            <span className="w-2.5 h-2.5 rounded-sm bg-union-500" />USA
-          </span>
-          <span className="flex items-center gap-1.5 text-mist-400">
-            <span className="w-2.5 h-2.5 rounded-sm bg-rebel-500" />CSA
-          </span>
-          <span className="flex items-center gap-1.5 text-mist-400">
-            <span className="w-2.5 h-2.5 rounded-sm bg-orange-500" />Neutral
-          </span>
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-2 ml-auto">
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="flex items-center gap-1.5 text-mist-400">
+              <span className="w-2.5 h-2.5 rounded-sm bg-union-500" />USA
+            </span>
+            <span className="flex items-center gap-1.5 text-mist-400">
+              <span className="w-2.5 h-2.5 rounded-sm bg-rebel-500" />CSA
+            </span>
+            <span className="flex items-center gap-1.5 text-mist-400">
+              <span className="w-2.5 h-2.5 rounded-sm bg-orange-500" />Neutral
+            </span>
+          </div>
+
+          {/* Zoom controls. The only way in without a scroll wheel, and they
+              live here rather than over the map so they never eat a tap
+              aimed at a territory underneath. */}
+          <div className="flex items-center gap-1">
+            {[
+              { key: 'in', icon: Plus, label: 'Zoom in', onClick: () => panZoom.zoomBy(1.4) },
+              { key: 'out', icon: Minus, label: 'Zoom out', onClick: () => panZoom.zoomBy(1 / 1.4) },
+              { key: 'reset', icon: Maximize2, label: 'Reset view', onClick: panZoom.reset, needsView: true },
+            ].map(({ key, icon: Icon, label, onClick, needsView }) => (
+              <button
+                key={key}
+                onClick={onClick}
+                disabled={needsView && panZoom.isDefaultView}
+                title={label}
+                aria-label={label}
+                className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon"
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div ref={mapContainerRef} className="relative m-3 rounded-xl bg-ink-950 border border-ink-700 p-3" onMouseMove={handleMouseMove}>
+      <div ref={mapContainerRef} className="relative m-2 sm:m-3 rounded-xl bg-ink-950 border border-ink-700 p-2 sm:p-3" onMouseMove={handleMouseMove}>
         <svg
-          ref={attachSvg}
+          ref={panZoom.attachRef}
           viewBox="0 0 1000 589"
           className="w-full h-full"
-          style={{ cursor: (moveModeTokenId || featureTool || interactionLocked) ? 'crosshair' : (isPanning ? 'grabbing' : 'default') }}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          style={{
+            cursor: (moveModeTokenId || featureTool || interactionLocked)
+              ? 'crosshair'
+              : (panZoom.isPanning ? 'grabbing' : 'default'),
+            touchAction: panZoom.touchAction,
+          }}
+          onMouseDown={panZoom.onMouseDown}
+          onTouchStart={panZoom.onTouchStart}
+          onTouchMove={panZoom.onTouchMove}
+          onTouchEnd={panZoom.onTouchEnd}
           onClick={handleSvgClick}
         >
           <defs>
@@ -627,7 +622,7 @@ const MapView = ({
             {/* Terrain patterns — generated from vizConfig for all terrain groups */}
             {Object.entries(vizConfig).flatMap(([name, cfg]) => generateTerrainPatterns(name, cfg))}
           </defs>
-          <g ref={transformGroupRef} transform={`translate(${panX}, ${panY}) scale(${zoom})`}>
+          <g ref={transformGroupRef} transform={panZoom.transform}>
             {/* Territory polygons */}
             {territories.map(territory => {
               const center = getTerritoryCenter(territory);
@@ -1027,7 +1022,8 @@ const MapView = ({
           if (!tooltipTerritory) return null;
           const isPinned = !hoverVisible && selectedTerritory;
 
-          // Compute dynamic position: offset from cursor, flip to stay in-bounds
+          // A finger leaves no cursor to anchor to, so on touch the card docks
+          // along the bottom of the map instead of chasing a stale mousePos.
           const tooltipOffset = 16;
           const containerEl = mapContainerRef.current;
           const containerW = containerEl?.clientWidth || 800;
@@ -1035,26 +1031,37 @@ const MapView = ({
           const placeLeft = mousePos.x > containerW / 2;
           const placeAbove = mousePos.y > containerH / 2;
 
-          const style = {
-            ...(placeLeft
-              ? { right: Math.max(0, containerW - mousePos.x + tooltipOffset) }
-              : { left: mousePos.x + tooltipOffset }),
-            ...(placeAbove
-              ? { bottom: Math.max(0, containerH - mousePos.y + tooltipOffset) }
-              : { top: mousePos.y + tooltipOffset }),
-            maxWidth: '260px',
-          };
+          const style = isTouch
+            ? { left: '0.5rem', right: '0.5rem', bottom: '0.5rem' }
+            : {
+                ...(placeLeft
+                  ? { right: Math.max(0, containerW - mousePos.x + tooltipOffset) }
+                  : { left: mousePos.x + tooltipOffset }),
+                ...(placeAbove
+                  ? { bottom: Math.max(0, containerH - mousePos.y + tooltipOffset) }
+                  : { top: mousePos.y + tooltipOffset }),
+                maxWidth: '260px',
+              };
 
           return (
             <div
-              className={`absolute z-10 bg-ink-850/95 backdrop-blur-sm border rounded p-2 shadow-lg pointer-events-none ${
-                isPinned ? 'border-brass-400' : 'border-brass-400/60'
-              }`}
+              className={`absolute z-10 bg-ink-850/95 backdrop-blur-sm border rounded p-2 shadow-lg ${
+                isTouch ? '' : 'pointer-events-none'
+              } ${isPinned ? 'border-brass-400' : 'border-brass-400/60'}`}
               style={style}
             >
               <div className="flex items-center gap-1.5 mb-0.5">
                 <span className="text-brass-400 font-semibold text-xs">{tooltipTerritory.name}</span>
-                {isPinned && <span className="text-[9px] text-mist-500 bg-ink-800 px-1 py-0.5 rounded leading-none">pinned</span>}
+                {isPinned && !isTouch && <span className="text-[9px] text-mist-500 bg-ink-800 px-1 py-0.5 rounded leading-none">pinned</span>}
+                {isTouch && (
+                  <button
+                    onClick={() => onTerritoryClick(tooltipTerritory)}
+                    className="ui-btn ui-btn-quiet ui-btn-sm ml-auto !min-h-0 !py-0.5"
+                    aria-label="Close territory info"
+                  >
+                    Close
+                  </button>
+                )}
               </div>
               <div className="text-xs text-mist-300 space-y-0.5">
                 <div>Owner: <span className={`font-semibold ${
@@ -1132,7 +1139,7 @@ const MapView = ({
                   );
                 })()}
               </div>
-              {isPinned && (
+              {isPinned && !isTouch && (
                 <div className="text-[9px] text-mist-500 mt-1 pt-0.5 border-t border-ink-800">
                   {readOnly ? 'Ctrl+click to unpin' : 'Ctrl+click to unpin · Dbl-click battle · Ctrl+dbl edit'}
                 </div>
@@ -1142,21 +1149,29 @@ const MapView = ({
         })()}
       </div>
 
-      {/* Zoom/Pan hint */}
-      <div className="px-4 pb-3 -mt-1 text-[11px] text-mist-500 text-center leading-relaxed">
-        <span className="whitespace-nowrap"><kbd className="ui-kbd">Ctrl</kbd> territory info</span>
-        <span className="mx-1.5 text-ink-600">·</span>
-        <span className="whitespace-nowrap"><kbd className="ui-kbd">Ctrl</kbd>+click to pin</span>
-        {!readOnly && (
-          <>
-            <span className="mx-1.5 text-ink-600">·</span>
-            <span className="whitespace-nowrap">double-click for battle</span>
-          </>
-        )}
-        <span className="mx-1.5 text-ink-600">·</span>
-        <span className="whitespace-nowrap"><kbd className="ui-kbd">Shift</kbd>+scroll to zoom</span>
-        <span className="mx-1.5 text-ink-600">·</span>
-        <span className="whitespace-nowrap"><kbd className="ui-kbd">Shift</kbd>+drag to pan</span>
+      {/* Gesture hints — one list per input device, so a phone is never told
+          to hold a key it hasn't got. */}
+      <div className="px-3 sm:px-4 pb-3 -mt-1 flex flex-wrap justify-center items-center gap-x-1.5 text-[11px] text-mist-500 leading-relaxed">
+        {(isTouch
+          ? [
+              <>tap for territory info</>,
+              ...(readOnly ? [] : [<>double-tap for battle</>]),
+              <>pinch to zoom</>,
+              <>drag to pan when zoomed</>,
+            ]
+          : [
+              <><kbd className="ui-kbd">Ctrl</kbd> territory info</>,
+              <><kbd className="ui-kbd">Ctrl</kbd>+click to pin</>,
+              ...(readOnly ? [] : [<>double-click for battle</>]),
+              <><kbd className="ui-kbd">Shift</kbd>+scroll to zoom</>,
+              <><kbd className="ui-kbd">Shift</kbd>+drag to pan</>,
+            ]
+        ).map((hint, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-ink-600">·</span>}
+            <span className="whitespace-nowrap">{hint}</span>
+          </span>
+        ))}
       </div>
     </div>
   );

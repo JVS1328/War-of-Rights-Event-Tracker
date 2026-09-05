@@ -64,7 +64,7 @@ const GrandBattleResolveModal = ({ campaign, battle, onResolve, onCancel }) => {
 
   return (
     <div className="ui-modal-backdrop">
-      <div className="ui-modal border-brass-400/50 p-5 max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="ui-modal border-brass-400/50 p-4 sm:p-5 max-w-lg max-h-[90dvh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="ui-title">
             <Trophy className="w-5 h-5" /> Resolve Battle — {battle.mapName}

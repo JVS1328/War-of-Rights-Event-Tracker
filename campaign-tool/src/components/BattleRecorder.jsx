@@ -955,7 +955,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                     <span className="text-xs text-mist-400 font-semibold">Weather</span>
                     <button
                       onClick={() => setWeatherResult(rollWeatherCondition(campaign?.settings?.weatherWeights))}
-                      className="flex items-center gap-1 px-2 py-1 bg-brass-500 hover:bg-brass-400 text-white rounded text-xs font-semibold transition"
+                      className="ui-btn ui-btn-primary ui-btn-sm"
                     >
                       <Dice6 className="w-3 h-3" />
                       {weatherResult ? 'Re-roll' : 'Roll'}
@@ -1018,7 +1018,7 @@ const BattleRecorder = ({ territories, currentTurn, onRecordBattle, onUpdateBatt
                     <span className="text-xs text-mist-400 font-semibold">Time of Day</span>
                     <button
                       onClick={() => setTimeResult(rollTimeCondition(campaign?.settings?.timeWeights))}
-                      className="flex items-center gap-1 px-2 py-1 bg-brass-500 hover:bg-brass-400 text-white rounded text-xs font-semibold transition"
+                      className="ui-btn ui-btn-primary ui-btn-sm"
                     >
                       <Dice6 className="w-3 h-3" />
                       {timeResult ? 'Re-roll' : 'Roll'}

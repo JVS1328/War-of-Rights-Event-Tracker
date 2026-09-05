@@ -21,7 +21,7 @@ const LSRetreatModal = ({ campaign, tokenId, maxMP, onSkip, onAuto, onPickSpot }
 
   return (
     <div className="ui-modal-backdrop">
-      <div className="ui-modal border-orange-500/50 p-5 max-w-md">
+      <div className="ui-modal border-orange-500/50 p-4 sm:p-5 max-w-md overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-orange-300 flex items-center gap-2">
             <Flag className="w-5 h-5" /> Last Stand Survived — May Retreat
