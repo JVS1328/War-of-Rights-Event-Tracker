@@ -1290,10 +1290,10 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
 
   return (
     <div className="ui-modal-backdrop">
-      <div className="bg-ink-900 rounded-lg w-full max-w-7xl h-[90vh] flex flex-col">
+      <div className="bg-ink-900 rounded-lg w-full max-w-7xl h-[90vh] max-h-[92dvh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-ink-800">
-          <h2 className="text-2xl font-bold text-brass-400">Custom Campaign Map Editor</h2>
+        <div className="flex items-center justify-between gap-3 p-3 sm:p-4 border-b border-ink-800">
+          <h2 className="text-lg sm:text-2xl font-bold text-brass-400 truncate">Custom Campaign Map Editor</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-ink-850 rounded-lg transition-colors"
@@ -1303,10 +1303,12 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-auto lg:overflow-hidden">
           {/* Map View */}
-          <div className="flex-1 p-4 overflow-auto">
-            <div className="bg-ink-850 rounded-lg p-4 h-full flex items-center justify-center">
+          {/* Stacked on a phone, so the map needs a floor of its own height
+              rather than a share of a row that no longer exists. */}
+          <div className="flex-1 p-3 sm:p-4 overflow-auto min-h-[18rem] lg:min-h-0">
+            <div className="bg-ink-850 rounded-lg p-2 sm:p-4 h-full flex items-center justify-center">
               <svg
                 viewBox={isCountyMode && countyData ? countyData.viewBox : "0 0 1000 589"}
                 className="w-full h-full"
@@ -1468,7 +1470,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
           </div>
 
           {/* Territory Configuration Panel */}
-          <div className="w-96 border-l border-ink-800 flex flex-col">
+          <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-ink-800 flex flex-col">
             <div className="p-4 border-b border-ink-800">
               <h3 className="text-lg font-semibold text-brass-400 mb-2">
                 Territories ({territories.length})
@@ -1794,7 +1796,7 @@ const MapEditor = ({ isOpen, onClose, onSave, existingCampaign = null }) => {
       {/* State Selection Modal for County Mode */}
       {showStateSelector && (
         <div className="ui-modal-backdrop">
-          <div className="bg-ink-850 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+          <div className="bg-ink-850 rounded-lg max-w-2xl w-full max-h-[80dvh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-ink-800">
               <h3 className="text-xl font-bold text-brass-400">Select States for County Map</h3>

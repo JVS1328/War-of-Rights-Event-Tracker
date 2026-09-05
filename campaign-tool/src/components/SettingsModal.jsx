@@ -159,12 +159,12 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
             <div className="ui-inset p-4">
               <h3 className="ui-title mb-4">Game Rules</h3>
               <div className="space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.allowTerritoryRecapture}
                     onChange={(e) => updateSetting('allowTerritoryRecapture', e.target.checked)}
-                    className="w-4 h-4 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
+                    className="w-4 h-4 mt-1 shrink-0 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
                   />
                   <div>
                     <div className="text-white font-semibold">Allow Territory Recapture</div>
@@ -174,12 +174,12 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.requireAdjacentAttack}
                     onChange={(e) => updateSetting('requireAdjacentAttack', e.target.checked)}
-                    className="w-4 h-4 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
+                    className="w-4 h-4 mt-1 shrink-0 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
                   />
                   <div>
                     <div className="text-white font-semibold">Require Adjacent Territory Attacks</div>
@@ -189,12 +189,12 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.casualtyTracking}
                     onChange={(e) => updateSetting('casualtyTracking', e.target.checked)}
-                    className="w-4 h-4 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
+                    className="w-4 h-4 mt-1 shrink-0 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
                   />
                   <div>
                     <div className="text-white font-semibold">Track Casualties</div>
@@ -204,12 +204,12 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.failedNeutralAttackToEnemy !== false}
                     onChange={(e) => updateSetting('failedNeutralAttackToEnemy', e.target.checked)}
-                    className="w-4 h-4 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
+                    className="w-4 h-4 mt-1 shrink-0 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
                   />
                   <div>
                     <div className="text-white font-semibold">Failed Attack on Neutral Territories Falls to Enemy Hands?</div>
@@ -219,12 +219,12 @@ const SettingsModal = ({ campaign, onSave, onClose }) => {
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.instantVPGains !== false}
                     onChange={(e) => updateSetting('instantVPGains', e.target.checked)}
-                    className="w-4 h-4 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
+                    className="w-4 h-4 mt-1 shrink-0 rounded border-ink-600 bg-ink-850 text-brass-400 focus:ring-brass-400"
                   />
                   <div>
                     <div className="text-white font-semibold">Instant VP Gains</div>

@@ -68,7 +68,7 @@ const RegimentStats = ({ campaign }) => {
 
         {isExpanded && (
           <div className="ui-listitem-body !p-0">
-            <div className="grid grid-cols-4 gap-2 p-3 border-b border-ink-700 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 border-b border-ink-700 text-center">
               {[
                 ['Casualties', stats.casualties.toLocaleString(), 'text-mist-100'],
                 ['SP Lost', stats.spLost, 'text-brass-300'],

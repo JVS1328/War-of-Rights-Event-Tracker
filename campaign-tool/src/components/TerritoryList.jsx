@@ -54,7 +54,7 @@ const TerritoryList = ({ territories, onTerritorySelect, spSettings = null }) =>
         }
       />
       <CardBody className="!p-2">
-        <div className="ui-scroll max-h-[30rem] p-1 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-1.5 items-start">
+        <div className="ui-scroll max-h-none sm:max-h-[30rem] p-1 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-1.5 items-start">
           {sortedTerritories.map(territory => {
             const isOpen = expandedTerritory === territory.id;
             return (

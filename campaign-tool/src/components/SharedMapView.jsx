@@ -60,54 +60,67 @@ const SharedMapView = ({ shareData }) => {
   const owned = (side) => territories.filter(t => t.owner === side).length;
   const territoryTotal = territories.length || 1;
 
+  // Rendered under the campaign name on a wide screen, and on a row of its
+  // own once the name and the Open Tracker button fill that one.
+  const campaignMeta = (
+    <>
+      <span className="text-mist-400">Turn {shareData.turn}</span>
+      {shareData.date && (
+        <>
+          <span className="text-ink-600">·</span>
+          <span>{shareData.date}</span>
+        </>
+      )}
+      <span className="text-ink-600">·</span>
+      <span>{shareData.battleCount} {shareData.battleCount === 1 ? 'battle' : 'battles'}</span>
+      {shareData.pendingCount > 0 && (
+        <span className="ui-badge ui-badge-warn">{shareData.pendingCount} pending</span>
+      )}
+      {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
+    </>
+  );
+
   return (
     <div className="app-shell">
       {/* ── App bar ─────────────────────────────────────────────────── */}
       <header className="app-bar sticky top-0 z-30">
-        <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
+        <div className="max-w-[110rem] mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 sm:gap-x-4">
+          <div className="flex flex-1 items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-brass-900 border border-brass-500/40 grid place-items-center shrink-0">
               <Map className="w-5 h-5 text-brass-300" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-mist-100 truncate leading-tight">{shareData.name}</h1>
-              <div className="flex items-center gap-2 mt-0.5 text-xs text-mist-500 flex-wrap">
-                <span className="text-mist-400">Turn {shareData.turn}</span>
-                {shareData.date && (
-                  <>
-                    <span className="text-ink-600">·</span>
-                    <span>{shareData.date}</span>
-                  </>
-                )}
-                <span className="text-ink-600">·</span>
-                <span>{shareData.battleCount} {shareData.battleCount === 1 ? 'battle' : 'battles'}</span>
-                {shareData.pendingCount > 0 && (
-                  <span className="ui-badge ui-badge-warn">{shareData.pendingCount} pending</span>
-                )}
-                {isGC && <span className="ui-badge ui-badge-neutral">Grand Campaign</span>}
+              <h1 className="text-base sm:text-lg font-bold text-mist-100 truncate leading-tight">{shareData.name}</h1>
+              <div className="hidden sm:flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5 text-xs text-mist-500">
+                {campaignMeta}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <span className="ui-badge ui-badge-neutral py-1.5 px-2.5">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="ui-badge ui-badge-neutral py-1.5 px-2.5 hidden sm:inline-flex">
               <Eye className="w-3.5 h-3.5" />
               Read-only
             </span>
             <a
               href={window.location.origin + window.location.pathname}
               className="ui-btn ui-btn-ghost"
+              title="Open the campaign tracker"
             >
               <ExternalLink className="w-4 h-4" />
-              Open Tracker
+              <span className="hidden sm:inline">Open Tracker</span>
             </a>
+          </div>
+
+          <div className="flex sm:hidden w-full items-center flex-wrap gap-x-2 gap-y-1 text-xs text-mist-500">
+            {campaignMeta}
           </div>
         </div>
       </header>
 
-      <div className="max-w-[110rem] mx-auto px-4 sm:px-6 py-5">
+      <div className="max-w-[110rem] mx-auto px-3 sm:px-6 py-4 sm:py-5">
         {/* Map + stats */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-5 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5 mb-4 sm:mb-5 items-start">
           <div className="xl:col-span-2">
             <MapView
               territories={territories}
@@ -285,7 +298,7 @@ const SharedMapView = ({ shareData }) => {
             }
           />
           <CardBody className="!p-2">
-            <div className="ui-scroll max-h-[32rem] p-1 grid grid-cols-1 lg:grid-cols-2 gap-1.5 items-start">
+            <div className="ui-scroll max-h-none sm:max-h-[32rem] p-1 grid grid-cols-1 lg:grid-cols-2 gap-1.5 items-start">
               {sortedTerritories.map(territory => {
                 const supplied = isTerritorySupplied(territory, territories);
                 const isNeutral = territory.owner === 'NEUTRAL';

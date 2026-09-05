@@ -192,7 +192,7 @@ const MapFeaturesPanel = ({
       )}
 
       {/* Tool palette */}
-      <div className="grid grid-cols-5 gap-1 mb-3">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 mb-3">
         {toolBtn('city', 'City', MapPin)}
         {toolBtn('fort', 'Fort', Shield)}
         {toolBtn('station', 'Station', Train)}

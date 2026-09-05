@@ -54,7 +54,7 @@ const SetupWizard = ({
 
     return (
       <div className="ui-modal-backdrop">
-        <div className="ui-modal border-brass-500/50 p-6 max-w-md">
+        <div className="ui-modal border-brass-500/50 p-4 sm:p-6 max-w-md overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-brass-400 flex items-center gap-2">
               <Coins className="w-6 h-6" /> Grand Campaign — Coin Flip
@@ -115,7 +115,7 @@ const SetupWizard = ({
     const sideColor = gc.activeSide === 'USA' ? 'text-union-400' : 'text-rebel-400';
 
     return (
-      <div className="fixed top-24 right-6 z-40 bg-ink-900/95 border-2 border-brass-400 rounded-lg shadow-xl p-4 w-80 max-w-[90vw]">
+      <div className="ui-hud bg-ink-900/95 border-2 border-brass-400 rounded-lg shadow-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="ui-title">
             <Flag className="w-5 h-5" /> Placement

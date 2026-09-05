@@ -50,7 +50,7 @@ const BattleHistory = ({ battles, territories, onEditBattle, campaign = null }) 
         {battles.length === 0 ? (
           <EmptyState icon={Swords} title="No battles recorded yet" hint="Recorded battles and their outcomes will appear here." />
         ) : (
-          <div className="ui-scroll max-h-[26rem] p-1 space-y-1.5">
+          <div className="ui-scroll max-h-none sm:max-h-[26rem] p-1 space-y-1.5">
             {sortedBattles.map(battle => {
               const isOpen = expandedBattle === battle.id;
               const pending = isPending(battle);

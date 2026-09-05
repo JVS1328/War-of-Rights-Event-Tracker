@@ -197,7 +197,7 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
 
   return (
     <div className="ui-modal-backdrop">
-      <div className="ui-modal border-rebel-500/50 p-5 max-w-lg max-h-[92vh] overflow-y-auto">
+      <div className="ui-modal border-rebel-500/50 p-4 sm:p-5 max-w-lg max-h-[92dvh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-rebel-400 flex items-center gap-2">
             <Swords className="w-5 h-5" /> {step === 1 ? 'Declare Attack' : 'Conditions & Map'}
@@ -328,7 +328,7 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
                 <button
                   onClick={() => terrainWeights && setTerrainResult(rollTerrainType(terrainWeights))}
                   disabled={!terrainWeights}
-                  className="bg-brass-500 hover:bg-brass-500 disabled:bg-ink-800 disabled:text-mist-500 text-white rounded px-2 py-0.5 text-[10px] flex items-center gap-1"
+                  className="ui-btn ui-btn-primary ui-btn-sm"
                 >
                   <Dice6 className="w-3 h-3" /> {terrainResult ? 'Re-roll' : 'Roll'}
                 </button>
@@ -365,7 +365,7 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
                   </div>
                   <button
                     onClick={() => setWeatherResult(rollWeatherCondition(campaign.settings?.weatherWeights))}
-                    className="bg-brass-500 hover:bg-brass-500 text-white rounded px-2 py-0.5 text-[10px] flex items-center gap-1"
+                    className="ui-btn ui-btn-primary ui-btn-sm"
                   >
                     <Dice6 className="w-3 h-3" /> {weatherResult ? 'Re-roll' : 'Roll'}
                   </button>
@@ -390,7 +390,7 @@ const GrandBattleModal = ({ campaign, onCreate, onCancel }) => {
                   </div>
                   <button
                     onClick={() => setTimeResult(rollTimeCondition(campaign.settings?.timeWeights))}
-                    className="bg-brass-500 hover:bg-brass-500 text-white rounded px-2 py-0.5 text-[10px] flex items-center gap-1"
+                    className="ui-btn ui-btn-primary ui-btn-sm"
                   >
                     <Dice6 className="w-3 h-3" /> {timeResult ? 'Re-roll' : 'Roll'}
                   </button>
